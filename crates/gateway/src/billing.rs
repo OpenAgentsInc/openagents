@@ -369,6 +369,7 @@ async fn plans_list(State(state): State<Arc<ServeState>>) -> Response {
                 "models": plan.models,
                 "credit_expiry_secs": plan.credit_expiry_secs,
                 "topups_allowed": plan.topups_allowed,
+                "environments": plan.environments,
             })
         })
         .collect();

@@ -393,7 +393,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             | Request::Confirm { .. }
             | Request::EnvironmentOffer { .. }
             | Request::EnvironmentConfirm { .. }
-            | Request::EnvironmentRenew { .. } => Need::Spend,
+            | Request::EnvironmentDelete { .. } => Need::Spend,
             _ => Need::Read,
         };
         let (identity, grant) = self.authenticate(&store, principal, secret, need)?;
@@ -654,14 +654,14 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 let id = opaque("re", &identity.account, &idempotency)?;
                 let p = environment::offer(
                     &mut store.journal,
-                    &launch.book,
+                    &launch.plan,
                     &launch.gate,
                     &identity.account,
                     &id,
                     &request,
                     now,
                 )?;
-                environment_value(&p, &identity.account, now)?
+                environment_value(&store.journal, &p, &identity.account, now)?
             }
             Request::EnvironmentConfirm { purchase, digest } => {
                 if !grant.execute || !grant.disclose {
@@ -670,8 +670,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 let launch = self.environments()?;
                 let p = environment::confirm(
                     &mut store.journal,
-                    &mut store.ledger,
-                    &launch.book,
+                    &launch.plan,
                     &launch.gate,
                     &identity.account,
                     &purchase,
@@ -679,33 +678,19 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     identity.rights.spend,
                     now,
                 )?;
-                environment_value(&p, &identity.account, now)?
+                environment_value(&store.journal, &p, &identity.account, now)?
             }
             Request::Environment { purchase } => {
                 let p = environment::purchase(&store.journal, &identity.account, &purchase)?
                     .ok_or(Error::Denied)?;
-                environment_value(&p, &identity.account, now)?
+                environment_value(&store.journal, &p, &identity.account, now)?
             }
-            Request::EnvironmentRenew {
-                purchase,
-                idempotency,
-                days,
-            } => {
-                let launch = self.environments()?;
-                let renewal = opaque("rr", &identity.account, &idempotency)?;
-                let p = environment::renew(
-                    &mut store.journal,
-                    &mut store.ledger,
-                    &launch.book,
-                    &launch.gate,
-                    &identity.account,
-                    &purchase,
-                    &renewal,
-                    days,
-                    identity.rights.spend,
-                    now,
-                )?;
-                environment_value(&p, &identity.account, now)?
+            Request::EnvironmentDelete { purchase } => {
+                self.environments()?;
+                environment::delete(&mut store.journal, &identity.account, &purchase, now)?;
+                let p = environment::purchase(&store.journal, &identity.account, &purchase)?
+                    .ok_or(Error::Denied)?;
+                environment_value(&store.journal, &p, &identity.account, now)?
             }
             Request::Executions { after } => {
                 if let Some(cursor) = &after {
@@ -882,16 +867,21 @@ fn offer_value(
     value
 }
 /// One saved-environment purchase as its own account reads it.
-fn environment_value(p: &environment::Purchase, account: &str, now: i64) -> Result<Value> {
+fn environment_value(
+    journal: &retail_cloud::journal::Journal,
+    p: &environment::Purchase,
+    account: &str,
+    now: i64,
+) -> Result<Value> {
     Ok(json!({
         "purchase": p.id,
         "digest": p.digest,
         "request": p.request,
-        "quote": p.quote,
+        "terms": p.terms,
         "admission": p.admission,
         "phase": p.phase,
-        "retention": p.retention,
-        "selectable": environment::may_select(p, account, now),
+        "kept": p.kept,
+        "selectable": environment::may_select(journal, p, account, now)?,
     }))
 }
 

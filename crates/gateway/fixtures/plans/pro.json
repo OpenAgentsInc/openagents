@@ -1,0 +1,21 @@
+{
+  "id": "pro",
+  "version": "2026-10-09",
+  "name": "Pro",
+  "price": { "amount": 20000000, "currency": "USD", "period_secs": 2592000 },
+  "allowance": 0,
+  "signup_credit": 0,
+  "models": { "listed": [] },
+  "topups_allowed": true,
+  "environments": {
+    "machine": "retail-env-standard-v1",
+    "vcpus": 2,
+    "memory_gb": 8,
+    "included_machine_hours": 100,
+    "machines_at_once": 2,
+    "storage_gb": 20,
+    "saved_versions": 10,
+    "extra_hour": 180000,
+    "rollover": false
+  }
+}

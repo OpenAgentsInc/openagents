@@ -136,6 +136,59 @@ pub struct Plan {
     /// Whether purchased top-ups are allowed while subscribed.
     #[serde(default = "yes")]
     pub topups_allowed: bool,
+    /// What the plan includes for saved cloud environments
+    /// (`docs/cloud/retail-environment-contract.md`). Absent means none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environments: Option<EnvironmentAllowance>,
+}
+
+/// A plan's monthly allowance for saved cloud environments: machine-hours
+/// on one machine size, machines at once, and saved image storage. Model
+/// use is never included; it runs on the customer's own key or
+/// subscription.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentAllowance {
+    /// The machine class every environment runs on.
+    pub machine: String,
+    pub vcpus: u32,
+    pub memory_gb: u32,
+    /// Machine-hours each period includes.
+    pub included_machine_hours: u64,
+    /// Machines that may run at once.
+    pub machines_at_once: u32,
+    /// Saved environment images, in GB.
+    pub storage_gb: u64,
+    /// Saved versions kept at once.
+    pub saved_versions: u32,
+    /// Each machine-hour past the included hours, in millionths of the
+    /// price's currency. Charged from credits only when the customer
+    /// turned extra hours on, and never past the monthly cap they set.
+    pub extra_hour: u64,
+    /// Whether unused hours carry into the next period.
+    pub rollover: bool,
+}
+
+impl EnvironmentAllowance {
+    /// Why the allowance is unusable, if it is.
+    #[must_use]
+    pub fn problem(&self) -> Option<&'static str> {
+        if self.machine.is_empty()
+            || self.vcpus == 0
+            || self.memory_gb == 0
+            || self.included_machine_hours == 0
+            || self.machines_at_once == 0
+            || self.storage_gb == 0
+            || self.saved_versions == 0
+            || self.extra_hour == 0
+        {
+            Some("every environment allowance and rate must be set")
+        } else if self.rollover {
+            Some("unused environment hours do not roll over")
+        } else {
+            None
+        }
+    }
 }
 
 fn max_spend() -> u64 {
@@ -2034,6 +2087,7 @@ mod tests {
             spend_limit: u64::MAX,
             credit_expiry_secs: None,
             topups_allowed: true,
+            environments: None,
         }
     }
 

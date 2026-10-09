@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@05544c907c35",
+  "bank": "chat-answers-v1@38bd1bf42429",
   "routes": [
     {
       "id": "meta",
@@ -432,7 +432,7 @@
     },
     {
       "id": "meta.pricing",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -442,7 +442,8 @@
       "offer": null,
       "sources": [
         "docs/deployment/chat-worker-usage.md",
-        "INVARIANTS.md"
+        "INVARIANTS.md",
+        "docs/cloud/retail-environment-contract.md"
       ]
     },
     {
@@ -2396,7 +2397,8 @@
           "pricing",
           "cost",
           "free",
-          "plans"
+          "plans",
+          "subscription"
         ],
         "answer": true
       },

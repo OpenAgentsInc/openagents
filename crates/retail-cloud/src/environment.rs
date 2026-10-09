@@ -1,29 +1,29 @@
 //! Saved customer environments (ENV-10): the
-//! `openagents.cloud.retail-environment.v1` contract
-//! (`docs/cloud/retail-environment-contract.md`) as data, its price book and
-//! quote, and the funded lifecycle over the central ledger.
+//! `openagents.cloud.retail-environment.v2` contract
+//! (`docs/cloud/retail-environment-contract.md`) as data, the subscription
+//! plan that pays for it, and the metered lifecycle.
 //!
-//! A customer buys one environment setup: a setup machine, a clean builder,
-//! and an independent verifier with its idempotence fork (at most
-//! [`MACHINES`] machines, [`SECONDS_MAX`] wall time), and, when the checked
-//! version is saved, its image kept for the retention days they chose.
-//! The offer's maximum (every machine for the whole wall time, the
-//! coordination charge, and the largest image for every retention day) is
-//! held before anything starts. Settlement charges the measured machine
-//! seconds, the coordination charge, and storage for the saved image's
-//! real size; the rest of the hold is released, which is not a refund.
-//! More retention is a prepaid renewal; when it runs out the version can no
-//! longer be selected and its image is due for deletion.
+//! Environments come with a monthly subscription ([`EnvironmentPlan`],
+//! "Pro"): each subscription month includes a number of machine-hours on
+//! the standard machine, a number of machines at once, and saved image
+//! storage. A setup's measured machine-seconds count against the month's
+//! included hours. When they run out, more hours are charged only if the
+//! person turned on extra hours ([`ExtraHours`]), from their credits, and
+//! never past the monthly cap they set. Unused hours do not roll over.
+//! Model usage stays on the person's own key or subscription.
+//!
+//! There is no per-run time limit from us: a run stops when the person's
+//! own limit ([`EnvironmentRequest::max_seconds`]), their included hours, or
+//! their extra-hours cap runs out ([`budget`]), never at a limit we chose.
 //!
 //! Nothing here sells anything. [`Gate::open`] stays shut until the owner
-//! has reviewed this contract, published (not proposed) its price book, and
-//! recorded a funded qualification; the checked-in book is proposed.
-//! Every step is journaled before or after its one ledger effect so a
-//! restart repeats nothing it cannot prove did not happen ([`recover`]).
+//! has reviewed the contract, published (not proposed) the plan, and
+//! recorded a funded qualification; the checked-in plan is proposed.
+//! Subscription months arrive through [`record_period`] (the billing
+//! side's job), and extra-hour charges leave through an outbox of
+//! [`Debit`]s that [`post_debits`] hands to a [`Credits`] adapter once
+//! each, so a restart never charges twice.
 
-use pay_ledger::Ledger;
-use pay_ledger::compute::{HoldRequest, HoldState};
-use route_contract::price_book::{CreditUnit, ModelPayer, QuotePayer, Settlement};
 use route_contract::{Digest, digest_of};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -32,30 +32,35 @@ use crate::authority::Source;
 use crate::journal::Journal;
 use crate::{Error, Result};
 
-pub const CONTRACT: &str = "openagents.cloud.retail-environment.v1";
-pub const COMPUTER_CLASS: &str = "retail-env-boat-large-v1";
+pub const CONTRACT: &str = "openagents.cloud.retail-environment.v2";
+pub const COMPUTER_CLASS: &str = "retail-env-standard-v1";
 pub const TASK_CLASS: &str = "retail-environment-setup-v1";
-pub const BOOK_SCHEMA: &str = "openagents.cloud.environment-price-book.v1";
-pub const QUOTE_SCHEMA: &str = "openagents.cloud.environment-quote.v1";
-pub const ADMISSION_SCHEMA: &str = "openagents.cloud.environment-admission.v1";
-/// Setup, builder, verifier, and the verifier's idempotence fork.
-pub const MACHINES: u64 = 4;
-/// Wall time for the whole setup, build, and check.
-pub const SECONDS_MAX: u64 = 2 * 3600;
+pub const PLAN_SCHEMA: &str = "openagents.cloud.environment-plan.v1";
+pub const TERMS_SCHEMA: &str = "openagents.cloud.environment-terms.v1";
+pub const ADMISSION_SCHEMA: &str = "openagents.cloud.environment-admission.v2";
 pub const OBJECTIVE_MAX: usize = 8 * 1024;
 pub const PROFILE_MAX: usize = 64;
 pub const CHECKS_MIN: usize = 1;
 pub const CHECKS_MAX: usize = 8;
 pub const CHECK_COMMAND_MAX: usize = 1024;
-pub const RETENTION_DAYS_MIN: u64 = 1;
-pub const RETENTION_DAYS_MAX: u64 = 90;
+/// Saved versions stay this many days after a subscription ends, so a
+/// person who renews late finds them again.
+pub const KEEP_AFTER_END_DAYS: i64 = 30;
 const DAY: i64 = 86_400;
+const HOUR: u128 = 3600;
 
 pub(crate) const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS environment_purchase (
     id TEXT PRIMARY KEY,
     account TEXT NOT NULL,
     bytes TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS environment_record (
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    account TEXT NOT NULL,
+    bytes TEXT NOT NULL,
+    PRIMARY KEY (kind, key)
 );
 ";
 
@@ -73,14 +78,13 @@ pub struct EnvironmentRequest {
     pub profile: String,
     /// Behavior checks the verifier runs, frozen before any build.
     pub checks: Vec<String>,
-    /// Wall time for setup, build, and check, at most two hours.
-    pub max_seconds: u64,
-    /// Days the saved image is kept, prepaid.
-    pub retention_days: u64,
-    pub ceiling_sats: Option<u64>,
+    /// The person's own limit on machine-seconds for this setup. `None`
+    /// means no limit of theirs; we set none.
+    #[serde(default)]
+    pub max_seconds: Option<u64>,
 }
 
-/// Why a request is outside the v1 class.
+/// Why a request is outside the class.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Unsupported {
@@ -89,8 +93,8 @@ pub enum Unsupported {
     Objective,
     Profile,
     Checks,
+    /// A limit of zero seconds.
     WallTime,
-    Retention,
 }
 
 impl EnvironmentRequest {
@@ -122,11 +126,8 @@ impl EnvironmentRequest {
         {
             return Err(Unsupported::Checks);
         }
-        if self.max_seconds == 0 || self.max_seconds > SECONDS_MAX {
+        if self.max_seconds == Some(0) {
             return Err(Unsupported::WallTime);
-        }
-        if !(RETENTION_DAYS_MIN..=RETENTION_DAYS_MAX).contains(&self.retention_days) {
-            return Err(Unsupported::Retention);
         }
         Ok(())
     }
@@ -137,311 +138,666 @@ impl EnvironmentRequest {
 }
 
 // ---------------------------------------------------------------------------
-// The price book and quote.
+// The plan.
 
-/// Whether the owner has reviewed a book. Only a published book sells.
+/// Whether the owner has published a plan. Only a published plan sells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BookStatus {
+pub enum PlanStatus {
     Proposed,
     Published,
 }
 
+/// The machine every environment runs on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ClassPrice {
-    pub computer: String,
-    pub task: String,
-    /// Each machine's metered rate.
-    pub compute_msats_per_machine_second: u64,
-    pub machines: u64,
-    pub max_seconds: u64,
-    /// Once per purchase whose first machine started.
-    pub coordination_sats: u64,
-    /// The saved image's storage, per started GB and day.
-    pub storage_msats_per_gb_day: u64,
-    /// The largest image this class saves.
-    pub image_gb_max: u64,
-    pub retention_days_max: u64,
-    pub recipient: String,
-    pub model: ModelPayer,
+pub struct Machine {
+    pub class: String,
+    pub vcpus: u32,
+    pub memory_gb: u32,
 }
 
-/// One environment price book. A change is a new `version`.
+/// Who pays for model use: always the person, on their own key or
+/// subscription.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelSource {
+    BringYourOwn,
+}
+
+/// The subscription plan environments come with. A change is a new
+/// `version`; a purchase keeps the terms it was offered under.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PriceBook {
+pub struct EnvironmentPlan {
     pub schema: String,
-    /// `retail-env-YYYY-MM-DD.N`.
+    /// `env-plan-YYYY-MM-DD.N`.
     pub version: String,
-    pub status: BookStatus,
-    pub effective_at: u64,
-    pub credit: CreditUnit,
-    pub class: ClassPrice,
+    pub status: PlanStatus,
+    /// The billing catalog's plan id (`GET /v1/plans`).
+    pub plan: String,
+    pub name: String,
+    /// What one month costs, in millionths of a US dollar.
+    pub price_usd_micros: u64,
+    pub machine: Machine,
+    /// Machine-hours each subscription month includes.
+    pub included_machine_hours: u64,
+    /// Machines that may run at once.
+    pub machines_at_once: u64,
+    /// Saved environment images, in GB.
+    pub storage_gb: u64,
+    /// Saved versions kept at once.
+    pub saved_versions: u64,
+    /// Each machine-hour past the month's included hours, in millionths of
+    /// a US dollar, charged only when the person turned extra hours on.
+    pub extra_hour_usd_micros: u64,
+    /// Whether unused hours carry into the next month.
+    pub rollover: bool,
+    pub model: ModelSource,
 }
 
-/// Why a book or a quote was refused.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Refusal {
-    /// Environment purchases are not open.
-    Closed,
-    Unsupported {
-        part: Unsupported,
-    },
-    Malformed {
-        detail: String,
-    },
-    AboveCeiling {
-        max_sats: u64,
-    },
-    /// The quote no longer matches the book.
-    Changed,
-    /// The purchase belongs to another account.
-    NotYours,
-    /// The account's balance is shared with another service and cannot
-    /// hold for an environment.
-    SharedBalance,
-    /// The saved image is larger than the class keeps.
-    ImageTooLarge,
-    /// The retention ran out; the version is no longer kept.
-    Lapsed,
-    /// The step does not fit the purchase's current state.
-    Phase,
-    /// The principal may not spend this account's balance.
-    NoSpendRight,
-}
-
-fn ceil_msats(msats: u128) -> Option<u64> {
-    u64::try_from(msats.div_ceil(1000)).ok()
-}
-
-impl PriceBook {
+impl EnvironmentPlan {
     #[must_use]
     pub fn digest(&self) -> Digest {
         digest_of(self)
     }
     /// # Errors
     ///
-    /// A malformed or ambiguous book.
+    /// A malformed plan.
     pub fn check(&self) -> std::result::Result<(), Refusal> {
         let bad = |d: &str| Refusal::Malformed { detail: d.into() };
-        if self.schema != BOOK_SCHEMA {
-            return Err(bad("expected openagents.cloud.environment-price-book.v1"));
+        if self.schema != PLAN_SCHEMA {
+            return Err(bad("expected openagents.cloud.environment-plan.v1"));
         }
-        if !self.version.starts_with("retail-env-") {
-            return Err(bad("a version is retail-env-YYYY-MM-DD.N"));
+        if !self.version.starts_with("env-plan-") {
+            return Err(bad("a version is env-plan-YYYY-MM-DD.N"));
         }
-        if self.credit.sats != 1 || self.credit.name.is_empty() {
-            return Err(bad("one credit is one sat"));
+        if self.machine.class != COMPUTER_CLASS {
+            return Err(bad("the plan names the standard machine class"));
         }
-        let c = &self.class;
-        if c.computer != COMPUTER_CLASS || c.task != TASK_CLASS {
-            return Err(bad("the book prices the v1 classes"));
-        }
-        if c.compute_msats_per_machine_second == 0
-            || c.storage_msats_per_gb_day == 0
-            || c.machines == 0
-            || c.machines > MACHINES
-            || c.max_seconds == 0
-            || c.max_seconds > SECONDS_MAX
-            || c.image_gb_max == 0
-            || c.retention_days_max == 0
-            || c.retention_days_max > RETENTION_DAYS_MAX
-            || c.recipient.is_empty()
+        if self.plan.is_empty()
+            || self.name.is_empty()
+            || self.price_usd_micros == 0
+            || self.machine.vcpus == 0
+            || self.machine.memory_gb == 0
+            || self.included_machine_hours == 0
+            || self.machines_at_once == 0
+            || self.storage_gb == 0
+            || self.saved_versions == 0
+            || self.extra_hour_usd_micros == 0
         {
-            return Err(bad("every rate and bound is set and within the contract"));
+            return Err(bad("every price and allowance is set"));
         }
-        if self.maximum(c.max_seconds, c.retention_days_max).is_none() {
-            return Err(bad("the maximum does not fit 64 bits"));
+        if self.rollover {
+            return Err(bad("unused hours do not roll over in this contract"));
         }
         Ok(())
     }
-    fn compute(&self, machine_seconds: u64) -> Option<u64> {
-        ceil_msats(
-            u128::from(machine_seconds) * u128::from(self.class.compute_msats_per_machine_second),
-        )
-    }
-    fn storage(&self, gb: u64, days: u64) -> Option<u64> {
-        ceil_msats(
-            u128::from(gb) * u128::from(days) * u128::from(self.class.storage_msats_per_gb_day),
-        )
-    }
-    fn maximum(&self, seconds: u64, days: u64) -> Option<u64> {
-        self.compute(seconds.checked_mul(self.class.machines)?)?
-            .checked_add(self.class.coordination_sats)?
-            .checked_add(self.storage(self.class.image_gb_max, days)?)
-    }
-
-    /// The quote for `request`.
-    ///
-    /// # Errors
-    ///
-    /// A malformed book, an unsupported request, or a maximum above the
-    /// customer's ceiling.
-    pub fn quote(&self, request: &EnvironmentRequest) -> std::result::Result<Quote, Refusal> {
-        self.check()?;
-        request
-            .check()
-            .map_err(|part| Refusal::Unsupported { part })?;
-        let c = &self.class;
-        if request.max_seconds > c.max_seconds || request.retention_days > c.retention_days_max {
-            return Err(Refusal::Unsupported {
-                part: if request.max_seconds > c.max_seconds {
-                    Unsupported::WallTime
-                } else {
-                    Unsupported::Retention
-                },
-            });
-        }
-        let overflow = || Refusal::Malformed {
-            detail: "the maximum does not fit 64 bits".into(),
-        };
-        let compute = self
-            .compute(request.max_seconds * c.machines)
-            .ok_or_else(overflow)?;
-        let storage = self
-            .storage(c.image_gb_max, request.retention_days)
-            .ok_or_else(overflow)?;
-        let max_sats = self
-            .maximum(request.max_seconds, request.retention_days)
-            .ok_or_else(overflow)?;
-        if let Some(ceiling) = request.ceiling_sats
-            && max_sats > ceiling
-        {
-            return Err(Refusal::AboveCeiling { max_sats });
-        }
-        let ModelPayer::CallerKey { provider } = &c.model;
-        let to = Some(c.recipient.clone());
-        Ok(Quote {
-            schema: QUOTE_SCHEMA.into(),
-            book: self.digest(),
-            version: self.version.clone(),
-            computer: c.computer.clone(),
-            task: c.task.clone(),
-            max_seconds: request.max_seconds,
-            machines: c.machines,
-            retention_days: request.retention_days,
-            image_gb_max: c.image_gb_max,
-            lines: vec![
-                Line {
-                    resource: Charge::Compute,
-                    payer: QuotePayer::CallerBalance,
-                    basis: LineBasis::PerMachineSecond {
-                        msats: c.compute_msats_per_machine_second,
-                    },
-                    max_sats: compute,
-                    recipient: to.clone(),
-                },
-                Line {
-                    resource: Charge::Coordination,
-                    payer: QuotePayer::CallerBalance,
-                    basis: LineBasis::Fixed,
-                    max_sats: c.coordination_sats,
-                    recipient: to.clone(),
-                },
-                Line {
-                    resource: Charge::Storage,
-                    payer: QuotePayer::CallerBalance,
-                    basis: LineBasis::PerGbDay {
-                        msats: c.storage_msats_per_gb_day,
-                    },
-                    max_sats: storage,
-                    recipient: to,
-                },
-                Line {
-                    resource: Charge::Model,
-                    payer: QuotePayer::CallerKey {
-                        provider: provider.clone(),
-                    },
-                    basis: LineBasis::CallerKey,
-                    max_sats: 0,
-                    recipient: None,
-                },
-            ],
-            max_sats,
-            max_credits: max_sats,
-        })
-    }
-
-    /// The prepaid charge for keeping a `gb` image `days` more days.
-    ///
-    /// # Errors
-    ///
-    /// Days out of bounds or an image above the class's largest.
-    pub fn renewal(&self, gb: u64, days: u64) -> std::result::Result<u64, Refusal> {
-        self.check()?;
-        if !(RETENTION_DAYS_MIN..=self.class.retention_days_max).contains(&days) {
-            return Err(Refusal::Unsupported {
-                part: Unsupported::Retention,
-            });
-        }
-        if gb == 0 || gb > self.class.image_gb_max {
-            return Err(Refusal::ImageTooLarge);
-        }
-        self.storage(gb, days).ok_or(Refusal::Malformed {
-            detail: "the renewal does not fit 64 bits".into(),
-        })
+    #[must_use]
+    pub fn included_seconds(&self) -> u64 {
+        self.included_machine_hours.saturating_mul(3600)
     }
 }
 
-/// The checked-in book: proposed, so it sells nothing until the owner
-/// publishes a reviewed one.
+/// The checked-in plan: proposed, so it sells nothing until the owner
+/// publishes it.
 ///
 /// # Panics
 ///
 /// Never: the fixture is checked in and tested.
 #[must_use]
-pub fn price_book() -> PriceBook {
-    serde_json::from_str(include_str!("../fixtures/environment-price-book.json"))
-        .expect("the checked-in environment price book parses")
+pub fn plan() -> EnvironmentPlan {
+    serde_json::from_str(include_str!("../fixtures/environment-plan.json"))
+        .expect("the checked-in environment plan parses")
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Charge {
-    Compute,
-    Coordination,
-    Storage,
-    Model,
-}
+/// Why a step was refused. [`Refusal::message`] is what a person reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum LineBasis {
-    PerMachineSecond { msats: u64 },
-    PerGbDay { msats: u64 },
-    Fixed,
-    CallerKey,
-}
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Line {
-    pub resource: Charge,
-    pub payer: QuotePayer,
-    pub basis: LineBasis,
-    pub max_sats: u64,
-    pub recipient: Option<String>,
+#[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Refusal {
+    /// Environments are not open on this service.
+    Closed,
+    /// The account has no current subscription.
+    NoPlan,
+    Unsupported {
+        part: Unsupported,
+    },
+    Malformed {
+        detail: String,
+    },
+    /// The offer no longer matches the plan.
+    Changed,
+    /// The purchase belongs to another account.
+    NotYours,
+    /// The month's included hours are used and extra hours are off.
+    AllowanceUsed {
+        hours: u64,
+        resets_at: i64,
+    },
+    /// Extra hours are on, and this month's cap is spent.
+    CapReached {
+        cap_usd_micros: u64,
+        resets_at: i64,
+    },
+    /// Every machine the plan allows at once is in use.
+    MachinesBusy {
+        machines: u64,
+    },
+    /// Saving this image would pass the plan's storage.
+    StorageFull {
+        gb: u64,
+    },
+    /// The plan's saved versions are all in use.
+    TooManyVersions {
+        versions: u64,
+    },
+    /// The step does not fit the purchase's current state.
+    Phase,
+    /// The principal may not spend for this account.
+    NoSpendRight,
 }
 
-/// What an offer shows and the hold reserves.
+impl Refusal {
+    /// The plain sentence a person sees.
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::Closed => "Saved environments aren't available yet.".into(),
+            Self::NoPlan => "Saved environments come with the Pro plan.".into(),
+            Self::Unsupported { .. } | Self::Malformed { .. } => {
+                "That setup request isn't one we can run.".into()
+            }
+            Self::Changed => "The plan changed since you looked. Check it again.".into(),
+            Self::NotYours => "That environment isn't yours.".into(),
+            Self::AllowanceUsed { hours, resets_at } => format!(
+                "You've used this month's {hours} hours. Turn on extra hours in Settings, or wait until {}.",
+                day_label(*resets_at)
+            ),
+            Self::CapReached {
+                cap_usd_micros,
+                resets_at,
+            } => format!(
+                "You've reached the {} you set for extra hours this month. Raise it in Settings, or wait until {}.",
+                usd(*cap_usd_micros),
+                day_label(*resets_at)
+            ),
+            Self::MachinesBusy { machines } => format!(
+                "Your {machines} machines are busy. Wait for a setup to finish, then try again."
+            ),
+            Self::StorageFull { gb } => format!(
+                "Your saved environments would use more than {gb} GB. Delete one to save this one."
+            ),
+            Self::TooManyVersions { versions } => {
+                format!("You have {versions} saved versions. Delete one to save another.")
+            }
+            Self::Phase => "That can't be done at this step.".into(),
+            Self::NoSpendRight => "This sign-in can't start paid work.".into(),
+        }
+    }
+}
+
+/// `$20`, `$0.18`.
+#[must_use]
+pub fn usd(micros: u64) -> String {
+    let cents = micros.div_ceil(10_000);
+    if cents % 100 == 0 {
+        format!("${}", cents / 100)
+    } else {
+        format!("${}.{:02}", cents / 100, cents % 100)
+    }
+}
+
+/// `November 9`, in UTC.
+#[must_use]
+pub fn day_label(at: i64) -> String {
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    // Howard Hinnant's civil_from_days.
+    let z = at.div_euclid(DAY) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let index = usize::try_from(month - 1).unwrap_or(0).min(11);
+    format!("{} {day}", MONTHS[index])
+}
+
+// ---------------------------------------------------------------------------
+// Availability.
+
+/// What must hold before anyone can buy: the owner reviewed the contract,
+/// the plan is the published one they reviewed (by digest), and a funded
+/// qualification receipt is recorded. A fixture never opens it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Gate {
+    pub contract_reviewed: bool,
+    /// The digest of the published plan the owner reviewed.
+    #[serde(default)]
+    pub plan: Option<Digest>,
+    /// The funded qualification receipt's digest.
+    #[serde(default)]
+    pub qualification: Option<String>,
+}
+impl Gate {
+    /// # Errors
+    ///
+    /// [`Refusal::Closed`] unless every condition holds for `plan`.
+    pub fn open(&self, plan: &EnvironmentPlan) -> std::result::Result<(), Refusal> {
+        let ok = self.contract_reviewed
+            && plan.status == PlanStatus::Published
+            && self.plan.as_ref() == Some(&plan.digest())
+            && self.qualification.as_ref().is_some_and(|q| !q.is_empty())
+            && plan.check().is_ok();
+        if ok { Ok(()) } else { Err(Refusal::Closed) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Records beside the purchases: subscription months, settings, monthly
+// meters, and the debit outbox.
+
+const PERIOD: &str = "period";
+const SETTINGS: &str = "settings";
+const MONTH: &str = "month";
+const DEBIT: &str = "debit";
+
+fn get<T: for<'de> Deserialize<'de>>(
+    journal: &Journal,
+    kind: &str,
+    key: &str,
+) -> Result<Option<T>> {
+    let bytes: Option<String> = journal
+        .connection
+        .query_row(
+            "SELECT bytes FROM environment_record WHERE kind=? AND key=?",
+            [kind, key],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(bytes.map(|b| serde_json::from_str(&b)).transpose()?)
+}
+fn all<T: for<'de> Deserialize<'de>>(
+    journal: &Journal,
+    kind: &str,
+    account: Option<&str>,
+) -> Result<Vec<T>> {
+    let mut q = journal.connection.prepare(
+        "SELECT bytes FROM environment_record WHERE kind=?1 AND (?2 IS NULL OR account=?2) ORDER BY rowid",
+    )?;
+    let rows = q
+        .query_map(params![kind, account], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    rows.iter().map(|b| Ok(serde_json::from_str(b)?)).collect()
+}
+fn put<T: Serialize>(
+    journal: &mut Journal,
+    kind: &str,
+    key: &str,
+    account: &str,
+    value: &T,
+) -> Result<()> {
+    let bytes = serde_json::to_string(value)?;
+    let tx = journal.immediate()?;
+    tx.execute(
+        "INSERT INTO environment_record(kind,key,account,bytes) VALUES(?,?,?,?) ON CONFLICT(kind,key) DO UPDATE SET bytes=excluded.bytes",
+        params![kind, key, account, bytes],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// One paid subscription month for an account, as billing reports it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Quote {
+pub struct Period {
+    pub account: String,
+    /// The plan version the month was paid under.
+    pub plan: String,
+    pub start: i64,
+    pub end: i64,
+}
+
+/// Record a paid month (idempotent on account and start).
+///
+/// # Errors
+///
+/// An empty or backward period, or a journal failure.
+pub fn record_period(journal: &mut Journal, period: &Period) -> Result<()> {
+    if period.account.is_empty() || period.end <= period.start {
+        return Err(Error::Invalid("a period has an account and a length"));
+    }
+    let key = format!("{}:{}", period.account, period.start);
+    put(journal, PERIOD, &key, &period.account, period)
+}
+
+/// Where an account's subscription stands.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "standing", rename_all = "snake_case")]
+pub enum Standing {
+    Active { period: Period },
+    Ended { at: i64 },
+    Never,
+}
+
+/// The account's subscription at `now`.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn standing(journal: &Journal, account: &str, now: i64) -> Result<Standing> {
+    let periods: Vec<Period> = all(journal, PERIOD, Some(account))?;
+    if let Some(p) = periods.iter().find(|p| p.start <= now && now < p.end) {
+        return Ok(Standing::Active { period: p.clone() });
+    }
+    Ok(periods
+        .iter()
+        .filter(|p| p.end <= now)
+        .map(|p| p.end)
+        .max()
+        .map_or(Standing::Never, |at| Standing::Ended { at }))
+}
+
+fn active(journal: &Journal, account: &str, now: i64) -> Result<Period> {
+    match standing(journal, account, now)? {
+        Standing::Active { period } => Ok(period),
+        _ => Err(refused(Refusal::NoPlan)),
+    }
+}
+
+/// The person's extra-hours choice. Off until they turn it on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtraHours {
+    pub enabled: bool,
+    /// The most extra hours may cost in one month, in millionths of a US
+    /// dollar.
+    pub cap_usd_micros: u64,
+}
+
+/// The account's extra-hours choice.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn extra_hours(journal: &Journal, account: &str) -> Result<ExtraHours> {
+    Ok(get(journal, SETTINGS, account)?.unwrap_or_default())
+}
+
+/// Save the account's extra-hours choice.
+///
+/// # Errors
+///
+/// An empty account, or a journal failure.
+pub fn set_extra_hours(journal: &mut Journal, account: &str, choice: ExtraHours) -> Result<()> {
+    if account.is_empty() {
+        return Err(Error::Invalid("an account"));
+    }
+    put(journal, SETTINGS, account, account, &choice)
+}
+
+/// One account's meter for one subscription month.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Month {
+    pub start: i64,
+    pub end: i64,
+    /// Machine-seconds counted against the included hours.
+    pub included_seconds: u64,
+    /// Machine-seconds past the included hours.
+    pub extra_seconds: u64,
+    /// What extra hours cost this month, never past the cap.
+    pub extra_usd_micros: u64,
+    /// Purchases already counted, so a replay counts nothing twice.
+    pub purchases: Vec<String>,
+}
+
+fn month_key(account: &str, start: i64) -> String {
+    format!("{account}:{start}")
+}
+
+fn month_of(journal: &Journal, period: &Period) -> Result<Month> {
+    Ok(
+        get(journal, MONTH, &month_key(&period.account, period.start))?.unwrap_or(Month {
+            start: period.start,
+            end: period.end,
+            ..Month::default()
+        }),
+    )
+}
+
+/// One extra-hours charge waiting for, or already given to, the credits
+/// ledger.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Debit {
+    /// `env:<purchase>`: the ledger's idempotency key.
+    pub key: String,
+    pub account: String,
+    pub usd_micros: u64,
+    pub at: i64,
+    #[serde(default)]
+    pub posted_at: Option<i64>,
+}
+
+/// The account's credits. `debit` must be idempotent on `key`: the same key
+/// twice is one charge.
+pub trait Credits {
+    /// # Errors
+    ///
+    /// The ledger could not take the debit now; it is offered again later.
+    fn debit(
+        &mut self,
+        account: &str,
+        key: &str,
+        usd_micros: u64,
+        at: i64,
+    ) -> std::result::Result<(), String>;
+}
+
+/// Hand every waiting debit to `credits` once. A failed debit stays waiting.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn post_debits(
+    journal: &mut Journal,
+    credits: &mut dyn Credits,
+    now: i64,
+) -> Result<Vec<String>> {
+    let mut posted = vec![];
+    for mut d in all::<Debit>(journal, DEBIT, None)? {
+        if d.posted_at.is_some() {
+            continue;
+        }
+        if credits
+            .debit(&d.account, &d.key, d.usd_micros, d.at)
+            .is_ok()
+        {
+            d.posted_at = Some(now);
+            put(journal, DEBIT, &d.key.clone(), &d.account.clone(), &d)?;
+            posted.push(d.key);
+        }
+    }
+    Ok(posted)
+}
+
+/// Every debit, oldest first.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn debits(journal: &Journal) -> Result<Vec<Debit>> {
+    all(journal, DEBIT, None)
+}
+
+/// How much more the account may run this month.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Budget {
+    pub included_left_seconds: u64,
+    /// Seconds the person's extra-hours cap still pays for; zero when off.
+    pub extra_left_seconds: u64,
+    pub resets_at: i64,
+}
+
+impl Budget {
+    #[must_use]
+    pub fn seconds(&self) -> u64 {
+        self.included_left_seconds
+            .saturating_add(self.extra_left_seconds)
+    }
+}
+
+fn budget_of(
+    included_seconds: u64,
+    extra_hour_usd_micros: u64,
+    month: &Month,
+    extra: ExtraHours,
+) -> Budget {
+    let included_left_seconds = included_seconds.saturating_sub(month.included_seconds);
+    let extra_left_seconds = if extra.enabled && extra_hour_usd_micros > 0 {
+        let left = u128::from(extra.cap_usd_micros.saturating_sub(month.extra_usd_micros));
+        u64::try_from(left * HOUR / u128::from(extra_hour_usd_micros)).unwrap_or(u64::MAX)
+    } else {
+        0
+    };
+    Budget {
+        included_left_seconds,
+        extra_left_seconds,
+        resets_at: month.end,
+    }
+}
+
+/// The account's remaining machine-seconds this month: the runner stops
+/// machines when this reaches zero.
+///
+/// # Errors
+///
+/// [`Refusal::NoPlan`], or a journal failure.
+pub fn budget(
+    journal: &Journal,
+    plan: &EnvironmentPlan,
+    account: &str,
+    now: i64,
+) -> Result<Budget> {
+    let period = active(journal, account, now)?;
+    let month = month_of(journal, &period)?;
+    Ok(budget_of(
+        plan.included_seconds(),
+        plan.extra_hour_usd_micros,
+        &month,
+        extra_hours(journal, account)?,
+    ))
+}
+
+fn spent(plan: &EnvironmentPlan, b: &Budget, extra: ExtraHours) -> Refusal {
+    if extra.enabled {
+        Refusal::CapReached {
+            cap_usd_micros: extra.cap_usd_micros,
+            resets_at: b.resets_at,
+        }
+    } else {
+        Refusal::AllowanceUsed {
+            hours: plan.included_machine_hours,
+            resets_at: b.resets_at,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Terms, admission, and the purchase.
+
+/// What an offer shows: the plan terms the setup runs under.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Terms {
     pub schema: String,
-    pub book: Digest,
+    pub plan: Digest,
     pub version: String,
     pub computer: String,
     pub task: String,
-    pub max_seconds: u64,
-    pub machines: u64,
-    pub retention_days: u64,
-    pub image_gb_max: u64,
-    pub lines: Vec<Line>,
-    pub max_sats: u64,
-    pub max_credits: u64,
+    pub machine: Machine,
+    pub machines_at_once: u64,
+    pub included_machine_hours: u64,
+    pub extra_hour_usd_micros: u64,
+    /// The person's own limit, if they set one.
+    pub max_seconds: Option<u64>,
 }
 
-/// How a purchase ended, as settlement sees it.
+impl Terms {
+    fn of(plan: &EnvironmentPlan, request: &EnvironmentRequest) -> Self {
+        Self {
+            schema: TERMS_SCHEMA.into(),
+            plan: plan.digest(),
+            version: plan.version.clone(),
+            computer: plan.machine.class.clone(),
+            task: TASK_CLASS.into(),
+            machine: plan.machine.clone(),
+            machines_at_once: plan.machines_at_once,
+            included_machine_hours: plan.included_machine_hours,
+            extra_hour_usd_micros: plan.extra_hour_usd_micros,
+            max_seconds: request.max_seconds,
+        }
+    }
+}
+
+/// Who may use a saved version: only the account that made it, and only
+/// by selecting it for that account's own tasks. No shell or terminal on
+/// any machine, no publication, and no credential but the person's own
+/// model key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Admission {
+    pub schema: String,
+    pub contract: String,
+    pub account: String,
+    pub purchase: String,
+    pub source: Source,
+    pub request: String,
+    pub computer_class: String,
+    pub task_class: String,
+    /// `customer:model` only.
+    pub credentials: Vec<String>,
+    pub terminal: bool,
+    pub publication: Vec<String>,
+    /// The only account whose tasks may select the saved version.
+    pub selectable_by: String,
+    pub plan: String,
+    pub plan_digest: Digest,
+}
+impl Admission {
+    #[must_use]
+    pub fn digest(&self) -> Digest {
+        digest_of(self)
+    }
+}
+
+/// The image a saved version keeps.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Saved {
+    pub environment: String,
+    pub version: String,
+    /// The provider's image identity.
+    pub image_id: String,
+}
+
+/// How a purchase ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ending {
@@ -449,14 +805,13 @@ pub enum Ending {
     NotStarted,
     /// No machine became reachable.
     ProviderUnavailable,
-    /// Machines ran; no version was saved (setup or checks failed, or the
-    /// customer did not save).
+    /// Machines ran; no version was saved.
     Ended,
-    /// The customer cancelled after a machine started.
+    /// The person cancelled after a machine started.
     Cancelled,
     /// The checked version was saved and its image is kept.
     Saved,
-    /// Not known yet; the whole hold stays reserved.
+    /// Not known yet; nothing is counted until it is.
     Unknown,
 }
 
@@ -470,202 +825,31 @@ pub struct Usage {
     pub image_gb: Option<u64>,
 }
 
-impl Quote {
-    /// # Errors
-    ///
-    /// [`Refusal::Changed`] when the book moved.
-    pub fn check(
-        &self,
-        book: &PriceBook,
-        request: &EnvironmentRequest,
-    ) -> std::result::Result<(), Refusal> {
-        match book.quote(request) {
-            Ok(fresh) if &fresh == self => Ok(()),
-            _ => Err(Refusal::Changed),
-        }
-    }
-    fn line(&self, resource: Charge) -> Option<&Line> {
-        self.lines.iter().find(|l| l.resource == resource)
-    }
-    /// Settle the hold for `ending`, given what was measured.
-    #[must_use]
-    pub fn settle(&self, ending: Ending, usage: Option<Usage>) -> Settlement {
-        let release = Settlement {
-            charge_sats: Some(0),
-            released_sats: self.max_sats,
-            held_sats: 0,
-        };
-        let hold = Settlement {
-            charge_sats: None,
-            released_sats: 0,
-            held_sats: self.max_sats,
-        };
-        let (Some(compute), Some(coordination), Some(storage)) = (
-            self.line(Charge::Compute),
-            self.line(Charge::Coordination),
-            self.line(Charge::Storage),
-        ) else {
-            return hold;
-        };
-        match ending {
-            Ending::NotStarted | Ending::ProviderUnavailable => release,
-            Ending::Unknown => hold,
-            Ending::Ended | Ending::Cancelled | Ending::Saved => {
-                let Some(usage) = usage else {
-                    return hold;
-                };
-                let LineBasis::PerMachineSecond { msats } = compute.basis else {
-                    return hold;
-                };
-                let seconds = usage
-                    .machine_seconds
-                    .min(self.max_seconds.saturating_mul(self.machines));
-                let compute = ceil_msats(u128::from(seconds) * u128::from(msats))
-                    .unwrap_or(u64::MAX)
-                    .min(compute.max_sats);
-                let kept = if ending == Ending::Saved {
-                    let (Some(gb), LineBasis::PerGbDay { msats }) =
-                        (usage.image_gb, &storage.basis)
-                    else {
-                        return hold;
-                    };
-                    ceil_msats(
-                        u128::from(gb.min(self.image_gb_max))
-                            * u128::from(self.retention_days)
-                            * u128::from(*msats),
-                    )
-                    .unwrap_or(u64::MAX)
-                    .min(storage.max_sats)
-                } else {
-                    0
-                };
-                let charge = compute
-                    .saturating_add(coordination.max_sats)
-                    .saturating_add(kept)
-                    .min(self.max_sats);
-                Settlement {
-                    charge_sats: Some(charge),
-                    released_sats: self.max_sats - charge,
-                    held_sats: 0,
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Availability.
-
-/// What must hold before anyone can buy: the owner reviewed this contract,
-/// the book is the published one they reviewed (by digest), and a funded
-/// qualification receipt is recorded. A fixture never opens it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Gate {
-    pub contract_reviewed: bool,
-    /// The digest of the published book the owner reviewed.
-    #[serde(default)]
-    pub book: Option<Digest>,
-    /// The funded qualification receipt's digest.
-    #[serde(default)]
-    pub qualification: Option<String>,
-}
-impl Gate {
-    /// # Errors
-    ///
-    /// [`Refusal::Closed`] unless every condition holds for `book`.
-    pub fn open(&self, book: &PriceBook) -> std::result::Result<(), Refusal> {
-        let ok = self.contract_reviewed
-            && book.status == BookStatus::Published
-            && self.book.as_ref() == Some(&book.digest())
-            && self.qualification.as_ref().is_some_and(|q| !q.is_empty())
-            && book.check().is_ok();
-        if ok { Ok(()) } else { Err(Refusal::Closed) }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Admission and the authority class.
-
-/// Who may use a saved version: only the account that bought it, and only
-/// by selecting it for that account's own tasks. No shell or terminal on
-/// any machine, no publication, and no credential but the customer's own
-/// OpenAI key for the setup agent.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Admission {
-    pub schema: String,
-    pub contract: String,
-    pub account: String,
-    pub purchase: String,
-    pub source: Source,
-    pub request: String,
-    pub computer_class: String,
-    pub task_class: String,
-    /// `customer:openai` only.
-    pub credentials: Vec<String>,
-    pub terminal: bool,
-    pub publication: Vec<String>,
-    /// The only account whose tasks may select the saved version.
-    pub selectable_by: String,
-    pub retention_days: u64,
-    pub price_book: String,
-    pub price_book_digest: Digest,
-    pub max_charge_sats: u64,
-}
-impl Admission {
-    #[must_use]
-    pub fn digest(&self) -> Digest {
-        digest_of(self)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The funded lifecycle.
-
-/// The image a saved version keeps.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Saved {
-    pub environment: String,
-    pub version: String,
-    /// The provider's image identity.
-    pub image_id: String,
-}
-
+/// What settlement counted.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Receipt {
     pub purchase: String,
     pub ending: Ending,
     pub usage: Option<Usage>,
-    pub settlement: Settlement,
-    pub charge_msat: Option<i64>,
-    pub released_msat: i64,
-    pub held_msat: i64,
-    pub settled_at: Option<i64>,
+    /// Seconds taken from the month's included hours.
+    pub included_seconds: u64,
+    /// Seconds past them.
+    pub extra_seconds: u64,
+    /// What those extra seconds cost from credits, never past the cap.
+    pub extra_usd_micros: u64,
+    pub settled_at: i64,
 }
 
+/// A saved version and its image.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Renewal {
-    pub id: String,
-    pub days: u64,
-    pub charge_msat: i64,
-    pub at: i64,
-}
-
-/// How long a saved image is paid for.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Retention {
+pub struct Kept {
     pub saved: Saved,
     pub image_gb: u64,
-    pub paid_until: i64,
+    pub kept_at: i64,
     #[serde(default)]
-    pub renewals: Vec<Renewal>,
-    #[serde(default)]
-    pub lapsed_at: Option<i64>,
+    pub deleted_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -673,18 +857,18 @@ pub struct Retention {
 pub enum Phase {
     Offered,
     Confirmed {
-        hold: String,
         at: i64,
+        /// The subscription month the setup counts against.
+        period: Period,
     },
     Ended {
-        hold: String,
+        period: Period,
         ending: Ending,
         usage: Option<Usage>,
         saved: Option<Saved>,
         at: i64,
     },
     Settled {
-        hold: String,
         receipt: Receipt,
         saved: Option<Saved>,
     },
@@ -697,22 +881,16 @@ pub struct Purchase {
     pub id: String,
     pub account: String,
     pub request: EnvironmentRequest,
-    pub quote: Quote,
+    pub terms: Terms,
     pub admission: Admission,
-    /// What the customer confirms: the request, quote, and admission.
+    /// What the customer confirms: the request, terms, and admission.
     pub digest: Digest,
     pub made_at: i64,
     pub phase: Phase,
     #[serde(default)]
-    pub retention: Option<Retention>,
+    pub kept: Option<Kept>,
 }
 
-fn hold_id(purchase: &str) -> String {
-    format!("env:{purchase}")
-}
-fn renewal_hold(purchase: &str, renewal: &str) -> String {
-    format!("env:{purchase}:renew:{renewal}")
-}
 fn refused(r: Refusal) -> Error {
     Error::Environment(r)
 }
@@ -766,16 +944,37 @@ pub fn purchases(journal: &Journal) -> Result<Vec<Purchase>> {
     rows.iter().map(|b| Ok(serde_json::from_str(b)?)).collect()
 }
 
+fn of_account(journal: &Journal, account: &str) -> Result<Vec<Purchase>> {
+    Ok(purchases(journal)?
+        .into_iter()
+        .filter(|p| p.account == account)
+        .collect())
+}
+
+/// The account's saved images now: total GB and versions.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn storage(journal: &Journal, account: &str) -> Result<(u64, u64)> {
+    let kept: Vec<Kept> = of_account(journal, account)?
+        .into_iter()
+        .filter_map(|p| p.kept)
+        .filter(|k| k.deleted_at.is_none())
+        .collect();
+    Ok((kept.iter().map(|k| k.image_gb).sum(), kept.len() as u64))
+}
+
 /// Make (or return) the offer `id` for `request`.
 ///
 /// # Errors
 ///
-/// A closed gate, an unsupported request, a ceiling, or a retry with other
-/// terms.
+/// A closed gate, no subscription, a used-up month, an unsupported
+/// request, or a retry with other terms.
 #[allow(clippy::too_many_arguments)]
 pub fn offer(
     journal: &mut Journal,
-    book: &PriceBook,
+    plan: &EnvironmentPlan,
     gate: &Gate,
     account: &str,
     id: &str,
@@ -793,8 +992,16 @@ pub fn offer(
         }
         return Ok(existing);
     }
-    gate.open(book).map_err(refused)?;
-    let quote = book.quote(request).map_err(refused)?;
+    gate.open(plan).map_err(refused)?;
+    plan.check().map_err(refused)?;
+    request
+        .check()
+        .map_err(|part| refused(Refusal::Unsupported { part }))?;
+    let left = budget(journal, plan, account, now)?;
+    if left.seconds() == 0 {
+        return Err(refused(spent(plan, &left, extra_hours(journal, account)?)));
+    }
+    let terms = Terms::of(plan, request);
     let admission = Admission {
         schema: ADMISSION_SCHEMA.into(),
         contract: CONTRACT.into(),
@@ -802,57 +1009,43 @@ pub fn offer(
         purchase: id.into(),
         source: request.source.clone(),
         request: request.digest(),
-        computer_class: quote.computer.clone(),
-        task_class: quote.task.clone(),
-        credentials: vec!["customer:openai".into()],
+        computer_class: terms.computer.clone(),
+        task_class: terms.task.clone(),
+        credentials: vec!["customer:model".into()],
         terminal: false,
         publication: vec![],
         selectable_by: account.into(),
-        retention_days: request.retention_days,
-        price_book: quote.version.clone(),
-        price_book_digest: quote.book.clone(),
-        max_charge_sats: quote.max_sats,
+        plan: terms.version.clone(),
+        plan_digest: terms.plan.clone(),
     };
-    let digest = digest_of(&(id, account, request, &quote, &admission));
+    let digest = digest_of(&(id, account, request, &terms, &admission));
     let p = Purchase {
         id: id.into(),
         account: account.into(),
         request: request.clone(),
-        quote,
+        terms,
         admission,
         digest,
         made_at: now,
         phase: Phase::Offered,
-        retention: None,
+        kept: None,
     };
     write(journal, &p)?;
     Ok(p)
 }
 
-fn hold_request(p: &Purchase, at: i64) -> HoldRequest {
-    HoldRequest {
-        id: hold_id(&p.id),
-        account: p.account.clone(),
-        quote: digest_of(&p.quote).to_string(),
-        execution: hold_id(&p.id),
-        terms: p.digest.to_string(),
-        amount_msat: i64::try_from(p.quote.max_sats.saturating_mul(1000)).unwrap_or(i64::MAX),
-        at,
-    }
-}
-
-/// Confirm the displayed offer: hold its maximum before anything starts.
-/// A retry returns the same hold; an insufficient balance holds nothing.
+/// Confirm the displayed offer: the setup may start. Nothing is held: the
+/// setup runs on the month's included hours, then on extra hours only if
+/// the person turned them on.
 ///
 /// # Errors
 ///
-/// Another account, a changed offer or book, a closed gate, no spend
-/// right, a shared balance, or the ledger's refusal.
+/// Another account, a changed offer or plan, a closed gate, no spend
+/// right, no subscription, a used-up month, or busy machines.
 #[allow(clippy::too_many_arguments)]
 pub fn confirm(
     journal: &mut Journal,
-    ledger: &mut Ledger,
-    book: &PriceBook,
+    plan: &EnvironmentPlan,
     gate: &Gate,
     account: &str,
     id: &str,
@@ -872,30 +1065,51 @@ pub fn confirm(
     if !spend {
         return Err(refused(Refusal::NoSpendRight));
     }
-    gate.open(book).map_err(refused)?;
-    p.quote.check(book, &p.request).map_err(refused)?;
-    if ledger.shared_retail_binding(account)?.is_some() {
-        return Err(refused(Refusal::SharedBalance));
+    gate.open(plan).map_err(refused)?;
+    if p.terms != Terms::of(plan, &p.request) {
+        return Err(refused(Refusal::Changed));
     }
-    let hold = ledger.reserve(&hold_request(&p, now))?;
-    p.phase = Phase::Confirmed {
-        hold: hold.request.id,
-        at: now,
-    };
+    let period = active(journal, account, now)?;
+    let left = budget(journal, plan, account, now)?;
+    if left.seconds() == 0 {
+        return Err(refused(spent(plan, &left, extra_hours(journal, account)?)));
+    }
+    let running = of_account(journal, account)?
+        .iter()
+        .filter(|o| {
+            o.id != p.id
+                && matches!(
+                    o.phase,
+                    Phase::Confirmed { .. }
+                        | Phase::Ended {
+                            ending: Ending::Unknown,
+                            ..
+                        }
+                )
+        })
+        .count() as u64;
+    // A setup runs at most the plan's machines at once, so a second setup
+    // waits for the first.
+    if running > 0 {
+        return Err(refused(Refusal::MachinesBusy {
+            machines: plan.machines_at_once,
+        }));
+    }
+    p.phase = Phase::Confirmed { at: now, period };
     write(journal, &p)?;
     Ok(p)
 }
 
-/// Record how the purchase ended. An unknown ending keeps the whole hold;
-/// a later known ending replaces it. A known ending never changes.
+/// Record how the purchase ended. An unknown ending counts nothing yet; a
+/// later known ending replaces it. A known ending never changes.
 ///
 /// # Errors
 ///
 /// A purchase that was never confirmed, a changed ending, or a saved
-/// version without its image size or above the class's largest.
+/// version without its size or past the plan's storage or versions.
 pub fn end(
     journal: &mut Journal,
-    ledger: &mut Ledger,
+    plan: &EnvironmentPlan,
     id: &str,
     ending: Ending,
     usage: Option<Usage>,
@@ -906,22 +1120,13 @@ pub fn end(
     if (ending == Ending::Saved) != saved.is_some() {
         return Err(Error::Invalid("a saved ending names its version"));
     }
-    if ending == Ending::Saved {
-        match usage.and_then(|u| u.image_gb) {
-            None => return Err(Error::Invalid("a saved ending measures its image")),
-            Some(gb) if gb == 0 || gb > p.quote.image_gb_max => {
-                return Err(refused(Refusal::ImageTooLarge));
-            }
-            Some(_) => {}
-        }
-    }
-    let hold = match &p.phase {
-        Phase::Confirmed { hold, .. } => hold.clone(),
+    let period = match &p.phase {
+        Phase::Confirmed { period, .. } => period.clone(),
         Phase::Ended {
-            hold,
+            period,
             ending: Ending::Unknown,
             ..
-        } => hold.clone(),
+        } => period.clone(),
         Phase::Ended {
             ending: e,
             usage: u,
@@ -935,11 +1140,24 @@ pub fn end(
         }
         Phase::Offered | Phase::Settled { .. } => return Err(refused(Refusal::Phase)),
     };
-    if ending == Ending::Unknown {
-        ledger.mark_hold_unknown(&hold)?;
+    if ending == Ending::Saved {
+        let Some(gb) = usage.and_then(|u| u.image_gb).filter(|gb| *gb > 0) else {
+            return Err(Error::Invalid("a saved ending measures its image"));
+        };
+        let (used_gb, versions) = storage(journal, &p.account)?;
+        if versions >= plan.saved_versions {
+            return Err(refused(Refusal::TooManyVersions {
+                versions: plan.saved_versions,
+            }));
+        }
+        if used_gb.saturating_add(gb) > plan.storage_gb {
+            return Err(refused(Refusal::StorageFull {
+                gb: plan.storage_gb,
+            }));
+        }
     }
     p.phase = Phase::Ended {
-        hold,
+        period,
         ending,
         usage,
         saved,
@@ -949,66 +1167,104 @@ pub fn end(
     Ok(p)
 }
 
-/// Settle a known ending once: charge what was measured, release the rest,
-/// and start the saved image's paid retention. An unknown ending stays
-/// held.
+/// Settle a known ending once: count its machine-seconds against the
+/// month's included hours, charge any past them as extra hours (only when
+/// turned on, never past the cap), and keep a saved image. An unknown
+/// ending waits.
 ///
 /// # Errors
 ///
-/// A purchase that has not ended, or a ledger refusal.
-pub fn settle(journal: &mut Journal, ledger: &mut Ledger, id: &str, now: i64) -> Result<Receipt> {
+/// A purchase that has not ended or is still unknown, or a journal failure.
+pub fn settle(journal: &mut Journal, id: &str, now: i64) -> Result<Receipt> {
     let mut p = read(journal, id)?.ok_or(Error::Invalid("no such purchase"))?;
-    let (hold, ending, usage, saved) = match &p.phase {
+    let (period, ending, usage, saved) = match &p.phase {
         Phase::Settled { receipt, .. } => return Ok(receipt.clone()),
         Phase::Ended {
-            hold,
+            ending: Ending::Unknown,
+            ..
+        } => return Err(refused(Refusal::Phase)),
+        Phase::Ended {
+            period,
             ending,
             usage,
             saved,
             ..
-        } => (hold.clone(), *ending, *usage, saved.clone()),
+        } => (period.clone(), *ending, *usage, saved.clone()),
         _ => return Err(refused(Refusal::Phase)),
     };
-    let settlement = p.quote.settle(ending, usage);
-    let max_msat = i64::try_from(p.quote.max_sats * 1000).unwrap_or(i64::MAX);
-    let Some(charge) = settlement.charge_sats else {
-        return Ok(Receipt {
-            purchase: p.id.clone(),
-            ending,
-            usage,
-            settlement,
-            charge_msat: None,
-            released_msat: 0,
-            held_msat: max_msat,
-            settled_at: None,
-        });
+    let seconds = match ending {
+        Ending::NotStarted | Ending::ProviderUnavailable => 0,
+        _ => usage
+            .map(|u| u.machine_seconds)
+            .ok_or(Error::Invalid("a run that started measures its seconds"))?,
     };
-    let charge_msat = i64::try_from(charge * 1000).unwrap_or(i64::MAX);
-    let (settled, _) = ledger.settle_environment_hold(&hold, charge_msat, now)?;
-    if settled.state != HoldState::Settled {
-        return Err(Error::Invalid("the hold did not settle"));
+    let mut month = month_of(journal, &period)?;
+    let extra = extra_hours(journal, &p.account)?;
+    let left = budget_of(
+        p.terms.included_machine_hours.saturating_mul(3600),
+        p.terms.extra_hour_usd_micros,
+        &month,
+        extra,
+    );
+    let included = seconds.min(left.included_left_seconds);
+    let past = seconds - included;
+    let extra_usd_micros = if extra.enabled {
+        let full = u128::from(past) * u128::from(p.terms.extra_hour_usd_micros);
+        u64::try_from(full.div_ceil(HOUR))
+            .unwrap_or(u64::MAX)
+            .min(extra.cap_usd_micros.saturating_sub(month.extra_usd_micros))
+    } else {
+        0
+    };
+    if !month.purchases.contains(&p.id) {
+        month.included_seconds += included;
+        month.extra_seconds += past;
+        month.extra_usd_micros += extra_usd_micros;
+        month.purchases.push(p.id.clone());
+        put(
+            journal,
+            MONTH,
+            &month_key(&p.account, period.start),
+            &p.account.clone(),
+            &month,
+        )?;
+    }
+    if extra_usd_micros > 0 {
+        let key = format!("env:{}", p.id);
+        if get::<Debit>(journal, DEBIT, &key)?.is_none() {
+            put(
+                journal,
+                DEBIT,
+                &key,
+                &p.account.clone(),
+                &Debit {
+                    key: key.clone(),
+                    account: p.account.clone(),
+                    usd_micros: extra_usd_micros,
+                    at: now,
+                    posted_at: None,
+                },
+            )?;
+        }
     }
     let receipt = Receipt {
         purchase: p.id.clone(),
         ending,
         usage,
-        settlement,
-        charge_msat: Some(charge_msat),
-        released_msat: max_msat - charge_msat,
-        held_msat: 0,
-        settled_at: settled.settled_at,
+        included_seconds: included,
+        extra_seconds: past,
+        extra_usd_micros,
+        settled_at: now,
     };
     if let (Some(s), Some(gb)) = (&saved, usage.and_then(|u| u.image_gb)) {
-        p.retention = Some(Retention {
+        p.kept = Some(Kept {
             saved: s.clone(),
             image_gb: gb,
-            paid_until: now + i64::try_from(p.quote.retention_days).unwrap_or(0) * DAY,
-            renewals: vec![],
-            lapsed_at: None,
+            kept_at: now,
+            deleted_at: None,
         });
     }
     p.phase = Phase::Settled {
-        hold,
         receipt: receipt.clone(),
         saved,
     };
@@ -1016,74 +1272,7 @@ pub fn settle(journal: &mut Journal, ledger: &mut Ledger, id: &str, now: i64) ->
     Ok(receipt)
 }
 
-/// Keep a saved image `days` more days, paid now from the balance.
-/// The same renewal identity returns its first result.
-///
-/// # Errors
-///
-/// Another account, a lapsed or unsaved purchase, a closed gate, no spend
-/// right, a changed renewal, or the ledger's refusal.
-#[allow(clippy::too_many_arguments)]
-pub fn renew(
-    journal: &mut Journal,
-    ledger: &mut Ledger,
-    book: &PriceBook,
-    gate: &Gate,
-    account: &str,
-    id: &str,
-    renewal: &str,
-    days: u64,
-    spend: bool,
-    now: i64,
-) -> Result<Purchase> {
-    let mut p = purchase(journal, account, id)?.ok_or(Error::Invalid("no such purchase"))?;
-    let Some(retention) = p.retention.clone() else {
-        return Err(refused(Refusal::Phase));
-    };
-    if let Some(r) = retention.renewals.iter().find(|r| r.id == renewal) {
-        if r.days != days {
-            return Err(Error::Conflict("the renewal retry changed its terms"));
-        }
-        return Ok(p);
-    }
-    if retention.lapsed_at.is_some() || retention.paid_until <= now {
-        return Err(refused(Refusal::Lapsed));
-    }
-    if !spend {
-        return Err(refused(Refusal::NoSpendRight));
-    }
-    gate.open(book).map_err(refused)?;
-    if ledger.shared_retail_binding(account)?.is_some() {
-        return Err(refused(Refusal::SharedBalance));
-    }
-    let sats = book.renewal(retention.image_gb, days).map_err(refused)?;
-    let charge_msat = i64::try_from(sats * 1000).unwrap_or(i64::MAX);
-    let hold = renewal_hold(id, renewal);
-    let terms = digest_of(&(id, renewal, days, retention.image_gb, book.digest()));
-    ledger.reserve(&HoldRequest {
-        id: hold.clone(),
-        account: account.into(),
-        quote: book.digest().to_string(),
-        execution: hold.clone(),
-        terms: terms.to_string(),
-        amount_msat: charge_msat,
-        at: now,
-    })?;
-    ledger.settle_environment_hold(&hold, charge_msat, now)?;
-    let r = p.retention.as_mut().expect("retention");
-    r.paid_until += i64::try_from(days).unwrap_or(0) * DAY;
-    r.renewals.push(Renewal {
-        id: renewal.into(),
-        days,
-        charge_msat,
-        at: now,
-    });
-    write(journal, &p)?;
-    Ok(p)
-}
-
-/// A saved image whose retention ran out: the version is no longer
-/// selectable and the image is due for deletion by its provider owner.
+/// A saved image that is no longer kept: its provider owner deletes it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetireDue {
     pub purchase: String,
@@ -1091,89 +1280,152 @@ pub struct RetireDue {
     pub saved: Saved,
 }
 
-/// Mark every saved image whose paid retention ended by `now` as lapsed.
+/// The person deletes a saved version to free its storage.
+///
+/// # Errors
+///
+/// Another account's purchase, nothing saved, or a journal failure.
+pub fn delete(journal: &mut Journal, account: &str, id: &str, now: i64) -> Result<RetireDue> {
+    let mut p = purchase(journal, account, id)?.ok_or(Error::Invalid("no such purchase"))?;
+    let Some(kept) = p.kept.as_mut() else {
+        return Err(refused(Refusal::Phase));
+    };
+    if kept.deleted_at.is_none() {
+        kept.deleted_at = Some(now);
+    }
+    let due = RetireDue {
+        purchase: p.id.clone(),
+        account: p.account.clone(),
+        saved: kept.saved.clone(),
+    };
+    write(journal, &p)?;
+    Ok(due)
+}
+
+/// Retire every saved image whose account's subscription ended at least
+/// [`KEEP_AFTER_END_DAYS`] ago.
 ///
 /// # Errors
 ///
 /// A journal failure.
-pub fn lapse(journal: &mut Journal, now: i64) -> Result<Vec<RetireDue>> {
+pub fn retire(journal: &mut Journal, now: i64) -> Result<Vec<RetireDue>> {
     let mut out = vec![];
     for mut p in purchases(journal)? {
-        let Some(r) = p.retention.as_mut() else {
+        let Some(kept) = p.kept.as_ref() else {
             continue;
         };
-        if r.lapsed_at.is_none() && r.paid_until <= now {
-            r.lapsed_at = Some(now);
-            out.push(RetireDue {
-                purchase: p.id.clone(),
-                account: p.account.clone(),
-                saved: r.saved.clone(),
-            });
-            write(journal, &p)?;
+        if kept.deleted_at.is_some() {
+            continue;
         }
+        let ended = match standing(journal, &p.account, now)? {
+            Standing::Active { .. } => continue,
+            Standing::Ended { at } => at,
+            Standing::Never => kept.kept_at,
+        };
+        if ended + KEEP_AFTER_END_DAYS * DAY > now {
+            continue;
+        }
+        let kept = p.kept.as_mut().expect("kept");
+        kept.deleted_at = Some(now);
+        out.push(RetireDue {
+            purchase: p.id.clone(),
+            account: p.account.clone(),
+            saved: kept.saved.clone(),
+        });
+        write(journal, &p)?;
     }
     Ok(out)
 }
 
-/// Whether `account`'s tasks may select the saved version now.
-#[must_use]
-pub fn may_select(p: &Purchase, account: &str, now: i64) -> bool {
-    p.admission.selectable_by == account
+/// Whether `account`'s tasks may select the saved version now: it is
+/// theirs, still kept, and their subscription is current.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn may_select(journal: &Journal, p: &Purchase, account: &str, now: i64) -> Result<bool> {
+    Ok(p.admission.selectable_by == account
         && p.account == account
         && matches!(p.phase, Phase::Settled { .. })
-        && p.retention
-            .as_ref()
-            .is_some_and(|r| r.lapsed_at.is_none() && r.paid_until > now)
+        && p.kept.as_ref().is_some_and(|k| k.deleted_at.is_none())
+        && matches!(standing(journal, account, now)?, Standing::Active { .. }))
 }
 
 /// What one recovery visit did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Recovery {
-    /// Offers whose hold the ledger already has: confirmed.
-    pub confirmed: Vec<String>,
     /// Known endings settled.
     pub settled: Vec<String>,
-    /// Still held for an unknown ending.
+    /// Still waiting for an unknown ending.
     pub held: Vec<String>,
-    pub lapsed: Vec<RetireDue>,
+    pub retired: Vec<RetireDue>,
 }
 
-/// After a restart: finish a confirmation whose hold exists, settle every
-/// known ending once, keep unknown endings held, and lapse expired
-/// retention. Nothing is reserved or charged twice.
+/// After a restart: settle every known ending once, leave unknown endings
+/// waiting, and retire images past their keep. Nothing is counted or
+/// charged twice.
 ///
 /// # Errors
 ///
-/// A journal or ledger failure.
-pub fn recover(journal: &mut Journal, ledger: &mut Ledger, now: i64) -> Result<Recovery> {
+/// A journal failure.
+pub fn recover(journal: &mut Journal, now: i64) -> Result<Recovery> {
     let mut out = Recovery::default();
-    for mut p in purchases(journal)? {
+    for p in purchases(journal)? {
         match &p.phase {
-            Phase::Offered => {
-                if let Some(h) = ledger.hold(&hold_id(&p.id))?
-                    && h.request.terms == p.digest.to_string()
-                {
-                    p.phase = Phase::Confirmed {
-                        hold: h.request.id,
-                        at: h.request.at,
-                    };
-                    write(journal, &p)?;
-                    out.confirmed.push(p.id.clone());
-                }
-            }
             Phase::Ended {
                 ending: Ending::Unknown,
                 ..
             } => out.held.push(p.id.clone()),
             Phase::Ended { .. } => {
-                settle(journal, ledger, &p.id, now)?;
+                settle(journal, &p.id, now)?;
                 out.settled.push(p.id.clone());
             }
-            Phase::Confirmed { .. } | Phase::Settled { .. } => {}
+            Phase::Offered | Phase::Confirmed { .. } | Phase::Settled { .. } => {}
         }
     }
-    out.lapsed = lapse(journal, now)?;
+    out.retired = retire(journal, now)?;
     Ok(out)
+}
+
+/// What Settings shows for one account.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Summary {
+    pub standing: Standing,
+    /// Machine-seconds used this month, included and extra.
+    pub used_seconds: u64,
+    pub included_seconds: u64,
+    pub extra: ExtraHours,
+    pub extra_spent_usd_micros: u64,
+    pub storage_gb: u64,
+    pub versions: u64,
+}
+
+/// The account's plan, month, and storage at `now`.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn summary(
+    journal: &Journal,
+    plan: &EnvironmentPlan,
+    account: &str,
+    now: i64,
+) -> Result<Summary> {
+    let standing = standing(journal, account, now)?;
+    let month = match &standing {
+        Standing::Active { period } => month_of(journal, period)?,
+        _ => Month::default(),
+    };
+    let (storage_gb, versions) = storage(journal, account)?;
+    Ok(Summary {
+        standing,
+        used_seconds: month.included_seconds + month.extra_seconds,
+        included_seconds: plan.included_seconds(),
+        extra: extra_hours(journal, account)?,
+        extra_spent_usd_micros: month.extra_usd_micros,
+        storage_gb,
+        versions,
+    })
 }
 
 #[cfg(test)]
@@ -1181,28 +1433,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_checked_in_book_is_proposed_and_closed() {
-        let book = price_book();
-        book.check().unwrap();
-        assert_eq!(book.status, BookStatus::Proposed);
+    fn the_checked_in_plan_is_proposed_and_closed() {
+        let plan = plan();
+        plan.check().unwrap();
+        assert_eq!(plan.status, PlanStatus::Proposed);
+        assert_eq!(plan.price_usd_micros, 20_000_000);
+        assert_eq!(plan.included_machine_hours, 100);
+        assert_eq!(plan.machines_at_once, 2);
+        assert_eq!((plan.machine.vcpus, plan.machine.memory_gb), (2, 8));
+        assert_eq!((plan.storage_gb, plan.saved_versions), (20, 10));
+        assert_eq!(plan.extra_hour_usd_micros, 180_000);
+        assert!(!plan.rollover);
         let gate = Gate {
             contract_reviewed: true,
-            book: Some(book.digest()),
+            plan: Some(plan.digest()),
             qualification: Some("receipt".into()),
         };
-        assert_eq!(gate.open(&book), Err(Refusal::Closed));
-        let mut published = book.clone();
-        published.status = BookStatus::Published;
+        assert_eq!(gate.open(&plan), Err(Refusal::Closed));
+        let mut published = plan.clone();
+        published.status = PlanStatus::Published;
         assert_eq!(
             gate.open(&published),
             Err(Refusal::Closed),
             "another digest"
         );
         let gate = Gate {
-            book: Some(published.digest()),
+            plan: Some(published.digest()),
             ..gate
         };
         gate.open(&published).unwrap();
         assert_eq!(Gate::default().open(&published), Err(Refusal::Closed));
+    }
+
+    #[test]
+    fn messages_are_plain() {
+        // 2026-11-09T00:00:00Z.
+        let nov9 = 1_794_182_400;
+        assert_eq!(day_label(nov9), "November 9");
+        assert_eq!(usd(180_000), "$0.18");
+        assert_eq!(usd(20_000_000), "$20");
+        assert_eq!(
+            Refusal::AllowanceUsed {
+                hours: 100,
+                resets_at: nov9
+            }
+            .message(),
+            "You've used this month's 100 hours. Turn on extra hours in Settings, or wait until November 9."
+        );
+        assert_eq!(
+            Refusal::CapReached {
+                cap_usd_micros: 10_000_000,
+                resets_at: nov9
+            }
+            .message(),
+            "You've reached the $10 you set for extra hours this month. Raise it in Settings, or wait until November 9."
+        );
     }
 }

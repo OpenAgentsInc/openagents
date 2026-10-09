@@ -1,27 +1,31 @@
-//! Saved customer environments (ENV-10) against fake payments: holds,
-//! settlement, prepaid retention, refusals, and restart recovery.
-mod common;
-use common::*;
-use pay_ledger::Ledger;
-use pay_ledger::compute::HoldState;
+//! Saved customer environments (ENV-10) on the Pro subscription, with fake
+//! billing and a fake credits ledger: the monthly allowance, extra hours
+//! only when turned on and never past the cap, storage limits, refusals,
+//! and restart recovery.
+use std::collections::BTreeMap;
+
 use retail_cloud::Error;
 use retail_cloud::authority::Source;
 use retail_cloud::environment::{
-    self, BookStatus, Ending, EnvironmentRequest, Gate, Phase, PriceBook, Refusal, Saved, Usage,
+    self, Credits, Ending, EnvironmentPlan, EnvironmentRequest, ExtraHours, Gate, Period, Phase,
+    PlanStatus, Refusal, Saved, Standing, Usage,
 };
 use retail_cloud::journal::Journal;
 
+const NOW: i64 = 1_791_200_000;
 const DAY: i64 = 86_400;
+const HOUR: u64 = 3600;
+const END: i64 = NOW + 30 * DAY;
 
-fn book() -> PriceBook {
-    let mut b = environment::price_book();
-    b.status = BookStatus::Published;
-    b
+fn plan() -> EnvironmentPlan {
+    let mut p = environment::plan();
+    p.status = PlanStatus::Published;
+    p
 }
-fn gate(b: &PriceBook) -> Gate {
+fn gate(p: &EnvironmentPlan) -> Gate {
     Gate {
         contract_reviewed: true,
-        book: Some(b.digest()),
+        plan: Some(p.digest()),
         qualification: Some("funded-qualification-receipt".into()),
     }
 }
@@ -34,20 +38,15 @@ fn request() -> EnvironmentRequest {
         objective: "Build and test the Rust workspace.".into(),
         profile: "rust-library".into(),
         checks: vec!["cargo test -p parser".into()],
-        max_seconds: 3600,
-        retention_days: 30,
-        ceiling_sats: None,
+        max_seconds: None,
     }
 }
-fn saved() -> Saved {
+fn saved(n: u32) -> Saved {
     Saved {
         environment: "env-1".into(),
-        version: "env-1-v1".into(),
-        image_id: "oaenv-build-1-abc".into(),
+        version: format!("env-1-v{n}"),
+        image_id: format!("oaenv-build-{n}"),
     }
-}
-fn balance(l: &Ledger, account: &str) -> pay_ledger::compute::ComputeBalance {
-    l.compute_balance(account).unwrap()
 }
 fn refusal(e: Error) -> Refusal {
     match e {
@@ -55,476 +54,327 @@ fn refusal(e: Error) -> Refusal {
         other => panic!("expected an environment refusal, got {other:?}"),
     }
 }
+fn subscribed(j: &mut Journal, account: &str) {
+    environment::record_period(
+        j,
+        &Period {
+            account: account.into(),
+            plan: environment::plan().version,
+            start: NOW - DAY,
+            end: END,
+        },
+    )
+    .unwrap();
+}
 
-#[test]
-fn quotes_follow_the_book() {
-    let b = book();
-    let q = b.quote(&request()).unwrap();
-    // 3600 s x 4 machines x 40 msat = 576; 50 GB x 30 days x 3 sat = 4500.
-    assert_eq!(q.max_sats, 576 + 200 + 4500);
-    let mut r = request();
-    r.retention_days = 91;
-    assert!(b.quote(&r).is_err());
-    r.retention_days = 30;
-    r.max_seconds = 7201;
-    assert!(b.quote(&r).is_err());
-    r.max_seconds = 3600;
-    r.ceiling_sats = Some(1000);
-    assert!(matches!(b.quote(&r), Err(Refusal::AboveCeiling { .. })));
-    r.ceiling_sats = None;
-    r.source.repository = "https://gitlab.com/o/r".into();
-    assert!(b.quote(&r).is_err());
-    assert_eq!(b.renewal(10, 30).unwrap(), 900);
-    assert!(b.renewal(51, 30).is_err());
-    // Settlements: measured seconds, coordination, and the real image.
-    let none = q.settle(Ending::ProviderUnavailable, None);
-    assert_eq!(
-        (none.charge_sats, none.released_sats),
-        (Some(0), q.max_sats)
-    );
-    let unknown = q.settle(Ending::Unknown, None);
-    assert_eq!((unknown.charge_sats, unknown.held_sats), (None, q.max_sats));
-    let failed = q.settle(
-        Ending::Ended,
+/// One setup from offer to settlement.
+fn run(
+    j: &mut Journal,
+    id: &str,
+    seconds: u64,
+    ending: Ending,
+    image_gb: Option<u64>,
+) -> environment::Receipt {
+    let p = plan();
+    let g = gate(&p);
+    let o = environment::offer(j, &p, &g, "acct", id, &request(), NOW).unwrap();
+    environment::confirm(j, &p, &g, "acct", id, &o.digest, true, NOW).unwrap();
+    let saved = (ending == Ending::Saved).then(|| saved(id.len() as u32));
+    environment::end(
+        j,
+        &p,
+        id,
+        ending,
         Some(Usage {
-            machine_seconds: 1000,
-            image_gb: None,
+            machine_seconds: seconds,
+            image_gb,
         }),
-    );
-    assert_eq!(failed.charge_sats, Some(40 + 200));
-    let kept = q.settle(
-        Ending::Saved,
-        Some(Usage {
-            machine_seconds: 1000,
-            image_gb: Some(10),
-        }),
-    );
-    assert_eq!(kept.charge_sats, Some(40 + 200 + 900));
-    let capped = q.settle(
-        Ending::Ended,
-        Some(Usage {
-            machine_seconds: 10 * 3600 * 4,
-            image_gb: None,
-        }),
-    );
-    assert_eq!(capped.charge_sats, Some(576 + 200));
+        saved,
+        NOW + 1,
+    )
+    .unwrap();
+    environment::settle(j, id, NOW + 2).unwrap()
+}
+
+#[derive(Default)]
+struct FakeCredits {
+    charged: BTreeMap<String, u64>,
+    down: bool,
+}
+impl Credits for FakeCredits {
+    fn debit(&mut self, _: &str, key: &str, usd: u64, _: i64) -> Result<(), String> {
+        if self.down {
+            return Err("unreachable".into());
+        }
+        self.charged.entry(key.into()).or_insert(usd);
+        Ok(())
+    }
 }
 
 #[test]
-fn nothing_sells_until_the_owner_opens_it() {
+fn nothing_sells_until_the_owner_opens_it_and_needs_a_subscription() {
     let mut j = Journal::in_memory().unwrap();
-    let proposed = environment::price_book();
+    subscribed(&mut j, "acct");
+    let proposed = environment::plan();
     let closed = Gate {
         contract_reviewed: true,
-        book: Some(proposed.digest()),
+        plan: Some(proposed.digest()),
         qualification: Some("x".into()),
     };
     let e =
         environment::offer(&mut j, &proposed, &closed, "acct", "p1", &request(), NOW).unwrap_err();
     assert_eq!(refusal(e), Refusal::Closed);
-    let b = book();
-    for g in [
-        Gate::default(),
-        Gate {
-            qualification: None,
-            ..gate(&b)
-        },
-        Gate {
-            contract_reviewed: false,
-            ..gate(&b)
-        },
-    ] {
-        let e = environment::offer(&mut j, &b, &g, "acct", "p1", &request(), NOW).unwrap_err();
-        assert_eq!(refusal(e), Refusal::Closed);
-    }
+    let p = plan();
+    let e = environment::offer(&mut j, &p, &gate(&p), "other", "p1", &request(), NOW).unwrap_err();
+    let r = refusal(e);
+    assert_eq!(r, Refusal::NoPlan);
+    assert_eq!(r.message(), "Saved environments come with the Pro plan.");
     assert!(environment::purchases(&j).unwrap().is_empty());
 }
 
 #[test]
-fn a_saved_environment_is_held_settled_once_and_kept_for_its_paid_days() {
+fn hours_count_against_the_month_and_there_is_no_run_limit_of_ours() {
     let mut j = Journal::in_memory().unwrap();
-    let mut l = Ledger::in_memory().unwrap();
-    funded_account(&mut l, "acct", 10_000);
-    let b = book();
-    let g = gate(&b);
-    let p = environment::offer(&mut j, &b, &g, "acct", "p1", &request(), NOW).unwrap();
-    assert_eq!(p.admission.selectable_by, "acct");
-    assert!(!p.admission.terminal && p.admission.publication.is_empty());
-    assert_eq!(p.admission.credentials, vec!["customer:openai".to_string()]);
-    // A retry returns the offer; other terms conflict.
+    subscribed(&mut j, "acct");
+    let p = plan();
+    // A ten-hour setup: no limit of ours stops it, and it fits the month.
+    let r = run(&mut j, "p1", 10 * HOUR, Ending::Saved, Some(6));
     assert_eq!(
-        environment::offer(&mut j, &b, &g, "acct", "p1", &request(), NOW + 1).unwrap(),
-        p
+        (r.included_seconds, r.extra_seconds, r.extra_usd_micros),
+        (10 * HOUR, 0, 0)
     );
-    let mut other = request();
-    other.retention_days = 7;
-    assert!(matches!(
-        environment::offer(&mut j, &b, &g, "acct", "p1", &other, NOW),
-        Err(Error::Conflict(_))
-    ));
-    // Confirm holds the maximum, once.
-    let max = i64::try_from(p.quote.max_sats * 1000).unwrap();
-    let c = environment::confirm(
-        &mut j,
-        &mut l,
-        &b,
-        &g,
-        "acct",
-        "p1",
-        &p.digest,
-        true,
-        NOW + 2,
-    )
-    .unwrap();
-    assert!(matches!(c.phase, Phase::Confirmed { .. }));
-    assert_eq!(balance(&l, "acct").held_msat, max);
-    environment::confirm(
-        &mut j,
-        &mut l,
-        &b,
-        &g,
-        "acct",
-        "p1",
-        &p.digest,
-        true,
-        NOW + 3,
-    )
-    .unwrap();
-    assert_eq!(balance(&l, "acct").held_msat, max);
-    // Saved with a 10 GB image after 1000 machine-seconds.
-    let usage = Usage {
-        machine_seconds: 1000,
-        image_gb: Some(10),
-    };
-    environment::end(
-        &mut j,
-        &mut l,
-        "p1",
-        Ending::Saved,
-        Some(usage),
-        Some(saved()),
-        NOW + 4,
-    )
-    .unwrap();
-    let receipt = environment::settle(&mut j, &mut l, "p1", NOW + 5).unwrap();
-    assert_eq!(receipt.charge_msat, Some((40 + 200 + 900) * 1000));
-    let after = balance(&l, "acct");
-    assert_eq!(after.held_msat, 0);
-    assert_eq!(after.settled_msat, (40 + 200 + 900) * 1000);
-    assert_eq!(after.available_msat, 10_000_000 - (40 + 200 + 900) * 1000);
-    // Settling again changes nothing.
-    assert_eq!(
-        environment::settle(&mut j, &mut l, "p1", NOW + 6).unwrap(),
-        receipt
-    );
-    assert_eq!(balance(&l, "acct"), after);
-    // Only the buying account may select it, while its days are paid.
-    let p = environment::purchase(&j, "acct", "p1").unwrap().unwrap();
-    assert!(environment::may_select(&p, "acct", NOW + 10));
-    assert!(!environment::may_select(&p, "other", NOW + 10));
+    let b = environment::budget(&j, &p, "acct", NOW + 3).unwrap();
+    assert_eq!(b.included_left_seconds, 90 * HOUR);
+    assert_eq!(b.extra_left_seconds, 0, "extra hours are off by default");
+    assert_eq!(b.resets_at, END);
+    // Settling again counts nothing twice.
+    environment::settle(&mut j, "p1", NOW + 9).unwrap();
+    assert_eq!(environment::budget(&j, &p, "acct", NOW + 9).unwrap(), b);
+    // The saved image counts toward storage and is selectable.
+    assert_eq!(environment::storage(&j, "acct").unwrap(), (6, 1));
+    let purchase = environment::purchase(&j, "acct", "p1").unwrap().unwrap();
+    assert!(environment::may_select(&j, &purchase, "acct", NOW + 3).unwrap());
+    assert!(!environment::may_select(&j, &purchase, "other", NOW + 3).unwrap());
+    // Another account cannot read it.
     assert_eq!(
         refusal(environment::purchase(&j, "other", "p1").unwrap_err()),
         Refusal::NotYours
     );
-    // A renewal is prepaid at the measured size; a retry is the same one.
-    let r = environment::renew(
-        &mut j,
-        &mut l,
-        &b,
-        &g,
-        "acct",
-        "p1",
-        "r1",
-        30,
-        true,
-        NOW + 20,
-    )
-    .unwrap();
-    let paid = r.retention.as_ref().unwrap().paid_until;
-    assert_eq!(paid, NOW + 5 + 60 * DAY);
-    let charged = balance(&l, "acct").settled_msat;
-    assert_eq!(charged, (40 + 200 + 900 + 900) * 1000);
-    environment::renew(
-        &mut j,
-        &mut l,
-        &b,
-        &g,
-        "acct",
-        "p1",
-        "r1",
-        30,
-        true,
-        NOW + 21,
-    )
-    .unwrap();
-    assert_eq!(balance(&l, "acct").settled_msat, charged);
-    assert!(matches!(
-        environment::renew(
-            &mut j,
-            &mut l,
-            &b,
-            &g,
-            "acct",
-            "p1",
-            "r1",
-            7,
-            true,
-            NOW + 21
-        ),
-        Err(Error::Conflict(_))
-    ));
-    // Past its paid days the version lapses and its image is due for
-    // deletion; it cannot be selected or renewed.
-    assert!(environment::lapse(&mut j, paid - 1).unwrap().is_empty());
-    let due = environment::lapse(&mut j, paid).unwrap();
-    assert_eq!(due.len(), 1);
-    assert_eq!(due[0].saved, saved());
-    let p = environment::purchase(&j, "acct", "p1").unwrap().unwrap();
-    assert!(!environment::may_select(&p, "acct", paid));
+    let s = environment::summary(&j, &p, "acct", NOW + 3).unwrap();
     assert_eq!(
-        refusal(
-            environment::renew(
-                &mut j,
-                &mut l,
-                &b,
-                &g,
-                "acct",
-                "p1",
-                "r2",
-                7,
-                true,
-                paid + 1
-            )
-            .unwrap_err()
-        ),
-        Refusal::Lapsed
+        (s.used_seconds, s.included_seconds),
+        (10 * HOUR, 100 * HOUR)
     );
-    assert!(environment::lapse(&mut j, paid + 1).unwrap().is_empty());
+    assert!(matches!(s.standing, Standing::Active { .. }));
 }
 
 #[test]
-fn refusals_hold_nothing() {
+fn a_used_up_month_refuses_with_a_plain_message_unless_extra_hours_are_on() {
     let mut j = Journal::in_memory().unwrap();
-    let mut l = Ledger::in_memory().unwrap();
-    funded_account(&mut l, "poor", 100);
-    funded_account(&mut l, "acct", 10_000);
-    let b = book();
-    let g = gate(&b);
-    let p = environment::offer(&mut j, &b, &g, "poor", "p1", &request(), NOW).unwrap();
-    // Not enough balance: nothing held, still an offer.
-    assert!(matches!(
-        environment::confirm(&mut j, &mut l, &b, &g, "poor", "p1", &p.digest, true, NOW),
-        Err(Error::Ledger(pay_ledger::Error::Insufficient { .. }))
-    ));
-    assert_eq!(balance(&l, "poor").held_msat, 0);
-    assert!(matches!(
-        environment::purchase(&j, "poor", "p1")
-            .unwrap()
-            .unwrap()
-            .phase,
-        Phase::Offered
-    ));
-    // Another account, another digest, or no spend right.
-    let p = environment::offer(&mut j, &b, &g, "acct", "p2", &request(), NOW).unwrap();
+    subscribed(&mut j, "acct");
+    let p = plan();
+    // 120 hours with extra hours off: 100 counted, nothing charged.
+    let r = run(&mut j, "p1", 120 * HOUR, Ending::Ended, None);
     assert_eq!(
-        refusal(
-            environment::confirm(&mut j, &mut l, &b, &g, "poor", "p2", &p.digest, true, NOW)
-                .unwrap_err()
-        ),
-        Refusal::NotYours
+        (r.included_seconds, r.extra_seconds, r.extra_usd_micros),
+        (100 * HOUR, 20 * HOUR, 0)
     );
-    let wrong = route_contract::digest_of(&"other");
-    assert!(matches!(
-        environment::confirm(&mut j, &mut l, &b, &g, "acct", "p2", &wrong, true, NOW),
-        Err(Error::Conflict(_))
+    assert!(environment::debits(&j).unwrap().is_empty());
+    let e = environment::offer(&mut j, &p, &gate(&p), "acct", "p2", &request(), NOW).unwrap_err();
+    let r = refusal(e);
+    assert_eq!(
+        r,
+        Refusal::AllowanceUsed {
+            hours: 100,
+            resets_at: END
+        }
+    );
+    assert!(r.message().starts_with(
+        "You've used this month's 100 hours. Turn on extra hours in Settings, or wait until "
     ));
+    // The person turns extra hours on with a $1 cap: five hours fit.
+    environment::set_extra_hours(
+        &mut j,
+        "acct",
+        ExtraHours {
+            enabled: true,
+            cap_usd_micros: 1_000_000,
+        },
+    )
+    .unwrap();
+    let b = environment::budget(&j, &p, "acct", NOW).unwrap();
+    assert_eq!(b.extra_left_seconds, 1_000_000 * HOUR / 180_000);
+    let r = run(&mut j, "p2", 2 * HOUR, Ending::Ended, None);
+    assert_eq!((r.extra_seconds, r.extra_usd_micros), (2 * HOUR, 360_000));
+    // A run past the cap is charged only up to the cap.
+    let r = run(&mut j, "p3", 10 * HOUR, Ending::Ended, None);
+    assert_eq!(r.extra_usd_micros, 640_000);
+    let e = environment::offer(&mut j, &p, &gate(&p), "acct", "p4", &request(), NOW).unwrap_err();
+    let r = refusal(e);
     assert_eq!(
-        refusal(
-            environment::confirm(&mut j, &mut l, &b, &g, "acct", "p2", &p.digest, false, NOW)
-                .unwrap_err()
-        ),
-        Refusal::NoSpendRight
+        r,
+        Refusal::CapReached {
+            cap_usd_micros: 1_000_000,
+            resets_at: END
+        }
     );
-    // A new book after the offer: the shown quote no longer holds.
-    let mut moved = book();
-    moved.class.coordination_sats = 300;
-    let moved_gate = gate(&moved);
-    assert_eq!(
-        refusal(
-            environment::confirm(
-                &mut j,
-                &mut l,
-                &moved,
-                &moved_gate,
-                "acct",
-                "p2",
-                &p.digest,
-                true,
-                NOW
-            )
-            .unwrap_err()
-        ),
-        Refusal::Changed
-    );
-    assert_eq!(balance(&l, "acct").held_msat, 0);
-    // A saved image above the class's largest is refused.
-    environment::confirm(&mut j, &mut l, &b, &g, "acct", "p2", &p.digest, true, NOW).unwrap();
-    let big = Usage {
-        machine_seconds: 10,
-        image_gb: Some(51),
+    // Charges leave once, through the credits ledger; a failure retries.
+    let mut credits = FakeCredits {
+        down: true,
+        ..FakeCredits::default()
     };
-    assert_eq!(
-        refusal(
-            environment::end(
-                &mut j,
-                &mut l,
-                "p2",
-                Ending::Saved,
-                Some(big),
-                Some(saved()),
-                NOW
-            )
-            .unwrap_err()
-        ),
-        Refusal::ImageTooLarge
+    assert!(
+        environment::post_debits(&mut j, &mut credits, NOW)
+            .unwrap()
+            .is_empty()
     );
+    credits.down = false;
+    assert_eq!(
+        environment::post_debits(&mut j, &mut credits, NOW)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        environment::post_debits(&mut j, &mut credits, NOW)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(credits.charged.values().sum::<u64>(), 1_000_000);
+    // Unused hours don't roll over: a new month starts from its own 100.
+    environment::record_period(
+        &mut j,
+        &Period {
+            account: "acct".into(),
+            plan: p.version.clone(),
+            start: END,
+            end: END + 30 * DAY,
+        },
+    )
+    .unwrap();
+    let b = environment::budget(&j, &p, "acct", END + 1).unwrap();
+    assert_eq!(b.included_left_seconds, 100 * HOUR);
 }
 
 #[test]
-fn unknown_endings_stay_held_until_known_and_no_machine_means_no_charge() {
+fn storage_and_machines_have_plain_limits() {
     let mut j = Journal::in_memory().unwrap();
-    let mut l = Ledger::in_memory().unwrap();
-    funded_account(&mut l, "acct", 20_000);
-    let b = book();
-    let g = gate(&b);
-    for id in ["lost", "never"] {
-        let p = environment::offer(&mut j, &b, &g, "acct", id, &request(), NOW).unwrap();
-        environment::confirm(&mut j, &mut l, &b, &g, "acct", id, &p.digest, true, NOW).unwrap();
-    }
-    let max = i64::try_from(b.quote(&request()).unwrap().max_sats * 1000).unwrap();
-    environment::end(&mut j, &mut l, "lost", Ending::Unknown, None, None, NOW + 1).unwrap();
+    subscribed(&mut j, "acct");
+    let p = plan();
+    let g = gate(&p);
+    run(&mut j, "a1", HOUR, Ending::Saved, Some(15));
+    // 15 + 6 GB is past 20.
+    let o = environment::offer(&mut j, &p, &g, "acct", "a2", &request(), NOW).unwrap();
+    environment::confirm(&mut j, &p, &g, "acct", "a2", &o.digest, true, NOW).unwrap();
+    // While one setup runs, a second waits.
+    let o3 = environment::offer(&mut j, &p, &g, "acct", "a3", &request(), NOW).unwrap();
+    let e = environment::confirm(&mut j, &p, &g, "acct", "a3", &o3.digest, true, NOW).unwrap_err();
+    assert_eq!(refusal(e), Refusal::MachinesBusy { machines: 2 });
+    let usage = Some(Usage {
+        machine_seconds: HOUR,
+        image_gb: Some(6),
+    });
+    let e =
+        environment::end(&mut j, &p, "a2", Ending::Saved, usage, Some(saved(2)), NOW).unwrap_err();
+    let r = refusal(e);
+    assert_eq!(r, Refusal::StorageFull { gb: 20 });
     assert_eq!(
-        l.hold("env:lost").unwrap().unwrap().state,
-        HoldState::Unknown
+        r.message(),
+        "Your saved environments would use more than 20 GB. Delete one to save this one."
     );
-    let held = environment::settle(&mut j, &mut l, "lost", NOW + 2).unwrap();
-    assert_eq!((held.charge_msat, held.held_msat), (None, max));
-    environment::end(
+    // Deleting the first frees the space.
+    let due = environment::delete(&mut j, "acct", "a1", NOW).unwrap();
+    assert_eq!(due.saved, saved(2));
+    environment::end(&mut j, &p, "a2", Ending::Saved, usage, Some(saved(2)), NOW).unwrap();
+    environment::settle(&mut j, "a2", NOW).unwrap();
+    assert_eq!(environment::storage(&j, "acct").unwrap(), (6, 1));
+    // A reader cannot start paid work.
+    let e = environment::confirm(&mut j, &p, &g, "acct", "a3", &o3.digest, false, NOW).unwrap_err();
+    assert_eq!(refusal(e), Refusal::NoSpendRight);
+    // A changed plan refuses the old offer.
+    let mut moved = p.clone();
+    moved.included_machine_hours = 50;
+    let e = environment::confirm(
         &mut j,
-        &mut l,
-        "never",
-        Ending::ProviderUnavailable,
-        None,
-        None,
-        NOW + 1,
+        &moved,
+        &gate(&moved),
+        "acct",
+        "a3",
+        &o3.digest,
+        true,
+        NOW,
     )
-    .unwrap();
-    let free = environment::settle(&mut j, &mut l, "never", NOW + 2).unwrap();
-    assert_eq!(free.charge_msat, Some(0));
-    // The operator learns the usage: the known ending settles it.
-    let usage = Usage {
-        machine_seconds: 500,
-        image_gb: None,
-    };
+    .unwrap_err();
+    assert_eq!(refusal(e), Refusal::Changed);
+}
+
+#[test]
+fn unknown_endings_wait_and_a_restart_finishes_each_step_once() {
+    let mut j = Journal::in_memory().unwrap();
+    subscribed(&mut j, "acct");
+    let p = plan();
+    let g = gate(&p);
+    let o = environment::offer(&mut j, &p, &g, "acct", "u1", &request(), NOW).unwrap();
+    environment::confirm(&mut j, &p, &g, "acct", "u1", &o.digest, true, NOW).unwrap();
+    environment::end(&mut j, &p, "u1", Ending::Unknown, None, None, NOW).unwrap();
+    let rec = environment::recover(&mut j, NOW + 1).unwrap();
+    assert_eq!(rec.held, vec!["u1".to_string()]);
+    let usage = Some(Usage {
+        machine_seconds: 3 * HOUR,
+        image_gb: Some(4),
+    });
     environment::end(
         &mut j,
-        &mut l,
-        "lost",
-        Ending::Cancelled,
-        Some(usage),
-        None,
-        NOW + 3,
+        &p,
+        "u1",
+        Ending::Saved,
+        usage,
+        Some(saved(1)),
+        NOW + 2,
     )
     .unwrap();
     // A known ending never changes.
     assert!(matches!(
-        environment::end(
-            &mut j,
-            &mut l,
-            "lost",
-            Ending::Ended,
-            Some(usage),
-            None,
-            NOW + 4
-        ),
+        environment::end(&mut j, &p, "u1", Ending::Ended, usage, None, NOW + 3),
         Err(Error::Conflict(_))
     ));
-    let r = environment::settle(&mut j, &mut l, "lost", NOW + 5).unwrap();
-    assert_eq!(r.charge_msat, Some((20 + 200) * 1000));
-    let after = balance(&l, "acct");
-    assert_eq!(after.held_msat, 0);
-    assert_eq!(
-        after.credited_msat,
-        after.available_msat + after.held_msat + after.settled_msat
+    let rec = environment::recover(&mut j, NOW + 3).unwrap();
+    assert_eq!(rec.settled, vec!["u1".to_string()]);
+    let again = environment::recover(&mut j, NOW + 4).unwrap();
+    assert!(again.settled.is_empty());
+    let b = environment::budget(&j, &p, "acct", NOW + 4).unwrap();
+    assert_eq!(b.included_left_seconds, 97 * HOUR);
+    // No machine means nothing counted.
+    let o = environment::offer(&mut j, &p, &g, "acct", "u2", &request(), NOW).unwrap();
+    environment::confirm(&mut j, &p, &g, "acct", "u2", &o.digest, true, NOW).unwrap();
+    environment::end(
+        &mut j,
+        &p,
+        "u2",
+        Ending::ProviderUnavailable,
+        None,
+        None,
+        NOW,
+    )
+    .unwrap();
+    let r = environment::settle(&mut j, "u2", NOW).unwrap();
+    assert_eq!(r.included_seconds, 0);
+    // After the subscription ends the image stays 30 days, then retires.
+    let purchase = environment::purchase(&j, "acct", "u1").unwrap().unwrap();
+    assert!(!environment::may_select(&j, &purchase, "acct", END + 1).unwrap());
+    assert!(
+        environment::recover(&mut j, END + 29 * DAY)
+            .unwrap()
+            .retired
+            .is_empty()
     );
-}
-
-#[test]
-fn a_restart_finishes_each_step_once() {
-    let dir = tempfile::tempdir().unwrap();
-    let jp = dir.path().join("journal.sqlite");
-    let lp = dir.path().join("ledger.sqlite");
-    let b = book();
-    let g = gate(&b);
-    let (digest, max) = {
-        let mut j = Journal::open(&jp).unwrap();
-        let mut l = Ledger::open(&lp).unwrap();
-        funded_account(&mut l, "acct", 20_000);
-        let p = environment::offer(&mut j, &b, &g, "acct", "a", &request(), NOW).unwrap();
-        let q = environment::offer(&mut j, &b, &g, "acct", "b", &request(), NOW).unwrap();
-        // "a": the hold landed but the reply was lost before the journal
-        // recorded it (a confirm on another connection that crashed).
-        let mut other = Journal::open(&jp).unwrap();
-        environment::confirm(
-            &mut other, &mut l, &b, &g, "acct", "a", &p.digest, true, NOW,
-        )
-        .unwrap();
-        // Roll the journal's record back to the offer, as if never written.
-        let mut offered = environment::purchase(&j, "acct", "a").unwrap().unwrap();
-        offered.phase = Phase::Offered;
-        drop(other);
-        let raw = rusqlite::Connection::open(&jp).unwrap();
-        raw.execute(
-            "UPDATE environment_purchase SET bytes=? WHERE id='a'",
-            [serde_json::to_string(&offered).unwrap()],
-        )
-        .unwrap();
-        // "b": ended but not yet settled.
-        environment::confirm(&mut j, &mut l, &b, &g, "acct", "b", &q.digest, true, NOW).unwrap();
-        let usage = Usage {
-            machine_seconds: 100,
-            image_gb: Some(2),
-        };
-        environment::end(
-            &mut j,
-            &mut l,
-            "b",
-            Ending::Saved,
-            Some(usage),
-            Some(saved()),
-            NOW + 1,
-        )
-        .unwrap();
-        (p.digest, i64::try_from(q.quote.max_sats * 1000).unwrap())
-    };
-    let mut j = Journal::open(&jp).unwrap();
-    let mut l = Ledger::open(&lp).unwrap();
-    let before = balance(&l, "acct");
-    assert_eq!(before.held_msat, 2 * max);
-    let r = environment::recover(&mut j, &mut l, NOW + 10).unwrap();
-    assert_eq!(r.confirmed, vec!["a".to_string()]);
-    assert_eq!(r.settled, vec!["b".to_string()]);
-    let after = balance(&l, "acct");
-    let charge = (4 + 200 + 2 * 30 * 3) * 1000;
-    assert_eq!(after.settled_msat, charge);
-    assert_eq!(after.held_msat, max);
-    // A second visit and a repeated confirmation change nothing.
-    let again = environment::recover(&mut j, &mut l, NOW + 11).unwrap();
-    assert!(again.confirmed.is_empty() && again.settled.is_empty());
-    environment::confirm(&mut j, &mut l, &b, &g, "acct", "a", &digest, true, NOW + 12).unwrap();
-    assert_eq!(balance(&l, "acct"), after);
-    // Recovery also lapses retention that ran out while the host was down.
-    let r = environment::recover(&mut j, &mut l, NOW + 1 + 31 * DAY).unwrap();
-    assert_eq!(r.lapsed.len(), 1);
-    assert_eq!(r.lapsed[0].purchase, "b");
+    let rec = environment::recover(&mut j, END + 30 * DAY).unwrap();
+    assert_eq!(rec.retired.len(), 1);
+    assert!(matches!(
+        environment::purchase(&j, "acct", "u1")
+            .unwrap()
+            .unwrap()
+            .phase,
+        Phase::Settled { .. }
+    ));
 }

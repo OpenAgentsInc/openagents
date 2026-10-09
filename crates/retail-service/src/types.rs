@@ -43,14 +43,14 @@ pub struct Config {
     pub environments: Option<EnvironmentLaunch>,
 }
 
-/// The owner's published environment price book and the gate that opens
-/// it (`docs/cloud/retail-environment-contract.md`). The gate stays shut
-/// unless it names this book's digest, the reviewed contract, and a
+/// The owner's published environment plan and the gate that opens it
+/// (`docs/cloud/retail-environment-contract.md`). The gate stays shut
+/// unless it names this plan's digest, the reviewed contract, and a
 /// funded qualification.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnvironmentLaunch {
-    pub book: retail_cloud::environment::PriceBook,
+    pub plan: retail_cloud::environment::EnvironmentPlan,
     pub gate: retail_cloud::environment::Gate,
 }
 
@@ -125,10 +125,9 @@ pub enum Request {
     Environment {
         purchase: String,
     },
-    EnvironmentRenew {
+    /// Delete a saved version to free its storage.
+    EnvironmentDelete {
         purchase: String,
-        idempotency: String,
-        days: u64,
     },
 }
 

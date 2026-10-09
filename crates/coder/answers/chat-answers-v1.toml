@@ -228,12 +228,12 @@ followups = ["meta.who", "meta.model"]
 
 [[answer]]
 id = "meta.pricing"
-version = 2
+version = 3
 routes = ["meta"]
-when = "The user asks what this chat or OpenAgents costs, or whether it is free; not what the user's own coding agents or model providers charge them"
-text = "Chatting with us is free right now. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us."
+when = "The user asks what this chat or OpenAgents costs, whether it is free, or whether there is a paid or Pro plan; not what the user's own coding agents or model providers charge them"
+text = "Chatting with us is free right now. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us. A Pro plan for cloud environments is coming but isn't on sale yet: $20 a month with 100 machine-hours included."
 chip = "What does it cost?"
-sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md"]
+sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md", "docs/cloud/retail-environment-contract.md"]
 followups = ["meta.quota", "meta.privacy"]
 
 [[answer]]

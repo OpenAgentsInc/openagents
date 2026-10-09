@@ -58,6 +58,7 @@ fn free_plan() -> Plan {
         spend_limit: u64::MAX,
         credit_expiry_secs: None,
         topups_allowed: true,
+        environments: None,
     }
 }
 
@@ -79,14 +80,24 @@ fn pro_plan() -> Plan {
         spend_limit: u64::MAX,
         credit_expiry_secs: None,
         topups_allowed: true,
+        environments: None,
     }
 }
 
-/// The billing block both plans sit in.
+/// The checked-in Pro plan for saved environments, renamed so it sits
+/// beside this file's own `pro`.
+fn environments_plan() -> Plan {
+    let mut plan: Plan = serde_json::from_str(include_str!("../fixtures/plans/pro.json")).unwrap();
+    assert_eq!(plan.id, "pro");
+    plan.id = "pro-environments".to_string();
+    plan
+}
+
+/// The billing block the plans sit in.
 fn billing_config() -> config::Billing {
     config::Billing {
         prepaid: None,
-        plans: vec![free_plan(), pro_plan()],
+        plans: vec![free_plan(), pro_plan(), environments_plan()],
         provider: "sandbox".to_string(),
         webhook_secret_env: SECRET_ENV.to_string(),
         checkout_ttl_secs: 86_400,
@@ -377,12 +388,28 @@ async fn the_plan_catalog_is_published() {
     let (status, body) = get(&deployment, "/v1/plans", None).await;
     assert_eq!(status, StatusCode::OK);
     let plans = body["plans"].as_array().unwrap();
-    assert_eq!(plans.len(), 2);
+    assert_eq!(plans.len(), 3);
     assert_eq!(plans[0]["id"], "free");
     assert_eq!(plans[0]["price"]["amount"], 0);
     assert_eq!(plans[1]["id"], "pro");
     assert_eq!(plans[1]["price"]["amount"], 9_000_000);
     assert_eq!(plans[1]["price"]["currency"], "USD");
+    assert_eq!(plans[1]["environments"], serde_json::Value::Null);
+    // The Pro plan for saved environments: $20 a month, 100 machine-hours
+    // on 2 vCPU / 8 GB, 2 at once, 20 GB and 10 saved versions, $0.18 per
+    // extra hour, no rollover, and no model credit (bring your own).
+    let env = &plans[2];
+    assert_eq!(env["price"]["amount"], 20_000_000);
+    assert_eq!(env["price"]["currency"], "USD");
+    assert_eq!(env["allowance"], 0);
+    assert_eq!(env["environments"]["included_machine_hours"], 100);
+    assert_eq!(env["environments"]["vcpus"], 2);
+    assert_eq!(env["environments"]["memory_gb"], 8);
+    assert_eq!(env["environments"]["machines_at_once"], 2);
+    assert_eq!(env["environments"]["storage_gb"], 20);
+    assert_eq!(env["environments"]["saved_versions"], 10);
+    assert_eq!(env["environments"]["extra_hour"], 180_000);
+    assert_eq!(env["environments"]["rollover"], false);
 }
 
 #[tokio::test]

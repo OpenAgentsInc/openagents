@@ -832,6 +832,13 @@ impl Config {
                         plan.price.currency
                     ));
                 }
+                if let Some(problem) = plan
+                    .environments
+                    .as_ref()
+                    .and_then(tenancy::billing::EnvironmentAllowance::problem)
+                {
+                    return Err(format!("{}: plan `{}`: {problem}", name.display(), plan.id));
+                }
                 if let tenancy::billing::ModelAccess::Listed(doors) = &plan.models {
                     for door in doors {
                         if !self.doors.contains_key(door) {

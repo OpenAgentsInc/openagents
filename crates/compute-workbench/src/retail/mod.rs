@@ -899,7 +899,8 @@ impl Client {
         self.authority(true)?;
         self.call(json!({"op":"environment_offer","idempotency":idempotency,"request":request}))
     }
-    /// Confirm the displayed environment offer: its maximum is held.
+    /// Confirm the displayed environment offer: the setup runs on the
+    /// month's included hours.
     pub fn environment_confirm(&self, purchase: &str, digest: &Digest) -> Result<Value> {
         self.authority(true)?;
         self.call(json!({"op":"environment_confirm","purchase":purchase,"digest":digest}))
@@ -907,12 +908,10 @@ impl Client {
     pub fn environment(&self, purchase: &str) -> Result<Value> {
         self.call(json!({"op":"environment","purchase":purchase}))
     }
-    /// Keep a saved environment `days` more days, paid now.
-    pub fn environment_renew(&self, purchase: &str, idempotency: &str, days: u64) -> Result<Value> {
+    /// Delete a saved environment version to free its storage.
+    pub fn environment_delete(&self, purchase: &str) -> Result<Value> {
         self.mutable()?;
-        self.call(
-            json!({"op":"environment_renew","purchase":purchase,"idempotency":idempotency,"days":days}),
-        )
+        self.call(json!({"op":"environment_delete","purchase":purchase}))
     }
     pub fn artifact(&self, execution: &str, name: &str) -> Result<Value> {
         self.call(json!({"op":"artifact","execution":execution,"name":name}))

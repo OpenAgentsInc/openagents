@@ -5,7 +5,8 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
-[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
+[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL] \
+[--plan-meter PRIVATE_FILE] [--plan-subscribe URL]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,6 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut github_redirect: Option<String> = None;
     let mut cloud_byo: Option<PathBuf> = None;
     let mut cloud_byo_keys: Option<PathBuf> = None;
+    let mut plan_meter: Option<PathBuf> = None;
+    let mut plan_subscribe: Option<String> = None;
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -58,6 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--cloud-byo" => cloud_byo = Some(PathBuf::from(value)),
             "--cloud-byo-keys" => cloud_byo_keys = Some(PathBuf::from(value)),
+            // The environment meter journal behind Settings > Plan, and the
+            // page that sells the plan, when checkout is set up.
+            "--plan-meter" => plan_meter = Some(PathBuf::from(value)),
+            "--plan-subscribe" => plan_subscribe = Some(value),
             // The OAuth App's private file ({client_id, client_secret,
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
@@ -105,6 +112,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     } else if cloud_byo_keys.is_some() {
         return Err("--cloud-byo-keys needs --cloud-byo".into());
+    }
+    if plan_meter.is_some() || plan_subscribe.is_some() {
+        config.plan = Some(std::sync::Arc::new(openagents_web::plan::Plans::open(
+            plan_meter.as_deref(),
+            plan_subscribe,
+        )?));
     }
     if let Some(path) = github_oauth {
         // The callback defaults to the Cloud origin's /auth/github/callback.

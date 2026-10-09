@@ -31,6 +31,7 @@ mod markdown;
 mod pages;
 pub mod palette;
 pub mod pilot;
+pub mod plan;
 mod projects;
 mod purchases;
 pub mod sales_remote;
@@ -126,6 +127,10 @@ pub struct Config {
     /// Claude Code (`--environments PRIVATE_JSON`); absence leaves the
     /// Environments pages unavailable and out of the left panel.
     pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
+    /// The Pro plan and its environment meter (`--plan-meter`,
+    /// `--plan-subscribe`). Absent, Settings shows the plan and says hours
+    /// and subscribing aren't set up on this server.
+    pub plan: Option<Arc<plan::Plans>>,
 }
 
 impl Config {
@@ -155,6 +160,7 @@ impl Config {
             cloud_byo: None,
             pilot: None,
             environments: None,
+            plan: None,
         }
     }
 }

@@ -1,6 +1,7 @@
-//! `/settings`: the signed-in account's profile and theme, and
-//! `/settings/claude`, where the customer adds or removes their own Claude
-//! credential ([`crate::cloud::byo`]). Both open from the account menu.
+//! `/settings`: the signed-in account's profile, theme, and plan
+//! ([`crate::plan`]), and `/settings/claude`, where the customer adds or
+//! removes their own Claude credential ([`crate::cloud::byo`]). Both open
+//! from the account menu.
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
@@ -34,6 +35,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(PAGE, get(settings))
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
+        .route(crate::plan::EXTRA, post(extra_hours))
 }
 
 /// The signed-in viewer, or the answer to give instead (sign in first).
@@ -144,16 +146,131 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
     )
     .await;
     let computers = crate::device::computers_section(service, &headers, &viewer).await;
+    let plan = plan_section(&app, service, &headers, &viewer);
     let body = html! {
-        (settings_content(&viewer.account_label, claude, chats))
+        (settings_content(&viewer.account_label, claude, chats, plan))
         (computers)
     };
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }
 
-/// The Settings page: profile, theme, and (when this server keeps keys)
-/// the Claude credential row with its hint and whether Manage can work.
-fn settings_content(name: &str, claude: Option<(String, bool)>, chats: Option<usize>) -> Markup {
+/// The plan section for the viewer: the server's plan (or the checked-in
+/// one when none is set up here) and, with a meter, their month.
+fn plan_section(app: &App, service: &CloudSession, headers: &HeaderMap, viewer: &Viewer) -> Markup {
+    let fallback;
+    let plans = match app.config.plan.as_deref() {
+        Some(plans) => plans,
+        None => {
+            fallback = crate::plan::Plans::with_meter(None, None);
+            &fallback
+        }
+    };
+    let view = plans.view(&viewer.account_id, now() as i64);
+    let request = byo::fresh_request();
+    let ticket = plans
+        .has_meter()
+        .then(|| {
+            service
+                .csrf(
+                    headers,
+                    viewer,
+                    crate::plan::CSRF_SCOPE,
+                    &plan_target(viewer, &request),
+                )
+                .ok()
+        })
+        .flatten();
+    crate::plan::section(&view, ticket.as_deref().map(|t| (t, request.as_str())))
+}
+
+fn plan_target(viewer: &Viewer, request: &str) -> String {
+    format!("{}:{request}", viewer.account_id)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExtraForm {
+    csrf: String,
+    request: String,
+    enabled: Option<String>,
+    cap: String,
+}
+
+fn plan_problem(status: StatusCode, text: &str) -> Response {
+    protect(crate::layout::problem(
+        status,
+        "Extra hours",
+        text,
+        (PAGE, "Settings"),
+    ))
+}
+
+async fn extra_hours(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<ExtraForm>, FormRejection>,
+) -> Response {
+    let Ok(Form(form)) = form else {
+        return refused(SessionError::InvalidRequest);
+    };
+    let (service, viewer) = match viewer(&app, &headers, PAGE).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    if let Err(error) = service.verify_csrf(
+        &headers,
+        Some(&viewer),
+        crate::plan::CSRF_SCOPE,
+        &plan_target(&viewer, &form.request),
+        &form.csrf,
+    ) {
+        return refused(error);
+    }
+    let Some(plans) = app.config.plan.as_deref().filter(|p| p.has_meter()) else {
+        return plan_problem(
+            StatusCode::NOT_FOUND,
+            "This server doesn't track hours yet.",
+        );
+    };
+    let enabled = form.enabled.as_deref() == Some("on");
+    let cap = match (crate::plan::parse_cap(&form.cap), enabled) {
+        (Some(cap), _) => cap,
+        (None, false) if form.cap.trim().is_empty() => 0,
+        (None, _) => {
+            return plan_problem(
+                StatusCode::BAD_REQUEST,
+                "Enter a dollar amount up to 10000, like 10.",
+            );
+        }
+    };
+    if enabled && cap == 0 {
+        return plan_problem(
+            StatusCode::BAD_REQUEST,
+            "Set how much extra hours may cost each month.",
+        );
+    }
+    let choice = retail_cloud::environment::ExtraHours {
+        enabled,
+        cap_usd_micros: cap,
+    };
+    match plans.set_extra(&viewer.account_id, choice) {
+        Ok(()) => protect(Redirect::to("/settings#settings-plan").into_response()),
+        Err(()) => plan_problem(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "That couldn't be saved. Try again later.",
+        ),
+    }
+}
+
+/// The Settings page: profile, theme, plan, and (when this server keeps
+/// keys) the Claude credential row with its hint and whether Manage can
+/// work.
+fn settings_content(
+    name: &str,
+    claude: Option<(String, bool)>,
+    chats: Option<usize>,
+    plan: Markup,
+) -> Markup {
     html! {
         div class="oa-settings" {
             h1 class="oa-heading" data-level="1" { "Settings" }
@@ -179,6 +296,7 @@ fn settings_content(name: &str, claude: Option<(String, bool)>, chats: Option<us
                 }
             }
             (chats_section(chats))
+            (plan)
             @if let Some((hint, manage)) = claude {
                 section class="oa-settings-group" aria-labelledby="settings-claude" {
                     h2 #settings-claude { "Claude" }
@@ -525,19 +643,21 @@ mod tests {
     fn settings_hides_manage_when_the_claude_key_cant_be_kept() {
         let manage = "href=\"/settings/claude\"";
         for standing in [Standing::Empty, Standing::Saved(Material::AnthropicApiKey)] {
-            let html = settings_content("Ada", Some(standing.hint()), Some(0)).into_string();
+            let html =
+                settings_content("Ada", Some(standing.hint()), Some(0), html! {}).into_string();
             assert!(html.contains(manage), "{html}");
             assert!(!html.contains("Unavailable"));
         }
         for standing in [Standing::NoWorkspace, Standing::Broken] {
             let (hint, can) = standing.hint();
             assert!(!can);
-            let html = settings_content("Ada", Some((hint.clone(), can)), Some(0)).into_string();
+            let html =
+                settings_content("Ada", Some((hint.clone(), can)), Some(0), html! {}).into_string();
             assert!(!html.contains(manage), "{html}");
             assert!(html.contains(&hint.replace('\'', "&#39;")) || html.contains(&hint));
         }
         // No key store: no Claude row at all.
-        let html = settings_content("Ada", None, Some(0)).into_string();
+        let html = settings_content("Ada", None, Some(0), html! {}).into_string();
         assert!(!html.contains("settings-claude"));
         for needle in [">Settings<", ">Profile<", ">Theme<", ">Ada<"] {
             assert!(html.contains(needle), "{needle}");

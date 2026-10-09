@@ -57,6 +57,7 @@ fn free_plan() -> Plan {
         spend_limit: u64::MAX,
         credit_expiry_secs: None,
         topups_allowed: true,
+        environments: None,
     }
 }
 

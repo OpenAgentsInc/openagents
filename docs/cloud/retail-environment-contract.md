@@ -1,159 +1,196 @@
-# Saved customer environments: contract v1 (proposed)
+# Saved customer environments: contract v2 (subscription)
 
-Status: proposed 2026-10-09 for owner review
+Status: prices decided by the owner 2026-10-09
 ([#11006](https://github.com/OpenAgentsInc/openagents/issues/11006), ENV-10).
-Nothing here can be bought yet. The code path exists and is closed. It opens only
-when the owner has reviewed this page, published a reviewed price book, and
-recorded a funded qualification (see [Availability](#availability)). A change
-after that review is a new contract version, not an edit to this one.
+Nothing here can be bought yet. The code path exists and is closed. It opens
+only when the plan is published, the Stripe product and price exist, and a
+funded qualification is recorded (see [Availability](#availability)).
+
+v1 (2026-10-09, proposed) sold each environment setup on its own, in sats,
+with a two-hour wall-time limit and prepaid retention days. The owner replaced
+it the same day with a subscription: environments are part of a $20/month
+plan with a monthly allowance, and we set no time limit on a run. A change
+after this is a new contract version.
 
 The [retail contract v1](retail-contract.md) sells one task on one sandbox and
-then deletes the sandbox. That contract cannot keep anything. This contract
-is the separate class that the [environment onboarding contract](example-cursor-cloud-agent-onboarding/environment-onboarding.md)
-requires before customers can keep a machine image: a customer pays to set up,
-build, check, and save one repository environment. The saved image is then kept
-for the days they paid for.
+then deletes the sandbox. This contract is the separate class that the
+[environment onboarding contract](example-cursor-cloud-agent-onboarding/environment-onboarding.md)
+requires before customers can keep a machine image: a subscriber sets up,
+builds, checks, and saves one repository environment, and the saved image is
+kept while they stay subscribed.
 
 ## The classes
 
 | Identity | Value |
 | --- | --- |
-| Contract | `openagents.cloud.retail-environment.v1` |
-| Computer class | `retail-env-boat-large-v1` |
+| Contract | `openagents.cloud.retail-environment.v2` |
+| Computer class | `retail-env-standard-v1` (2 vCPU, 8 GB) |
 | Task class | `retail-environment-setup-v1` |
-| Price book schema | `openagents.cloud.environment-price-book.v1` |
-| Ledger resource | `openagents.cloud.retail-environment.v1` |
+| Plan schema | `openagents.cloud.environment-plan.v1` |
+| Terms schema | `openagents.cloud.environment-terms.v1` |
+| Billing catalog plan | `pro` (`crates/gateway/fixtures/plans/pro.json`) |
 
-### What is bought
+## The plan
 
-- **Machines.** One setup machine, one clean builder, and one independent
-  verifier with its idempotence fork: at most 4 Boat `large` machines. They
-  are the ENV-03 to ENV-05 owners' dedicated machines, never a shared pool
-  host and never a customer's chat computer.
-- **Wall time.** At most 2 hours for setup, build, and check together. The
-  customer may set less.
+The checked-in plan is `crates/retail-cloud/fixtures/environment-plan.json`
+(`env-plan-2026-10-09.0`, status `proposed` until the owner publishes it). The
+billing catalog carries the same allowance on the `pro` plan, and
+`GET /v1/plans` publishes it as `environments`.
+
+| Pro | |
+| --- | --- |
+| Price | $20 a month (`price.amount` 20,000,000 millionths of USD, 30-day period) |
+| Included | 100 machine-hours a month on the standard machine (2 vCPU, 8 GB) |
+| At once | 2 machines |
+| Saved images | 20 GB, at most 10 saved versions |
+| Run length | No limit from us. The person may set their own (`max_seconds`). |
+| Extra hours | $0.18 a machine-hour from the account's credits, only when turned on, up to a monthly cap the person sets. Off by default. |
+| Rollover | None. Each month starts from its own 100 hours. |
+| Models | Never included. The setup agent runs on the person's own Claude or Codex key or subscription (`customer:model`). |
+
+### Market check (2026-10-09)
+
+| Offer | Price | Compute included |
+| --- | --- | --- |
+| GitHub Codespaces, Pro account | $4/month account | 180 core-hours (90 h on 2-core, 8 GB) and 20 GB-month; then $0.18/h for 2-core and $0.07/GB-month |
+| Replit Core | $20/month | $20–25 of usage credits for agent, compute, and deployments |
+| Cursor Pro | $20/month | $20 of usage; background agents draw on it |
+| Ona (formerly Gitpod) Core | from $20/month | credits shared by environment runtime and agent use; $10 per 40 extra |
+| Devin Pro | $20/month | ACU-based; about $2.25 per ACU (about 15 minutes of agent work) |
+
+100 hours on a 2 vCPU / 8 GB machine is slightly more than Codespaces gives a
+Pro account, and $0.18 an extra hour is the Codespaces 2-core rate, so the
+proposal stood unchanged. Unlike Replit, Cursor, Ona, and Devin, model use is
+not in the price; the $20 buys only machines and storage.
+
+## What a setup is
+
+- **Machines.** A setup machine, a clean builder, and an independent verifier
+  with its idempotence fork, never more than 2 at once. They are the ENV-03
+  to ENV-05 owners' dedicated machines, never a shared pool host and never a
+  customer's chat computer. One setup runs per account at a time.
 - **Source.** A public HTTPS repository on `github.com` at an exact
   40-character commit, as in retail v1. No private repositories, uploads, or
   submodules.
 - **Request.** An objective of at most 8 KiB, a qualification profile name,
-  and 1 to 8 behavior checks, each at most 1,024 bytes. These are frozen by
-  digest before any build.
-- **Saved image.** When the checked version is saved, its image is kept
-  for the retention days the customer chose: 1 to 90 days, prepaid. Images
-  larger than the class's limit (50 GB in the proposed book) are not saved.
+  1 to 8 behavior checks of at most 1,024 bytes each, and optionally the
+  person's own limit in machine-seconds. These are frozen by digest before any
+  build.
+- **Saved image.** When the checked version is saved, its image is kept while
+  the account is subscribed, within 20 GB and 10 versions. Saving past either
+  is refused with a plain message, and the person can delete a version to
+  make room.
 
 ### Credentials and authority
 
-- **One credential.** The setup agent runs on the customer's own OpenAI API
-  key (`customer:openai`), delivered when the setup machine starts through
-  the same private custody and per-boot delivery as retail v1 (#10712). It
-  is never written into a recipe, image, log, or receipt, and the builder's
+- **One credential.** The setup agent runs on the person's own model key or
+  subscription, delivered when the setup machine starts through the same
+  private custody and per-boot delivery as retail v1 (#10712). It is never
+  written into a recipe, image, log, or receipt, and the builder's
   sanitization step removes sign-ins before capture. No owner or operator
   credential reaches any machine.
-- **Selection.** A saved version belongs to the account that bought it.
-  Only that account's tasks can select it (`selectable_by`), and only while
-  its retention is paid. A balance does not grant execution, and pairing
-  does not grant spending, as in retail v1.
-- **No machine access.** The customer gets no shell, SSH, or terminal on
-  any machine. They see the setup conversation, the recipe, the check
-  results, and the evidence.
-- **No publication.** No push, pull request, or issue comment.
+- **Selection.** A saved version belongs to the account that made it. Only
+  that account's tasks can select it (`selectable_by`), and only while the
+  account is subscribed.
+- **No machine access, no publication**, as in v1: no shell, SSH, or terminal,
+  and no push, pull request, or issue comment.
 
-## Prices
+## Metering
 
-Prices are in sats. One credit is one sat. The proposed book
-(`crates/retail-cloud/fixtures/environment-price-book.json`,
-`retail-env-2026-10-09.0`, status `proposed`) is a starting point for owner
-review, not a decision:
-
-| Line | Proposed rate | Basis |
-| --- | --- | --- |
-| Compute | 40 msat per machine-second | Measured seconds summed over every machine, capped at 4 machines for the whole wall time |
-| Coordination | 200 sats | Once per purchase whose first machine started |
-| Storage | 3 sats per GB-day | The saved image's real size, rounded up to a whole GB, for the paid retention days |
-| Model | 0 | The customer's own OpenAI key, billed by OpenAI |
-
-The offer quotes and holds the maximum: every machine for the whole wall
-time, coordination, and the largest image for every retention day. For
-example, two hours and 30 days hold 1,152 + 200 + 4,500 sats.
-
-| Ending | Charge |
-| --- | --- |
-| No machine started, or none reachable | Nothing; the hold is released |
-| Machines ran; no version saved, or cancelled | Measured compute plus coordination |
-| Version saved | Measured compute, coordination, and storage for the real image size |
-| Not known yet | The whole hold stays held until the ending is known |
-
-Settlement posts the charge once and releases the rest of the hold. A
-release is not a refund. More retention is a renewal: the customer pays
-`size × days × rate` at once, and the days are added. A retry with the same
-renewal identity is the same renewal.
-
-## Retention
-
-When the paid days run out, the version lapses. It can no longer be
-selected or renewed, and its image is due for deletion by the provider
-owner (`environment::lapse` returns it). A lapsed image is not kept "just in
-case". Tasks that already started on that version keep the version they
-started with. The purchase record and its receipt stay in the retail
+`crates/retail-cloud/src/environment.rs` keeps the meter in the retail
 journal.
 
-## Funding and recovery
+- **Months.** Billing records each paid month with `record_period` (account,
+  plan version, start, end). A setup counts against the month it was
+  confirmed in.
+- **Offer and confirm** need a current month and some time left: included
+  hours, or extra hours when turned on and under the cap. Nothing is held.
+  Otherwise they refuse with a plain sentence (`Refusal::message`):
+  - "You've used this month's 100 hours. Turn on extra hours in Settings, or
+    wait until November 9."
+  - "You've reached the $10 you set for extra hours this month. Raise it in
+    Settings, or wait until November 9."
+  - "Saved environments come with the Pro plan."
+  - "Your 2 machines are busy. Wait for a setup to finish, then try again."
+- **Budget.** `budget` returns the machine-seconds left this month (included
+  plus what the cap still pays for). The runner stops machines when it
+  reaches zero or when the person's own limit is reached. That is the only
+  stop; we impose no run length.
+- **End** records the ending and the measured machine-seconds once. An
+  unknown ending counts nothing until it is known; a known ending never
+  changes.
+- **Settle** counts the seconds once: first against the month's included
+  hours, then as extra hours. Extra hours are charged only when turned on,
+  at the terms' rate, and never past the cap; seconds past the allowance with
+  extra hours off are not charged.
+- **Debits.** Each extra-hours charge is written to an outbox (`env:<purchase>`)
+  and handed once to the credits ledger by `post_debits`, through the
+  `Credits` adapter, which must be idempotent on the key. A failed post stays
+  waiting and is retried.
+- **Recover** (the retail worker, every tick) settles known endings once,
+  leaves unknown ones waiting, and retires images.
+- **Retirement.** When a subscription ends, saved images stay 30 days, then
+  are retired (`retire` returns them for the provider owner to delete). A
+  person can delete a version any time (`delete`).
 
-Each step has exactly one ledger effect. The journal records the step
-before or after that effect, so a restart never repeats it:
+| Ending | Counted |
+| --- | --- |
+| No machine started, or none reachable | Nothing |
+| Machines ran; no version saved, or cancelled | Measured machine-seconds |
+| Version saved | Measured machine-seconds; the image counts toward storage |
+| Not known yet | Nothing until it is known |
 
-- **Confirm** holds the quoted maximum under `env:<purchase>`. A retry
-  returns the same hold. An insufficient balance holds nothing, and the
-  purchase stays an offer. If the book changed since the offer, the
-  confirmation is refused. A shared retail balance cannot hold for an
-  environment.
-- **End** records the ending and the measured usage once. An unknown ending
-  marks the hold unknown. A later known ending replaces it, and a known
-  ending never changes.
-- **Settle** charges once, under the environment resource.
-- **Recover** (the retail worker, every tick) confirms an offer whose hold
-  landed before the journal recorded it. It also settles known endings once,
-  keeps unknown ones held, and lapses retention that ran out while the
-  service was down.
-
-The fake-funding and recovery checks are `crates/retail-cloud/tests/environment.rs`
-and `saved_environments_use_the_retail_transport_and_stay_closed_by_default`
-in `crates/retail-service`.
+The fake-billing checks are `crates/retail-cloud/tests/environment.rs` and
+`saved_environments_use_the_retail_transport_and_stay_closed_by_default` in
+`crates/retail-service`.
 
 ## Transport
 
 Customers use the authenticated retail customer transport (#10956, #10970):
 `/v1/retail` with the same principal, grant, and spend checks as tasks.
+Environment refusals carry the plain sentence in `message`.
 
 | Operation | Needs |
 | --- | --- |
 | `environment_offer` | spend, execute, and disclose |
 | `environment_confirm` | spend, execute, and disclose |
 | `environment` | read; own account only |
-| `environment_renew` | spend |
+| `environment_delete` | spend; own account only |
 
 The native client (`compute-workbench`, feature `client`) has
 `environment_offer`, `environment_confirm`, `environment`, and
-`environment_renew`.
+`environment_delete`.
+
+## Settings
+
+The website's **Settings → Plan** (`crates/openagents-web/src/plan.rs`) shows
+the plan, the hours used this month and when they reset, saved storage and
+versions, and the extra-hours switch with its monthly cap. It reads and writes
+the meter given by `--plan-meter`. Without a meter it says the server doesn't
+track hours yet; without `--plan-subscribe` it says subscribing isn't open
+instead of showing a button. The served docs page is `/docs/pricing`.
 
 ## Availability
 
 `environments` in the retail service configuration holds the owner's launch:
-the published book and its gate. The gate opens only when all of these hold:
+the published plan and its gate. The gate opens only when all of these hold:
 
-1. `contract_reviewed` is true. The owner has reviewed this page.
-2. The book's status is `published`, and the gate names its exact digest.
-3. A funded qualification receipt is recorded. That receipt comes from a
-   real setup, build, check, save, and renewal paid from a real balance on
-   the deployed service, with the machines' teardown acknowledged.
+1. `contract_reviewed` is true.
+2. The plan's status is `published`, and the gate names its exact digest.
+3. A funded qualification receipt is recorded: a real subscription paid on
+   the deployed service, a real setup, build, check, and save counted against
+   its month, and the machines' teardown acknowledged.
 
 Without `environments`, every environment operation answers "not available".
-The checked-in book is `proposed`, so it can never open the gate. A fixture
-never activates this lane.
+The checked-in plan is `proposed`, so it can never open the gate.
 
-## Not in v1
+Still to wire before launch: billing's paid months must reach
+`record_period`, and a `Credits` adapter over the customer credits ledger
+must post the extra-hours outbox. The gateway's subscription checkout is the
+sandbox provider today; selling Pro needs the Stripe product and price.
+
+## Not in v1 or v2
 
 GCE placement (the ENV-09 adapter is operator-only), private repositories,
-customer shells, publication, continuation on a kept machine, sharing a
-saved environment with another account, and model usage paid by OpenAgents.
+customer shells, publication, continuation on a kept machine, sharing a saved
+environment with another account, and model usage paid by OpenAgents.
