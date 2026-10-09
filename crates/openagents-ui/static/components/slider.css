@@ -1,0 +1,131 @@
+/*
+ * Slider. Ported from Apps SDK UI `Slider.module.css` (MIT, see NOTICE) onto a
+ * native <input type="range">. The filled range uses `--oa-slider-fill`, set
+ * by the server and kept current by the `oaSlider` Alpine component; Firefox
+ * draws it natively with ::-moz-range-progress.
+ */
+.oa-slider {
+  position: relative;
+  width: 100%;
+}
+
+.oa-slider__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 8px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.oa-slider__value {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 2px;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-slider__unit {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  user-select: none;
+}
+
+.oa-slider__input {
+  --oa-slider-fill: 0%;
+
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 0 0 6px;
+  padding: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.oa-slider__input:focus {
+  outline: none;
+}
+
+.oa-slider__input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Track (WebKit/Blink): the filled part is a gradient up to --oa-slider-fill. */
+.oa-slider__input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-2xs);
+  background: linear-gradient(
+    to right,
+    var(--slider-range-color) 0 var(--oa-slider-fill),
+    var(--slider-track-color) var(--oa-slider-fill) 100%
+  );
+}
+
+.oa-slider__input::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  background: var(--gray-0);
+  box-shadow: inset 0 0 0 2px var(--slider-range-color);
+  cursor: grab;
+}
+
+.oa-slider__input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.oa-slider__input:focus-visible::-webkit-slider-thumb {
+  box-shadow: inset 0 0 0 2px var(--green-600);
+}
+
+/* Track (Firefox) */
+.oa-slider__input::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-2xs);
+  background: var(--slider-track-color);
+}
+
+.oa-slider__input::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-2xs);
+  background: var(--slider-range-color);
+}
+
+.oa-slider__input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gray-0);
+  box-shadow: inset 0 0 0 2px var(--slider-range-color);
+  cursor: grab;
+}
+
+.oa-slider__input:focus-visible::-moz-range-thumb {
+  box-shadow: inset 0 0 0 2px var(--green-600);
+}
+
+.oa-slider__marks {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 4px;
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.oa-slider__mark {
+  overflow-wrap: break-word;
+  text-align: center;
+}

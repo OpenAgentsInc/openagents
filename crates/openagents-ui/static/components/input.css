@@ -1,0 +1,315 @@
+/*
+ * Input. Ported from Apps SDK UI `Input.module.css` (MIT, see NOTICE).
+ * `.oa-input` is the container (variant, size, adornments); `.oa-input__control`
+ * is the native <input>. Focus uses :focus-within instead of a JS flag.
+ */
+.oa-input {
+  display: flex;
+  align-items: center;
+  gap: var(--input-gap);
+  width: 100%;
+  border-radius: var(--input-radius);
+  color: var(--input-text-color);
+  cursor: text;
+  /* Whenever this is not 16px on mobile, zooming occurs. */
+  font-size: var(--input-font-size);
+  font-weight: var(--font-weight-normal);
+  transition-duration: var(--transition-duration-basic);
+  transition-property: color, box-shadow, background-color;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+.oa-input:where([data-optically-align="start"]) {
+  margin-inline-start: calc(var(--input-gutter) * -1);
+}
+
+.oa-input:where([data-optically-align="end"]) {
+  margin-inline-end: calc(var(--input-gutter) * -1);
+}
+
+/* Outline variant */
+.oa-input:where([data-variant="outline"]) {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color) inset;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-input:where([data-variant="outline"]):not([data-disabled]):hover {
+    box-shadow: 0 0 0 1px var(--input-outline-border-color-hover) inset;
+  }
+}
+
+.oa-input:where([data-variant="outline"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color-focus) inset;
+}
+
+.oa-input:where([data-variant="outline"]):not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+/* Soft variant */
+.oa-input:where([data-variant="soft"]) {
+  background-color: var(--input-soft-background-color);
+}
+
+.oa-input:where([data-variant="soft"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-soft-border-color-focus) inset;
+}
+
+.oa-input:where([data-variant="soft"]):not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+.oa-input[data-invalid] ::selection {
+  background-color: var(--red-a50);
+}
+
+/* Sizes */
+.oa-input:where([data-size="3xs"]) {
+  --input-size: var(--control-size-3xs);
+  --input-font-size: var(--control-font-size-sm);
+  --input-radius: var(--control-radius-sm);
+  --input-gutter: var(--control-gutter-xs);
+  --input-gap: var(--input-gap-xs);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-size="2xs"]) {
+  --input-size: var(--control-size-2xs);
+  --input-font-size: var(--control-font-size-sm);
+  --input-radius: var(--control-radius-sm);
+  --input-gutter: var(--control-gutter-xs);
+  --input-gap: var(--input-gap-xs);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-size="xs"]) {
+  --input-size: var(--control-size-xs);
+  --input-font-size: var(--control-font-size-md);
+  --input-radius: var(--control-radius-sm);
+  --input-gutter: var(--control-gutter-xs);
+  --input-gap: var(--input-gap-sm);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-size="sm"]) {
+  --input-size: var(--control-size-sm);
+  --input-font-size: var(--control-font-size-md);
+  --input-radius: var(--control-radius-md);
+  --input-gutter: var(--control-gutter-sm);
+  --input-gap: var(--input-gap-md);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-size="md"]) {
+  --input-size: var(--control-size-md);
+  --input-font-size: var(--control-font-size-md);
+  --input-radius: var(--control-radius-md);
+  --input-gutter: var(--control-gutter-md);
+  --input-gap: var(--input-gap-md);
+}
+
+.oa-input:where([data-size="lg"]) {
+  --input-size: var(--control-size-lg);
+  --input-font-size: var(--control-font-size-md);
+  --input-radius: var(--control-radius-md);
+  --input-gutter: var(--control-gutter-md);
+  --input-gap: var(--input-gap-md);
+}
+
+.oa-input:where([data-size="xl"]) {
+  --input-size: var(--control-size-xl);
+  --input-font-size: var(--control-font-size-lg);
+  --input-radius: var(--control-radius-lg);
+  --input-gutter: var(--control-gutter-lg);
+  --input-gap: var(--input-gap-lg);
+}
+
+.oa-input:where([data-size="2xl"]) {
+  --input-size: var(--control-size-2xl);
+  --input-font-size: var(--control-font-size-lg);
+  --input-radius: var(--control-radius-xl);
+  --input-gutter: var(--control-gutter-xl);
+  --input-gap: var(--input-gap-lg);
+  --input-adornment-offset: -4px;
+}
+
+.oa-input:where([data-size="3xl"]) {
+  --input-size: var(--control-size-3xl);
+  --input-font-size: var(--control-font-size-lg);
+  --input-radius: var(--control-radius-xl);
+  --input-gutter: var(--control-gutter-xl);
+  --input-gap: var(--input-gap-lg);
+  --input-adornment-offset: -4px;
+}
+
+/* Gutter sizes */
+.oa-input:where([data-gutter-size="2xs"]) {
+  --input-gutter: var(--control-gutter-2xs);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-gutter-size="xs"]) {
+  --input-gutter: var(--control-gutter-xs);
+  --input-adornment-offset: -1px;
+}
+
+.oa-input:where([data-gutter-size="sm"]) {
+  --input-gutter: var(--control-gutter-sm);
+  --input-adornment-offset: -2px;
+}
+
+.oa-input:where([data-gutter-size="md"]) {
+  --input-gutter: var(--control-gutter-md);
+  --input-adornment-offset: -2px;
+}
+
+.oa-input:where([data-gutter-size="lg"]) {
+  --input-gutter: var(--control-gutter-lg);
+  --input-adornment-offset: -2px;
+}
+
+.oa-input:where([data-gutter-size="xl"]) {
+  --input-gutter: var(--control-gutter-xl);
+  --input-adornment-offset: -4px;
+}
+
+/* Pill */
+.oa-input:where([data-pill]) {
+  --input-radius: var(--radius-full);
+}
+
+/* Disabled */
+.oa-input[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* When adornments are present, the gutter moves to the container. */
+.oa-input:where([data-has-start-adornment]) {
+  padding-left: var(--input-gutter);
+}
+
+.oa-input:where([data-has-start-adornment][data-pill]) {
+  padding-left: calc(var(--input-gutter) * var(--control-gutter-pill-scaling));
+}
+
+.oa-input:where([data-has-end-adornment]) {
+  padding-right: var(--input-gutter);
+}
+
+.oa-input:where([data-has-end-adornment][data-pill]) {
+  padding-right: calc(var(--input-gutter) * var(--control-gutter-pill-scaling));
+}
+
+.oa-input > :first-child:not(input) {
+  margin-left: var(--input-adornment-offset, -2px);
+}
+
+.oa-input > :last-child:not(input) {
+  margin-right: var(--input-adornment-offset, -2px);
+}
+
+.oa-input__adornment {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.oa-input__separator {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+.oa-input__control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: var(--input-size);
+  /* Padding is intrinsic to the control when no adornments are present (autofill extensions rely on it). */
+  padding: 0 var(--input-gutter);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+}
+
+.oa-input__control:focus {
+  outline: 0;
+}
+
+.oa-input__control:disabled {
+  cursor: not-allowed;
+}
+
+.oa-input__control::placeholder {
+  color: var(--input-placeholder-text-color);
+}
+
+.oa-input__control:-webkit-autofill,
+.oa-input__control:-webkit-autofill:focus,
+.oa-input__control:-webkit-autofill:hover {
+  color: var(--color-text) !important;
+  -webkit-text-fill-color: var(--color-text) !important;
+  /* Delay the user-agent autofill colors for a very long time; their specificity cannot be beaten. */
+  transition:
+    background-color 0s 50000s,
+    box-shadow 0s 50000s,
+    filter 0s 50000s !important;
+}
+
+/* Prevent strange autofill size adjustments */
+.oa-input__control:-webkit-autofill::first-line {
+  font-size: inherit !important;
+  transition: font-size 0s 50000s !important;
+}
+
+/* Hide number spinners */
+.oa-input__control[type="number"] {
+  appearance: textfield;
+}
+
+.oa-input__control[type="number"]::-webkit-outer-spin-button,
+.oa-input__control[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+/* Native date inputs: keep the picker indicator, tinted to the text color. */
+.oa-input__control[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+:where([data-theme="dark"]) .oa-input__control[type="date"] {
+  color-scheme: dark;
+}
+
+/* Dynamic pill spacing */
+:where(.oa-input[data-pill]) .oa-input__control {
+  padding: 0 calc(var(--input-gutter) * var(--control-gutter-pill-scaling));
+}
+
+:where(.oa-input[data-has-start-adornment]) .oa-input__control {
+  padding-left: 0;
+}
+
+:where(.oa-input[data-has-end-adornment]) .oa-input__control {
+  padding-right: 0;
+}
+
+/* Date range: two native inputs share one container. */
+.oa-input:where([data-range]) .oa-input__control {
+  flex: 1 1 0;
+}
+
+.oa-input:where([data-range]) .oa-input__control:first-child {
+  padding-right: 0;
+}
+
+.oa-input:where([data-range]) .oa-input__control:last-child {
+  padding-left: 0;
+}

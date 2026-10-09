@@ -6,5 +6,6 @@
 //! builders. It does not depend on Axum; `openagents-web` serves its assets.
 
 pub mod content;
+pub mod forms;
 pub mod icons;
 pub mod shell;

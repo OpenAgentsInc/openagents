@@ -1,0 +1,238 @@
+/*
+ * SegmentedControl. Ported from Apps SDK UI `SegmentedControl.module.css`
+ * (MIT, see NOTICE). Rendered as a native radio group: each option is a
+ * <label> around a transparent <input type="radio">. The selected option
+ * carries the thumb background instead of a JS-positioned thumb element.
+ */
+.oa-segmented-control {
+  --segmented-control-size: var(--control-size-md);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-md);
+  --segmented-control-option-gutter: var(--control-gutter-md);
+  --segmented-control-option-radius: calc(
+    var(--segmented-control-radius) - var(--segmented-control-gutter)
+  );
+
+  position: relative;
+  overflow: auto;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: var(--segmented-control-gap);
+  height: var(--segmented-control-size);
+  margin: 0;
+  padding: var(--segmented-control-gutter);
+  border: 0;
+  border-radius: var(--segmented-control-radius);
+  background: var(--segmented-control-background);
+  font-size: var(--segmented-control-font-size);
+  font-weight: var(--segmented-control-font-weight);
+  scrollbar-width: none;
+  /* Remove inline-flex baseline gap */
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.oa-segmented-control::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.oa-segmented-control:where([data-block]) {
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+  white-space: wrap;
+}
+
+/* Sizes */
+.oa-segmented-control:where([data-size="3xs"]) {
+  --segmented-control-size: var(--control-size-3xs);
+  --segmented-control-font-size: var(--control-font-size-sm);
+  --segmented-control-radius: var(--control-radius-sm);
+  --segmented-control-option-gutter: var(--control-gutter-xs);
+}
+
+.oa-segmented-control:where([data-size="2xs"]) {
+  --segmented-control-size: var(--control-size-2xs);
+  --segmented-control-font-size: var(--control-font-size-sm);
+  --segmented-control-radius: var(--control-radius-sm);
+  --segmented-control-option-gutter: var(--control-gutter-xs);
+}
+
+.oa-segmented-control:where([data-size="xs"]) {
+  --segmented-control-size: var(--control-size-xs);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-sm);
+  --segmented-control-option-gutter: var(--control-gutter-xs);
+}
+
+.oa-segmented-control:where([data-size="sm"]) {
+  --segmented-control-size: var(--control-size-sm);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-md);
+  --segmented-control-option-gutter: var(--control-gutter-sm);
+}
+
+.oa-segmented-control:where([data-size="md"]) {
+  --segmented-control-size: var(--control-size-md);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-md);
+  --segmented-control-option-gutter: var(--control-gutter-md);
+}
+
+.oa-segmented-control:where([data-size="lg"]) {
+  --segmented-control-size: var(--control-size-lg);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-md);
+  --segmented-control-option-gutter: var(--control-gutter-md);
+}
+
+.oa-segmented-control:where([data-size="xl"]) {
+  --segmented-control-size: var(--control-size-xl);
+  --segmented-control-font-size: var(--control-font-size-md);
+  --segmented-control-radius: var(--control-radius-lg);
+  --segmented-control-option-gutter: var(--control-gutter-lg);
+}
+
+.oa-segmented-control:where([data-size="2xl"]) {
+  --segmented-control-size: var(--control-size-2xl);
+  --segmented-control-font-size: var(--control-font-size-lg);
+  --segmented-control-radius: var(--control-radius-xl);
+  --segmented-control-option-gutter: var(--control-gutter-xl);
+}
+
+.oa-segmented-control:where([data-size="3xl"]) {
+  --segmented-control-size: var(--control-size-3xl);
+  --segmented-control-font-size: var(--control-font-size-lg);
+  --segmented-control-radius: var(--control-radius-xl);
+  --segmented-control-option-gutter: var(--control-gutter-xl);
+}
+
+/* Gutter sizes */
+.oa-segmented-control:where([data-gutter-size="2xs"]) {
+  --segmented-control-option-gutter: var(--control-gutter-2xs);
+}
+
+.oa-segmented-control:where([data-gutter-size="xs"]) {
+  --segmented-control-option-gutter: var(--control-gutter-xs);
+}
+
+.oa-segmented-control:where([data-gutter-size="sm"]) {
+  --segmented-control-option-gutter: var(--control-gutter-sm);
+}
+
+.oa-segmented-control:where([data-gutter-size="md"]) {
+  --segmented-control-option-gutter: var(--control-gutter-md);
+}
+
+.oa-segmented-control:where([data-gutter-size="lg"]) {
+  --segmented-control-option-gutter: var(--control-gutter-lg);
+}
+
+.oa-segmented-control:where([data-gutter-size="xl"]) {
+  --segmented-control-option-gutter: var(--control-gutter-xl);
+}
+
+/* Pill */
+.oa-segmented-control:where([data-pill]) {
+  --segmented-control-radius: var(--radius-full);
+  --segmented-control-option-radius: var(--radius-full);
+}
+
+.oa-segmented-control__option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--segmented-control-option-gutter);
+  border-radius: var(--segmented-control-option-radius);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  line-height: 1;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: opacity, background-color, color, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+:where(.oa-segmented-control[data-block]) .oa-segmented-control__option {
+  flex: 1;
+}
+
+:where(.oa-segmented-control[data-pill]) .oa-segmented-control__option {
+  padding: 0 calc(var(--segmented-control-option-gutter) * var(--control-gutter-pill-scaling));
+}
+
+.oa-segmented-control__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+.oa-segmented-control__option svg {
+  display: block;
+}
+
+/* Hover highlight */
+.oa-segmented-control__option::before {
+  position: absolute;
+  inset: var(--segmented-control-option-highlight-gutter);
+  border-radius: var(--segmented-control-option-radius);
+  background: var(--segmented-control-option-highlight-background-color);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1);
+  transition-duration: var(--transition-duration-basic);
+  transition-property: opacity, transform;
+  transition-timing-function: var(--transition-ease-basic);
+  will-change: transform;
+}
+
+.oa-segmented-control__option:active::before {
+  transform: scale(var(--scale, 1), 0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-segmented-control__option:not(:has(:checked, :disabled)):hover {
+    color: var(--color-text);
+  }
+
+  .oa-segmented-control__option:not(:has(:checked, :disabled)):hover::before {
+    opacity: 0.5;
+  }
+}
+
+.oa-segmented-control__option:not(:has(:checked, :disabled)):active::before {
+  opacity: 0.75;
+}
+
+.oa-segmented-control__option:has(:focus-visible) {
+  color: var(--color-text);
+  outline: 2px solid var(--color-ring);
+}
+
+/* Selected: the option carries the thumb. */
+.oa-segmented-control__option:has(:checked) {
+  background: var(--segmented-control-thumb-background);
+  box-shadow: var(--segmented-control-thumb-shadow);
+  color: var(--color-text);
+}
+
+.oa-segmented-control__option:has(:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.oa-segmented-control__option:has(:disabled)::before {
+  opacity: 0 !important;
+}
+
+.oa-segmented-control__text {
+  position: relative;
+}

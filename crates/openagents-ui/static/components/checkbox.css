@@ -1,0 +1,190 @@
+/*
+ * Checkbox. Ported from Apps SDK UI `Checkbox.module.css` (MIT, see NOTICE).
+ * The native <input type="checkbox"> sits transparent over `.oa-checkbox__box`
+ * so clicks, keyboard and form submission stay native; the box draws the state.
+ */
+.oa-checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.oa-checkbox[data-orientation="right"] {
+  flex-direction: row-reverse;
+}
+
+.oa-checkbox[data-disabled] {
+  cursor: not-allowed;
+}
+
+.oa-checkbox__box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  /* Adjust downward for the label line-height; long labels can wrap. */
+  top: 1px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xs);
+  background-color: transparent;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+:where([data-theme="dark"]) .oa-checkbox__box {
+  border-color: var(--gray-500);
+}
+
+.oa-checkbox__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-checkbox:not([data-disabled]) .oa-checkbox__box:hover:has(.oa-checkbox__input:not(:checked)) {
+    border-color: var(--gray-300);
+  }
+
+  :where([data-theme="dark"])
+    .oa-checkbox:not([data-disabled])
+    .oa-checkbox__box:hover:has(.oa-checkbox__input:not(:checked)) {
+    border-color: var(--gray-600);
+  }
+}
+
+.oa-checkbox__box:has(.oa-checkbox__input:checked),
+.oa-checkbox__box:has(.oa-checkbox__input:indeterminate) {
+  border-color: var(--gray-900);
+  background-color: var(--gray-900);
+}
+
+.oa-checkbox__box:has(.oa-checkbox__input:focus-visible) {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.oa-checkbox__box:has(.oa-checkbox__input:disabled) {
+  border-color: var(--gray-150);
+  background: var(--gray-25);
+}
+
+:where([data-theme="dark"]) .oa-checkbox__box:has(.oa-checkbox__input:disabled) {
+  border-color: var(--gray-300);
+  background: var(--gray-200);
+}
+
+.oa-checkbox__box:has(.oa-checkbox__input:disabled:checked) {
+  border-color: var(--gray-300);
+  background-color: var(--gray-300);
+}
+
+:where([data-theme="dark"]) .oa-checkbox__box:has(.oa-checkbox__input:disabled:checked) {
+  border-color: var(--gray-200);
+  background-color: var(--gray-200);
+}
+
+/* Check mark: two arms drawn with pseudo elements. */
+.oa-checkbox__mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64%;
+  height: 32%;
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(-45deg) translate(-10%, 100%);
+  transform-origin: center;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.oa-checkbox__input:checked + .oa-checkbox__mark,
+.oa-checkbox__input:indeterminate + .oa-checkbox__mark {
+  opacity: 1;
+}
+
+.oa-checkbox__input:indeterminate + .oa-checkbox__mark {
+  transform: translate(30%, 80%);
+}
+
+.oa-checkbox__mark::before,
+.oa-checkbox__mark::after {
+  position: absolute;
+  display: block;
+  background: var(--gray-0);
+  content: "";
+  transform: scale(0);
+  will-change: transform;
+}
+
+.oa-checkbox__input:checked + .oa-checkbox__mark::before,
+.oa-checkbox__input:checked + .oa-checkbox__mark::after,
+.oa-checkbox__input:indeterminate + .oa-checkbox__mark::after {
+  transform: none;
+}
+
+/* Pure black is too low contrast to read as disabled. */
+:where([data-theme="dark"]) .oa-checkbox__input:disabled + .oa-checkbox__mark::before,
+:where([data-theme="dark"]) .oa-checkbox__input:disabled + .oa-checkbox__mark::after {
+  background: var(--gray-100);
+}
+
+.oa-checkbox__mark::before {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  transform-origin: 0 0;
+  transition:
+    transform 100ms ease 80ms,
+    opacity 200ms ease;
+}
+
+.oa-checkbox__input:indeterminate + .oa-checkbox__mark::before {
+  opacity: 0;
+}
+
+.oa-checkbox__mark::after {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  transform-origin: 0 100%;
+  transition: transform 100ms ease 160ms;
+}
+
+.oa-checkbox__label {
+  display: flex;
+  flex-direction: column;
+  min-height: 20px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.oa-checkbox:not([data-orientation="right"]) .oa-checkbox__label {
+  padding-left: 8px;
+}
+
+.oa-checkbox[data-orientation="right"] .oa-checkbox__label {
+  padding-right: 8px;
+}
+
+.oa-checkbox[data-disabled] .oa-checkbox__label {
+  opacity: 0.5;
+}
+
+.oa-checkbox__description {
+  color: var(--color-text-secondary);
+}

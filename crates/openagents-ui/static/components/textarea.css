@@ -1,0 +1,221 @@
+/*
+ * Textarea. Ported from Apps SDK UI `Textarea.module.css` (MIT, see NOTICE).
+ * Auto-grow uses `field-sizing: content` where supported; the `oaTextareaAutogrow`
+ * Alpine component in forms.js covers other browsers.
+ */
+.oa-textarea {
+  --textarea-line-height: 20px;
+  --textarea-font-weight: var(--font-weight-normal);
+  --textarea-color: var(--color-text);
+  --textarea-min-rows: 3;
+  --textarea-max-rows: 12;
+  --textarea-base-height: var(--control-size-md);
+  --textarea-font-size: var(--control-font-size-md);
+  --textarea-radius: var(--control-radius-md);
+  --textarea-gutter-x: var(--control-gutter-md);
+  --textarea-gutter-y: calc(0.5 * calc(var(--textarea-base-height) - var(--textarea-line-height)));
+  --textarea-min-height: calc(
+    (var(--textarea-gutter-y) * 2) + (var(--textarea-line-height) * var(--textarea-min-rows))
+  );
+  --textarea-max-height: calc(
+    (var(--textarea-gutter-y) * 2) + (var(--textarea-line-height) * var(--textarea-max-rows))
+  );
+
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+  border-radius: var(--textarea-radius);
+  color: var(--textarea-color);
+  cursor: text;
+  font-size: var(--textarea-font-size);
+  font-weight: var(--textarea-font-weight);
+  transition-duration: var(--transition-duration-basic);
+  transition-property: color, box-shadow, background-color;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+/* Sizes */
+.oa-textarea:where([data-size="3xs"]) {
+  --textarea-base-height: var(--control-size-3xs);
+  --textarea-font-size: var(--control-font-size-sm);
+  --textarea-radius: var(--control-radius-sm);
+  --textarea-gutter-x: var(--control-gutter-xs);
+}
+
+.oa-textarea:where([data-size="2xs"]) {
+  --textarea-base-height: var(--control-size-2xs);
+  --textarea-font-size: var(--control-font-size-sm);
+  --textarea-radius: var(--control-radius-sm);
+  --textarea-gutter-x: var(--control-gutter-xs);
+}
+
+.oa-textarea:where([data-size="xs"]) {
+  --textarea-base-height: var(--control-size-xs);
+  --textarea-font-size: var(--control-font-size-md);
+  --textarea-radius: var(--control-radius-sm);
+  --textarea-gutter-x: var(--control-gutter-xs);
+}
+
+.oa-textarea:where([data-size="sm"]) {
+  --textarea-base-height: var(--control-size-sm);
+  --textarea-font-size: var(--control-font-size-md);
+  --textarea-radius: var(--control-radius-md);
+  --textarea-gutter-x: var(--control-gutter-sm);
+}
+
+.oa-textarea:where([data-size="md"]) {
+  --textarea-base-height: var(--control-size-md);
+  --textarea-font-size: var(--control-font-size-md);
+  --textarea-radius: var(--control-radius-md);
+  --textarea-gutter-x: var(--control-gutter-md);
+}
+
+.oa-textarea:where([data-size="lg"]) {
+  --textarea-base-height: var(--control-size-lg);
+  --textarea-font-size: var(--control-font-size-md);
+  --textarea-radius: var(--control-radius-md);
+  --textarea-gutter-x: var(--control-gutter-md);
+}
+
+.oa-textarea:where([data-size="xl"]) {
+  --textarea-base-height: var(--control-size-xl);
+  --textarea-font-size: var(--control-font-size-lg);
+  --textarea-radius: var(--control-radius-lg);
+  --textarea-gutter-x: var(--control-gutter-lg);
+}
+
+.oa-textarea:where([data-size="2xl"]) {
+  --textarea-base-height: var(--control-size-2xl);
+  --textarea-font-size: var(--control-font-size-lg);
+  --textarea-radius: var(--control-radius-xl);
+  --textarea-gutter-x: var(--control-gutter-xl);
+}
+
+.oa-textarea:where([data-size="3xl"]) {
+  --textarea-base-height: var(--control-size-3xl);
+  --textarea-font-size: var(--control-font-size-lg);
+  --textarea-radius: var(--control-radius-xl);
+  --textarea-gutter-x: var(--control-gutter-xl);
+}
+
+/* Gutter sizes */
+.oa-textarea:where([data-gutter-size="2xs"]) {
+  --textarea-gutter-x: var(--control-gutter-2xs);
+}
+
+.oa-textarea:where([data-gutter-size="xs"]) {
+  --textarea-gutter-x: var(--control-gutter-xs);
+}
+
+.oa-textarea:where([data-gutter-size="sm"]) {
+  --textarea-gutter-x: var(--control-gutter-sm);
+}
+
+.oa-textarea:where([data-gutter-size="md"]) {
+  --textarea-gutter-x: var(--control-gutter-md);
+}
+
+.oa-textarea:where([data-gutter-size="lg"]) {
+  --textarea-gutter-x: var(--control-gutter-lg);
+}
+
+.oa-textarea:where([data-gutter-size="xl"]) {
+  --textarea-gutter-x: var(--control-gutter-xl);
+}
+
+/* Outline variant */
+.oa-textarea:where([data-variant="outline"]) {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color) inset;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-textarea:where([data-variant="outline"]):not([data-disabled]):hover {
+    box-shadow: 0 0 0 1px var(--input-outline-border-color-hover) inset;
+  }
+}
+
+.oa-textarea:where([data-variant="outline"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color-focus) inset;
+}
+
+.oa-textarea:where([data-variant="outline"]):not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+/* Soft variant */
+.oa-textarea:where([data-variant="soft"]) {
+  background-color: var(--input-soft-background-color);
+}
+
+.oa-textarea:where([data-variant="soft"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-soft-border-color-focus) inset;
+}
+
+.oa-textarea:where([data-variant="soft"]):not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+.oa-textarea[data-invalid] ::selection {
+  background-color: var(--red-a50);
+}
+
+.oa-textarea[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.oa-textarea__control {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: var(--textarea-min-height);
+  padding: var(--textarea-gutter-y) var(--textarea-gutter-x);
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  /* Prevent Firefox autofill coloring */
+  filter: none;
+  font: inherit;
+  line-height: var(--textarea-line-height);
+  resize: vertical;
+}
+
+.oa-textarea:where([data-auto-grow]) .oa-textarea__control {
+  max-height: var(--textarea-max-height);
+  field-sizing: content;
+  resize: none;
+}
+
+.oa-textarea__control:focus {
+  outline: 0;
+}
+
+.oa-textarea__control:disabled {
+  cursor: not-allowed;
+}
+
+.oa-textarea__control::placeholder {
+  color: var(--input-placeholder-text-color);
+  /* Firefox uses opacity instead of color for placeholders. */
+  opacity: 1;
+}
+
+.oa-textarea__control:-webkit-autofill,
+.oa-textarea__control:-webkit-autofill:focus,
+.oa-textarea__control:-webkit-autofill:hover {
+  color: var(--color-text) !important;
+  -webkit-text-fill-color: var(--color-text) !important;
+  transition:
+    background-color 0s 50000s,
+    box-shadow 0s 50000s,
+    filter 0s 50000s !important;
+}
+
+.oa-textarea__control:-webkit-autofill::first-line {
+  font-size: 16px !important;
+  transition: font-size 0s 50000s !important;
+}

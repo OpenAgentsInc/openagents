@@ -1,0 +1,193 @@
+/*
+ * Select. A native <select> styled with the Apps SDK UI SelectControl sizes
+ * and the Input variants (MIT, see NOTICE). The chevron is a sibling icon; the
+ * richer searchable SelectControl comes later as Popover plus Alpine.
+ */
+.oa-select {
+  --select-control-size: var(--control-size-md);
+  --select-control-gutter: var(--control-gutter-md);
+  --select-control-font-size: var(--control-font-size-md);
+  --select-control-radius: var(--control-radius-md);
+  --dropdown-chevron-icon-width: 11px;
+  --dropdown-chevron-icon-height: 6px;
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  border-radius: var(--select-control-radius);
+  color: var(--input-text-color);
+  font-size: var(--select-control-font-size);
+  font-weight: var(--select-control-font-weight);
+  transition-duration: var(--transition-duration-basic);
+  transition-property: color, box-shadow, background-color;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+.oa-select:where([data-block="false"]) {
+  width: auto;
+}
+
+/* Sizes (SelectControl) */
+.oa-select:where([data-size="3xs"]) {
+  --select-control-size: var(--control-size-3xs);
+  --select-control-gutter: var(--control-gutter-2xs);
+  --select-control-font-size: var(--control-font-size-sm);
+  --select-control-radius: var(--control-radius-sm);
+  --dropdown-chevron-icon-width: 8px;
+  --dropdown-chevron-icon-height: 5px;
+}
+
+.oa-select:where([data-size="2xs"]) {
+  --select-control-size: var(--control-size-2xs);
+  --select-control-gutter: var(--control-gutter-xs);
+  --select-control-font-size: var(--control-font-size-sm);
+  --select-control-radius: var(--control-radius-sm);
+  --dropdown-chevron-icon-width: 8px;
+  --dropdown-chevron-icon-height: 5px;
+}
+
+.oa-select:where([data-size="xs"]) {
+  --select-control-size: var(--control-size-xs);
+  --select-control-gutter: var(--control-gutter-xs);
+  --select-control-font-size: var(--control-font-size-md);
+  --select-control-radius: var(--control-radius-sm);
+  --dropdown-chevron-icon-width: 9px;
+  --dropdown-chevron-icon-height: 5px;
+}
+
+.oa-select:where([data-size="sm"]) {
+  --select-control-size: var(--control-size-sm);
+  --select-control-gutter: var(--control-gutter-sm);
+  --select-control-font-size: var(--control-font-size-md);
+  --select-control-radius: var(--control-radius-sm);
+  --dropdown-chevron-icon-width: 9px;
+  --dropdown-chevron-icon-height: 5px;
+}
+
+.oa-select:where([data-size="md"]) {
+  --select-control-size: var(--control-size-md);
+  --select-control-gutter: var(--control-gutter-md);
+  --select-control-font-size: var(--control-font-size-md);
+  --select-control-radius: var(--control-radius-md);
+}
+
+.oa-select:where([data-size="lg"]) {
+  --select-control-size: var(--control-size-lg);
+  --select-control-gutter: var(--control-gutter-md);
+  --select-control-font-size: var(--control-font-size-md);
+  --select-control-radius: var(--control-radius-md);
+}
+
+.oa-select:where([data-size="xl"]) {
+  --select-control-size: var(--control-size-xl);
+  --select-control-gutter: var(--control-gutter-lg);
+  --select-control-font-size: var(--control-font-size-lg);
+  --select-control-radius: var(--control-radius-lg);
+}
+
+.oa-select:where([data-size="2xl"]) {
+  --select-control-size: var(--control-size-2xl);
+  --select-control-gutter: var(--control-gutter-xl);
+  --select-control-font-size: var(--control-font-size-lg);
+  --select-control-radius: var(--control-radius-xl);
+}
+
+.oa-select:where([data-size="3xl"]) {
+  --select-control-size: var(--control-size-3xl);
+  --select-control-gutter: var(--control-gutter-xl);
+  --select-control-font-size: var(--control-font-size-lg);
+  --select-control-radius: var(--control-radius-xl);
+}
+
+.oa-select:where([data-pill]) {
+  --select-control-radius: var(--radius-full);
+}
+
+/* Outline variant */
+.oa-select:where([data-variant="outline"]) {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color) inset;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-select:where([data-variant="outline"]):not([data-disabled]):hover {
+    box-shadow: 0 0 0 1px var(--input-outline-border-color-hover) inset;
+  }
+}
+
+.oa-select:where([data-variant="outline"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color-focus) inset;
+}
+
+/* Soft variant */
+.oa-select:where([data-variant="soft"]) {
+  background-color: var(--input-soft-background-color);
+}
+
+.oa-select:where([data-variant="soft"]):not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-soft-border-color-focus) inset;
+}
+
+.oa-select:not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+.oa-select[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.oa-select__control {
+  width: 100%;
+  height: var(--select-control-size);
+  padding: 0 calc(var(--select-control-gutter) + var(--dropdown-chevron-icon-width) + 8px) 0
+    var(--select-control-gutter);
+  border: 0;
+  border-radius: inherit;
+  appearance: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: var(--font-text-md-line-height);
+  text-overflow: ellipsis;
+}
+
+:where(.oa-select[data-pill]) .oa-select__control {
+  padding-left: calc(var(--select-control-gutter) * var(--control-gutter-pill-scaling));
+}
+
+.oa-select__control:focus {
+  outline: none;
+}
+
+.oa-select__control:disabled {
+  cursor: not-allowed;
+}
+
+.oa-select__control:invalid {
+  color: var(--input-placeholder-text-color);
+}
+
+:where([data-theme="dark"]) .oa-select__control {
+  color-scheme: dark;
+}
+
+.oa-select__control option {
+  color: var(--color-text);
+}
+
+.oa-select__chevron {
+  position: absolute;
+  right: var(--select-control-gutter);
+  width: var(--dropdown-chevron-icon-width);
+  height: var(--dropdown-chevron-icon-height);
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+.oa-select__control[multiple] {
+  height: auto;
+  min-height: var(--select-control-size);
+  padding: 4px var(--select-control-gutter);
+}

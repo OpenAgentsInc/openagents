@@ -1,0 +1,137 @@
+/*
+ * RadioGroup. Ported from Apps SDK UI `RadioGroup.module.css` (MIT, see NOTICE).
+ * Native <input type="radio"> elements sit transparent over the indicator, so
+ * arrow keys, form submission and required validation are native.
+ */
+.oa-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--radio-group-row-gap);
+}
+
+.oa-radio-group:where([data-direction="col"]) {
+  flex-direction: column;
+  gap: var(--radio-group-col-gap);
+}
+
+.oa-radio {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--radio-group-item-gap);
+  cursor: pointer;
+  font-size: var(--radio-group-item-font-size);
+  line-height: var(--radio-group-item-line-height);
+}
+
+.oa-radio[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.oa-radio-group:where([data-block]) .oa-radio {
+  width: 100%;
+}
+
+/* Centers the indicator on the first line of the label. */
+.oa-radio__indicator-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: var(--radio-group-item-line-height);
+}
+
+.oa-radio__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+.oa-radio__item {
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  width: var(--radio-group-indicator-size);
+  height: var(--radio-group-indicator-size);
+  border-radius: var(--radius-full);
+  background-color: transparent;
+  box-shadow: 0 0 0 1px var(--radio-group-indicator-border-color) inset;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-radio:not([data-disabled]):hover .oa-radio__item {
+    box-shadow: 0 0 0 1px var(--radio-group-indicator-border-color-hover) inset;
+  }
+}
+
+.oa-radio__input:focus-visible + .oa-radio__item {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.oa-radio__item::before,
+.oa-radio__item::after {
+  display: none;
+  content: "";
+  grid-column-start: 1;
+  grid-row-start: 1;
+  place-self: center center;
+  border-radius: var(--radius-full);
+  will-change: transform;
+}
+
+.oa-radio__input:checked + .oa-radio__item::before,
+.oa-radio__input:checked + .oa-radio__item::after {
+  display: block;
+}
+
+/* Filled circle */
+.oa-radio__item::before {
+  width: var(--radio-group-indicator-size);
+  height: var(--radio-group-indicator-size);
+  animation: oa-radio-fade-in 0.6s var(--cubic-enter);
+  background-color: var(--radio-group-indicator-background-color);
+}
+
+/* Empty middle circle */
+.oa-radio__item::after {
+  width: var(--radio-group-indicator-hole-size);
+  height: var(--radio-group-indicator-hole-size);
+  animation: oa-radio-scale-in 0.6s var(--cubic-enter);
+  background-color: var(--radio-group-indicator-hole-background-color);
+}
+
+.oa-radio__description {
+  display: block;
+  color: var(--color-text-secondary);
+}
+
+@keyframes oa-radio-scale-in {
+  0% {
+    transform: scale(0);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes oa-radio-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}

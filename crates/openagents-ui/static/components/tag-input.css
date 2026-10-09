@@ -1,0 +1,229 @@
+/*
+ * TagInput. Ported from Apps SDK UI `TagInput.module.css` (MIT, see NOTICE).
+ * Without JavaScript the component is a plain comma-separated text field; the
+ * `oaTagInput` Alpine component in forms.js turns entries into tags.
+ */
+.oa-tag-input {
+  --tag-input-font-size: var(--control-font-size-md);
+  --tag-input-height: 20px;
+  --tag-input-tag-spacing: 6px;
+  --min-rows: 1;
+
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tag-input-tag-spacing);
+  /* All rows plus spacing, N+1 to include the top spacing of the first row. */
+  min-height: calc(
+    (var(--min-rows) * var(--tag-input-height)) + ((var(--min-rows) + 1) * var(--tag-input-tag-spacing))
+  );
+  padding: var(--tag-input-tag-spacing) 12px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--input-outline-border-color) inset;
+  cursor: text;
+  outline: 0;
+  transition: box-shadow 0.15s ease;
+}
+
+.oa-tag-input:has(.oa-tag-input__tag) {
+  padding: var(--tag-input-tag-spacing);
+}
+
+.oa-tag-input[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-tag-input:not([data-disabled]):hover {
+    box-shadow: 0 0 0 1px var(--gray-300) inset;
+  }
+
+  :where([data-theme="dark"]) .oa-tag-input:not([data-disabled]):hover {
+    box-shadow: 0 0 0 1px var(--gray-500) inset;
+  }
+}
+
+.oa-tag-input:not([data-disabled]):focus-within {
+  box-shadow: 0 0 0 1px var(--input-outline-border-color-focus) inset;
+}
+
+.oa-tag-input:not([data-disabled])[data-invalid] {
+  box-shadow: 0 0 0 1px var(--input-border-color-invalid) inset;
+}
+
+/* Sizes: 20 + 6 + 6 = 32 */
+.oa-tag-input:where([data-size="md"]) {
+  --tag-input-font-size: var(--control-font-size-md);
+  --tag-input-height: 20px;
+  --tag-input-tag-spacing: 6px;
+}
+
+/* 24 + 6 + 6 = 36 */
+.oa-tag-input:where([data-size="lg"]) {
+  --tag-input-font-size: var(--control-font-size-md);
+  --tag-input-height: 24px;
+  --tag-input-tag-spacing: 6px;
+}
+
+/* 24 + 8 + 8 = 40 */
+.oa-tag-input:where([data-size="xl"]) {
+  --tag-input-font-size: var(--control-font-size-lg);
+  --tag-input-height: 24px;
+  --tag-input-tag-spacing: 8px;
+}
+
+/* 28 + 8 + 8 = 44 */
+.oa-tag-input:where([data-size="2xl"]) {
+  --tag-input-font-size: var(--control-font-size-lg);
+  --tag-input-height: 28px;
+  --tag-input-tag-spacing: 8px;
+}
+
+/* 32 + 8 + 8 = 48 */
+.oa-tag-input:where([data-size="3xl"]) {
+  --tag-input-font-size: var(--control-font-size-lg);
+  --tag-input-height: 32px;
+  --tag-input-tag-spacing: 8px;
+}
+
+.oa-tag-input__tag {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: var(--tag-input-height);
+  padding: 4px 4px 4px 8px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-background-secondary-soft);
+  color: var(--color-text-secondary-soft);
+  line-height: 1.4;
+  transition: background-color 0.15s ease;
+}
+
+:where([data-theme="dark"]) .oa-tag-input__tag {
+  background-color: var(--color-background-secondary-solid);
+  color: var(--color-text-secondary-solid);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oa-tag-input__tag:hover {
+    background-color: var(--color-background-secondary-soft-hover);
+  }
+
+  :where([data-theme="dark"]) .oa-tag-input__tag:hover {
+    background-color: var(--color-background-secondary-solid-hover);
+  }
+}
+
+.oa-tag-input__tag:focus-within {
+  background-color: var(--color-background-secondary-soft-hover);
+}
+
+:where([data-theme="dark"]) .oa-tag-input__tag:focus-within {
+  background-color: var(--color-background-secondary-solid-hover);
+}
+
+.oa-tag-input__tag[data-duplicate] {
+  animation: oa-tag-input-shake 0.5s ease;
+}
+
+.oa-tag-input__tag-value {
+  font-size: var(--tag-input-font-size);
+  white-space: nowrap;
+}
+
+.oa-tag-input__tag-remove {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.oa-tag-input__tag-remove:hover,
+.oa-tag-input__tag-remove:focus-visible {
+  opacity: 1;
+}
+
+.oa-tag-input__tag-remove:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.oa-tag-input__control {
+  display: block;
+  flex-grow: 1;
+  min-width: 20px;
+  max-width: 100%;
+  height: var(--tag-input-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--color-text);
+  font-size: var(--tag-input-font-size);
+  line-height: 1.4;
+}
+
+.oa-tag-input__control:focus {
+  outline: 0;
+}
+
+.oa-tag-input__control::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.oa-tag-input__control:disabled {
+  color: var(--color-text-tertiary);
+}
+
+.oa-tag-input__control:-webkit-autofill,
+.oa-tag-input__control:-webkit-autofill:focus,
+.oa-tag-input__control:-webkit-autofill:hover {
+  color: var(--color-text) !important;
+  -webkit-text-fill-color: var(--color-text) !important;
+  transition:
+    background-color 0s 50000s,
+    box-shadow 0s 50000s,
+    filter 0s 50000s !important;
+}
+
+.oa-tag-input__limit {
+  width: 100%;
+  margin-top: 2px;
+  color: var(--color-text);
+  font-size: var(--font-text-xs-size);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@keyframes oa-tag-input-shake {
+  0% {
+    transform: translateX(0);
+  }
+
+  20%,
+  60% {
+    transform: translateX(-5px);
+  }
+
+  40%,
+  80% {
+    transform: translateX(5px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
