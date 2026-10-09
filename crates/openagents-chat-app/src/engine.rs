@@ -8,8 +8,12 @@ use openagents_connect::control::{EngineAccount, EngineReport, RouteUsage};
 use rust_native::style::{Color, Space, Style};
 use rust_native::view::{Axis, Element, Node, TextRole};
 
-const TEXT: Color = crate::visual::TEXT;
-const MUTED: Color = crate::visual::MUTED;
+fn text_color() -> Color {
+    crate::visual::current().text
+}
+fn muted_color() -> Color {
+    crate::visual::current().muted
+}
 
 /// The engines a report names beside its routes (#10091): when it has
 /// routes, each account no route names that is signed in, and Grok Build
@@ -47,7 +51,7 @@ pub fn strip<I>(report: &EngineReport) -> Node<I> {
             "engine-empty",
             "No engine is set up on this computer.",
             TextRole::Status,
-            MUTED,
+            muted_color(),
         ));
         for account in report.accounts.iter().take(4) {
             children.push(account_line(account));
@@ -77,13 +81,13 @@ fn account_line<I>(account: &EngineAccount) -> Node<I> {
                 &format!("engine-account-{provider}-name"),
                 &account.name,
                 TextRole::Body,
-                TEXT,
+                text_color(),
             ),
             line(
                 &format!("engine-account-{provider}-signin"),
                 sign_in(account.signed_in),
                 TextRole::Status,
-                MUTED,
+                muted_color(),
             ),
         ],
     )
@@ -95,25 +99,25 @@ fn route_card<I>(index: usize, route: &openagents_connect::control::EngineRoute)
             &format!("engine-route-{index}-name"),
             &route.name,
             TextRole::Body,
-            TEXT,
+            text_color(),
         ),
         line(
             &format!("engine-route-{index}-model"),
             &route.model,
             TextRole::Status,
-            MUTED,
+            muted_color(),
         ),
         line(
             &format!("engine-route-{index}-signin"),
             sign_in(route.signed_in),
             TextRole::Status,
-            MUTED,
+            muted_color(),
         ),
         line(
             &format!("engine-route-{index}-usage"),
             &usage_sentence(&route.usage),
             TextRole::Status,
-            MUTED,
+            muted_color(),
         ),
     ];
     let mut row = Vec::new();

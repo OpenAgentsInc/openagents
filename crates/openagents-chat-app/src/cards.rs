@@ -270,7 +270,10 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
     Node {
         key: prefix.clone(),
         style: Style {
-            background: Some(Color::rgb(26, 29, 34)),
+            background: Some(crate::visual::pick(
+                Color::rgb(26, 29, 34),
+                crate::visual::current().selected,
+            )),
             padding_top: Some(Space::Md),
             padding_bottom: Some(Space::Md),
             padding_start: Some(Space::Md),
@@ -408,7 +411,10 @@ pub fn sheet<I>(view: &SheetView, mut intent: impl FnMut(&str) -> I) -> Node<I> 
     Node {
         key: prefix,
         style: Style {
-            background: Some(Color::rgb(26, 29, 34)),
+            background: Some(crate::visual::pick(
+                Color::rgb(26, 29, 34),
+                crate::visual::current().selected,
+            )),
             padding_top: Some(Space::Md),
             padding_bottom: Some(Space::Md),
             padding_start: Some(Space::Md),

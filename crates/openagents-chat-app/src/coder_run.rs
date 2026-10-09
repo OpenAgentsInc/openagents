@@ -1730,7 +1730,7 @@ fn tool_row(tool: Tool) -> Node<()> {
                 vec![Node {
                     key: format!("{key}-body"),
                     style: Style {
-                        foreground: Some(GRAY),
+                        foreground: Some(gray()),
                         ..Style::default()
                     },
                     element: Element::Text {
@@ -1743,8 +1743,12 @@ fn tool_row(tool: Tool) -> Node<()> {
     }
 }
 
-const GRAY: Color = Color::rgb(153, 153, 153);
-const CARD: Color = Color::rgb(26, 29, 34);
+fn gray() -> Color {
+    crate::visual::pick(Color::rgb(153, 153, 153), crate::visual::current().muted)
+}
+fn card_fill() -> Color {
+    crate::visual::pick(Color::rgb(26, 29, 34), crate::visual::current().selected)
+}
 
 fn message(key: &str, role: MessageRole, text: &str) -> Node<()> {
     Node {
@@ -1838,7 +1842,7 @@ fn card(key: &str, title: &str, lines: &[(String, bool)]) -> Node<()> {
     Node {
         key: key.into(),
         style: Style {
-            background: Some(CARD),
+            background: Some(card_fill()),
             padding_top: Some(Space::Md),
             padding_bottom: Some(Space::Md),
             padding_start: Some(Space::Md),

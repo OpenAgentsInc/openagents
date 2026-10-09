@@ -49,12 +49,58 @@ struct HeightCache {
     widths: Vec<(u32, usize)>,
 }
 
+/// A field's own colors where the app sets none ([`Field::set_colors`]),
+/// and the ones it never sets: the frame, the selection, and the IME's
+/// underline. One set per [`crate::theme::Appearance`].
+struct Fallback {
+    fill: Color,
+    stroke: Color,
+    focus_stroke: Color,
+    selection: Color,
+    text: Color,
+    placeholder: Color,
+    caret: Color,
+    marked: Color,
+}
+
+impl Fallback {
+    const DARK: Fallback = Fallback {
+        fill: Color::rgb(25, 29, 35),
+        stroke: Color::rgb(57, 63, 73),
+        focus_stroke: Color::rgb(116, 143, 174),
+        selection: Color::rgb(53, 78, 105),
+        text: Color::rgb(230, 232, 235),
+        placeholder: Color::rgb(137, 144, 155),
+        caret: Color::rgb(222, 231, 243),
+        marked: Color::rgb(169, 199, 234),
+    };
+    /// On a light field: Coder Light's surfaces, ink, and accent.
+    const LIGHT: Fallback = Fallback {
+        fill: Color::rgb(255, 255, 255),
+        stroke: Color::rgb(209, 209, 209),
+        focus_stroke: Color::rgb(1, 105, 204),
+        selection: Color::rgb(204, 226, 255),
+        text: Color::rgb(13, 13, 13),
+        placeholder: Color::rgb(143, 143, 143),
+        caret: Color::rgb(13, 13, 13),
+        marked: Color::rgb(1, 105, 204),
+    };
+
+    const fn of(appearance: crate::theme::Appearance) -> &'static Fallback {
+        match appearance {
+            crate::theme::Appearance::Dark => &Fallback::DARK,
+            crate::theme::Appearance::Light => &Fallback::LIGHT,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Field {
     pub draft: ComposerDraft,
     pub focused: bool,
     placeholder: String,
     unframed: bool,
+    appearance: crate::theme::Appearance,
     font_family: rust_native::layout::display::FontFamily,
     metrics: Metrics,
     colors: Option<[Color; 3]>,
@@ -100,6 +146,12 @@ impl Field {
     }
     pub fn set_colors(&mut self, text: Color, placeholder: Color, caret: Color) {
         self.colors = Some([text, placeholder, caret]);
+    }
+    /// Paints the field's own colors (its frame, selection, and IME
+    /// underline, and its ink where [`Field::set_colors`] gave none) for
+    /// `appearance`. A field is dark until told otherwise.
+    pub fn set_appearance(&mut self, appearance: crate::theme::Appearance) {
+        self.appearance = appearance;
     }
     pub fn set_font_family(&mut self, family: rust_native::layout::display::FontFamily) {
         if self.font_family != family {
@@ -482,16 +534,17 @@ impl Field {
 
     pub fn paint(&mut self, frame: &mut Frame, rect: PxRect, scale: f32, fonts: &mut Fonts) {
         let clip = frame.clip_to(rect);
+        let fallback = Fallback::of(self.appearance);
         if !self.unframed {
-            frame.fill(rect, 10.0 * scale, Color::rgb(25, 29, 35));
+            frame.fill(rect, 10.0 * scale, fallback.fill);
             frame.stroke(
                 rect,
                 10.0 * scale,
                 scale,
                 if self.focused {
-                    Color::rgb(116, 143, 174)
+                    fallback.focus_stroke
                 } else {
-                    Color::rgb(57, 63, 73)
+                    fallback.stroke
                 },
             );
         }
@@ -546,7 +599,7 @@ impl Field {
                         h: height * scale,
                     },
                     0.0,
-                    Color::rgb(53, 78, 105),
+                    fallback.selection,
                 );
             }
         }
@@ -562,8 +615,7 @@ impl Field {
                 rect.w / scale - self.metrics.padding[1] - self.metrics.padding[3],
                 TextAlign::Start,
                 scale,
-                self.colors
-                    .map_or(Color::rgb(137, 144, 155), |colors| colors[1]),
+                self.colors.map_or(fallback.placeholder, |colors| colors[1]),
             );
         } else {
             fonts.draw(
@@ -574,8 +626,7 @@ impl Field {
                 rect.w / scale - self.metrics.padding[1] - self.metrics.padding[3],
                 TextAlign::Start,
                 scale,
-                self.colors
-                    .map_or(Color::rgb(230, 232, 235), |colors| colors[0]),
+                self.colors.map_or(fallback.text, |colors| colors[0]),
             );
         }
         let line = paragraph.lines.get(caret_line);
@@ -595,8 +646,7 @@ impl Field {
                     h: height * scale,
                 },
                 0.0,
-                self.colors
-                    .map_or(Color::rgb(222, 231, 243), |colors| colors[2]),
+                self.colors.map_or(fallback.caret, |colors| colors[2]),
             );
         }
         if let Some(marked) = self.draft.editor().and_then(|e| e.marked_range()) {
@@ -613,7 +663,7 @@ impl Field {
                         (rect.x + (self.metrics.padding[3] + left) * scale, y),
                         (rect.x + (14.0 + left + width) * scale, y),
                         scale,
-                        Color::rgb(169, 199, 234),
+                        fallback.marked,
                     );
                 }
             }

@@ -3,6 +3,7 @@
 //! Reference: zeronsh/zeron 50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4 (MIT).
 use rust_native::layout::{InlineCodeMetrics, MarkdownMetrics, Metrics, display::ColorRole};
 use rust_native::style::Color;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const CANVAS: Color = Color::rgb(6, 6, 6);
@@ -300,16 +301,34 @@ impl Visual {
 /// never sets it (the phones, today) keeps the dark look.
 static LIGHT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+std::thread_local! {
+    /// A scheme kept to this thread by [`scoped`]; while it is set,
+    /// [`set_scheme`] and [`scheme`] use it, not the process's.
+    static SCOPED: Cell<Option<Scheme>> = const { Cell::new(None) };
+}
+
 /// Sets the scheme every view reading [`current`] paints with. The app
 /// resolves it from the person's [`ThemeChoice`] and the system appearance,
-/// then rebuilds its views.
+/// then rebuilds its views. Inside [`scoped`] it sets only this thread's.
 pub fn set_scheme(scheme: Scheme) {
-    LIGHT_ACTIVE.store(scheme == Scheme::Light, Ordering::Relaxed);
+    let inside = SCOPED.with(|scoped| {
+        let inside = scoped.get().is_some();
+        if inside {
+            scoped.set(Some(scheme));
+        }
+        inside
+    });
+    if !inside {
+        LIGHT_ACTIVE.store(scheme == Scheme::Light, Ordering::Relaxed);
+    }
 }
 
 /// The scheme set by [`set_scheme`].
 #[must_use]
 pub fn scheme() -> Scheme {
+    if let Some(scheme) = SCOPED.with(Cell::get) {
+        return scheme;
+    }
     if LIGHT_ACTIVE.load(Ordering::Relaxed) {
         Scheme::Light
     } else {
@@ -317,10 +336,38 @@ pub fn scheme() -> Scheme {
     }
 }
 
+/// Runs `f` with the scheme kept to this thread: it starts at the
+/// process's scheme, [`set_scheme`] inside changes only this thread's, and
+/// it is dropped when `f` returns or panics. Tests switch schemes in here
+/// so they never change the scheme other tests paint with.
+pub fn scoped<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Scheme>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0;
+            SCOPED.with(|scoped| scoped.set(previous));
+        }
+    }
+    let start = scheme();
+    let _restore = Restore(SCOPED.with(|scoped| scoped.replace(Some(start))));
+    f()
+}
+
 /// The look for the scheme the app paints with.
 #[must_use]
 pub fn current() -> &'static Visual {
     Visual::of(scheme())
+}
+
+/// `dark` in the dark look and `light` in Coder Light, for a surface's own
+/// color that has no role in [`Visual`]; the dark value stays exactly what
+/// the surface painted before it followed the theme.
+#[must_use]
+pub fn pick(dark: Color, light: Color) -> Color {
+    match scheme() {
+        Scheme::Dark => dark,
+        Scheme::Light => light,
+    }
 }
 
 #[cfg(test)]
@@ -372,6 +419,24 @@ mod tests {
         };
         assert!(luma(Visual::LIGHT.canvas) > 200 && luma(Visual::LIGHT.text) < 32);
         assert!(luma(Visual::DARK.canvas) < 32 && luma(Visual::DARK.text) > 200);
+    }
+
+    /// A scoped scheme changes only this thread's look, and the process's
+    /// returns when the scope ends.
+    #[test]
+    fn a_scoped_scheme_stays_on_its_thread_and_ends_with_the_scope() {
+        let outside = scheme();
+        scoped(|| {
+            set_scheme(Scheme::Light);
+            assert_eq!(current(), &Visual::LIGHT);
+            assert_eq!(map::current(), &map::Kinds::LIGHT);
+            let other = std::thread::spawn(scheme).join().unwrap();
+            assert_eq!(other, outside, "another thread keeps the process's");
+            set_scheme(Scheme::Dark);
+            assert_eq!(current(), &Visual::DARK);
+            set_scheme(Scheme::Light);
+        });
+        assert_eq!(scheme(), outside);
     }
 
     #[test]
@@ -596,4 +661,72 @@ pub mod map {
         blue: 255,
         alpha: 38,
     };
+
+    /// The map's colors in one scheme: the dark values above, or their
+    /// Coder Light counterparts, darker and more saturated so each reads
+    /// on the light canvas.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct Kinds {
+        pub front: Color,
+        pub family: Color,
+        pub route: Color,
+        pub answer: Color,
+        pub knowledge: Color,
+        pub model: Color,
+        pub coder: Color,
+        pub engine: Color,
+        pub plugin: Color,
+        pub screen: Color,
+        pub gap: Color,
+        pub weak: Color,
+        pub edge: Color,
+    }
+
+    impl Kinds {
+        pub const DARK: Kinds = Kinds {
+            front: FRONT,
+            family: FAMILY,
+            route: ROUTE,
+            answer: ANSWER,
+            knowledge: KNOWLEDGE,
+            model: MODEL,
+            coder: CODER,
+            engine: ENGINE,
+            plugin: PLUGIN,
+            screen: SCREEN,
+            gap: GAP,
+            weak: WEAK,
+            edge: EDGE,
+        };
+
+        pub const LIGHT: Kinds = Kinds {
+            front: super::Visual::LIGHT.text,
+            family: Color::rgb(110, 110, 120),
+            route: super::Visual::LIGHT.accent,
+            answer: Color::rgb(0, 128, 116),
+            knowledge: Color::rgb(58, 128, 30),
+            model: Color::rgb(90, 104, 128),
+            coder: Color::rgb(120, 70, 200),
+            engine: Color::rgb(192, 50, 120),
+            plugin: Color::rgb(196, 100, 0),
+            screen: Color::rgb(150, 120, 0),
+            gap: Color::rgb(210, 40, 40),
+            weak: Color::rgb(220, 60, 60),
+            edge: Color {
+                red: 13,
+                green: 13,
+                blue: 13,
+                alpha: 51,
+            },
+        };
+    }
+
+    /// The map's colors in the scheme the app paints with.
+    #[must_use]
+    pub fn current() -> &'static Kinds {
+        match super::scheme() {
+            super::Scheme::Light => &Kinds::LIGHT,
+            super::Scheme::Dark => &Kinds::DARK,
+        }
+    }
 }

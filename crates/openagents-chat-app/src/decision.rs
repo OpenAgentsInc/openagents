@@ -48,7 +48,10 @@ pub const ALWAYS: &str = "Always allow";
 /// What a page the person passed over answers.
 const NO_ANSWER: &str = "No answer.";
 /// The panel's card color, the transcript's card.
-const CARD: Color = Color::rgb(26, 29, 34);
+/// A card's fill on the dark look, or Coder Light's surface.
+fn card_fill() -> Color {
+    crate::visual::pick(Color::rgb(26, 29, 34), crate::visual::current().selected)
+}
 
 /// What the waiting task asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,13 +81,15 @@ impl Risk {
         }
     }
 
-    /// The chip's color.
+    /// The chip's color, in the scheme the app paints with
+    /// ([`crate::visual::pick`]): deep on the dark look, and lighter in
+    /// Coder Light so the chip's dark label reads.
     #[must_use]
-    pub const fn color(self) -> Color {
+    pub fn color(self) -> Color {
         match self {
-            Self::Low => Color::rgb(46, 92, 64),
-            Self::Medium => Color::rgb(122, 92, 28),
-            Self::High => Color::rgb(128, 40, 40),
+            Self::Low => crate::visual::pick(Color::rgb(46, 92, 64), Color::rgb(120, 190, 150)),
+            Self::Medium => crate::visual::pick(Color::rgb(122, 92, 28), Color::rgb(230, 180, 100)),
+            Self::High => crate::visual::pick(Color::rgb(128, 40, 40), Color::rgb(230, 130, 130)),
         }
     }
 }
@@ -546,7 +551,7 @@ impl Flow {
             node: Node {
                 key,
                 style: Style {
-                    background: Some(CARD),
+                    background: Some(card_fill()),
                     padding_top: Some(Space::Md),
                     padding_bottom: Some(Space::Md),
                     padding_start: Some(Space::Md),

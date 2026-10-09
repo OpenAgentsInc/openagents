@@ -226,7 +226,7 @@ impl Panel {
         let node = Node {
             key: key.into(),
             style: Style {
-                background: Some(PANEL),
+                background: Some(panel_fill()),
                 padding_top: Some(Space::Sm),
                 padding_bottom: Some(Space::Sm),
                 padding_start: Some(Space::Md),
@@ -271,8 +271,12 @@ pub fn mark(status: Status) -> &'static str {
 }
 
 const HEADLINE_CHARS: usize = 80;
-const PANEL: Color = Color::rgb(26, 29, 34);
-const QUIET: Color = Color::rgb(153, 153, 153);
+fn panel_fill() -> Color {
+    crate::visual::pick(Color::rgb(26, 29, 34), crate::visual::current().selected)
+}
+fn quiet_ink() -> Color {
+    crate::visual::pick(Color::rgb(153, 153, 153), crate::visual::current().muted)
+}
 
 fn item_row(key: &str, index: usize, item: &Item) -> Node<()> {
     let style = match item.status {
@@ -281,7 +285,7 @@ fn item_row(key: &str, index: usize, item: &Item) -> Node<()> {
             ..Style::default()
         },
         Status::Completed => Style {
-            foreground: Some(QUIET),
+            foreground: Some(quiet_ink()),
             ..Style::default()
         },
         Status::Pending => Style::default(),
