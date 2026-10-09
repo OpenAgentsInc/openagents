@@ -13,12 +13,14 @@ should be seeded from that ledger.
 
 ## The vision in one paragraph
 
-OpenAgents is one open agent that you can reach from anywhere: the website,
-your terminal, your phone, your desktop, and a shared world. You sign in once,
-and your chats, computers, and projects follow you. It does real work,
-starting with code. It shows every step it takes, uses whichever model gets
-the job done for the least money, and hands work to other agents when they
-are better at it. When it can't do something, it builds that ability with you,
+OpenAgents is an open network of agents that you work with through one
+conversation, from anywhere: the website, your terminal, your phone, your
+desktop, and a shared world. You sign in once, and your chats, computers, and
+projects follow you. Behind that one conversation, the network does real work,
+starting with code: it shows every step, uses whichever model gets the job
+done for the least money, and hands each part to the agent, model, or
+computer that does it best. When the network can't do something yet, it
+builds that ability with you,
 tests it, and shares it with every user, and the person who built the ability
 gets paid in Bitcoin each time it's used. Everything is open source and runs
 on open protocols, so anyone can check our claims, run their own copy, or
@@ -48,7 +50,7 @@ all of them, even where a feature isn't built yet.
 
 | # | Principle | First and latest episodes |
 | --- | --- | --- |
-| 1 | **One agent, many doors.** One account and one agent on every surface, improved by add-ons, not a store of separate bots. | 086 → 289 |
+| 1 | **One conversation, a network behind it.** One account and one conversation on every surface; behind it, a network of agents, models, and computers that grows as people add abilities, not a store of separate bots. | 086 → 289 |
 | 2 | **You see everything.** Every step, every model used, every cost. No hidden routing. | 033 → 277 |
 | 3 | **No claim without proof.** A public list of what works, with evidence, and a place to report what doesn't. | 120, 234 → 288 |
 | 4 | **Contributors get paid.** Plugin authors, compute providers, data owners, and referrers earn Bitcoin when their work is used. | 037 → 289 |
@@ -69,7 +71,7 @@ everything you have running on your other devices.
 
 | Area | Full intended feature set | Ledger |
 | --- | --- | --- |
-| Chat | Chat with the one agent; pick or switch models; streaming; pin, rename, archive, search, delete | B1–B7 |
+| Chat | Chat with OpenAgents and the network behind it; pick or switch models; streaming; pin, rename, archive, search, delete | B1–B7 |
 | Account | GitHub sign-in; guest chats carry over; signed-in computers; privacy and deletion | A1, A3, A4, B6, E6 |
 | Projects | Group chats by GitHub repo; issue in, pull request out | B7, C6 |
 | Your other devices | Terminal chats with live status; reply from the browser; run Coder on a connected computer | D1, C14 |
@@ -139,7 +141,7 @@ agents doing real work, and where progress and play run on verified work.
 | --- | --- | --- |
 | One account | GitHub sign-in on the web; device-code sign-in for terminal and desktop | Launching (A1, A2) |
 | One chat history | Each device chooses to sync; deletes go both ways; the phone joins next | Launching on web + terminal (D1–D3); phone Partial (D4) |
-| One agent | The same agent and abilities everywhere, through the OpenAgents API | Partial (B1, E1) |
+| One conversation | The same conversation and the same network of abilities everywhere, through the OpenAgents API | Partial (B1, E1) |
 | Your computers | Any surface can run Coder on any computer you've connected | Partial (C14, A4) |
 | One wallet and one level | The same balance, XP, and unlocks on every surface | Missing (D7, I1) |
 | The Verse | A view of the same account, agents, and work, not a separate account | Partial (M1–M3) |

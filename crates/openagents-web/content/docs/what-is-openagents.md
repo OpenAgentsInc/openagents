@@ -1,9 +1,9 @@
 # What is OpenAgents
 
-OpenAgents is one agent you can chat with from anywhere: this website, your
-Mac, your iPhone, or a terminal. Ask it a question, plan some work with it,
-or ask it to change code, and it sends each message to whatever serves it
-best.
+OpenAgents is an open network of agents you work with through one
+conversation, from anywhere: this website, your phone, or a terminal. Ask a
+question, plan some work, or ask for a code change, and each message goes to
+whichever agent, model, or computer in the network serves it best.
 
 ## What you can do with it
 

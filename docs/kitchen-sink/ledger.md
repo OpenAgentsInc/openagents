@@ -43,7 +43,7 @@ test passes on production.
 
 | ID | Promise | Surfaces | Status | Evidence or reason | Episodes | Issues |
 | --- | --- | --- | --- | --- | --- | --- |
-| B1 | You talk to one agent that brings in the right specialist for what you ask, so you don't pick between bots. | all | Partial | Web chat is live; routing to abilities through Jev is partly built | 086, 087, 100, 211, 269, 289 | #11106 |
+| B1 | You talk in one conversation, and the network brings in the right agent, model, or specialist for what you ask, so you don't pick between bots. | all | Partial | Web chat is live; routing to abilities through Jev is partly built | 086, 087, 100, 211, 269, 289 | #11106 |
 | B2 | You can pick from many top models and switch partway through a chat. | W T D | Partial | Composer pickers (#11097 done); model list depends on the gateway | 067, 084, 089, 118, 150, 256 | #11097 |
 | B3 | If one model provider fails or refuses, the agent keeps working on another. | all | Partial | Gateway `openagents/auto` router; fallback isn't shown to users | 118, 265 | #11079 |
 | B4 | Answers stream in, and a slow start shows that it's still working instead of failing. | W T | Launching | #11112, #11087 done | 080, 081 | #11087, #11112 |
@@ -217,7 +217,7 @@ by a new issue with demand behind it.
 | ID | Promise | Episodes | Why it was dropped |
 | --- | --- | --- | --- |
 | X1 | A drag-and-drop visual builder for agent workflows | 038, 058, 059, 061, 073 | Set aside for chat (076); the agent now writes and tests the ability itself (F1). |
-| X2 | A store of many separate agents to browse and rate | 090, 092, 094, 100 | Replaced by one agent improved by plugins (086, 289). |
+| X2 | A store of many separate agents to browse and rate | 090, 092, 094, 100 | Replaced by one conversation backed by a network of agents and plugins (086, 289). |
 | X3 | An open replacement for WordPress, and sites built by asking | 126, 127, 129, 180, 229 | OpenPress and Sites were retired. A site is a coding task for Coder. |
 | X4 | A built-in CRM and an all-in-one business suite | 135, 237, 239, 247 | Outside the current product focus; Coder and the general agent come first. |
 | X5 | Code hosting to replace GitHub | 270, 272, 273, 274 | "Too big an apple" (281). Back to GitHub. |
