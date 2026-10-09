@@ -18,6 +18,10 @@ Sign-in checks stop at github.com.
 
 `--invite-only` also checks that `/login` says sign-in is invite-only.
 
+The `environments` group (#11162) signs in as the fixed agent-work test
+account (its key in SMOKE_AGENT_KEY) and opens Environments; with
+`--environment-run OWNER/REPO` it also sets one up end to end.
+
 The `alias` group (#11155) checks that `/api/v1` forwards only the public
 API: the inference admin status, operator sign-up, the website-only GitHub
 token and device approval answer 404, and `/api/v1/models` answers.
@@ -38,6 +42,8 @@ import urllib.request
 import uuid
 
 DEFAULT_BASE = "https://staging.openagents.com"
+# Page requests that should get the full page (the account's left panel).
+HTML = {"Accept": "text/html"}
 TIMEOUT = 30
 
 
@@ -422,7 +428,67 @@ def durable(base, token, service, region, project):
 # Checks
 
 
-def run(base, only, install, production=False, restart=None, invite_only=False):
+def environments(base, key, repo):
+    """Environments as the allowed test account: the link, the pages, a
+    repository's branch step, and (with `repo`) a setup end to end."""
+    if not key:
+        record("environments: the agent-work test account signs in", None, "SMOKE_AGENT_KEY unset")
+        return
+    work = Site(base)
+    signed = work.request("/api/v1/sessions", method="POST", headers={"Authorization": f"Bearer {key}"})
+    try:
+        session = signed.json()["token"]
+    except (ValueError, KeyError, TypeError):
+        session = None
+    record("environments: the agent-work test account signs in", bool(session), f"{signed.status}")
+    if not session:
+        return
+    work.cookies["oa_cloud_session"] = session
+    home = work.get("/", headers=HTML)
+    record("environments: the left panel links Environments",
+           bool(re.search(r'href="/environments"', home.text)), f"{home.status}")
+    index = work.get("/environments", headers=HTML)
+    record("environments: /environments", index.status == 200 and "New environment" in index.text,
+           f"{index.status} {plain(index.text)[:60] if index.status != 200 else ''}")
+    new = work.get("/environments/new", headers=HTML)
+    record("environments: /environments/new", new.status == 200 and "paste a GitHub address" in new.text,
+           f"{new.status}")
+    repos = work.get("/environments/repositories?page=1", headers={"HX-Request": "true"})
+    record("environments: the repository list answers", repos.status == 200, f"{repos.status}")
+    pick = repo or "OpenAgentsInc/openagents"
+    branch = work.get("/environments/new?repo=" + urllib.parse.quote(pick, safe=""), headers=HTML)
+    record(f"environments: {pick} reaches the branch step",
+           branch.status == 200 and "Set up environment" in branch.text, f"{branch.status}")
+    other = work.request("/environments", method="POST", form={"repo": pick},
+                         headers={"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"})
+    record("environments: a post from another site is refused", other.status == 403, f"{other.status}")
+    if not repo:
+        record("environments: a setup end to end", None, "--environment-run REPO not given")
+        return
+    made = work.request("/environments", method="POST", form={"repo": repo})
+    where = made.location()
+    match = re.match(r"^/environments/(env-[0-9a-f]+)$", where or "")
+    record("environments: a setup starts", made.status in (302, 303) and bool(match),
+           f"{made.status} {where}")
+    if not match:
+        return
+    env_id = match.group(1)
+    deadline = time.time() + 45 * 60
+    state = ""
+    while time.time() < deadline:
+        page = work.get(f"/environments/{env_id}", headers=HTML)
+        if f'action="/environments/{env_id}/save"' in page.text:
+            state = "ready"
+            break
+        if f'action="/environments/{env_id}/retry"' in page.text:
+            state = "failed"
+            break
+        time.sleep(20)
+    record(f"environments: {repo} is ready to save", state == "ready", state or "timed out")
+
+
+def run(base, only, install, production=False, restart=None, invite_only=False,
+        environment_run=None):
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
@@ -610,15 +676,20 @@ def run(base, only, install, production=False, restart=None, invite_only=False):
         record("device: signed out goes to log in", dev.status == 303 and "/login" in dev.location())
         proj = site.get("/projects")
         record("projects: signed out goes to log in", proj.status == 303 and "/login" in proj.location())
-        # Environments run on the local address only: a public page never
-        # links them, and the path answers plainly instead of erroring.
+        # Environments are for signed-in site admins on a public host
+        # (#11162): a signed-out page never links them, and a signed-out
+        # visitor is sent to log in (production, without them yet, answers
+        # its not-found page).
         links = [p for p in ("/", "/docs", "/download", "/login")
-                 if re.search(r'href="/environments[/"]', site.get(p).text)]
+                 if re.search(r'href="/environments[/"]', site.get(p, headers=HTML).text)]
         record("environments: no link on the public pages", not links, ", ".join(links))
-        env = site.get("/environments")
-        record("environments: answers plainly on a public host",
-               env.status in (302, 303, 403, 404) and len(env.body) < 2000,
-               f"{env.status} {env.location() or plain(env.text)[:40]}")
+        env = site.get("/environments", headers=HTML)
+        if production:
+            ok = env.status in (303, 404) and len(env.body) < 20000
+        else:
+            ok = env.status == 303 and env.location().startswith("/login?return_to=%2Fenvironments")
+        record("environments: signed out goes to log in",
+               ok, f"{env.status} {env.location() or plain(env.text)[:40]}")
 
     # Accounts: open sign-up is refused; GitHub sign-in is the way in. The
     # signed-in checks use one test account made with the staging operator
@@ -666,8 +737,14 @@ def run(base, only, install, production=False, restart=None, invite_only=False):
                    "needs a GitHub-connected account" if "Connect GitHub" in proj.text else "")
             device = account.get("/device")
             record("signed in: /device code page", device.status == 200 and "code" in device.text.lower())
+            # A signed-in person who isn't allowed agent work sees no
+            # Environments link, and nothing at the address (#11162).
+            home = account.get("/", headers=HTML)
             env_link = bool(re.search(r'href="/environments[/"]', home.text))
-            record("signed in: no Environments link on the public host", not env_link)
+            record("signed in: no Environments link without agent work", not env_link)
+            env = account.get("/environments", headers=HTML)
+            record("signed in: /environments is not found without agent work",
+                   env.status == 404, f"{env.status}")
         if want("gateway"):
             gw = Site(base)
             models = gw.get("/api/v1/models")
@@ -693,6 +770,12 @@ def run(base, only, install, production=False, restart=None, invite_only=False):
                 record("gateway: one /v1/responses call on the free model", None, "no test account")
         if want("traces"):
             traces(base, session)
+
+    # Agent work (#11162): the fixed staging test account that may use it
+    # (OPENAGENTS_WEB_AGENT_ACCOUNTS) signs in with its key and opens
+    # Environments; --environment-run REPO also sets one up end to end.
+    if not production and want("environments"):
+        environments(base, os.environ.get("SMOKE_AGENT_KEY", ""), environment_run)
 
     # The terminal: the hosted installer, into a scratch HOME.
     if want("terminal"):
@@ -736,6 +819,9 @@ def main():
                         help="also check that an account, its session, an API key, a saved provider "
                         "key and a saved own-Claude key survive a forced new revision of "
                         "--service (it replaces the running instance)")
+    parser.add_argument("--environment-run", default=None, metavar="OWNER/REPO",
+                        help="also set up an environment for this public repository end to end "
+                        "as the agent-work test account (real Boat machines; up to 45 minutes)")
     parser.add_argument("--service", default="openagents-web-1-staging")
     parser.add_argument("--region", default="us-central1")
     parser.add_argument("--project", default="openagentsgemini")
@@ -746,7 +832,7 @@ def main():
     try:
         restart = (args.service, args.region, args.project) if args.restart else None
         run(args.base.rstrip("/"), only, not args.no_install, args.production, restart,
-            args.invite_only)
+            args.invite_only, args.environment_run)
     except Exception as e:  # a crash is a failure, never a silent pass
         record("suite: ran to the end", False, repr(e)[:200])
     passed = sum(1 for r in RESULTS if r[0] == "PASS")

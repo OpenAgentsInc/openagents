@@ -85,6 +85,23 @@ pub struct Config {
     /// Claude Code runs on saved environments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_key: Option<String>,
+    /// The setup agent's model through an Open Responses endpoint with an
+    /// API key (such as the OpenAgents gateway on the same host) instead
+    /// of a Codex login. A server with no person to keep a Codex login
+    /// fresh (Cloud Run) uses this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_api: Option<ModelApi>,
+}
+
+/// An Open Responses endpoint for the setup agent ([`Config::model_api`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelApi {
+    /// The full responses address, such as
+    /// `http://127.0.0.1:8791/v1/responses`.
+    pub url: String,
+    /// A private file holding the API key; read when the studio opens.
+    pub key_file: PathBuf,
 }
 
 impl Config {
@@ -116,6 +133,12 @@ impl Config {
             .is_some_and(|d| d == 0 || d > coder_environment_setup::MAX_DEADLINE_SECONDS)
         {
             return Err("deadline_seconds must be 1 to 86400.".into());
+        }
+        if let Some(api) = &self.model_api
+            && (!(api.url.starts_with("https://") || api.url.starts_with("http://"))
+                || !api.key_file.is_absolute())
+        {
+            return Err("model_api needs an http(s) url and an absolute key_file.".into());
         }
         Ok(())
     }
@@ -154,6 +177,9 @@ pub struct Summary {
     /// The newest saved version number.
     pub saved: Option<u64>,
     pub updated_ms: u64,
+    /// The account the environment was made for; `None` for one made on a
+    /// server without sign-in.
+    pub account: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,6 +234,10 @@ struct Meta {
     repository: String,
     branch: String,
     created_ms: u64,
+    /// The signed-in account it was made for (absent on records made
+    /// before environments had owners, and on servers without sign-in).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    account: Option<String>,
 }
 
 enum Work {
@@ -251,6 +281,36 @@ impl Studio {
             machines.template = crate::boat::runtime_template().await?;
         }
         let providers = crate::boat::providers(&machines).await?;
+        let template = machines
+            .template
+            .clone()
+            .unwrap_or_else(|| "boat-default".into());
+        if let Some(api) = config.model_api.clone() {
+            let key = fs::read_to_string(&api.key_file)
+                .map_err(|_| "The model API key file is unreadable.".to_owned())?;
+            let key = key.trim().to_owned();
+            codex_transport::codex::CodexTransport::with_key(&api.url, key.clone(), "check")
+                .map_err(|e| format!("The model API can't be used: {e}"))?;
+            let transports: Transports<codex_transport::codex::CodexTransport> =
+                Arc::new(move |env: &str| {
+                    codex_transport::codex::CodexTransport::with_key(
+                        &api.url,
+                        key.clone(),
+                        &format!("environment-{env}"),
+                    )
+                    .map_err(|e| format!("The model API can't be used: {e}"))
+                });
+            let mut config = config;
+            config.machines = machines;
+            return Self::start(
+                config,
+                &template,
+                providers,
+                crate::environment_custody(),
+                transports,
+                Duration::from_secs(1),
+            );
+        }
         let login = config
             .codex_home
             .clone()
@@ -267,10 +327,6 @@ impl Studio {
                 )
                 .map_err(|e| format!("The Codex login can't be used: {e}"))
             });
-        let template = machines
-            .template
-            .clone()
-            .unwrap_or_else(|| "boat-default".into());
         let mut config = config;
         config.machines = machines;
         Self::start(
@@ -444,6 +500,7 @@ impl Studio {
             status,
             saved,
             updated_ms,
+            account: meta.account,
         })
     }
 
@@ -515,11 +572,26 @@ impl Studio {
 
     /// Add an environment for a resolved repository and start its setup.
     pub fn create(&self, resolved: &github::Resolved) -> Result<String, String> {
-        self.add(resolved)
+        self.create_for(resolved, None)
+    }
+
+    /// [`Studio::create`] for the signed-in `account`, which then owns it
+    /// ([`Studio::account`]).
+    pub fn create_for(
+        &self,
+        resolved: &github::Resolved,
+        account: Option<&str>,
+    ) -> Result<String, String> {
+        self.add(resolved, account)
             .map_err(|e| plain(&e, "The environment couldn't be added. Try again."))
     }
 
-    fn add(&self, resolved: &github::Resolved) -> Result<String, String> {
+    /// The account an environment was made for, when it has one.
+    pub fn account(&self, id: &str) -> Option<String> {
+        self.meta(id)?.account
+    }
+
+    fn add(&self, resolved: &github::Resolved, account: Option<&str>) -> Result<String, String> {
         let now = now_ms();
         let full = resolved.repository.full();
         let id = format!(
@@ -549,6 +621,7 @@ impl Studio {
             repository: full.clone(),
             branch: resolved.branch.clone(),
             created_ms: now,
+            account: account.map(str::to_owned),
         };
         fs::write(
             dir.join("meta.json"),

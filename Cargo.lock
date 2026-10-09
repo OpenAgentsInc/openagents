@@ -10625,6 +10625,7 @@ dependencies = [
  "coder-scheduler",
  "coder-ui",
  "coder-working-computer",
+ "codex-transport",
  "compute-workbench",
  "discovery",
  "futures-util",

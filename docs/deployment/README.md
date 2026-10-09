@@ -37,6 +37,7 @@ Cloud Run runbook).
 | Central receiver: the one Lightning node (`crates/wallet`, MoneyDevKit LSPS4) that receives every paid call | [Pay host](pay-host.md) |
 | Daily `oa-coder-host` GCE image: repository, toolchains, engine CLIs (not logged in) and a warm Cargo target, for cloud Coder hosts | [Coder host image](coder-host-image.md) |
 | Hosted eval runner, which runs extension test sets for chat on our computers | [Hosted eval runner](eval-runner.md) |
+| Agent work on the website (Environments, Claude Code runs): who may use it, what it needs on Cloud Run and Boat, its smoke | [Agent work](agent-work.md) |
 | Durable account storage for the web stack: the NFS server that keeps accounts, sessions and keys across revisions, its backups and restore | [Account storage](account-storage.md) |
 | Free-only labor reference host | [Labor runtime](../coder/runtime/free-labor.md) |
 | Local model doors | [Kev](../kev/README.md), [Lev](../lev/README.md), and [Laya](../laya/README.md) |

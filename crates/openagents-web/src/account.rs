@@ -140,6 +140,7 @@ pub enum Account {
 
 tokio::task_local! {
     static ACCOUNT: Account;
+    static AGENT_WORK: bool;
 }
 
 /// The account resolved for the current request, [`Account::Unknown`]
@@ -148,11 +149,21 @@ pub fn current() -> Account {
     ACCOUNT.try_with(Clone::clone).unwrap_or_default()
 }
 
+/// Whether the signed-in person may do agent work here (Environments and
+/// Claude Code runs on a public host, [`crate::agent_work`]) and this
+/// server has environments, as resolved for this page; `false` outside
+/// [`scope`] and for anything but a page.
+pub fn agent_work() -> bool {
+    AGENT_WORK.try_with(|allowed| *allowed).unwrap_or(false)
+}
+
 /// Resolves the account for a page request and runs the handler with it.
 pub(crate) async fn scope(State(app): State<App>, request: Request, next: Next) -> Response {
     crate::cloud::session::shared(async move {
-        let account = resolve(&app, request.method(), request.headers()).await;
-        ACCOUNT.scope(account, next.run(request)).await
+        let (account, agent_work) = resolve(&app, request.method(), request.headers()).await;
+        ACCOUNT
+            .scope(account, AGENT_WORK.scope(agent_work, next.run(request)))
+            .await
     })
     .await
 }
@@ -163,27 +174,30 @@ pub(crate) fn sign_in_available(app: &App) -> bool {
     app.config.cloud.is_some() && (app.config.github.is_some() || crate::cloud::ready(app))
 }
 
-async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> Account {
+async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> (Account, bool) {
     if method != Method::GET || headers.contains_key("hx-request") || !wants_html(headers) {
-        return Account::Unknown;
+        return (Account::Unknown, false);
     }
     let Some(service) = app.config.cloud.as_deref() else {
-        return Account::Unknown;
+        return (Account::Unknown, false);
     };
     if !sign_in_available(app) {
-        return Account::Unknown;
+        return (Account::Unknown, false);
     }
     if !has_session(headers) {
-        return Account::SignedOut;
+        return (Account::SignedOut, false);
     }
     match service.authenticate(headers).await {
-        Ok(viewer) => Account::SignedIn {
-            sign_out: service.logout_csrf(headers, &viewer).ok(),
-            picture: viewer.avatar_url.is_some(),
-            admin: viewer.admin,
-            name: viewer.account_label,
-        },
-        Err(_) => Account::SignedOut,
+        Ok(viewer) => (
+            Account::SignedIn {
+                sign_out: service.logout_csrf(headers, &viewer).ok(),
+                picture: viewer.avatar_url.is_some(),
+                admin: viewer.admin,
+                name: viewer.account_label.clone(),
+            },
+            app.config.environments.is_some() && crate::agent_work::permitted(app, &viewer),
+        ),
+        Err(_) => (Account::SignedOut, false),
     }
 }
 

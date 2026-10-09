@@ -33,6 +33,43 @@ pub(crate) struct World {
     fake: Fake,
     store: Arc<Store>,
     github: reqwest::Client,
+    /// The Host header requests carry.
+    host: String,
+    /// The site's origin: `http://` the local host, `https://` a public one.
+    origin: String,
+}
+
+impl World {
+    fn origin(&self) -> String {
+        self.origin.clone()
+    }
+
+    /// The account the person who signed in with GitHub `login` has.
+    pub(crate) fn account_of(&self, login: &str) -> String {
+        let store = tenancy::Accounts::open(&self._root.path().join("accounts"))
+            .unwrap()
+            .store()
+            .unwrap();
+        store
+            .identities
+            .github
+            .values()
+            .find(|identity| identity.profile.login == login)
+            .unwrap_or_else(|| panic!("no account for {login}"))
+            .account
+            .clone()
+    }
+}
+
+/// How [`world_with`] differs from [`world`].
+#[derive(Default)]
+pub(crate) struct Options {
+    /// Serve a public host (`openagents.test`) instead of the local address.
+    pub public: bool,
+    /// The account service's invite list (`oa_auth::invite`).
+    pub invite: Option<serde_json::Value>,
+    /// The environments studio.
+    pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
 }
 
 pub(crate) async fn world() -> World {
@@ -50,20 +87,33 @@ fn origin() -> String {
         .map_or_else(|| ORIGIN.to_owned(), |host| format!("http://{host}"))
 }
 
-/// GitHub's callback on [`origin`].
-fn redirect() -> String {
-    format!("{}/auth/github/callback", origin())
+async fn world_on(port: u16) -> World {
+    world_at(port, Options::default()).await
 }
 
-async fn world_on(port: u16) -> World {
-    let fake = Fake::new(
-        CLIENT,
-        SECRET,
-        &redirect(),
-        vec![fake::octo(), fake::quiet()],
-    );
+/// A world served as [`Options`] says.
+pub(crate) async fn world_with(options: Options) -> World {
+    world_at(4300, options).await
+}
+
+async fn world_at(port: u16, options: Options) -> World {
+    let host = if options.public {
+        "openagents.test".to_owned()
+    } else {
+        HOST_OVERRIDE
+            .get()
+            .cloned()
+            .unwrap_or_else(|| HOST.to_owned())
+    };
+    let origin = if options.public {
+        format!("https://{host}")
+    } else {
+        origin()
+    };
+    let redirect = format!("{origin}/auth/github/callback");
+    let fake = Fake::new(CLIENT, SECRET, &redirect, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
-    let credentials = fake::credentials(&github_origin, CLIENT, SECRET, &redirect()).unwrap();
+    let credentials = fake::credentials(&github_origin, CLIENT, SECRET, &redirect).unwrap();
     let app = credentials.app.clone();
     let root = tempfile::tempdir().unwrap();
     let stores = root.path().join("accounts");
@@ -74,6 +124,10 @@ async fn world_on(port: u16) -> World {
         3600,
     )
     .unwrap();
+    let service = match options.invite {
+        Some(invite) => service.with_invite_only(serde_json::from_value(invite).unwrap()),
+        None => service,
+    };
     let account_service = service.spawn().await.unwrap();
     let private = root.path().canonicalize().unwrap().join("private");
     std::fs::create_dir(&private).unwrap();
@@ -84,7 +138,7 @@ async fn world_on(port: u16) -> World {
     let path = private.join("cloud.json");
     std::fs::write(
         &path,
-        serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":origin(),"account_service":account_service,"csrf_secret":secret})).unwrap(),
+        serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":origin,"account_service":account_service,"csrf_secret":secret})).unwrap(),
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -96,6 +150,10 @@ async fn world_on(port: u16) -> World {
         crate::cloud::session::CloudSession::load(&path).unwrap(),
     ));
     config.github = Some(Arc::new(app));
+    if options.public {
+        config.public_hosts = vec![host.clone()];
+    }
+    config.environments = options.environments;
     World {
         _root: root,
         site: crate::router(config),
@@ -105,6 +163,8 @@ async fn world_on(port: u16) -> World {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap(),
+        host,
+        origin,
     }
 }
 
@@ -131,10 +191,7 @@ impl Browser {
         body: Body,
     ) -> Answer {
         let mut request = request
-            .header(
-                header::HOST,
-                HOST_OVERRIDE.get().map_or(HOST, String::as_str),
-            )
+            .header(header::HOST, world.host.as_str())
             .header(header::ACCEPT, "text/html");
         if !self.0.is_empty() {
             let cookies: Vec<String> = self.0.iter().map(|(k, v)| format!("{k}={v}")).collect();
@@ -182,7 +239,7 @@ impl Browser {
         self.send(
             world,
             Request::post(path)
-                .header(header::ORIGIN, origin())
+                .header(header::ORIGIN, world.origin())
                 .header("sec-fetch-site", "same-origin")
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -205,7 +262,7 @@ impl Browser {
             .to_str()
             .unwrap()
             .to_string();
-        self.get(world, back.strip_prefix(origin().as_str()).unwrap())
+        self.get(world, back.strip_prefix(world.origin().as_str()).unwrap())
             .await
     }
 

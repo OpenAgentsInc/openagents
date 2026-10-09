@@ -79,9 +79,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--environments" => {
                 let studio =
                     coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
-                config.environments =
-                    Some(coder_environment_operator::studio::Studio::open(studio).await?);
-                println!("Environments are on at /environments");
+                // A studio that can't open (Boat or the model unreachable)
+                // leaves the rest of the site up, without Environments.
+                match coder_environment_operator::studio::Studio::open(studio).await {
+                    Ok(studio) => {
+                        config.environments = Some(studio);
+                        println!("Environments are on at /environments");
+                    }
+                    Err(error) => eprintln!("Environments are off: {error}"),
+                }
             }
             "--pilot-config" => {
                 config.pilot = Some(std::sync::Arc::new(openagents_web::pilot::Intake::load(
@@ -208,6 +214,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Staging's smoke suite makes its test account through the alias.
     config.api_operator_signup =
         std::env::var("OPENAGENTS_WEB_API_OPERATOR_SIGNUP").is_ok_and(|value| value == "1");
+    // Accounts besides site admins that may do agent work (Environments,
+    // Claude Code runs) on a public host: staging's smoke test account.
+    config.agent_accounts = std::env::var("OPENAGENTS_WEB_AGENT_ACCOUNTS")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|account| !account.is_empty())
+        .map(str::to_owned)
+        .collect();
     // The inference gateway: `/api/v1/...` and the API docs' rate card.
     if let Some(url) = inference.filter(|url| !url.is_empty()) {
         config.inference = Some(std::sync::Arc::new(

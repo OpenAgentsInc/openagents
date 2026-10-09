@@ -54,6 +54,7 @@ fn summary(status: Status) -> Summary {
         status,
         saved: None,
         updated_ms: 1,
+        account: None,
     }
 }
 
@@ -176,8 +177,13 @@ async fn without_a_studio_the_pages_say_so_and_stay_local() {
             || body.contains("Environments aren't set up on this server.")
     );
     assert!(!body.contains("href=\"/environments\""));
-    let (status, _) = send(config, get("/environments", "openagents.com")).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
+    // A public host without environments: the ordinary not-found page.
+    let (status, body) = send(config, get("/environments", "openagents.com")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        body.contains("Nothing on this site has that address."),
+        "{body}"
+    );
 }
 
 #[test]
@@ -433,4 +439,179 @@ fn the_repository_list_loads_after_the_page_a_page_at_a_time() {
     for html in [&pick, &page, &none, &unconnected, &failed] {
         assert!(oa_copy::violations(&text(html), &[]).is_empty(), "{html}");
     }
+}
+
+/// A studio on fake machines whose setup agent never answers: enough for
+/// the pages, which only read its records.
+fn fake_studio(
+    state: &std::path::Path,
+) -> std::sync::Arc<coder_environment_operator::studio::Studio> {
+    use coder_environment_operator::studio::{Config, SCHEMA, Studio, Transports};
+    use coder_working_computer::provider::fake::FakeProvider;
+    use std::collections::{BTreeMap, BTreeSet};
+    let provider = std::sync::Arc::new(FakeProvider::new(BTreeMap::new(), true));
+    let config = Config {
+        schema: SCHEMA.into(),
+        state: state.into(),
+        machines: coder_environment_operator::Config {
+            schema: coder_environment_operator::SCHEMA.into(),
+            provider: coder_environment_operator::ProviderKind::Boat,
+            gce: None,
+            workdir: "/home/user/repo".into(),
+            template: Some("oa-coder-runtime-20261008".into()),
+            credential_names: BTreeSet::new(),
+            tick_seconds: 15,
+        },
+        owner: coder_working_computer::Principal {
+            workspace: "local".into(),
+            principal: "owner".into(),
+        },
+        codex_home: None,
+        model: None,
+        size: None,
+        deadline_seconds: None,
+        github_token: None,
+        claude_key: None,
+        model_api: None,
+    };
+    let transports: Transports<codex_transport::fake::FakeTransport> =
+        std::sync::Arc::new(|_env: &str| Ok(codex_transport::fake::FakeTransport::default()));
+    Studio::start(
+        config,
+        "oa-coder-runtime-20261008",
+        coder_environment_operator::Providers {
+            setup: provider.clone(),
+            build: provider.clone(),
+            verify: provider,
+        },
+        std::sync::Arc::new(
+            |_: &BTreeSet<String>| Ok(coder_environment::evidence::Redactor::new()),
+        ),
+        transports,
+        std::time::Duration::from_millis(5),
+    )
+    .unwrap()
+}
+
+fn resolved(repository: &str) -> coder_environment_operator::studio::github::Resolved {
+    coder_environment_operator::studio::github::Resolved {
+        repository: coder_environment_operator::studio::github::RepoName::parse(repository)
+            .unwrap(),
+        branch: "main".into(),
+        commit: "0123456789abcdef0123456789abcdef01234567".into(),
+        private: false,
+    }
+}
+
+/// On a public host (#11162): a signed-out visitor logs in first; a
+/// signed-in person who isn't a site admin finds nothing (no link, the
+/// not-found page); the site admin gets Environments, and reaches only
+/// their own environments, never someone else's or one made before
+/// environments had owners. Posts still have to come from this site.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn on_a_public_host_environments_are_for_the_site_admin_and_their_own() {
+    use crate::projects::tests::{Browser, Options, world_with};
+    let state = tempfile::tempdir().unwrap();
+    let studio = fake_studio(state.path());
+    let world = world_with(Options {
+        public: true,
+        invite: Some(json!({"github": [
+            {"id": 583231, "login": "octo-local", "admin": true},
+            {"login": "quiet-local"}
+        ]})),
+        environments: Some(studio.clone()),
+    })
+    .await;
+
+    // Signed out: log in first, then come back.
+    let mut visitor = Browser::default();
+    for (path, back) in [
+        ("/environments", "%2Fenvironments"),
+        ("/environments/new", "%2Fenvironments%2Fnew"),
+    ] {
+        let page = visitor.get(&world, path).await;
+        assert_eq!(page.status, StatusCode::SEE_OTHER, "{path}: {}", page.body);
+        assert_eq!(page.location(), format!("/login?return_to={back}"));
+    }
+    let home = visitor.get(&world, "/").await;
+    assert!(!home.body.contains("href=\"/environments\""));
+
+    // Invited but not an admin: no link, and nothing at the address.
+    let mut quiet = Browser::default();
+    quiet.sign_in(&world, "quiet-local").await;
+    let home = quiet.get(&world, "/").await;
+    assert_eq!(home.status, StatusCode::OK);
+    assert!(
+        !home.body.contains("href=\"/environments\""),
+        "{}",
+        home.body
+    );
+    for path in ["/environments", "/environments/new", "/chat/abc/claude"] {
+        let page = quiet.get(&world, path).await;
+        assert_eq!(page.status, StatusCode::NOT_FOUND, "{path}");
+        assert!(page.body.contains("Nothing on this site has that address."));
+        assert!(!page.body.contains("local OpenAgents address"));
+    }
+
+    // The site admin: the link, the page, and only their own.
+    let mut octo = Browser::default();
+    octo.sign_in(&world, "octo-local").await;
+    let theirs = studio
+        .create_for(
+            &resolved("quiet-local/theirs"),
+            Some(&world.account_of("quiet-local")),
+        )
+        .unwrap();
+    let older = studio.create(&resolved("old/unowned")).unwrap();
+    let mine = studio
+        .create_for(
+            &resolved("octo-local/mine"),
+            Some(&world.account_of("octo-local")),
+        )
+        .unwrap();
+    let home = octo.get(&world, "/").await;
+    assert!(
+        home.body.contains("href=\"/environments\""),
+        "{}",
+        home.body
+    );
+    let list = octo.get(&world, "/environments").await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    assert!(list.body.contains("octo-local/mine"), "{}", list.body);
+    assert!(!list.body.contains("quiet-local/theirs"));
+    assert!(!list.body.contains("old/unowned"));
+    assert!(!list.body.contains("local OpenAgents address"));
+    let page = octo.get(&world, &format!("/environments/{mine}")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(!page.body.contains("quiet-local/theirs"));
+    for other in [&theirs, &older] {
+        let page = octo.get(&world, &format!("/environments/{other}")).await;
+        assert_eq!(page.status, StatusCode::NOT_FOUND, "{other}");
+        let post = octo
+            .send(
+                &world,
+                axum::http::Request::post(format!("/environments/{other}/message"))
+                    .header("sec-fetch-site", "same-origin")
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+                Body::from("q=hello"),
+            )
+            .await;
+        assert_eq!(post.status, StatusCode::NOT_FOUND, "{other}");
+        let stream = octo
+            .get(&world, &format!("/environments/{other}/events"))
+            .await;
+        assert_eq!(stream.status, StatusCode::NOT_FOUND, "{other}");
+    }
+    // A post from another site is refused.
+    let forged = octo
+        .send(
+            &world,
+            axum::http::Request::post(format!("/environments/{mine}/message"))
+                .header("sec-fetch-site", "cross-site")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            Body::from("q=hello"),
+        )
+        .await;
+    assert_eq!(forged.status, StatusCode::FORBIDDEN);
+    crate::copy_guard::assert_plain("/environments", &list.body);
 }

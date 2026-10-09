@@ -59,6 +59,7 @@ coder-environment-operator = { path = "../coder-environment-operator" }
 coder-environment-setup = { path = "../coder-environment-setup" }
 coder-environment-verify = { path = "../coder-environment-verify" }
 coder-working-computer = { path = "../coder-working-computer" }
+codex-transport = { path = "../codex-transport" }
 openagents-wallet = { path = "../wallet", default-features = false }
 pay-ledger = { path = "../pay-ledger" }
 retail-qualify = { path = "../retail-qualify" }

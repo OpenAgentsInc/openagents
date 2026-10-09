@@ -451,6 +451,25 @@ enum Source {
     File(PathBuf),
     /// Held in memory, taken once by [`Login::take`].
     Held(Login),
+    /// An API key for an Open Responses endpoint ([`CodexTransport::with_key`]).
+    Key(ApiKey),
+}
+
+/// A bearer API key. Its `Debug` output hides it, and its bytes are
+/// zeroed when it drops.
+struct ApiKey(String);
+
+impl fmt::Debug for ApiKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ApiKey(<redacted>)")
+    }
+}
+
+impl Drop for ApiKey {
+    fn drop(&mut self) {
+        let mut bytes = std::mem::take(&mut self.0).into_bytes();
+        bytes.fill(0);
+    }
 }
 
 /// The Codex-login transport.
@@ -487,6 +506,38 @@ impl CodexTransport {
         CodexTransport::build(Source::Held(login), session_id)
     }
 
+    /// A transport on an Open Responses endpoint (`url`, the full
+    /// `.../v1/responses` address, such as the OpenAgents gateway's) with a
+    /// bearer API key instead of a Codex login. The request body is the
+    /// same; no ChatGPT account header is sent.
+    ///
+    /// # Errors
+    ///
+    /// [`LoginError::Unreadable`] for an empty or malformed key, or a URL
+    /// that isn't `http(s)://`.
+    pub fn with_key(
+        url: &str,
+        key: String,
+        session_id: &str,
+    ) -> Result<CodexTransport, LoginError> {
+        let key = ApiKey(key.trim().to_owned());
+        if key.0.is_empty() || key.0.chars().any(char::is_whitespace) {
+            return Err(LoginError::Unreadable(
+                PathBuf::new(),
+                "the API key is empty or malformed".into(),
+            ));
+        }
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            return Err(LoginError::Unreadable(
+                PathBuf::new(),
+                "the responses URL must be http(s)".into(),
+            ));
+        }
+        let mut transport = CodexTransport::build(Source::Key(key), session_id)?;
+        transport.url = url.to_owned();
+        Ok(transport)
+    }
+
     fn build(login: Source, session_id: &str) -> Result<CodexTransport, LoginError> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("microluna/", env!("CARGO_PKG_VERSION")))
@@ -500,14 +551,16 @@ impl CodexTransport {
         })
     }
 
-    /// The login to send with, checked for expiry now.
-    fn login(&self) -> Result<Cow<'_, Login>, LoginError> {
+    /// The login to send with, checked for expiry now; `None` for an
+    /// API-key transport.
+    fn login(&self) -> Result<Option<Cow<'_, Login>>, LoginError> {
         match &self.login {
-            Source::File(path) => Login::load(path).map(Cow::Owned),
+            Source::File(path) => Login::load(path).map(|login| Some(Cow::Owned(login))),
             Source::Held(login) => {
                 login.check(now_secs())?;
-                Ok(Cow::Borrowed(login))
+                Ok(Some(Cow::Borrowed(login)))
             }
+            Source::Key(_) => Ok(None),
         }
     }
 }
@@ -523,19 +576,22 @@ impl Transport for CodexTransport {
         text: &mut dyn FnMut(&str),
     ) -> Result<Reply, TransportError> {
         let login = self.login().map_err(TransportError::Login)?;
-        let mut response = self
+        let post = self
             .http
             .post(&self.url)
             .timeout(REQUEST_TIMEOUT)
-            .bearer_auth(&login.access_token)
-            .header("ChatGPT-Account-ID", &login.account_id)
             .header("originator", ORIGINATOR)
             .header("session-id", &self.session_id)
             .header(reqwest::header::ACCEPT, "text/event-stream")
-            .json(&body(request))
-            .send()
-            .await
-            .map_err(sent_error)?;
+            .json(&body(request));
+        let post = match (&login, &self.login) {
+            (Some(login), _) => post
+                .bearer_auth(&login.access_token)
+                .header("ChatGPT-Account-ID", &login.account_id),
+            (None, Source::Key(key)) => post.bearer_auth(&key.0),
+            (None, _) => post,
+        };
+        let mut response = post.send().await.map_err(sent_error)?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1119,5 +1175,72 @@ mod tests {
             body: other.into(),
         };
         assert!(plain.transient());
+    }
+
+    /// An API-key transport sends the key as a bearer to the endpoint it
+    /// names, without the ChatGPT account header, and reads the same
+    /// stream; the key never shows in Debug.
+    #[test]
+    fn an_api_key_transport_posts_to_its_endpoint_with_the_key() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut seen = Vec::new();
+            let mut buffer = [0u8; 8192];
+            while !String::from_utf8_lossy(&seen).contains("prompt_cache_key") {
+                let n = stream.read(&mut buffer).unwrap();
+                if n == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buffer[..n]);
+            }
+            let body = concat!(
+                "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",",
+                "\"call_id\":\"c1\",\"name\":\"finish\",\"arguments\":\"{}\"}}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",",
+                "\"model\":\"openagents/code\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+            );
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            String::from_utf8_lossy(&seen).into_owned()
+        });
+        let url = format!("http://{address}/v1/responses");
+        let transport =
+            CodexTransport::with_key(&url, "oak_test.secret".into(), "environment-1").unwrap();
+        assert!(!format!("{transport:?}").contains("oak_test"));
+        let request = Request {
+            model: "openagents/code".into(),
+            instructions: "Set it up.".into(),
+            input: vec![],
+            tools: vec![],
+            effort: None,
+            cache_key: "k".into(),
+            parallel_tools: false,
+            text_format: None,
+        };
+        let reply = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(transport.respond(&request))
+            .unwrap();
+        assert_eq!(reply.calls()[0].name, "finish");
+        let seen = server.join().unwrap().to_ascii_lowercase();
+        assert!(seen.starts_with("post /v1/responses "), "{seen}");
+        assert!(
+            seen.contains("authorization: bearer oak_test.secret"),
+            "{seen}"
+        );
+        assert!(!seen.contains("chatgpt-account-id"), "{seen}");
+        for bad in ["", "two words"] {
+            assert!(CodexTransport::with_key(&url, bad.into(), "s").is_err());
+        }
+        assert!(CodexTransport::with_key("file:///x", "k".into(), "s").is_err());
     }
 }

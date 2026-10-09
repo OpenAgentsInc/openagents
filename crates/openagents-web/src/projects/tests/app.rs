@@ -72,6 +72,8 @@ async fn world_with_app() -> (World, String) {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .unwrap(),
+            host: HOST.to_owned(),
+            origin: ORIGIN.to_owned(),
         },
         install_url,
     )

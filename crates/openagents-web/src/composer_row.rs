@@ -12,9 +12,9 @@
 //!   default branch is picked first.
 //! - **Where it runs**: more than Chat is possible. **Chat** answers here.
 //!   **Claude Code in {repository name} vN** when the picked project's repository
-//!   has a saved environment, Claude Code can run on this server (a key),
-//!   and the request came to the local address, like `/environments`
-//!   ([`crate::pages::chat_work`]). **Coder on {computer}** for a new chat
+//!   has a saved environment of the person's, Claude Code can run on this
+//!   server (a key), and the request may do agent work, like
+//!   `/environments` ([`crate::agent_work`], [`crate::pages::chat_work`]). **Coder on {computer}** for a new chat
 //!   when Coder with sync on checked in from that computer lately
 //!   ([`crate::coder_sync`]).
 //!
@@ -215,11 +215,11 @@ pub(crate) async fn choices(
     let connected = !matches!(sidebar.status.access, Access::None);
     let mut environments = Vec::new();
     if let Some(studio) = app.config.environments.as_ref()
-        && crate::local_request(headers)
+        && let Some(scope) = crate::agent_work::scope(app, headers).await
         && crate::environments::claude_ready(app, studio, headers).await
     {
-        environments = studio
-            .list()
+        environments = scope
+            .rows(studio)
             .into_iter()
             .filter_map(|row| {
                 Some(Environment {

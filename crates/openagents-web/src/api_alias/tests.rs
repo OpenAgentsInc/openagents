@@ -91,8 +91,12 @@ fn a_public_path_with_another_method_is_refused() {
 }
 
 #[test]
-fn operator_signup_opens_only_post_v1_accounts() {
+fn operator_signup_opens_only_post_v1_accounts_and_sessions() {
     assert!(forwards(&Method::POST, "/v1/accounts", true));
+    assert!(forwards(&Method::POST, "/v1/sessions", true));
+    assert!(!forwards(&Method::POST, "/v1/sessions", false));
+    assert!(!forwards(&Method::GET, "/v1/sessions", true));
+    assert!(!forwards(&Method::POST, "/v1/sessions/device", true));
     assert!(!forwards(&Method::GET, "/v1/accounts", true));
     assert!(!forwards(&Method::POST, "/v1/sessions/github", true));
     assert!(!forwards(&Method::GET, "/v1/admin/inference/status", true));

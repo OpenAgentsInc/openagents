@@ -15,7 +15,10 @@
 # REF's deploy/staging/render.py, and runs scripts/smoke/staging.sh.
 # --keep-spec builds only the web image and swaps it into the live staging
 # spec, keeping everything else (another change being tried on staging,
-# such as its storage, stays as it is).
+# such as its storage, stays as it is). The web container also takes REF's
+# launcher (deploy/staging/web.sh) and adds the environment variables,
+# mounts, and volumes REF's render.py gives it that the live spec lacks;
+# nothing the live spec has is changed or removed.
 #
 # promote: copies the spec of the revision serving production's traffic
 # (service `coder`), swaps only the `web` container's image for DIGEST, and
@@ -127,16 +130,43 @@ stage() {
     spec=$STATE/staging-$sha.json
     revision=$STAGING-$sha-$(date -u +%H%M%S)
     if [ -n "$keep" ]; then
+        # REF's own web container, for its launcher and what it adds.
+        python3 "$ctx/deploy/staging/render.py" --revision "$revision" \
+            --web-image "$REPO/openagents-web@$web_digest" --stack-image unused \
+            --worker-pubkey "$WORKER_PUBKEY" > "$STATE/ref-$sha.json"
         g run services describe "$STAGING" --region "$REGION" --project "$PROJECT" --format=json |
             python3 -c 'import json, sys
 d = json.load(sys.stdin)
-image, name = sys.argv[1:3]
+image, name, ref = sys.argv[1:4]
 drop = ("serving.knative.dev/", "client.knative.dev/", "run.googleapis.com/operation-id",
         "run.googleapis.com/ingress-status", "run.googleapis.com/urls",
         "run.googleapis.com/creator", "run.googleapis.com/lastModifier")
 keep = lambda m: {k: v for k, v in (m or {}).items() if not k.startswith(drop)}
 t = d["spec"]["template"]
-next(c for c in t["spec"]["containers"] if c["name"] == "web")["image"] = image
+web = next(c for c in t["spec"]["containers"] if c["name"] == "web")
+web["image"] = image
+r = json.load(open(ref))["spec"]["template"]["spec"]
+rweb = next(c for c in r["containers"] if c["name"] == "web")
+added = []
+if web.get("args") != rweb["args"]:
+    web["args"] = rweb["args"]
+    added.append("launcher")
+names = {e["name"] for e in web.setdefault("env", [])}
+for e in rweb.get("env", []):
+    if e["name"] not in names:
+        web["env"].append(e)
+        added.append("env " + e["name"])
+mounts = {m["mountPath"] for m in web.setdefault("volumeMounts", [])}
+for m in rweb.get("volumeMounts", []):
+    if m["mountPath"] not in mounts:
+        web["volumeMounts"].append(m)
+        added.append("mount " + m["mountPath"])
+volumes = {v["name"] for v in t["spec"].setdefault("volumes", [])}
+for v in r.get("volumes", []):
+    if v["name"] not in volumes:
+        t["spec"]["volumes"].append(v)
+        added.append("volume " + v["name"])
+sys.stderr.write("  web container from REF: " + (", ".join(added) or "nothing new") + "\n")
 meta = d["metadata"]
 print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     "metadata": {"name": meta["name"], "namespace": meta["namespace"],
@@ -145,7 +175,7 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
                                        "annotations": keep(t["metadata"].get("annotations"))},
                           "spec": t["spec"]},
              "traffic": [{"latestRevision": True, "percent": 100}]}}, indent=2))' \
-            "$REPO/openagents-web@$web_digest" "$revision" > "$spec"
+            "$REPO/openagents-web@$web_digest" "$revision" "$STATE/ref-$sha.json" > "$spec"
     else
         stack_digest=$(digest "$stack")
         [ -n "$stack_digest" ] || { say "No digest for the stack image"; exit 1; }

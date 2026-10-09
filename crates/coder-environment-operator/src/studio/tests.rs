@@ -89,6 +89,7 @@ fn config(state: &Path) -> Config {
         deadline_seconds: None,
         github_token: None,
         claude_key: None,
+        model_api: None,
     }
 }
 
@@ -273,4 +274,60 @@ fn the_config_is_explicit() {
         .as_deref(),
         Some("oa-coder-runtime-20261007")
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_environment_remembers_the_account_it_was_made_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = machines();
+    let transports: Transports<Script> = Arc::new(|_env: &str| Ok(Script::default()));
+    let studio = Studio::start(
+        config(dir.path()),
+        "oa-coder-runtime-20261008",
+        Providers {
+            setup: provider.clone(),
+            build: provider.clone(),
+            verify: provider,
+        },
+        Arc::new(|_: &BTreeSet<String>| Ok(Redactor::new())),
+        transports,
+        Duration::from_millis(1),
+    )
+    .unwrap();
+    let resolved = github::Resolved {
+        repository: github::RepoName::parse("example/repo").unwrap(),
+        branch: "main".into(),
+        commit: COMMIT.into(),
+        private: false,
+    };
+    let mine = studio.create_for(&resolved, Some("acct_alice")).unwrap();
+    let unowned = studio.create(&resolved).unwrap();
+    assert_eq!(studio.account(&mine).as_deref(), Some("acct_alice"));
+    assert_eq!(studio.account(&unowned), None);
+    let rows = studio.list();
+    let account = |id: &str| rows.iter().find(|r| r.id == id).unwrap().account.clone();
+    assert_eq!(account(&mine).as_deref(), Some("acct_alice"));
+    assert_eq!(account(&unowned), None);
+}
+
+#[test]
+fn a_model_api_needs_an_http_url_and_an_absolute_key_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut good = config(dir.path());
+    good.model_api = Some(ModelApi {
+        url: "http://127.0.0.1:8791/v1/responses".into(),
+        key_file: "/tmp/private/service.key".into(),
+    });
+    good.validate().unwrap();
+    for (url, key_file) in [
+        ("file:///v1/responses", "/tmp/k"),
+        ("http://127.0.0.1:8791/v1/responses", "relative.key"),
+    ] {
+        let mut bad = good.clone();
+        bad.model_api = Some(ModelApi {
+            url: url.into(),
+            key_file: key_file.into(),
+        });
+        assert!(bad.validate().is_err(), "{url} {key_file}");
+    }
 }

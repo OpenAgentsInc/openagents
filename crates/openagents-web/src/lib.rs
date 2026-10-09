@@ -14,6 +14,7 @@
 
 pub mod account;
 mod agent_ready;
+mod agent_work;
 pub mod analytics;
 mod api_alias;
 mod api_keys;
@@ -161,6 +162,10 @@ pub struct Config {
     /// First-party, cookieless counts and the owner's dashboard
     /// ([`analytics`]). In memory only unless a store is configured.
     pub analytics: Arc<analytics::Analytics>,
+    /// Accounts that may do agent work on a public host besides site
+    /// admins (`OPENAGENTS_WEB_AGENT_ACCOUNTS`, [`agent_work`]): staging's
+    /// smoke test account, which has no GitHub identity to invite.
+    pub agent_accounts: Vec<String>,
 }
 
 impl Config {
@@ -195,6 +200,7 @@ impl Config {
             environments: None,
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
+            agent_accounts: Vec::new(),
         }
     }
 }
@@ -269,6 +275,10 @@ pub fn router(config: Config) -> Router {
         .merge(analytics::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            agent_work::gate,
+        ))
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
         .layer(middleware::from_fn_with_state(
@@ -331,16 +341,14 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         .to_owned();
     let local = hosts.local(&host);
     let path = request.uri().path();
-    // Environments drive machines and models on this host's own accounts,
-    // so they stay on the local address like the task browser.
-    let browser = path == "/app"
-        || path.starts_with("/app/")
-        || path == "/environments"
-        || path.starts_with("/environments/")
-        // Running Claude Code in an environment from a chat (#11037).
-        || (path.starts_with("/chat/") && path.ends_with("/claude"))
-        // Continuing a Coder chat on a Cloud computer (#11050).
-        || (path.starts_with("/chat/") && path.ends_with("/continue"));
+    // The task browser reads this computer's own task store, so it stays
+    // on the local address.
+    let browser = path == "/app" || path.starts_with("/app/");
+    // Environments, Claude Code runs from a chat (#11037), and continuing a
+    // Coder chat on a Cloud computer (#11050) drive machines and models on
+    // this server's accounts: never forwarded, and on a public host only
+    // for the people `agent_work::gate` allows (#11162).
+    let agent = agent_work::path(path);
     // Intake requests can carry contact content. An unconfigured host must
     // refuse them locally rather than forwarding them to another service.
     let intake = path == "/pilot" || path.starts_with("/pilot/");
@@ -401,6 +409,7 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         && !intake
         && !cloud
         && !chat
+        && !agent
         && (!(local || public) || !owned)
     {
         return upstream.forward(request).await;
@@ -549,6 +558,11 @@ async fn ui_catalog(headers: axum::http::HeaderMap) -> Response {
 }
 
 pub(crate) async fn not_found() -> Response {
+    not_found_page()
+}
+
+/// The site's ordinary not-found page.
+pub(crate) fn not_found_page() -> Response {
     layout::problem(
         StatusCode::NOT_FOUND,
         "Not found",

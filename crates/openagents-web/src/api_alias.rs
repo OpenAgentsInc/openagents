@@ -10,7 +10,9 @@
 //!
 //! `operator_signup` (staging only, `OPENAGENTS_WEB_API_OPERATOR_SIGNUP`)
 //! also forwards `POST /v1/accounts` carrying a bearer, so the staging
-//! smoke suite can make its one test account with its operator token.
+//! smoke suite can make its one test account with its operator token, and
+//! `POST /v1/sessions` (a session for the bearer key's own account), so it
+//! can sign in as its fixed agent-work test account (#11162).
 
 use axum::http::Method;
 
@@ -107,7 +109,8 @@ pub(crate) fn forwards(method: &Method, path: &str, operator_signup: bool) -> bo
     if path.contains("/../") || path.ends_with("/..") || path.contains("//") {
         return false;
     }
-    if operator_signup && method == Method::POST && path == "/v1/accounts" {
+    if operator_signup && method == Method::POST && matches!(path, "/v1/accounts" | "/v1/sessions")
+    {
         return true;
     }
     PUBLIC.iter().any(|Rule(methods, pattern)| {

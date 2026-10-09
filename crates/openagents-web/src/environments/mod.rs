@@ -8,8 +8,11 @@
 //! pages say environments aren't set up on this server and the left panel
 //! shows no Environments entry.
 //!
-//! These pages are local only (the site guard answers them on the local
-//! address, like `/app`), and every post must come from this site.
+//! On the local address these pages are for anyone the local site lets
+//! in; on a public host, only for a signed-in person allowed agent work
+//! (a site admin, [`crate::agent_work`]), and every post must come from
+//! this site. Each environment belongs to the account that made it: a
+//! person reaches only their own ([`crate::agent_work::Scope`]).
 //!
 //! On a server that signs people in, every page here is for a signed-in
 //! person only ([`signed_in_only`], the same sign-in check the header's
@@ -44,6 +47,7 @@ use maud::html;
 use serde::Deserialize;
 
 use crate::App;
+use crate::agent_work::Scope;
 use crate::cloud::session::SessionError;
 use crate::cloud::session::github::RepoCallError;
 use crate::ui_page::UiPage;
@@ -105,7 +109,7 @@ async fn signed_in_only(State(app): State<App>, request: Request, next: Next) ->
     }
 }
 
-fn sign_in_first(request: &Request) -> Response {
+pub(crate) fn sign_in_first(request: &Request) -> Response {
     let headers = request.headers();
     let page = request
         .uri()
@@ -143,6 +147,19 @@ fn head() -> maud::Markup {
 
 fn studio(app: &App) -> Option<&Arc<Studio>> {
     app.config.environments.as_ref()
+}
+
+/// Whose environments this request reaches ([`crate::agent_work::scope`]).
+/// The site's gate and [`signed_in_only`] already turned away everyone
+/// else, so `None` is answered as not found.
+async fn mine(app: &App, headers: &HeaderMap) -> Option<Scope> {
+    crate::agent_work::scope(app, headers).await
+}
+
+/// The request's scope when environment `id` is its own.
+async fn owner_of(app: &App, studio: &Studio, headers: &HeaderMap, id: &str) -> Option<Scope> {
+    let scope = mine(app, headers).await?;
+    (valid_id(id) && scope.has(studio, id)).then_some(scope)
 }
 
 /// The GitHub client for this request. On a server that signs people in:
@@ -213,7 +230,10 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
     let Some(studio) = studio(&app) else {
         return unavailable(&headers);
     };
-    let rows = studio.list();
+    let Some(scope) = mine(&app, &headers).await else {
+        return missing(&headers);
+    };
+    let rows = scope.rows(studio);
     protect(
         UiPage::new("Environments")
             .path("/environments")
@@ -405,8 +425,11 @@ async fn create(
         }
         None => Err("Enter a GitHub repository as owner/name or its github.com address.".into()),
     };
+    let Some(scope) = mine(&app, &headers).await else {
+        return missing(&headers);
+    };
     match resolved {
-        Ok(resolved) => match studio.create(&resolved) {
+        Ok(resolved) => match studio.create_for(&resolved, scope.account.as_deref()) {
             Ok(id) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
             Err(e) => branch_page(
                 &headers,
@@ -445,10 +468,13 @@ async fn page(
     id: &str,
     notice: Option<&str>,
 ) -> Response {
+    let Some(scope) = owner_of(app, studio, headers, id).await else {
+        return missing(headers);
+    };
     let Some(v) = studio.view(id) else {
         return missing(headers);
     };
-    let rows = studio.list();
+    let rows = scope.rows(studio);
     let stream = format!("/environments/{id}/events?after={}", v.records.len());
     let ready = claude_offer(app, studio, headers).await;
     let body = view::transcript(&v, ready, notice);
@@ -494,7 +520,7 @@ async fn events(
     let Some(studio) = studio(&app).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !valid_id(&id) || studio.view(&id).is_none() {
+    if owner_of(&app, &studio, &headers, &id).await.is_none() || studio.view(&id).is_none() {
         return StatusCode::NOT_FOUND.into_response();
     }
     let ready = claude_offer(&app, &studio, &headers).await;
@@ -545,7 +571,7 @@ async fn message(
     if !same_site(&headers) {
         return refused();
     }
-    if !valid_id(&id) {
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
     }
     let result = studio.steer(&id, &form.q);
@@ -566,7 +592,7 @@ async fn retry(State(app): State<App>, headers: HeaderMap, Path(id): Path<String
     if !same_site(&headers) {
         return refused();
     }
-    if !valid_id(&id) {
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
     }
     match studio.retry(&id) {
@@ -592,7 +618,7 @@ async fn save(
     if !same_site(&headers) {
         return refused();
     }
-    if !valid_id(&id) {
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
     }
     match studio.save(&id, &form.candidate).await {
@@ -618,7 +644,7 @@ async fn claude(
     if !same_site(&headers) {
         return refused();
     }
-    if !valid_id(&id) {
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
     }
     let own = crate::cloud::byo::run_key(&app, &headers).await;
@@ -636,14 +662,17 @@ async fn run(
     let Some(studio) = studio(&app) else {
         return unavailable(&headers);
     };
-    if !valid_id(&id) || !valid_id(&run) {
+    let Some(scope) = owner_of(&app, studio, &headers, &id).await else {
+        return missing(&headers);
+    };
+    if !valid_id(&run) {
         return missing(&headers);
     }
     let (Some(v), Some(r)) = (studio.view(&id), studio.claude_run(&id, &run)) else {
         return missing(&headers);
     };
     let stream = format!("/environments/{id}/runs/{run}/events");
-    let rows = studio.list();
+    let rows = scope.rows(studio);
     protect(
         UiPage::new("Claude Code")
             .path(format!("/environments/{id}/runs/{run}"))
@@ -664,11 +693,18 @@ async fn run(
 }
 
 /// The run's transcript, again every few seconds while it changes.
-async fn run_events(State(app): State<App>, Path((id, run)): Path<(String, String)>) -> Response {
+async fn run_events(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, run)): Path<(String, String)>,
+) -> Response {
     let Some(studio) = studio(&app).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !valid_id(&id) || !valid_id(&run) || studio.claude_run(&id, &run).is_none() {
+    if owner_of(&app, &studio, &headers, &id).await.is_none()
+        || !valid_id(&run)
+        || studio.claude_run(&id, &run).is_none()
+    {
         return StatusCode::NOT_FOUND.into_response();
     }
     let stream = futures_util::stream::unfold(
@@ -714,7 +750,7 @@ async fn stop(
     if !same_site(&headers) {
         return refused();
     }
-    if !valid_id(&id) || !valid_id(&run) {
+    if owner_of(&app, studio, &headers, &id).await.is_none() || !valid_id(&run) {
         return missing(&headers);
     }
     let _ = studio.stop_claude(&id, &run);

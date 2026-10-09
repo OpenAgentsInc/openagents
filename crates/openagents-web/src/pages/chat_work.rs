@@ -19,9 +19,11 @@
 //! sidebar stream's checks on Working chats. The chat store announces the
 //! write, so open pages update without polling the run themselves.
 //!
-//! Environments and runs answer only the local address, so the header link,
-//! the run page, and task links show only there ([`crate::local_request`]),
-//! and the site guard keeps `/chat/{id}/claude` local too.
+//! Environments and runs answer only the people allowed agent work (the
+//! local address, or a signed-in site admin on a public host,
+//! [`crate::agent_work`]), so the header link, the run page, and task
+//! links show only to them ([`links`]), and only for the person's own
+//! environments.
 //!
 //! A task that ran over a minute and finished makes the row say Done until
 //! the chat is opened: the chat keeps when it saw the task finish
@@ -67,9 +69,9 @@ fn studio(app: &App) -> Option<&Arc<Studio>> {
 }
 
 /// Whether this request may show environment and run links: environments
-/// are set up here and the request came to the local address.
-pub(super) fn links(app: &App, headers: &HeaderMap) -> bool {
-    studio(app).is_some() && crate::local_request(headers)
+/// are set up here and the request may do agent work.
+pub(super) async fn links(app: &App, headers: &HeaderMap) -> bool {
+    studio(app).is_some() && crate::agent_work::scope(app, headers).await.is_some()
 }
 
 /// The environment a chat page offers.
@@ -133,11 +135,11 @@ pub(super) fn pick<'a>(
 /// chat (its line 2 then says so).
 pub(super) async fn offer(app: &App, headers: &HeaderMap, chat: &Conversation) -> Option<Offer> {
     // A chat synced from a terminal is read-only here.
-    if !links(app, headers) || chat.terminal.is_some() {
+    if chat.terminal.is_some() {
         return None;
     }
     let studio = studio(app)?.clone();
-    let rows = studio.list();
+    let rows = crate::agent_work::scope(app, headers).await?.rows(&studio);
     if let Some(linked) = chat.environment.as_ref().filter(|e| !e.removed)
         && !rows.iter().any(|row| row.id == linked.id)
     {
@@ -698,6 +700,7 @@ mod tests {
             status: Status::Saved,
             saved,
             updated_ms: 0,
+            account: None,
         }
     }
 
@@ -928,7 +931,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn running_claude_code_from_a_chat_stays_on_the_local_address() {
+    async fn running_claude_code_from_a_chat_is_hidden_on_a_public_host_without_environments() {
         use tower::ServiceExt;
         let dir = tempfile::tempdir().unwrap();
         let mut config = crate::Config::development(dir.path().join("tasks"));
@@ -951,7 +954,9 @@ mod tests {
                     .status()
             }
         };
-        assert_eq!(send("openagents.com").await, StatusCode::FORBIDDEN);
+        // A public host without environments: nothing there, whatever the
+        // request claims (#11162).
+        assert_eq!(send("openagents.com").await, StatusCode::NOT_FOUND);
         // Locally, without environments set up, there is nothing to run.
         assert_eq!(send("127.0.0.1:4300").await, StatusCode::NOT_FOUND);
     }

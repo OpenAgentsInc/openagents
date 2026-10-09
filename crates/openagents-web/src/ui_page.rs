@@ -65,14 +65,15 @@ impl Nav {
 
 /// The destinations the left panel shows, in order. A destination is added
 /// here when its page exists (`Nav::Environments` with `/environments`,
-/// shown on the local address only).
+/// shown to the people who may use it, [`crate::agent_work`]).
 pub const NAV: &[Nav] = &[Nav::Environments];
 
 /// Whether the left panel offers `nav`: Environments only when a studio is
-/// configured and the request came to the local address.
-fn nav_shown(nav: Nav, studio: bool, local: bool) -> bool {
+/// configured and the request may do agent work (the local address, or a
+/// signed-in person allowed it on a public host).
+fn nav_shown(nav: Nav, studio: bool, allowed: bool) -> bool {
     match nav {
-        Nav::Environments => studio && local,
+        Nav::Environments => studio && allowed,
     }
 }
 
@@ -251,13 +252,14 @@ impl UiPage {
                     .shortcut("Control+N", "⌃N"),
             );
         for nav in NAV {
-            // Environments answer only on the local address (the host
-            // guard refuses them on public hosts), so a public page never
-            // links them: no control that leads to a refusal.
+            // Environments answer on a public host only for the people
+            // allowed agent work, so nobody else sees a link that leads
+            // nowhere.
+            let agent_work = crate::account::agent_work();
             if !nav_shown(
                 *nav,
-                crate::environments::shown(),
-                crate::local_request(headers),
+                agent_work || crate::environments::shown(),
+                agent_work || crate::local_request(headers),
             ) {
                 continue;
             }
@@ -513,7 +515,10 @@ mod tests {
     #[test]
     fn environments_is_offered_on_the_local_address_only() {
         assert!(nav_shown(Nav::Environments, true, true));
-        assert!(!nav_shown(Nav::Environments, true, false), "public host");
+        assert!(
+            !nav_shown(Nav::Environments, true, false),
+            "a public host, not allowed"
+        );
         assert!(!nav_shown(Nav::Environments, false, true), "no studio");
         // A public page carries no link to it.
         let html = UiPage::new("OpenAgents")

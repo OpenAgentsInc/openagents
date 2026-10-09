@@ -42,6 +42,12 @@ INVITE_ONLY = json.dumps(
     {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
     separators=(",", ":"),
 )
+# Agent work on a public host (#11162, docs/deployment/agent-work.md): site
+# admins (the invite list's `admin`) and these accounts. This is the smoke
+# suite's fixed test account (operator-made, so it has no GitHub identity to
+# invite); its key is the Secret Manager secret
+# openagents-web-1-staging-agent-smoke-key, read only by the smoke suite.
+AGENT_ACCOUNTS = "acct_dc7a799879686fc5"
 
 
 def secret(name, var):
@@ -79,6 +85,12 @@ def main():
             plain("INVITE_ONLY_JSON", INVITE_ONLY),
             # The smoke suite's operator test account (#11155): staging only.
             plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
+            plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", AGENT_ACCOUNTS),
+            # Environments: Boat machines, and the setup agent's model
+            # through the gateway sidecar on the house key in /stack.
+            plain("STACK_STATE", "/stack"),
+            plain("ENVIRONMENTS_MODEL", "openagents/code"),
+            secret("boat-api-key", "BOAT_API_KEY"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
@@ -87,7 +99,9 @@ def main():
             plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", ANALYTICS_BUCKET),
             secret("openagents-web-analytics-key-staging", "OPENAGENTS_WEB_ANALYTICS_KEY"),
         ],
-        "volumeMounts": [webstate],
+        # The gateway's store, read-only: the web reads only the house
+        # service key there, for the environments setup agent.
+        "volumeMounts": [webstate, {**stack, "readOnly": True}],
         "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},
         "startupProbe": {
             # A TCP check: the site answers only its public hosts, so an

@@ -649,7 +649,7 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
-    let links = work::links(&app, &headers);
+    let links = work::links(&app, &headers).await;
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -694,7 +694,7 @@ async fn show_terminal(
     } else {
         terminal_note(computer)
     };
-    let links = work::links(app, headers);
+    let links = work::links(app, headers).await;
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -825,7 +825,7 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     let row = crate::composer_row::for_chat(&app, &headers, chat, true).await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
-    let links = work::links(&app, &headers);
+    let links = work::links(&app, &headers).await;
     let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true)) (row) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
@@ -1816,8 +1816,9 @@ async fn transcript(
                 None => crate::suggestions::reply_chips(&app, &v.conversation).await,
                 Some(_) => html! {},
             };
+            let links = work::links(&app, &headers).await;
             crate::chat_html::protect(
-                html! { (messages(&v.conversation, window.before, work::links(&app, &headers))) (chips) }.into_response(),
+                html! { (messages(&v.conversation, window.before, links)) (chips) }.into_response(),
             )
         }
         Err(r) => r,
@@ -1911,7 +1912,7 @@ async fn events(
     if cursor > loaded.conversation.revision {
         return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
-    let links = work::links(&app, &headers);
+    let links = work::links(&app, &headers).await;
     let stream = futures_util::stream::unfold(
         (app, owner, id, cursor, 0u16),
         move |(app, owner, id, mut cursor, mut ticks)| async move {

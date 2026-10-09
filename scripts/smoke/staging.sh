@@ -7,7 +7,9 @@
 # (https://staging.openagents.com,
 # deploy/staging/README.md). One PASS/FAIL/SKIP line per check; exit 1 when
 # any check fails. Groups for --only: home, docs, promises, download, agent, github,
-# gates, alias, accounts, signed-in, gateway, traces, terminal. --invite-only
+# gates, alias, accounts, signed-in, environments, gateway, traces, terminal.
+# --environment-run OWNER/REPO also sets up one environment end to end on
+# real Boat machines as the agent-work test account (#11162). --invite-only
 # also checks that /login says sign-in is invite-only. The terminal group runs the
 # site's hosted installer into a scratch HOME and checks `coder --version`.
 # --restart (opt-in) also forces a new revision of the service and checks
@@ -26,6 +28,15 @@ if [ -z "$production" ] && [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud
     SMOKE_SIGNUP_TOKEN=$(CLOUDSDK_CONFIG=$config gcloud secrets versions access latest \
         --secret openagents-gateway-staging-smoke-signup-token --project openagentsgemini 2> /dev/null || true)
     export SMOKE_SIGNUP_TOKEN
+fi
+# The environments group signs in as the fixed agent-work test account
+# (#11162) with its key: SMOKE_AGENT_KEY, or the staging-only secret
+# openagents-web-1-staging-agent-smoke-key (never printed).
+if [ -z "$production" ] && [ -z "${SMOKE_AGENT_KEY:-}" ] && command -v gcloud > /dev/null 2>&1; then
+    config=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
+    SMOKE_AGENT_KEY=$(CLOUDSDK_CONFIG=$config gcloud secrets versions access latest \
+        --secret openagents-web-1-staging-agent-smoke-key --project openagentsgemini 2> /dev/null || true)
+    export SMOKE_AGENT_KEY
 fi
 # macOS's /usr/bin/python3 links LibreSSL 2.8, whose TLS drops connections
 # to Google's front end on custom domains; prefer a current Python.

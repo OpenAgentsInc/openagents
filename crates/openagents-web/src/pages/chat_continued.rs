@@ -10,7 +10,7 @@
 //! - Claude Code runs in the environment's saved version on a fresh
 //!   computer, with the chat so far carried into its prompt ([`context`]);
 //! - the thread shows the run as a task row (Cloud computer, Working …),
-//!   like #11037's, linking to the run on the local address;
+//!   like #11037's, linking to the run for the people allowed agent work;
 //! - when the run is done, its answer joins the chat as the next message
 //!   ([`super::work::observe`]), in the same write that marks it done.
 //!
@@ -24,8 +24,8 @@
 //! it.
 //!
 //! The offer shows only when it can really work: environments are set up
-//! here and the request came to the local address (the site guard keeps
-//! `/chat/{id}/continue` local), a Claude key is available (the person's
+//! here and the request may do agent work (`crate::agent_work`: the local
+//! address, or a signed-in site admin on a public host), a Claude key is available (the person's
 //! own, saved in Settings, or this server's), the
 //! project's environment has a saved version, Coder on the computer hasn't
 //! checked in lately, and nothing is answering the chat now.
@@ -82,14 +82,14 @@ pub(super) async fn offer(
     chat: &Conversation,
     online: bool,
 ) -> Option<Offer> {
-    if !work::links(app, headers) || !may_continue(chat, online) {
+    if !may_continue(chat, online) || !work::links(app, headers).await {
         return None;
     }
     let studio = app.config.environments.as_ref()?.clone();
     if !crate::environments::claude_ready(app, &studio, headers).await {
         return None;
     }
-    let rows = studio.list();
+    let rows = crate::agent_work::scope(app, headers).await?.rows(&studio);
     let projects = crate::projects::sidebar(app).await;
     let row = work::pick(&rows, chat, work::repository(chat, projects.as_deref()))?;
     let saved = row.saved?;
@@ -251,7 +251,7 @@ async fn continuable(
             StatusCode::CONFLICT,
             &format!("Coder on {computer} is online again. Reply in the chat."),
         )),
-        None if work::links(app, headers) && chat.terminal.is_some() => Err(refusal(
+        None if chat.terminal.is_some() && work::links(app, headers).await => Err(refusal(
             StatusCode::CONFLICT,
             "This chat can't continue on a Cloud computer now. Go back to the chat.",
         )),
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn continuing_stays_on_the_local_address_and_needs_environments() {
+    async fn continuing_is_hidden_on_a_public_host_and_needs_environments() {
         use tower::ServiceExt;
         let dir = tempfile::tempdir().unwrap();
         let mut config = crate::Config::development(dir.path().join("tasks"));
@@ -676,7 +676,8 @@ mod tests {
                     .status()
             }
         };
-        assert_eq!(send("openagents.com").await, StatusCode::FORBIDDEN);
+        // A public host without environments: nothing there (#11162).
+        assert_eq!(send("openagents.com").await, StatusCode::NOT_FOUND);
         // Locally, without environments set up (or signed in), nothing.
         assert_eq!(send("127.0.0.1:4300").await, StatusCode::NOT_FOUND);
     }
