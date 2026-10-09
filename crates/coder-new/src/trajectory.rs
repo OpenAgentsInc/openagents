@@ -80,6 +80,7 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                 task,
                 output,
                 running,
+                ..
             } => {
                 let mut extra = Map::new();
                 extra.insert("schema".into(), json!("openagents.delegation.v1"));
@@ -178,6 +179,7 @@ fn demo_document(app: &App, cwd: &Path) -> Value {
             task: agent.task.into(),
             running: true,
             output: Value::Null,
+            progress: None,
         });
     }
     append_demo_messages(&mut chat, &app.messages);
@@ -477,6 +479,7 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                                 .into(),
                             output,
                             running: false,
+                            progress: None,
                         });
                         continue;
                     }
@@ -675,6 +678,7 @@ mod tests {
             task: "Review the parser".into(),
             running: false,
             output: json!({"reply":"Reviewed"}),
+            progress: None,
         });
         app.delegations.push(crate::live::Delegation {
             id: "child".into(),

@@ -230,7 +230,7 @@ impl ExecutionSettings {
             guidance.push_str(jev_plugin::instructions());
             guidance.push('\n');
             if self.jev_key.is_none() {
-                guidance.push_str("Jev is enabled but has no configured key. Tell the user to connect it in /plugins when a decision call is needed.\n");
+                guidance.push_str("Jev has no key saved here, so it runs through the built-in OpenAgents decision service. A key connected in /plugins is used instead when one is saved.\n");
             }
         }
         if self.registered(ToolBinding::BrainstormSearch) {
@@ -244,9 +244,29 @@ impl ExecutionSettings {
             return Ok(None);
         }
         let Some(key) = &self.jev_key else {
-            return Ok(None);
+            return Ok(self.keyless_jev());
         };
         jev_plugin::configured_client(key.expose(), &self.jev_endpoint, &self.jev_model).map(Some)
+    }
+
+    /// Jev with no saved key: the shared resolver's keyless path, or none
+    /// with the reason dropped (the run then shows no estimate). Tests never
+    /// read this computer's home or reach the hosted service.
+    fn keyless_jev(&self) -> Option<jev::Client> {
+        if cfg!(test) {
+            return None;
+        }
+        let env = |name: &str| std::env::var(name).ok();
+        if !jev_plugin::keyless_available(&env) {
+            return None;
+        }
+        let dir = jev_hosted::openagents_dir()?;
+        jev_plugin::keyless_client(
+            &env,
+            &dir,
+            jev_plugin::keyless_model(&self.jev_endpoint, &self.jev_model),
+        )
+        .ok()
     }
 
     pub async fn execute(
@@ -422,19 +442,32 @@ impl ExecutionSettings {
                 }
             }
             "jev" if self.registered(ToolBinding::Jev) => {
-                let key = self
-                    .jev_key
-                    .as_ref()
-                    .ok_or("Connect a Jev API key in /plugins to use the Jev tool.")?;
                 let mut arguments = arguments;
-                let object = arguments
+                let model = match self.jev_key {
+                    Some(_) => self.jev_model.as_str(),
+                    None => jev_plugin::keyless_model(&self.jev_endpoint, &self.jev_model),
+                };
+                arguments
                     .as_object_mut()
-                    .ok_or("Jev arguments must be an object.")?;
-                object
+                    .ok_or("Jev arguments must be an object.")?
                     .entry("model")
-                    .or_insert_with(|| json!(self.jev_model));
+                    .or_insert_with(|| json!(model));
+                // A saved key always wins; with none, the built-in service.
+                let call = async {
+                    match &self.jev_key {
+                        Some(key) => {
+                            jev_plugin::execute(key.expose(), &self.jev_endpoint, arguments).await
+                        }
+                        None => {
+                            let client = self.keyless_jev().ok_or(
+                                "Jev is unavailable here: no key is saved in /plugins and the built-in decision service is off.",
+                            )?;
+                            jev_plugin::execute_keyless(&client, arguments).await
+                        }
+                    }
+                };
                 tokio::select! {
-                    result = jev_plugin::execute(key.expose(),&self.jev_endpoint,arguments) => result,
+                    result = call => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Jev decision call was canceled; whether it was billed is unknown.".into()),
                 }
             }

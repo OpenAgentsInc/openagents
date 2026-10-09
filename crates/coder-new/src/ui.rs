@@ -754,6 +754,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             task,
             running,
             output,
+            progress,
             ..
         } => {
             lines.push(Line::from(vec![
@@ -778,14 +779,25 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 ),
                 span(format!(" {name}"), t::TEXT_PRIMARY),
             ]));
-            let status = if *running {
-                "Running"
-            } else if output.get("error").is_some() {
-                "Failed"
-            } else {
-                "Done"
+            let status = match progress {
+                // Jev's estimate while a Microcoder run reports its steps.
+                Some((step, complete)) if *running => {
+                    crate::bundled_runtime::RuntimeEvent::progress_line(*step, *complete)
+                }
+                _ if *running => "Running".into(),
+                _ if output.get("error").is_some() => "Failed".into(),
+                _ => "Done".into(),
             };
-            let detail = format!("{} · {status}", truncate(task, width.saturating_sub(17)));
+            let detail =
+                format!(
+                    "{} · {status}",
+                    truncate(
+                        task,
+                        width.saturating_sub(10_u16.saturating_add(
+                            u16::try_from(status.chars().count()).unwrap_or(u16::MAX)
+                        ))
+                    )
+                );
             lines.push(Line::from(vec![
                 span("   ╰ ", t::GRAY_DIM),
                 span(detail, t::GRAY_BRIGHT),

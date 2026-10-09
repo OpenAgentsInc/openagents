@@ -741,3 +741,51 @@ fn fallback_attribution_drops_options_the_fallback_did_not_receive() {
         Some("google/gemini-2.5-flash")
     );
 }
+
+#[test]
+fn a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget() {
+    let mut app = live_app();
+    app.live.busy = true;
+    begin_delegation(&mut app);
+    // Jev has judged nothing yet: the row says the run is going, no share.
+    let text = canvas(&draw(&mut app, 110, 24));
+    assert!(text.contains("Review the fixture implementation · Running"));
+    assert!(!text.contains("% done"));
+
+    // A step Jev could not judge shows the step alone, never a made-up share.
+    delegation(
+        &mut app,
+        RuntimeEvent::Progress {
+            step: 1,
+            complete: None,
+        },
+    );
+    let text = canvas(&draw(&mut app, 110, 24));
+    assert!(text.contains("Review the fixture implementation · step 1"));
+    assert!(!text.contains("% done"));
+
+    delegation(
+        &mut app,
+        RuntimeEvent::Progress {
+            step: 3,
+            complete: Some(0.4),
+        },
+    );
+    let text = canvas(&draw(&mut app, 110, 24));
+    assert!(text.contains("Review the fixture implementation · step 3 · ≈40% done"));
+    assert!(!text.contains(" of "), "no step budget: {text}");
+
+    // The ended run shows its outcome, not a stale estimate.
+    delegation(
+        &mut app,
+        tool(
+            "microcoder",
+            Value::Null,
+            json!({"reply":"Reviewed."}),
+            false,
+        ),
+    );
+    let text = canvas(&draw(&mut app, 110, 24));
+    assert!(text.contains("Review the fixture implementation · Done"));
+    assert!(!text.contains("% done"));
+}

@@ -116,6 +116,17 @@ struct Arguments {
 pub async fn execute(api_key: &str, endpoint: &str, arguments: Value) -> Result<Value, String> {
     let request = request(arguments, api_key)?;
     let client = client(api_key, endpoint)?;
+    send(&client, request, api_key).await
+}
+
+/// Ask Jev through a client that holds no key of this computer's, such as
+/// the hosted decision service ([`keyless_client`]).
+pub async fn execute_keyless(client: &Client, arguments: Value) -> Result<Value, String> {
+    let request = request(arguments, "")?;
+    send(client, request, "").await
+}
+
+async fn send(client: &Client, request: SystemOneRequest, api_key: &str) -> Result<Value, String> {
     let response = client
         .system_one(request)
         .await
@@ -305,6 +316,50 @@ fn default_model(endpoint: &str) -> &'static str {
     }
 }
 
+/// Whether Jev works here with no key saved: the OpenAgents hosted decision
+/// service answers unless `OPENAGENTS_JEV_HOSTED=off` turns it off.
+pub fn keyless_available(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    !env(jev_hosted::HOSTED_VAR).is_some_and(|value| value.trim() == "off")
+}
+
+/// Jev when no key is saved in `/plugins`, through the resolver every Jev
+/// caller shares (`jev_hosted::resolve`): this computer's TypeSafe key
+/// (`TYPESAFE_API_KEY`, else `api_key` in `~/.openagents/jev.json`), else the
+/// OpenAgents hosted decision service, which needs no key. `dir` is
+/// `~/.openagents`. A saved key never reaches here: it always wins.
+///
+/// # Errors
+///
+/// Why this computer has no Jev, in one sentence that carries no key.
+pub fn keyless_client(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &std::path::Path,
+    model: &str,
+) -> Result<Client, String> {
+    let door = jev_hosted::Door {
+        url: jev_hosted::DOOR,
+        model,
+    };
+    jev_hosted::resolve(env, dir, &door, &|config| {
+        config.retry(RetryPolicy {
+            budget: Some(CALL_BUDGET),
+            ..RetryPolicy::default()
+        })
+    })
+    .map(|resolved| resolved.client)
+    .map_err(|why| format!("Jev is unavailable: {why}"))
+}
+
+/// The model a keyless call asks for: the chosen model on TypeSafe's door,
+/// else Jev's default (the hosted service fronts TypeSafe's door only).
+pub fn keyless_model<'a>(endpoint: &str, model: &'a str) -> &'a str {
+    if endpoint.trim_end_matches('/') == DEFAULT_ENDPOINT.trim_end_matches('/') {
+        model
+    } else {
+        jev::defaults::MODEL
+    }
+}
+
 /// Build the SDK client shared by bundled tools with the selected Jev model.
 pub fn configured_client(api_key: &str, endpoint: &str, model: &str) -> Result<Client, String> {
     if api_key.trim().is_empty() {
@@ -449,6 +504,61 @@ mod tests {
             (head, request)
         });
         (endpoint, handle)
+    }
+
+    #[test]
+    fn no_key_resolves_to_the_hosted_service_and_a_key_here_wins() {
+        let home = tempfile::tempdir().unwrap();
+        let none = |_: &str| None;
+        assert!(keyless_available(&none));
+        // No key anywhere: the hosted decision service, signed by a key
+        // made on first use, and no TypeSafe key on this computer.
+        let client = keyless_client(&none, home.path(), jev::defaults::MODEL).unwrap();
+        assert_eq!(jev_hosted::via(&client), "hosted");
+        assert!(home.path().join(jev_hosted::KEY_FILE).exists());
+        // This computer's own TypeSafe key is used before the hosted service.
+        let own = |name: &str| (name == "TYPESAFE_API_KEY").then(|| "fixture-own-key".into());
+        let client = keyless_client(&own, home.path(), jev::defaults::MODEL).unwrap();
+        assert_eq!(jev_hosted::via(&client), "direct");
+        // Turned off on this computer: no Jev, and the reason, never a key.
+        let off = |name: &str| (name == jev_hosted::HOSTED_VAR).then(|| "off".into());
+        assert!(!keyless_available(&off));
+        let error = keyless_client(&off, home.path(), jev::defaults::MODEL).unwrap_err();
+        assert!(error.starts_with("Jev is unavailable"), "{error}");
+        // The hosted service fronts TypeSafe's door, so another door's model
+        // falls back to Jev's default.
+        assert_eq!(keyless_model(DEFAULT_ENDPOINT, "jev-1.13.0"), "jev-1.13.0");
+        assert_eq!(
+            keyless_model(GATEWAY_ENDPOINT, GATEWAY_MODEL),
+            jev::defaults::MODEL
+        );
+    }
+
+    #[test]
+    fn a_saved_key_wins_over_the_built_in_service() {
+        let settings = crate::plugin_tools::ExecutionSettings {
+            prompt_inbox: None,
+            boat: Default::default(),
+            gce: crate::cloud_settings::Configuration::gce(),
+            cloud_root: "fixture-state".into(),
+            remote_targets: Default::default(),
+            microcoder: false,
+            cli: false,
+            acp: false,
+            jev_enabled: true,
+            jev_key: Some(model_access::ApiKey::new("fixture-saved-key")),
+            redaction_keys: vec![],
+            jev_model: jev::defaults::MODEL.into(),
+            jev_endpoint: DEFAULT_ENDPOINT.into(),
+            agents: vec![],
+            cwd: std::path::PathBuf::from("/unused"),
+            instructions: None,
+            shell: false,
+            brainstorm: None,
+            disclosure_desk: None,
+        };
+        let client = settings.jev_client().unwrap().unwrap();
+        assert_eq!(jev_hosted::via(&client), "direct");
     }
 
     #[test]

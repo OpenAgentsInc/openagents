@@ -49,6 +49,9 @@ pub enum Entry {
         task: String,
         running: bool,
         output: serde_json::Value,
+        /// The run's latest step and Jev's estimate of how much is done,
+        /// while a Microcoder run reports them. Never a budget.
+        progress: Option<(usize, Option<f64>)>,
     },
 }
 
@@ -461,7 +464,7 @@ fn run_with_provider(
                                 execution.redact(&mut output);
                                 event_callback(RuntimeEvent::Tool { name, input, output, running });
                             }
-                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) => event_callback(event),
+                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) | RuntimeEvent::Progress { .. } => event_callback(event),
                         }
                     };
                     let result = async {

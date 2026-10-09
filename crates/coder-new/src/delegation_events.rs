@@ -237,6 +237,13 @@ pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
         "delta" => RuntimeEvent::Text(word("text")?),
         "model" => RuntimeEvent::Model(word("model")?),
         "usage" => RuntimeEvent::Tokens(value.get("tokens")?.as_u64()?),
+        "progress" => RuntimeEvent::Progress {
+            step: usize::try_from(value.get("step")?.as_u64()?).ok()?,
+            complete: value
+                .get("complete")
+                .and_then(Value::as_f64)
+                .filter(|complete| complete.is_finite()),
+        },
         "tool" => RuntimeEvent::Tool {
             name: word("name")?,
             input: value.get("input")?.clone(),

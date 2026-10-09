@@ -204,6 +204,7 @@ impl App {
                     task: task.clone(),
                     running: true,
                     output: serde_json::Value::Null,
+                    progress: None,
                 });
                 self.delegations.push(live::Delegation {
                     id: id.clone(),
@@ -299,6 +300,15 @@ impl App {
                 output,
                 running,
             } => child.chat.tool(name, input, output, running),
+            bundled_runtime::RuntimeEvent::Progress { step, complete } => {
+                if let Some(live::Entry::Delegation { progress, .. }) =
+                    self.live.entries.iter_mut().find(|entry| {
+                        matches!(entry, live::Entry::Delegation { id: previous, .. } if previous == &id)
+                    })
+                {
+                    *progress = Some((step, complete));
+                }
+            }
             bundled_runtime::RuntimeEvent::Delegation { .. } => {}
         }
         if self.selected_agent == Some(index) {

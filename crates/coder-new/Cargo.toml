@@ -25,6 +25,7 @@ acp-client = { path = "../acp-client" }
 coder-boundary = { path = "../coder-boundary" }
 codex-transport = { path = "../codex-transport" }
 jev = { path = "../jev" }
+jev-hosted = { path = "../jev-hosted" }
 microcoder-loop = { path = "../microcoder-loop" }
 supervise = { path = "../supervise" }
 model-access = { path = "../model-access" }

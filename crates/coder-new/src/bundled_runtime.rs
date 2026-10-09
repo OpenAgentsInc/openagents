@@ -186,12 +186,32 @@ pub enum RuntimeEvent {
         output: Value,
         running: bool,
     },
+    /// A Microcoder step Jev judged: the loop's step, from one, and Jev's
+    /// estimate of how much of the task is complete (0 to 1), when Jev
+    /// answered. There is never a step or time budget, and no other source
+    /// fills `complete`.
+    Progress {
+        step: usize,
+        complete: Option<f64>,
+    },
 }
 
 impl RuntimeEvent {
+    /// "step 3 · ≈40% done", or "step 3" while Jev has given no estimate.
+    #[must_use]
+    pub fn progress_line(step: usize, complete: Option<f64>) -> String {
+        match complete.filter(|complete| complete.is_finite()) {
+            Some(complete) => format!(
+                "step {step} · ≈{:.0}% done",
+                complete.clamp(0.0, 1.0) * 100.0
+            ),
+            None => format!("step {step}"),
+        }
+    }
+
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
-            Self::Tokens(_) => {}
+            Self::Tokens(_) | Self::Progress { .. } => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,
@@ -1542,6 +1562,17 @@ impl Observer for MicrocoderEvents<'_> {
                 output: json!(result),
                 running: false,
             }),
+            // Jev's estimate, and only Jev's: a judgment that failed or
+            // asked no `complete` score shows the step alone.
+            Event::Judged { step, judgment } => self.emit.emit(RuntimeEvent::Progress {
+                step: *step,
+                complete: judgment
+                    .error
+                    .is_none()
+                    .then(|| judgment.complete())
+                    .flatten()
+                    .filter(|complete| complete.is_finite()),
+            }),
             _ => {}
         }
     }
@@ -2732,6 +2763,62 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert!(result.answers.is_empty());
         assert!(result.error.as_deref().unwrap().contains("no decision"));
         assert_eq!(result.usd, Some(0.0));
+    }
+
+    #[test]
+    fn a_judged_step_reaches_the_run_as_jevs_estimate_and_only_jevs() {
+        let mut events = Vec::new();
+        {
+            let mut push = |event: RuntimeEvent| events.push(event);
+            let sink = RefCell::new(&mut push as &mut dyn FnMut(RuntimeEvent));
+            let mut observer = MicrocoderEvents {
+                emit: &sink,
+                reply: String::new(),
+                model: None,
+                tokens: 0,
+                redaction_keys: &[],
+            };
+            let judged = |judgment| Event::Judged { step: 3, judgment };
+            observer.event(
+                1.0,
+                &judged(microcoder_loop::models::Judgment {
+                    scores: vec![(microcoder_loop::models::COMPLETE.into(), 0.4)],
+                    ..Default::default()
+                }),
+            );
+            // No Jev, or a failed call: the step alone, never a number.
+            observer.event(
+                2.0,
+                &judged(microcoder_loop::models::Judgment {
+                    error: Some("Jev is not configured; no decision was made.".into()),
+                    ..Default::default()
+                }),
+            );
+            observer.event(3.0, &judged(microcoder_loop::models::Judgment::default()));
+        }
+        let progress: Vec<_> = events
+            .iter()
+            .map(|event| match event {
+                RuntimeEvent::Progress { step, complete } => (*step, *complete),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+        assert_eq!(progress, [(3, Some(0.4)), (3, None), (3, None)]);
+        assert_eq!(
+            RuntimeEvent::progress_line(3, Some(0.4)),
+            "step 3 · ≈40% done"
+        );
+        assert_eq!(RuntimeEvent::progress_line(3, None), "step 3");
+        assert_eq!(
+            RuntimeEvent::progress_line(9, Some(1.7)),
+            "step 9 · ≈100% done"
+        );
+        // A synced or delegated stream carries the same event back.
+        let value = json!({"event":"progress","step":3,"complete":0.4});
+        assert!(matches!(
+            crate::delegation_events::decode(&value, 0),
+            Some(RuntimeEvent::Progress { step: 3, complete: Some(c) }) if (c - 0.4).abs() < 1e-9
+        ));
     }
 
     #[test]

@@ -396,6 +396,9 @@ impl BundledSettings {
         }
         match id {
             crate::brainstorm::PLUGIN => self.brainstorm.status(),
+            // No key saved: the built-in decision service answers, needing
+            // none, unless it is turned off on this computer.
+            "jev" if self.jev_key.is_none() && keyless_jev() => "Built in",
             "jev" if self.jev_key.is_none() => "Setup required",
             "jev" => match self.connection {
                 Connection::Checking => "Checking",
@@ -570,6 +573,9 @@ impl BundledSettings {
             return "Demo · no requests sent";
         }
         match &self.connection {
+            Connection::Unchecked if self.jev_key.is_none() && keyless_jev() => {
+                "Built in · no key needed"
+            }
             Connection::Unchecked => "Not checked",
             Connection::Checking => "Checking Jev API key…",
             Connection::Verified => "Jev API key verified",
@@ -931,6 +937,12 @@ impl BundledSettings {
     }
 }
 
+/// Whether Jev answers here with no saved key (the hosted decision
+/// service, unless `OPENAGENTS_JEV_HOSTED=off`).
+fn keyless_jev() -> bool {
+    crate::jev_plugin::keyless_available(&|name| std::env::var(name).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -950,6 +962,21 @@ mod tests {
         };
         *draft = Draft::default();
         settings.paste(text);
+    }
+
+    #[test]
+    fn jev_without_a_key_is_built_in_and_a_saved_key_shows_its_own_state() {
+        if !keyless_jev() {
+            // OPENAGENTS_JEV_HOSTED=off on this computer: nothing to show.
+            return;
+        }
+        let mut settings = BundledSettings::default();
+        settings.set_live(true);
+        assert_eq!(settings.status("jev"), "Built in");
+        assert_eq!(settings.connection_label(), "Built in · no key needed");
+        settings.set_jev_environment(Some(ApiKey::new("direct-fixture")), None);
+        assert_eq!(settings.status("jev"), "Configured");
+        assert_eq!(settings.connection_label(), "Not checked");
     }
 
     #[test]
