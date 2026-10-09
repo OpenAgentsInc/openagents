@@ -11,6 +11,16 @@
 // - <html data-oa-sidebar-ready> tells the stylesheet the toggle works on
 //   wide screens; without this script it is hidden there.
 //
+// Shortcuts: Control+<letter> (Ctrl only; Cmd+N belongs to the browser on
+// macOS) follows the link that declares it in aria-keyshortcuts, such as
+// "New chat" (Control+N). Not during IME composition. Chrome on Windows and
+// Linux keeps Ctrl+N for a new window and never delivers it to the page.
+//
+// Send button: disabled (the `disabled` attribute) while the composer's
+// text box is empty or whitespace, enabled as soon as it has text; set on
+// load, on every input, and after HTMX swaps or requests. Without this
+// script it stays enabled and the server rejects an empty message.
+//
 // Composer (form[data-oa-composer]): Enter submits, Shift+Enter inserts a
 // line, IME composition is left alone. A page adapter that already handled
 // the key (event.defaultPrevented) wins. A click on the composer card that
@@ -66,6 +76,73 @@
     document.addEventListener("DOMContentLoaded", syncAll);
   } else {
     syncAll();
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    if (event.isComposing || event.keyCode === 229) return;
+    if (!event.key || event.key.length !== 1 || !/[a-z]/i.test(event.key)) return;
+    var keys = "Control+" + event.key.toUpperCase();
+    var links = document.querySelectorAll("a[aria-keyshortcuts]");
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].getAttribute("aria-keyshortcuts") === keys) {
+        event.preventDefault();
+        window.location.assign(links[i].href);
+        return;
+      }
+    }
+  });
+
+  function composerParts(form) {
+    var input = form.querySelector("[data-composer-body] textarea");
+    var send = form.querySelector(".oa-composer-footer-end button[type=submit]");
+    return { input: input, send: send };
+  }
+
+  function syncSend(form) {
+    var parts = composerParts(form);
+    if (!parts.input || !parts.send) return;
+    var empty = !parts.input.value.trim();
+    if (empty || parts.input.disabled) {
+      parts.send.disabled = true;
+    } else if (!form.classList.contains("htmx-request")) {
+      parts.send.disabled = false;
+    }
+  }
+
+  function syncAllSends() {
+    var forms = document.querySelectorAll("form[data-oa-composer]");
+    for (var i = 0; i < forms.length; i++) {
+      syncSend(forms[i]);
+      grow(composerParts(forms[i]).input);
+    }
+  }
+
+  // The text box grows with its text through `field-sizing: content`;
+  // where that is missing, set its height from its content (CSSOM, which
+  // the style policy allows), up to the stylesheet's max-height.
+  var sizing = !!(window.CSS && CSS.supports && CSS.supports("field-sizing", "content"));
+  function grow(input) {
+    if (sizing || !input) return;
+    input.style.height = "auto";
+    input.style.height = input.scrollHeight + "px";
+  }
+
+  document.addEventListener("input", function (event) {
+    var form = event.target && event.target.form;
+    if (form && form.hasAttribute("data-oa-composer")) {
+      syncSend(form);
+      grow(composerParts(form).input);
+    }
+  });
+  ["htmx:afterRequest", "htmx:afterSettle", "htmx:load", "reset"].forEach(function (name) {
+    document.addEventListener(name, function () { setTimeout(syncAllSends, 0); });
+  });
+  window.addEventListener("pageshow", syncAllSends);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", syncAllSends);
+  } else {
+    syncAllSends();
   }
 
   document.addEventListener("keydown", function (event) {

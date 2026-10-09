@@ -15,7 +15,9 @@
   --composer-dropdown-label-value-color: var(--color-text);
   --elevation-composer: var(--shadow-100);
   --line-height-composer: var(--font-text-md-line-height);
-  --min-height-composer: calc(var(--spacing) * 14);
+  /* One line of text plus the input's top padding: the box starts at one
+     line and grows with its content up to the max height. */
+  --min-height-composer: calc(var(--line-height-composer) + var(--spacing) * 3);
   --max-height-composer: 22.5rem;
 }
 
@@ -91,7 +93,7 @@
   min-height: var(--min-height-composer);
   max-height: var(--max-height-composer);
   margin: 0;
-  padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4) calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4) 0;
   border: 0;
   background: transparent;
   color: var(--color-text-composer-primary);
@@ -117,7 +119,7 @@
   justify-content: space-between;
   gap: calc(var(--spacing) * 2);
   min-width: 0;
-  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5) calc(var(--spacing) * 2.5);
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2) calc(var(--spacing) * 2);
 }
 .oa-composer-footer-start,
 .oa-composer-footer-end {
@@ -228,8 +230,9 @@
 }
 .oa-composer-send:disabled,
 .oa-composer-send[aria-disabled="true"] {
+  background: var(--color-background-disabled);
+  color: var(--color-text-disabled);
   cursor: default;
-  opacity: 0.4;
 }
 
 /* Footer icon buttons: add context, voice input. */

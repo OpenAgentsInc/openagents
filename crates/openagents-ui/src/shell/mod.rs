@@ -9,8 +9,11 @@
 //!
 //! - [`Document`]: the `<html>` element with the server-chosen `data-theme`.
 //! - [`AppShell`]: layout, [`Sidebar`] in the left panel (one toggle in its
-//!   header, a [`ChatList`] of recent chats, [`LegalLinks`] at the bottom),
-//!   header, main frame, and an optional docked composer.
+//!   header, a [`ChatList`] of recent chats, an [`AccountMenu`] at the
+//!   bottom), the header row ([`Breadcrumb`] on the left, actions on the
+//!   right), main frame, and an optional docked composer.
+//! - [`ScrollToBottom`]: the floating button over a scrolling thread.
+//! - [`LegalLinks`]: quiet legal and project links (the home page's bottom).
 //! - [`Composer`]: a plain `<form method="post">` enhanced with HTMX, with
 //!   slots for the repository, branch and environment selectors
 //!   ([`ComposerDropdown`]) and a [`ModelPickerTrigger`].
@@ -23,12 +26,15 @@
 //! Styles live in `static/components/shell.css` ([`SHELL_CSS`]) and
 //! `static/components/composer.css` ([`COMPOSER_CSS`]).
 
+mod breadcrumb;
 mod composer;
 mod glyph;
 mod layout;
+mod scroll;
 mod theme;
 mod thread;
 
+pub use breadcrumb::{AccountMenu, BREADCRUMB_ID, Breadcrumb};
 pub use composer::{
     Composer, ComposerAction, ComposerDropdown, ComposerPanel, HxGet, ModelPickerTrigger,
     composer_panel_host,
@@ -37,6 +43,7 @@ pub use layout::{
     AppShell, ChatList, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE,
     SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
 };
+pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
 pub use thread::{Message, MessageRole};
 

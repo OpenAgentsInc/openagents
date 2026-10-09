@@ -287,7 +287,7 @@ impl Composer {
             input_label: "Message".to_owned(),
             draft: String::new(),
             max_chars: None,
-            rows: 2,
+            rows: 1,
             autofocus: false,
             disabled: false,
             hidden: Vec::new(),

@@ -65,7 +65,7 @@ impl Render for Document {
             html lang="en" data-theme=[self.theme.map(Theme::as_str)] {
                 head {
                     meta charset="utf-8";
-                    meta name="viewport" content="width=device-width, initial-scale=1";
+                    meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content";
                     meta name="color-scheme" content="light dark";
                     title { (title) }
                     @if let Some(head) = &self.head { (head) }
@@ -86,6 +86,7 @@ pub struct NavItem {
     icon: Option<Markup>,
     current: bool,
     trailing: Option<Markup>,
+    shortcut: Option<(String, String)>,
     hx: Option<HxGet>,
 }
 
@@ -99,8 +100,19 @@ impl NavItem {
             icon: None,
             current: false,
             trailing: None,
+            shortcut: None,
             hx: None,
         }
+    }
+
+    /// A keyboard shortcut that follows the row: `keys` in
+    /// `aria-keyshortcuts` form (`Control+N`), shown as a quiet keycap
+    /// `hint` (`Ctrl N`) at the row's end on wide screens. The shell script
+    /// follows any `Control+<letter>` row it finds on the page.
+    #[must_use]
+    pub fn shortcut(mut self, keys: impl Into<String>, hint: impl Into<String>) -> Self {
+        self.shortcut = Some((keys.into(), hint.into()));
+        self
     }
 
     /// A leading icon.
@@ -144,13 +156,18 @@ impl Render for NavItem {
                     hx-include=[hx.and_then(|hx| hx.include.as_deref())]
                     hx-swap=[hx.and_then(|hx| hx.swap.as_deref())]
                     hx-sync=[hx.and_then(|hx| hx.sync.as_deref())]
-                    aria-current=[self.current.then_some("page")] {
+                    aria-current=[self.current.then_some("page")]
+                    aria-keyshortcuts=[self.shortcut.as_ref().map(|(keys, _)| keys.as_str())]
+                    title=[self.shortcut.as_ref().map(|(_, hint)| format!("{} ({hint})", self.label))] {
                     @if let Some(icon) = &self.icon {
                         span class="oa-nav-item-icon" aria-hidden="true" { (icon) }
                     }
                     span class="oa-nav-item-label" { (self.label) }
                     @if let Some(trailing) = &self.trailing {
                         span class="oa-nav-item-trailing" { (trailing) }
+                    }
+                    @if let Some((_, hint)) = &self.shortcut {
+                        kbd class="oa-nav-shortcut" aria-hidden="true" { (hint) }
                     }
                 }
             }
@@ -358,9 +375,9 @@ impl Render for ChatList {
     }
 }
 
-/// Small, quiet legal and project links for the bottom of the left panel
-/// (Terms, Privacy, source, social, copyright), kept out of the page as
-/// ChatGPT does.
+/// Small, quiet legal and project links (Terms, Privacy, source, social,
+/// copyright). The home page centers them along the bottom of the main area
+/// (`oa-home-legal`); no other page shows them.
 #[derive(Clone, Debug, Default)]
 pub struct LegalLinks {
     note: Option<String>,
@@ -454,14 +471,16 @@ impl Sidebar {
         self
     }
 
-    /// A row pinned to the bottom of the panel, above the footer ("Docs").
+    /// A row pinned to the bottom of the panel, above the footer ("Docs"
+    /// for a visitor who is not signed in).
     #[must_use]
     pub fn bottom(mut self, item: NavItem) -> Self {
         self.bottom.push(item);
         self
     }
 
-    /// The pinned footer, such as [`LegalLinks`].
+    /// The pinned footer, such as an [`super::AccountMenu`] or a sign-in
+    /// link.
     #[must_use]
     pub fn footer(mut self, footer: impl Render) -> Self {
         self.footer = Some(footer.render());
@@ -510,6 +529,7 @@ pub fn sidebar_collapsed_from_cookie(value: &str) -> bool {
 pub struct AppShell {
     sidebar: Option<Sidebar>,
     collapsed: bool,
+    breadcrumb: Option<Markup>,
     header: Option<Markup>,
     actions: Option<Markup>,
     content: Option<Markup>,
@@ -541,7 +561,17 @@ impl AppShell {
         self
     }
 
-    /// The header's leading content: page title, breadcrumbs, wordmark.
+    /// The header row's breadcrumb (a [`super::Breadcrumb`]): the page's
+    /// name, or a chat's title, on the same line as the actions. The left
+    /// panel's toggle sits at the start of that line (in its rail when the
+    /// panel is collapsed or the screen is narrow).
+    #[must_use]
+    pub fn breadcrumb(mut self, breadcrumb: impl Render) -> Self {
+        self.breadcrumb = Some(breadcrumb.render());
+        self
+    }
+
+    /// Extra leading header content after the breadcrumb.
     #[must_use]
     pub fn header(mut self, header: impl Render) -> Self {
         self.header = Some(header.render());
@@ -612,6 +642,7 @@ impl Render for AppShell {
                 div class="oa-main-surface" {
                     header class="oa-main-header" {
                         div class="oa-main-header-content" {
+                            @if let Some(breadcrumb) = &self.breadcrumb { (breadcrumb) }
                             @if let Some(header) = &self.header { (header) }
                         }
                         div class="oa-main-header-actions" {

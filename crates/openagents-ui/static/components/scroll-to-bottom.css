@@ -1,0 +1,46 @@
+/* ScrollToBottom (openagents_ui::shell::ScrollToBottom): an icon-only round
+   button centered at the bottom of its positioned parent, just above the
+   docked composer, as in the desktop app's chat. Values come from the Apps
+   SDK UI tokens (MIT, see NOTICE). */
+
+.oa-scroll-bottom {
+  position: absolute;
+  inset-inline-start: 50%;
+  bottom: calc(var(--spacing) * 3);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 9);
+  height: calc(var(--spacing) * 9);
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-elevated, var(--color-surface));
+  box-shadow: var(--shadow-100, none);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+  transform: translateX(-50%);
+  transition: background-color var(--transition-duration-basic) var(--transition-ease-basic);
+}
+.oa-scroll-bottom[hidden] {
+  display: none;
+}
+.oa-scroll-bottom:hover {
+  background: var(--color-background-primary-ghost-hover);
+}
+.oa-scroll-bottom:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-scroll-sentinel {
+  height: 1px;
+  margin-top: -1px;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-scroll-bottom {
+    transition: none;
+  }
+}

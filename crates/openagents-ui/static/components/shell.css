@@ -15,9 +15,23 @@
   --thread-content-max-width: 48rem;
 }
 
+/* The app lives in one fixed-height screen: the document never scrolls or
+   rubber-bands; only inner regions (the left panel's list, the main
+   viewport, a thread) scroll, and they contain their overscroll. Scoped to
+   shell documents (body.oa-body), so full-screen canvas pages are
+   unaffected. 100vh is the fallback where dvh is missing. */
+html:has(> body.oa-body) {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 .oa-body {
   margin: 0;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-surface);
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -57,6 +71,7 @@
 .oa-layout {
   position: relative;
   display: flex;
+  height: 100vh;
   height: 100dvh;
   min-height: 0;
   background: var(--app-color-background-shell);
@@ -101,8 +116,15 @@
   .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-conversation-sidebar > :not(.oa-navigation),
   .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-nav-item-label,
   .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-nav-item-trailing,
-  .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-sidebar-footer {
+  .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-account-name {
     display: none;
+  }
+  .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-sidebar-footer {
+    padding-inline: calc(var(--spacing) * 1.5);
+  }
+  .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-account-trigger {
+    justify-content: center;
+    padding-inline: 0;
   }
   .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-sidebar-header {
     justify-content: center;
@@ -127,8 +149,15 @@
   .oa-left-panel[popover]:not(:popover-open) .oa-conversation-sidebar > :not(.oa-navigation),
   .oa-left-panel[popover]:not(:popover-open) .oa-nav-item-label,
   .oa-left-panel[popover]:not(:popover-open) .oa-nav-item-trailing,
-  .oa-left-panel[popover]:not(:popover-open) .oa-sidebar-footer {
+  .oa-left-panel[popover]:not(:popover-open) .oa-account-name {
     display: none;
+  }
+  .oa-left-panel[popover]:not(:popover-open) .oa-sidebar-footer {
+    padding-inline: calc(var(--spacing) * 1.5);
+  }
+  .oa-left-panel[popover]:not(:popover-open) .oa-account-trigger {
+    justify-content: center;
+    padding-inline: 0;
   }
   .oa-left-panel[popover]:not(:popover-open) .oa-sidebar-header {
     justify-content: center;
@@ -182,6 +211,7 @@
   min-height: 0;
   padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2) calc(var(--spacing) * 4);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .oa-navigation {
@@ -250,6 +280,26 @@
   font-size: var(--font-text-xs-size);
 }
 
+.oa-nav-shortcut {
+  display: none;
+  flex: none;
+  padding: 0 calc(var(--spacing) * 1.25);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  font-family: inherit;
+  font-size: var(--font-text-xs-size);
+  line-height: var(--font-text-xs-line-height);
+  white-space: nowrap;
+}
+/* The keycap hint shows only where there is a keyboard and room for it. */
+@media (min-width: 48rem) and (hover: hover) and (pointer: fine) {
+  .oa-layout:not([data-sidebar="collapsed"]) .oa-nav-shortcut,
+  .oa-left-panel:popover-open .oa-nav-shortcut {
+    display: inline-flex;
+  }
+}
+
 .oa-sidebar-section {
   display: flex;
   flex-direction: column;
@@ -274,7 +324,7 @@
   min-width: 0;
 }
 
-/* Bottom of the left panel: rows such as Docs, then quiet legal links. */
+/* Bottom of the left panel: Docs (signed out), then the account. */
 .oa-sidebar-footer {
   display: flex;
   flex: none;
@@ -288,6 +338,7 @@
 }
 .oa-sidebar-legal {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
   column-gap: calc(var(--spacing) * 2.5);
   row-gap: calc(var(--spacing) * 0.5);
@@ -310,7 +361,97 @@
   border-radius: var(--radius-xs);
 }
 .oa-sidebar-legal-note {
-  flex-basis: 100%;
+  white-space: nowrap;
+}
+
+/* The account button at the bottom of the left panel (ChatGPT's profile
+   row): avatar and name; its menu opens above it. */
+.oa-account .oa-menu {
+  display: block;
+}
+.oa-account-trigger {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--height-token-nav-row);
+  padding: var(--padding-row-y) var(--padding-row-x);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+}
+.oa-account-trigger:hover,
+.oa-account-trigger[aria-expanded="true"] {
+  background: var(--color-background-primary-ghost-hover);
+}
+.oa-account-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-account-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-account .oa-menu-list {
+  --menu-min-width: 14rem;
+}
+
+/* The header row's breadcrumb: the page's name or the chat's title. */
+.oa-breadcrumb {
+  display: flex;
+  min-width: 0;
+}
+.oa-breadcrumb-list {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oa-breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-width: 0;
+}
+.oa-breadcrumb-item:not(:last-child) {
+  flex: none;
+}
+.oa-breadcrumb-item + .oa-breadcrumb-item::before {
+  content: "/";
+  color: var(--color-text-tertiary);
+}
+.oa-breadcrumb-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.oa-breadcrumb-link:hover {
+  color: var(--color-text);
+}
+.oa-breadcrumb-link:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.oa-breadcrumb-current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Shared icon buttons in the shell. */
@@ -427,6 +568,7 @@
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .oa-layout[data-mode="app"] .oa-main-viewport {
   overflow: hidden;
@@ -449,7 +591,7 @@
   width: 100%;
   max-width: var(--thread-content-max-width);
   margin: 0 auto;
-  padding: 0 calc(var(--spacing) * 4) calc(var(--spacing) * 4);
+  padding: 0 calc(var(--spacing) * 4) calc(var(--spacing) * 3 + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 

@@ -7,7 +7,7 @@ fn chat_composer() -> Composer {
         .label("Continue the chat")
         .input_id("chat-input")
         .body_id("chat-card")
-        .placeholder("Ask OpenAgents to build, fix bugs, explore")
+        .placeholder("Ask OpenAgents anything")
         .max_chars(8000)
         .hidden(html! { input type="hidden" name="csrf" value="t"; })
         .selectors(
@@ -416,4 +416,112 @@ fn stylesheets_are_balanced_and_use_the_oa_prefix() {
             }
         }
     }
+}
+
+#[test]
+fn breadcrumb_sits_in_the_header_row_before_the_actions() {
+    let html = AppShell::new()
+        .sidebar(Sidebar::new())
+        .breadcrumb(Breadcrumb::new("so does <this> work").crumb("Chats", "/chats"))
+        .actions(html! { a href="/download" { "Download" } })
+        .render()
+        .into_string();
+    let crumb = html
+        .find(r#"<nav id="oa-breadcrumb" class="oa-breadcrumb" aria-label="Breadcrumb">"#)
+        .expect("breadcrumb in the header");
+    let header = html
+        .find(r#"<div class="oa-main-header-content">"#)
+        .unwrap();
+    let actions = html
+        .find(r#"<div class="oa-main-header-actions">"#)
+        .unwrap();
+    assert!(header < crumb && crumb < actions);
+    assert!(html.contains(r#"<a class="oa-breadcrumb-link" href="/chats">Chats</a>"#));
+    assert!(html.contains(
+        r#"<span class="oa-breadcrumb-current" aria-current="page" title="so does &lt;this&gt; work">so does &lt;this&gt; work</span>"#
+    ));
+    let oob = Breadcrumb::new("x").swap_oob(true).render().into_string();
+    assert!(oob.contains(r#"hx-swap-oob="outerHTML""#) && BREADCRUMB_ID == "oa-breadcrumb");
+    assert!(
+        SHELL_CSS.contains(".oa-breadcrumb-current {")
+            && SHELL_CSS.contains("text-overflow: ellipsis")
+    );
+}
+
+#[test]
+fn scroll_to_bottom_is_an_icon_button_hidden_until_the_script_shows_it() {
+    let html = ScrollToBottom::new("#chat-thread").render().into_string();
+    assert!(html.starts_with(
+        r##"<button type="button" class="oa-scroll-bottom" data-oa-scroll-bottom="#chat-thread" aria-label="Scroll to bottom" title="Scroll to bottom" hidden>"##
+    ));
+    assert!(html.contains("oa-icon") && !html.contains(">Latest<"));
+    assert!(
+        SCROLL_TO_BOTTOM_ATTR == "data-oa-scroll-bottom"
+            && SCROLL_TAIL_ATTR == "data-oa-scroll-tail"
+    );
+    let script = crate::script();
+    assert!(script.contains("IntersectionObserver") && script.contains("[data-oa-scroll-tail]"));
+    assert!(script.contains(r#"behavior: reduce ? "auto" : "smooth""#));
+    let css = crate::stylesheet();
+    assert!(css.contains(".oa-scroll-bottom[hidden]"));
+    assert!(THREAD_CSS.contains(".oa-thread-view {\n  position: relative;"));
+}
+
+#[test]
+fn root_layout_is_one_fixed_height_screen_that_never_bounces() {
+    let css = SHELL_CSS;
+    let root = &css[css.find("html:has(> body.oa-body) {").expect("root rule")..];
+    let root = &root[..root.find('}').unwrap()];
+    assert!(root.contains("height: 100dvh;") && root.contains("overflow: hidden;"));
+    assert!(root.contains("overscroll-behavior: none;"));
+    let body = &css[css.find(".oa-body {").unwrap()..];
+    let body = &body[..body.find('}').unwrap()];
+    assert!(
+        body.contains("height: 100vh;\n  height: 100dvh;") && body.contains("overflow: hidden;")
+    );
+    for region in ["\n.oa-conversation-sidebar {", "\n.oa-main-viewport {"] {
+        let rule = &css[css.find(region).unwrap()..];
+        let rule = &rule[..rule.find('}').unwrap()];
+        assert!(rule.contains("overscroll-behavior: contain;"), "{region}");
+    }
+    assert!(THREAD_CSS.contains("overscroll-behavior: contain;"));
+    let doc = Document::new("x").render().into_string();
+    assert!(doc.contains("interactive-widget=resizes-content"));
+}
+
+#[test]
+fn new_chat_row_carries_its_shortcut_and_the_send_button_follows_the_text() {
+    let row = NavItem::new("New chat", "/")
+        .shortcut("Control+N", "Ctrl N")
+        .render()
+        .into_string();
+    assert!(row.contains(r#"aria-keyshortcuts="Control+N" title="New chat (Ctrl N)""#));
+    assert!(row.contains(r#"<kbd class="oa-nav-shortcut" aria-hidden="true">Ctrl N</kbd>"#));
+    let script = crate::script();
+    assert!(script.contains(r#""Control+" + event.key.toUpperCase()"#));
+    assert!(script.contains("event.metaKey") && script.contains("parts.send.disabled = true"));
+    // Without the script the send button is enabled; the server rejects an
+    // empty message.
+    let composer = chat_composer().render().into_string();
+    assert!(composer.contains(
+        r#"<button type="submit" class="oa-composer-send" aria-label="Send" title="Send">"#
+    ));
+    assert!(composer.contains(r#"rows="1""#));
+    assert!(COMPOSER_CSS.contains("background: var(--color-background-disabled);"));
+}
+
+#[test]
+fn account_menu_opens_above_the_account_button() {
+    let html = AccountMenu::new("ada@example.com")
+        .item(crate::overlays::MenuItem::link(
+            "Settings",
+            "/cloud/app/settings",
+        ))
+        .render()
+        .into_string();
+    assert!(html.contains(r#"<div class="oa-account">"#));
+    assert!(html.contains(r#"aria-label="Account: ada@example.com""#));
+    assert!(html.contains(r#"data-side="top""#) && html.contains(r#"role="menu""#));
+    assert!(html.contains(r#"<span class="oa-account-name">ada@example.com</span>"#));
+    assert!(html.contains(r#"href="/cloud/app/settings""#));
 }

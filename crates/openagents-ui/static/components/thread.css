@@ -4,52 +4,11 @@
    user bubble uses the product-only message roles from composer.css. */
 
 .oa-thread-view {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-}
-
-.oa-thread-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: calc(var(--spacing) * 4);
-  box-sizing: border-box;
-  width: 100%;
-  max-width: var(--thread-content-max-width);
-  margin: 0 auto;
-  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
-}
-.oa-thread-title {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--color-text);
-  font-size: var(--font-text-md-size);
-  font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.oa-thread-links {
-  display: flex;
-  flex: none;
-  gap: calc(var(--spacing) * 1);
-}
-.oa-thread-links a {
-  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  font-size: var(--font-text-sm-size);
-  text-decoration: none;
-}
-.oa-thread-links a:hover {
-  background: var(--color-background-primary-ghost-hover);
-  color: var(--color-text);
-}
-.oa-thread-links a:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-ring);
 }
 
 .oa-thread {
@@ -121,14 +80,18 @@
 }
 
 .oa-composer-feedback {
-  min-height: 1.2em;
   margin: calc(var(--spacing) * 2) 0 0;
   padding: 0 calc(var(--spacing) * 3);
   color: var(--color-text-secondary);
   font-size: var(--font-text-sm-size);
 }
 
-/* The home page: the composer centered in the content area. */
+.oa-composer-feedback:empty {
+  margin: 0;
+}
+
+/* The home page: the composer centered in the content area, and the legal
+   links small and centered along the bottom of the main area. */
 .oa-home-stage {
   display: flex;
   flex: 1;
@@ -140,17 +103,18 @@
   min-height: 60vh;
   padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4);
 }
+.oa-home-legal {
+  flex: none;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4) calc(var(--spacing) * 3);
+}
+.oa-home-legal .oa-sidebar-legal {
+  padding: 0;
+}
 .oa-home-stage .oa-composer-panel {
   max-height: max(7.5rem, calc(50vh - 11rem));
 }
 
 @media (max-width: 40rem) {
-  .oa-thread-header {
-    padding-inline: calc(var(--spacing) * 3);
-  }
-  .oa-thread-links {
-    display: none;
-  }
   .oa-thread-column {
     padding-inline: calc(var(--spacing) * 3);
   }

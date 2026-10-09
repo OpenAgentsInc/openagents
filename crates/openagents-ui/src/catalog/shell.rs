@@ -6,10 +6,11 @@ use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::CodeBlock;
 use crate::icons::Icon;
+use crate::overlays::MenuItem;
 use crate::shell::{
-    AppShell, ChatList, Composer, ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet,
-    LegalLinks, MainMode, Message, ModelPickerTrigger, NavItem, Sidebar, SidebarSection, Theme,
-    ThemeToggle,
+    AccountMenu, AppShell, Breadcrumb, ChatList, Composer, ComposerAction, ComposerDropdown,
+    ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message, ModelPickerTrigger, NavItem,
+    ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -105,7 +106,11 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
     let sidebar = Sidebar::new()
         .label("Preview sidebar")
         .brand(html! { a class="oa-wordmark" href="/ui" { "OpenAgents" } })
-        .nav(NavItem::new("New chat", "/ui").icon(Icon::ComposeEditSquare))
+        .nav(
+            NavItem::new("New chat", "/ui")
+                .icon(Icon::ComposeEditSquare)
+                .shortcut("Control+N", "Ctrl N"),
+        )
         .section(
             ChatList::new()
                 .chat("Catalog review", "/ui#app-shell", true)
@@ -119,37 +124,51 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
                 .trailing(html! { span class="oa-catalog-caption" { "3" } }),
         )
         .footer(
-            LegalLinks::new()
-                .link("Terms", "/terms")
-                .link("Privacy", "/privacy")
-                .note("Legal links"),
+            AccountMenu::new("Ada Lovelace")
+                .id(pane.id("account-menu"))
+                .item(MenuItem::link("Settings", "/ui#app-shell"))
+                .item(MenuItem::separator())
+                .item(MenuItem::link("Docs", "/docs")),
         );
     let shell = AppShell::new()
         .sidebar(sidebar)
-        .header(html! { strong { "Preview" } })
+        .breadcrumb(Breadcrumb::new("A long chat title that truncates")
+                .crumb("Chats", "/ui")
+                .id(pane.id("breadcrumb")),
+        )
         .actions(
             Button::new("Share")
                 .size(ControlSize::Sm)
                 .variant(ButtonVariant::Outline)
                 .color(Color::Secondary),
         )
-        .content(html! { p { "The main frame scrolls this content." } })
+        .content(html! {
+            p { "The main frame scrolls this content." }
+            (LegalLinks::new().link("Terms", "/terms").link("Privacy", "/privacy").note("Legal links"))
+        })
         .footer(html! { p class="oa-catalog-caption" { "Footer slot" } })
         .mode(MainMode::Scroll)
         .main_id(pane.id("shell-main"));
     let app = AppShell::new()
-        .header(html! { strong { "App mode, no sidebar" } })
-        .content(html! { p { "App pages fill the frame and dock the composer." } })
+        .breadcrumb(Breadcrumb::new("App mode, no sidebar").id(pane.id("app-breadcrumb")))
+        .content(html! {
+            div id=(pane.id("shell-thread-view")) class="oa-thread-view" {
+                section id=(pane.id("shell-thread")) class="oa-thread" aria-label="Preview thread" {
+                    div class="oa-thread-column" { p { "App pages fill the frame and dock the composer." } }
+                }
+                (ScrollToBottom::new(format!("#{}", pane.id("shell-thread"))))
+            }
+        })
         .composer(
             Composer::new(pane.id("shell-composer"), "/ui")
                 .enhanced(false)
-                .placeholder("Ask anything"),
+                .placeholder("Ask OpenAgents anything"),
         )
         .mode(MainMode::App)
         .main_id(pane.id("shell-app-main"));
     html! {
-        (specimen("AppShell Sidebar SidebarSection NavItem ChatList LegalLinks", "Scroll mode with sidebar", preview(pane, &shell)))
-        (specimen("AppShell Composer", "App mode with docked composer", preview(pane, &app)))
+        (specimen("AppShell Sidebar SidebarSection NavItem ChatList LegalLinks Breadcrumb AccountMenu", "Scroll mode with sidebar", preview(pane, &shell)))
+        (specimen("AppShell Composer ScrollToBottom", "App mode with docked composer", preview(pane, &app)))
     }
 }
 

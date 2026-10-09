@@ -11,8 +11,9 @@
 //!
 //! - `oa-thread`: the scrolling region (`flex: 1`, `overflow-y: auto`).
 //! - `oa-thread-column`: the centered column, `--thread-content-max-width`.
-//! - `oa-thread-header`, `oa-thread-title`, `oa-thread-links`: the title row
-//!   with history links.
+//! - `oa-thread-view`: the positioned box around a thread, which holds its
+//!   [`super::ScrollToBottom`] button. The title lives in the header row's
+//!   [`super::Breadcrumb`], not in the thread.
 //! - `oa-thread-notice`: a quiet line ("Showing messages 1-24 of 96").
 //! - `oa-thread-status`: the live status line under the last message.
 //! - `oa-thread-error`: a failure line.
