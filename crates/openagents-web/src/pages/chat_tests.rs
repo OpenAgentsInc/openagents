@@ -478,3 +478,44 @@ async fn chat_and_information_panels_render_semantic_controls() {
     }
     fixture.no_worker();
 }
+
+#[test]
+fn sidebar_rows_show_the_repository_and_a_plain_status() {
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 1,
+        title: "Row".into(),
+        messages: Vec::new(),
+        pending: None,
+        requests: Vec::new(),
+        selection: None,
+        updated_unix: 1,
+    };
+    assert_eq!(row_detail(&chat), None);
+    assert_eq!(row_status(&chat), None);
+    chat.selection = Some(Selection {
+        revision: 1,
+        repository: Some(RepositorySource {
+            repository: "acme/app".into(),
+            branch: "main".into(),
+            revision: "0".repeat(40),
+        }),
+        runtime: None,
+    });
+    assert_eq!(row_detail(&chat).as_deref(), Some("acme/app · main"));
+    chat.requests.push(Request {
+        id: CHAT.into(),
+        digest: String::new(),
+        outcome: Outcome::Failed,
+        selection: None,
+        cloud: None,
+    });
+    assert_eq!(row_status(&chat), Some(ChatStatus::Failed));
+    chat.pending = Some(Pending {
+        request_id: NEXT.into(),
+        started_unix: 2,
+        job_id: None,
+    });
+    assert_eq!(row_status(&chat), Some(ChatStatus::Working));
+}

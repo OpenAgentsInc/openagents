@@ -20,8 +20,8 @@ use openagents_ui::content::MarkdownRoot;
 // use openagents_ui::icons::Icon;
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
-    Breadcrumb, ChatList, Composer, HxGet, Message as ThreadMessage, NavItem, ScrollToBottom,
-    composer_panel_host,
+    Breadcrumb, ChatList, ChatStatus, Composer, HxGet, Message as ThreadMessage, NavItem,
+    ScrollToBottom, composer_panel_host,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -821,8 +821,14 @@ pub(crate) async fn chat_list(
         }
     };
     list.items(rows.iter().map(|row| {
-        let item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
+        let mut item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
             .current(current == Some(row.id.as_str()));
+        if let Some(detail) = row_detail(row) {
+            item = item.detail(detail);
+        }
+        if let Some(status) = row_status(row) {
+            item = item.trailing(status);
+        }
         if hx {
             item.hx(HxGet::new(format!("/chat/{}/workspace", row.id))
                 .target("#chat-content")
@@ -832,6 +838,29 @@ pub(crate) async fn chat_list(
             item
         }
     }))
+}
+
+/// A chat row's second line: the repository and branch it was started
+/// with. The list is the owner's own, so the names never reach anyone else.
+fn row_detail(chat: &Conversation) -> Option<String> {
+    let source = chat.selection.as_ref()?.repository.as_ref()?;
+    Some(if source.branch.is_empty() {
+        source.repository.clone()
+    } else {
+        format!("{} · {}", source.repository, source.branch)
+    })
+}
+
+/// A chat row's status: "Working" while an answer runs, "Failed" when the
+/// last one did not finish, and nothing otherwise (see `docs/web/sidebar.md`).
+fn row_status(chat: &Conversation) -> Option<ChatStatus> {
+    if chat.pending.is_some() {
+        return Some(ChatStatus::Working);
+    }
+    match chat.requests.last()?.outcome {
+        Outcome::Failed => Some(ChatStatus::Failed),
+        _ => None,
+    }
 }
 
 /// The chat's hidden composer fields. With `oob` they replace the page's

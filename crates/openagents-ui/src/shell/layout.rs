@@ -85,6 +85,7 @@ pub struct NavItem {
     href: String,
     icon: Option<Markup>,
     current: bool,
+    detail: Option<String>,
     trailing: Option<Markup>,
     shortcut: Option<(String, String)>,
     hx: Option<HxGet>,
@@ -99,6 +100,7 @@ impl NavItem {
             href: href.into(),
             icon: None,
             current: false,
+            detail: None,
             trailing: None,
             shortcut: None,
             hx: None,
@@ -129,7 +131,16 @@ impl NavItem {
         self
     }
 
-    /// Trailing content such as a badge or a status indicator.
+    /// A quiet second line under the label, such as a chat's repository
+    /// and branch. Like the label, it is cut with an ellipsis.
+    #[must_use]
+    pub fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// Trailing content such as a badge or a status indicator
+    /// ([`super::ChatStatus`] for a chat row).
     #[must_use]
     pub fn trailing(mut self, trailing: impl Render) -> Self {
         self.trailing = Some(trailing.render());
@@ -162,7 +173,14 @@ impl Render for NavItem {
                     @if let Some(icon) = &self.icon {
                         span class="oa-nav-item-icon" aria-hidden="true" { (icon) }
                     }
-                    span class="oa-nav-item-label" { (self.label) }
+                    @if let Some(detail) = &self.detail {
+                        span class="oa-nav-item-label oa-nav-item-label--stacked" {
+                            span class="oa-nav-item-title" { (self.label) }
+                            span class="oa-nav-item-detail" { (detail) }
+                        }
+                    } @else {
+                        span class="oa-nav-item-label" { (self.label) }
+                    }
                     @if let Some(trailing) = &self.trailing {
                         span class="oa-nav-item-trailing" { (trailing) }
                     }

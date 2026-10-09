@@ -183,6 +183,53 @@ fn chat_list_marks_the_open_chat_and_stays_quiet_when_empty() {
 }
 
 #[test]
+fn chat_rows_carry_a_detail_line_and_a_plain_status() {
+    let list = ChatList::new()
+        .item(
+            NavItem::new("Fix <the> build", "/chat/1")
+                .detail("acme/app · main")
+                .trailing(ChatStatus::Working),
+        )
+        .item(NavItem::new("Plain", "/chat/2").trailing(ChatStatus::PausedUntil("3:40 PM".into())))
+        .render()
+        .into_string();
+    assert!(list.contains(
+        r#"<span class="oa-nav-item-label oa-nav-item-label--stacked"><span class="oa-nav-item-title">Fix &lt;the&gt; build</span><span class="oa-nav-item-detail">acme/app · main</span></span>"#
+    ));
+    assert!(list.contains(r#"<span class="oa-nav-item-label">Plain</span>"#));
+    assert!(list.contains(r#"data-status="working""#) && list.contains(">Working<"));
+    assert!(list.contains(r#"data-status="paused""#) && list.contains("Paused until 3:40 PM"));
+    let labels: Vec<String> = [
+        ChatStatus::Working,
+        ChatStatus::WaitingForYou,
+        ChatStatus::PausedUntil("3:40 PM".into()),
+        ChatStatus::Done,
+        ChatStatus::Failed,
+    ]
+    .iter()
+    .map(ChatStatus::label)
+    .collect();
+    assert_eq!(
+        labels,
+        [
+            "Working",
+            "Waiting for you",
+            "Paused until 3:40 PM",
+            "Done",
+            "Failed"
+        ]
+    );
+    for class in [
+        ".oa-nav-item-label--stacked",
+        ".oa-nav-item-detail",
+        ".oa-chat-status-dot",
+        r#".oa-chat-status[data-status="failed"]"#,
+    ] {
+        assert!(SHELL_CSS.contains(class), "{class}");
+    }
+}
+
+#[test]
 fn legal_links_are_quiet_and_mark_external_links() {
     let html = LegalLinks::new()
         .link("Terms", "/terms")

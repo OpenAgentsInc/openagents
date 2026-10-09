@@ -31,6 +31,7 @@ mod composer;
 mod glyph;
 mod layout;
 mod scroll;
+mod status;
 mod theme;
 mod thread;
 
@@ -44,6 +45,7 @@ pub use layout::{
     SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
 };
 pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
+pub use status::ChatStatus;
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
 pub use thread::{Message, MessageRole};
 

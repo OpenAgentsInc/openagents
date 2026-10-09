@@ -324,6 +324,75 @@ html:has(> body.oa-body) {
   min-width: 0;
 }
 
+/* A row with a second line (a chat's repository and branch). */
+.oa-nav-item-label--stacked {
+  display: flex;
+  flex-direction: column;
+}
+.oa-nav-item-title,
+.oa-nav-item-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-nav-item-detail {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--font-text-xs-line-height);
+}
+
+/* A chat's status at the end of its row: a dot and a few words. */
+.oa-chat-status {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  line-height: var(--font-text-xs-line-height);
+  white-space: nowrap;
+}
+.oa-chat-status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+.oa-chat-status-label {
+  white-space: nowrap;
+}
+.oa-chat-status[data-status="working"] {
+  color: var(--color-text-info);
+}
+.oa-chat-status[data-status="working"] .oa-chat-status-dot {
+  animation: oa-chat-status-pulse 1.2s ease-in-out infinite;
+}
+.oa-chat-status[data-status="waiting"] {
+  color: var(--color-text-warning);
+}
+.oa-chat-status[data-status="done"] {
+  color: var(--color-text-success);
+}
+.oa-chat-status[data-status="failed"] {
+  color: var(--color-text-danger);
+}
+@keyframes oa-chat-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oa-chat-status[data-status="working"] .oa-chat-status-dot {
+    animation: none;
+  }
+}
+
 /* Bottom of the left panel: Docs (signed out), then the account. */
 .oa-sidebar-footer {
   display: flex;

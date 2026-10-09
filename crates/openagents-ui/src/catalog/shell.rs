@@ -8,9 +8,9 @@ use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::overlays::MenuItem;
 use crate::shell::{
-    AccountMenu, AppShell, Breadcrumb, ChatList, Composer, ComposerAction, ComposerDropdown,
-    ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message, ModelPickerTrigger, NavItem,
-    ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
+    AccountMenu, AppShell, Breadcrumb, ChatList, ChatStatus, Composer, ComposerAction,
+    ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message,
+    ModelPickerTrigger, NavItem, ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -114,8 +114,17 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         .section(
             ChatList::new()
                 .chat("Catalog review", "/ui#app-shell", true)
-                .chat("Token audit", "/ui#colors", false)
-                .chat("Icon sweep", "/ui#icons", false),
+                .item(
+                    NavItem::new("Fix the login redirect", "/ui#colors")
+                        .detail("acme/storefront · main")
+                        .trailing(ChatStatus::Working),
+                )
+                .item(
+                    NavItem::new("Upgrade the database driver", "/ui#icons")
+                        .detail("acme/api · deps-bump")
+                        .trailing(ChatStatus::PausedUntil("3:40 PM".into())),
+                )
+                .item(NavItem::new("Icon sweep", "/ui#icons").trailing(ChatStatus::Failed)),
         )
         .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
         .bottom(
