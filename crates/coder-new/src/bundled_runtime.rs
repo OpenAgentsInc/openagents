@@ -414,7 +414,7 @@ pub(crate) async fn cli_at(
     let seconds = if cloud_job { 12 * 3600 + 1200 } else { 300 };
     let job = supervise::Job::from_command(command)
         .bounded(supervise::Limits::within(Duration::from_secs(seconds)).keeping(TEXT_MAX));
-    let stopped = wait_job(job, cancel, Some((&mut bridge, &sink)), &[]).await?;
+    let stopped = wait_job(job, cancel, Some((&mut bridge, &sink)), &[], None).await?;
     Ok(
         json!({"exit":stopped.ending.code(),"stdout":String::from_utf8_lossy(&stopped.rest.bytes),"stderr":stopped.stderr.marked(),"timed_out":matches!(stopped.ending,supervise::Ending::TimedOut),"canceled":stopped.requested,"group_clear":stopped.group_clear,"truncated":!stopped.rest.gaps.is_empty()}),
     )
@@ -428,14 +428,41 @@ async fn wait_job(
         &dyn crate::delegation_events::Sink,
     )>,
     keys: &[ApiKey],
+    progress: Option<(&dyn crate::delegation_events::Sink, &str)>,
 ) -> Result<supervise::Stopped, String> {
     let live = job.start(supervise::Input::Null)?;
+    let mut captured = Vec::new();
     while !live.finished() {
+        if let Some((sink, script)) = progress {
+            let delivery = live.take();
+            if !delivery.is_empty() {
+                captured.extend_from_slice(
+                    &delivery.bytes[..delivery
+                        .bytes
+                        .len()
+                        .min(TEXT_MAX.saturating_sub(captured.len()))],
+                );
+                sink.emit(RuntimeEvent::Tool {
+                    name: "Run".into(),
+                    input: json!({"command":script}),
+                    output: json!({"output":redact_stream(&captured, keys)}),
+                    running: true,
+                });
+            }
+        }
         if let Some((bridge, sink)) = &mut observing {
             bridge.drain(*sink, keys);
         }
         if cancel.load(Ordering::Relaxed) {
-            let stopped = live.stop().await;
+            let mut stopped = live.stop().await;
+            captured.extend_from_slice(
+                &stopped.rest.bytes[..stopped
+                    .rest
+                    .bytes
+                    .len()
+                    .min(TEXT_MAX.saturating_sub(captured.len()))],
+            );
+            stopped.rest.bytes = captured;
             if let Some((bridge, sink)) = observing {
                 bridge.finish(sink, keys);
             }
@@ -443,7 +470,15 @@ async fn wait_job(
         }
         tokio::time::sleep(POLL).await;
     }
-    let stopped = live.wait().await;
+    let mut stopped = live.wait().await;
+    captured.extend_from_slice(
+        &stopped.rest.bytes[..stopped
+            .rest
+            .bytes
+            .len()
+            .min(TEXT_MAX.saturating_sub(captured.len()))],
+    );
+    stopped.rest.bytes = captured;
     if let Some((bridge, sink)) = observing {
         bridge.finish(sink, keys);
     }
@@ -1429,7 +1464,9 @@ impl Env for Checkout<'_> {
             #[cfg(windows)]
             let arguments = ["-NoProfile", "-NonInteractive", "-Command", script];
             #[cfg(unix)]
-            let arguments = ["-c", script];
+            let streamed_script = format!("exec 2>&1\n{script}");
+            #[cfg(unix)]
+            let arguments = ["-c", streamed_script.as_str()];
             let mut command = match &self.boundary {
                 Some(boundary) => boundary
                     .command(shell, arguments)
@@ -1462,6 +1499,7 @@ impl Env for Checkout<'_> {
                 &self.cancel,
                 bridge.as_mut().zip(self.events),
                 self.redaction_keys,
+                self.events.map(|sink| (sink, script)),
             )
             .await
         }
@@ -1578,6 +1616,20 @@ impl Observer for MicrocoderEvents<'_> {
     }
 }
 
+// Withhold a suffix that could be the beginning of a credential.
+fn redact_stream(bytes: &[u8], keys: &[ApiKey]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut end = text.len();
+    for key in keys {
+        for (length, _) in key.expose().char_indices().skip(1) {
+            if text.ends_with(&key.expose()[..length]) {
+                end = end.min(text.len() - length);
+            }
+        }
+    }
+    redact_text(&text[..end], keys)
+}
+
 fn redact_text(text: &str, keys: &[ApiKey]) -> String {
     let mut text = text.to_owned();
     for key in keys {
@@ -1599,6 +1651,43 @@ fn bounded(text: &str, bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn run_streams_both_pipes_before_exit_and_retains_final_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = Instant::now();
+        let mut updates = Vec::new();
+        let result = run_command(
+            "printf early; printf error >&2; sleep 0.3; printf late",
+            dir.path(),
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| {
+                if let RuntimeEvent::Tool {
+                    output,
+                    running: true,
+                    ..
+                } = event
+                {
+                    updates.push((started.elapsed(), output));
+                }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            updates
+                .iter()
+                .any(|(elapsed, output)| elapsed.as_millis() < 250
+                    && output["output"].as_str().unwrap().contains("earlyerror"))
+        );
+        assert_eq!(result["output"], "earlyerrorlate");
+        assert_eq!(result["exit"], 0);
+        let keys = [ApiKey::new("secret")];
+        assert_eq!(redact_stream(b"hello sec", &keys), "hello ");
+        assert_eq!(redact_stream(b"hello secret", &keys), "hello [redacted]");
+    }
 
     #[tokio::test]
     #[cfg(unix)]

@@ -602,7 +602,7 @@ impl App {
                 } else {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
-                self.scroll_main_to_end();
+
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
@@ -1600,7 +1600,18 @@ impl App {
                             .get_or_insert_with(|| "Request stopped.".into());
                     }
                     KeyCode::Esc => self.select_agent(None),
-                    KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(5),
+                    KeyCode::PageUp => {
+                        self.scroll = self
+                            .scroll
+                            .min(
+                                self.live
+                                    .cache
+                                    .count()
+                                    .saturating_sub(10)
+                                    .min(u16::MAX as usize) as u16,
+                            )
+                            .saturating_sub(5);
+                    }
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
                     KeyCode::End if ctrl => self.scroll = u16::MAX,
                     KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {

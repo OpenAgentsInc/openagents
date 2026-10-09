@@ -628,7 +628,6 @@ fn run_lines(
     ])];
     if running {
         lines.push(Line::from(span("   Running", t::GRAY)));
-        return lines;
     }
     if let Some(fields) = output.as_object() {
         let status = fields
@@ -669,8 +668,8 @@ fn run_lines(
                     .collect(),
                 width,
             );
-            let hidden = rows.len().saturating_sub(5);
-            lines.extend(rows.into_iter().take(5));
+            let hidden = 0;
+            lines.extend(rows);
             if hidden > 0 {
                 lines.push(Line::from(span(
                     format!("   … {hidden} more lines"),
@@ -879,7 +878,7 @@ impl TranscriptCache {
         self.entries.iter().chain(self.partial.iter())
     }
 
-    fn count(&self) -> usize {
+    pub(crate) fn count(&self) -> usize {
         self.blocks().map(|cached| cached.lines.len()).sum()
     }
 
@@ -979,8 +978,12 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let max_scroll = count
         .saturating_sub(usize::from(area.height))
         .min(usize::from(u16::MAX)) as u16;
-    app.scroll = app.scroll.min(max_scroll);
-    let visible = cache.visible(&tail, usize::from(app.scroll), usize::from(area.height));
+    let following = app.scroll == u16::MAX;
+    let position = app.scroll.min(max_scroll);
+    if !following {
+        app.scroll = position;
+    }
+    let visible = cache.visible(&tail, usize::from(position), usize::from(area.height));
     frame.render_widget(Paragraph::new(visible), area);
     if app.scroll < max_scroll {
         frame.render_widget(
