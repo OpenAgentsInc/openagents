@@ -736,6 +736,60 @@ async fn each_door_has_the_first_word_wait_and_no_more() {
     assert_eq!(deaf.asked(), 2);
 }
 
+/// Live, the 2026-10-09 outage forced on purpose: the retired Space Bunny
+/// Alpha on OpenRouter (404), then the Vercel AI Gateway (402 while its
+/// account is empty, or an answer once it is funded), then GLM on
+/// OpenRouter. The turn is answered with no error, and the door that
+/// answered names itself. Needs `OPENROUTER_API_KEY` and
+/// `AI_GATEWAY_API_KEY`; prints which door answered and when.
+#[tokio::test]
+#[ignore = "live: asks OpenRouter and the Vercel AI Gateway"]
+async fn live_a_dead_chain_head_fails_over_to_a_live_door() {
+    let key = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set"));
+    let door = FallbackDoor::new(
+        ResponsesDoor::new(
+            coder::generate::OPENROUTER_DOOR_URL,
+            Lane::SpaceBunny.openrouter_model(),
+            key("OPENROUTER_API_KEY"),
+        ),
+        ResponsesDoor::new(
+            coder::generate::DEFAULT_DOOR_URL,
+            Lane::Gemini.model(),
+            key("AI_GATEWAY_API_KEY"),
+        ),
+    )
+    .with_backups(vec![ResponsesDoor::new(
+        coder::generate::OPENROUTER_DOOR_URL,
+        Lane::Glm.openrouter_model(),
+        key("OPENROUTER_API_KEY"),
+    )]);
+    let started = Instant::now();
+    let mut named = None;
+    let answered = door
+        .generate(
+            "Answer in one sentence.",
+            &[Message {
+                role: Role::User,
+                text: "What is the capital of France?".to_string(),
+            }],
+            &mut |_| {},
+            &mut |meta| {
+                if let Meta::Model(model) = meta {
+                    named = Some(model);
+                }
+            },
+        )
+        .await;
+    let (text, _) = answered.unwrap_or_else(|error| panic!("no door answered: {error}"));
+    println!(
+        "answered by {} in {:?}: {text:?}",
+        named.as_deref().unwrap_or("?"),
+        started.elapsed()
+    );
+    assert!(text.contains("Paris"), "{text}");
+    assert_ne!(named.as_deref(), Some(Lane::SpaceBunny.model()));
+}
+
 /// Live: a primary OpenRouter does not serve (as Space Bunny Alpha will
 /// be after 2026-10-05) hands the turn to Gemini 3.8 Flash on the gateway,
 /// which names itself. Needs `OPENROUTER_API_KEY` and `AI_GATEWAY_API_KEY`;
