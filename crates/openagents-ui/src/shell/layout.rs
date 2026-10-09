@@ -89,6 +89,8 @@ pub struct NavItem {
     trailing: Option<Markup>,
     shortcut: Option<(String, String)>,
     hx: Option<HxGet>,
+    row_id: Option<String>,
+    menu: Option<Markup>,
 }
 
 impl NavItem {
@@ -104,7 +106,25 @@ impl NavItem {
             trailing: None,
             shortcut: None,
             hx: None,
+            row_id: None,
+            menu: None,
         }
+    }
+
+    /// The row's `id` (on its `<li>`), so a response can replace the row,
+    /// for example with a [`super::RowRename`] field.
+    #[must_use]
+    pub fn row_id(mut self, id: impl Into<String>) -> Self {
+        self.row_id = Some(id.into());
+        self
+    }
+
+    /// A [`super::RowMenu`] (the "…" button) after the link, shown on hover
+    /// or focus and always on touch screens.
+    #[must_use]
+    pub fn menu(mut self, menu: impl Render) -> Self {
+        self.menu = Some(menu.render());
+        self
     }
 
     /// A keyboard shortcut that follows the row: `keys` in
@@ -160,7 +180,8 @@ impl Render for NavItem {
     fn render(&self) -> Markup {
         let hx = self.hx.as_ref();
         html! {
-            li class="oa-nav-row" {
+            li class=(if self.menu.is_some() { "oa-nav-row oa-nav-row--menu" } else { "oa-nav-row" })
+                id=[self.row_id.as_deref()] {
                 a class="oa-nav-item" href=(self.href)
                     hx-get=[hx.map(|hx| hx.url.as_str())]
                     hx-target=[hx.and_then(|hx| hx.target.as_deref())]
@@ -188,6 +209,7 @@ impl Render for NavItem {
                         kbd class="oa-nav-shortcut" aria-hidden="true" { (hint) }
                     }
                 }
+                @if let Some(menu) = &self.menu { (menu) }
             }
         }
     }
@@ -302,12 +324,25 @@ impl Render for SidebarSection {
 ///     .into_string();
 /// assert!(html.contains(r#"href="/chat/1" aria-current="page""#));
 /// ```
+///
+/// Organizing adds, all optional: a [`super::ChatSearch`] box on top
+/// ([`ChatList::search`]), a short notice such as "Chat archived · Undo"
+/// ([`ChatList::notice`]), a "Pinned" group above the chats
+/// ([`ChatList::pinned`], hidden when empty), the line shown when nothing
+/// matches ([`ChatList::empty`]), and content after the rows such as an
+/// "Archived" link ([`ChatList::after`]). The groups sit in one
+/// `{id}-rows` box, which a search replaces in place.
 #[derive(Clone, Debug)]
 pub struct ChatList {
     title: String,
     id: Option<String>,
     swap_oob: bool,
     items: Vec<NavItem>,
+    pinned: Vec<NavItem>,
+    search: Option<Markup>,
+    notice: Option<Markup>,
+    empty: Option<String>,
+    after: Option<Markup>,
 }
 
 impl Default for ChatList {
@@ -325,7 +360,48 @@ impl ChatList {
             id: None,
             swap_oob: false,
             items: Vec::new(),
+            pinned: Vec::new(),
+            search: None,
+            notice: None,
+            empty: None,
+            after: None,
         }
+    }
+
+    /// Pinned rows, shown under a "Pinned" heading above the chats.
+    #[must_use]
+    pub fn pinned(mut self, items: impl IntoIterator<Item = NavItem>) -> Self {
+        self.pinned.extend(items);
+        self
+    }
+
+    /// The search box on top of the list (a [`super::ChatSearch`]).
+    #[must_use]
+    pub fn search(mut self, search: impl Render) -> Self {
+        self.search = Some(search.render());
+        self
+    }
+
+    /// A short notice above the rows, read aloud when it appears (such as
+    /// "Chat archived" with an Undo button).
+    #[must_use]
+    pub fn notice(mut self, notice: impl Render) -> Self {
+        self.notice = Some(notice.render());
+        self
+    }
+
+    /// The line shown when there are no rows ("No chats found").
+    #[must_use]
+    pub fn empty(mut self, text: impl Into<String>) -> Self {
+        self.empty = Some(text.into());
+        self
+    }
+
+    /// Content after the rows, such as an "Archived" link.
+    #[must_use]
+    pub fn after(mut self, after: impl Render) -> Self {
+        self.after = Some(after.render());
+        self
     }
 
     /// The heading, "Chats" by default.
@@ -370,23 +446,60 @@ impl ChatList {
         self
     }
 
-    /// Whether the list has no rows.
+    /// Whether the list has no rows (pinned or not).
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.items.is_empty() && self.pinned.is_empty()
     }
 }
 
 impl Render for ChatList {
     fn render(&self) -> Markup {
+        let plain = self.search.is_none()
+            && self.notice.is_none()
+            && self.empty.is_none()
+            && self.after.is_none()
+            && self.pinned.is_empty();
+        let rows_id = self.id.as_ref().map(|id| format!("{id}-rows"));
         html! {
             section class="oa-sidebar-section oa-chat-list" id=[self.id.as_deref()]
                 hx-swap-oob=[self.swap_oob.then_some("outerHTML")] aria-label=(self.title) {
-                @if !self.items.is_empty() {
-                    h2 class="oa-sidebar-section-title" { (self.title) }
-                    ul class="oa-nav-list" role="list" {
-                        @for item in &self.items { (item) }
+                @if plain {
+                    @if !self.items.is_empty() {
+                        h2 class="oa-sidebar-section-title" { (self.title) }
+                        ul class="oa-nav-list" role="list" {
+                            @for item in &self.items { (item) }
+                        }
                     }
+                } @else {
+                    @if let Some(search) = &self.search { (search) }
+                    div class="oa-chat-list-rows" id=[rows_id] data-oa-chat-rows {
+                        div class="oa-chat-list-notice" role="status" {
+                            @if let Some(notice) = &self.notice { (notice) }
+                        }
+                        @if !self.pinned.is_empty() {
+                            div class="oa-chat-list-group" {
+                                h2 class="oa-sidebar-section-title" { "Pinned" }
+                                ul class="oa-nav-list" role="list" {
+                                    @for item in &self.pinned { (item) }
+                                }
+                            }
+                        }
+                        @if !self.items.is_empty() {
+                            div class="oa-chat-list-group" {
+                                h2 class="oa-sidebar-section-title" { (self.title) }
+                                ul class="oa-nav-list" role="list" {
+                                    @for item in &self.items { (item) }
+                                }
+                            }
+                        }
+                        @if self.is_empty() {
+                            @if let Some(empty) = &self.empty {
+                                p class="oa-sidebar-empty" { (empty) }
+                            }
+                        }
+                    }
+                    @if let Some(after) = &self.after { (after) }
                 }
             }
         }

@@ -8,10 +8,10 @@ use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::overlays::MenuItem;
 use crate::shell::{
-    AccountMenu, AppShell, Breadcrumb, ChatList, ChatStatus, Composer, ComposerAction,
+    AccountMenu, AppShell, Breadcrumb, ChatList, ChatSearch, ChatStatus, Composer, ComposerAction,
     ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message,
-    ModelPickerTrigger, NavItem, ScrollToBottom, Sidebar, SidebarSection, SuggestionChip,
-    SuggestionChips, Theme, ThemeToggle,
+    ModelPickerTrigger, NavItem, RowAction, RowMenu, RowRename, ScrollToBottom, Sidebar,
+    SidebarSection, SuggestionChip, SuggestionChips, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -118,6 +118,14 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         )
         .section(
             ChatList::new()
+                .id(pane.id("chats"))
+                .search(ChatSearch::new("/ui", format!("#{}-rows", pane.id("chats"))))
+                .pinned([NavItem::new("Pinned plan", "/ui#app-shell").menu(
+                    RowMenu::new(pane.id("pinned-menu"), "Pinned plan")
+                        .action(RowAction::post("Unpin", "/ui").icon(Icon::Unpin))
+                        .action(RowAction::get("Rename", "/ui").icon(Icon::Pencil))
+                        .action(RowAction::post("Archive", "/ui").icon(Icon::Archive)),
+                )])
                 .chat("Catalog review", "/ui#app-shell", true)
                 .item(
                     NavItem::new("Fix the login redirect", "/ui#colors")
@@ -131,7 +139,12 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
                 )
                 .item(NavItem::new("Icon sweep", "/ui#icons").trailing(ChatStatus::Failed)),
         )
-        .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
+        .section(html! {
+            ul class="oa-nav-list" role="list" {
+                (RowRename::new(pane.id("rename-row"), "/ui", "Renaming this chat", "/ui#app-shell"))
+            }
+        })
+        .section(SidebarSection::new("Projects").empty("No projects yet"))
         .bottom(
             NavItem::new("Docs", "/docs")
                 .icon(Icon::Code)
@@ -181,7 +194,7 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         .mode(MainMode::App)
         .main_id(pane.id("shell-app-main"));
     html! {
-        (specimen("AppShell Sidebar SidebarSection NavItem ChatList LegalLinks Breadcrumb AccountMenu", "Scroll mode with sidebar", preview(pane, &shell)))
+        (specimen("AppShell Sidebar SidebarSection NavItem ChatList ChatSearch RowMenu RowAction RowRename LegalLinks Breadcrumb AccountMenu", "Scroll mode with sidebar", preview(pane, &shell)))
         (specimen("AppShell Composer ScrollToBottom", "App mode with docked composer", preview(pane, &app)))
     }
 }

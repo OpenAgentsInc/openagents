@@ -323,6 +323,169 @@ html:has(> body.oa-body) {
 .oa-chat-list {
   min-width: 0;
 }
+.oa-chat-list-rows,
+.oa-chat-list-group {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+}
+.oa-chat-list-rows {
+  gap: calc(var(--spacing) * 3);
+}
+.oa-chat-list-notice:empty {
+  display: none;
+}
+.oa-chat-list-notice {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  padding: 0 var(--padding-row-x);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+.oa-chat-list-notice form {
+  display: inline;
+}
+.oa-chat-list-link,
+.oa-chat-list-notice button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.oa-chat-list-more {
+  margin: 0;
+  padding: 0 var(--padding-row-x);
+  font-size: var(--font-text-sm-size);
+}
+.oa-chat-list-more .oa-chat-list-link {
+  color: var(--color-text-tertiary);
+}
+
+/* The search box over the chat list. */
+.oa-chat-search {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-height: var(--height-token-nav-row);
+  padding: 0 var(--padding-row-x);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-tertiary);
+}
+.oa-chat-search:focus-within {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-chat-search-icon {
+  display: inline-flex;
+  flex: none;
+}
+.oa-chat-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+}
+
+/* A chat row's "…" menu: shows on hover or focus, always on touch. */
+.oa-nav-row--menu {
+  position: relative;
+  align-items: center;
+}
+.oa-row-menu {
+  position: absolute;
+  inset-inline-end: calc(var(--spacing) * 1);
+  display: inline-flex;
+  opacity: 0;
+}
+.oa-row-menu .oa-menu-list {
+  --menu-min-width: 10rem;
+}
+.oa-nav-row--menu:hover .oa-row-menu,
+.oa-nav-row--menu:focus-within .oa-row-menu,
+.oa-row-menu:has([data-state="open"]) {
+  opacity: 1;
+}
+@media (hover: none) {
+  .oa-row-menu {
+    opacity: 1;
+  }
+}
+.oa-row-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 7);
+  height: calc(var(--spacing) * 7);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-background-secondary-soft);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.oa-row-menu-trigger:hover {
+  color: var(--color-text);
+}
+.oa-row-menu-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+  outline: none;
+}
+
+/* Renaming a chat in place. */
+.oa-nav-row--editing {
+  padding: calc(var(--spacing) * 0.5) 0;
+}
+.oa-row-rename {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+}
+.oa-row-rename-input {
+  min-width: 0;
+  min-height: var(--height-token-nav-row);
+  padding: 0 var(--padding-row-x);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+}
+.oa-row-rename-input:focus {
+  box-shadow: 0 0 0 2px var(--color-ring);
+  outline: none;
+}
+.oa-row-rename-actions {
+  display: flex;
+  gap: calc(var(--spacing) * 3);
+  padding: 0 var(--padding-row-x);
+}
+.oa-row-rename-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-text-xs-size);
+  text-decoration: none;
+}
+.oa-row-rename-button:hover {
+  color: var(--color-text);
+}
 
 /* A row with a second line (a chat's repository and branch). */
 .oa-nav-item-label--stacked {

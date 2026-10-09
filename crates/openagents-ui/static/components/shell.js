@@ -183,6 +183,128 @@
     }
   });
 
+  // Chat list (ChatSearch, RowRename, ChatList's [data-oa-chat-rows]):
+  // - Cmd+K / Ctrl+K focuses the search box (opening the panel first when
+  //   it is a closed drawer or collapsed to its rail).
+  // - In the search box: ArrowDown moves to the first row, Enter opens the
+  //   first row, Escape clears the search. In the rows, ArrowUp/ArrowDown
+  //   move between rows and back up to the box.
+  // - Ctrl+Shift+[ and Ctrl+Shift+] open the previous and next chat.
+  // - Renaming: the field's text is selected when it appears; Escape
+  //   follows its Cancel link.
+  function chatRows() {
+    var box = document.querySelector("[data-oa-chat-rows]");
+    return box ? Array.prototype.slice.call(box.querySelectorAll("a.oa-nav-item")) : [];
+  }
+
+  function searchBox() {
+    return document.querySelector("[data-oa-chat-search] input[type=search]");
+  }
+
+  function visible(element) {
+    return !!(element && element.getClientRects().length);
+  }
+
+  function openPanel() {
+    var toggle = document.querySelector("[data-oa-sidebar-toggle]");
+    if (toggle) toggle.click();
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+    var target = event.target;
+    var key = event.key;
+
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey &&
+        key && key.toLowerCase() === "k") {
+      var box = searchBox();
+      if (!box) return;
+      event.preventDefault();
+      if (!visible(box)) openPanel();
+      box.focus();
+      box.select();
+      return;
+    }
+
+    if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey &&
+        (event.code === "BracketLeft" || event.code === "BracketRight")) {
+      var rows = chatRows();
+      if (!rows.length) return;
+      event.preventDefault();
+      var at = -1;
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].getAttribute("aria-current") === "page") at = i;
+      }
+      var next = event.code === "BracketLeft" ? at - 1 : at + 1;
+      if (at < 0) next = event.code === "BracketLeft" ? rows.length - 1 : 0;
+      if (next >= 0 && next < rows.length) rows[next].click();
+      return;
+    }
+
+    if (!target || !target.closest) return;
+
+    if (key === "Escape" && target.closest("[data-oa-rename]")) {
+      var cancel = target.closest("[data-oa-rename]").querySelector("[data-oa-rename-cancel]");
+      if (cancel) {
+        event.preventDefault();
+        cancel.click();
+      }
+      return;
+    }
+
+    if (target.matches && target.matches("[data-oa-chat-search] input[type=search]")) {
+      if (key === "Escape") {
+        if (!target.value) return;
+        event.preventDefault();
+        target.value = "";
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (key === "ArrowDown") {
+        var first = chatRows()[0];
+        if (first) {
+          event.preventDefault();
+          first.focus();
+        }
+      } else if (key === "Enter") {
+        var top = chatRows()[0];
+        event.preventDefault();
+        if (top && target.value.trim()) top.click();
+      }
+      return;
+    }
+
+    if ((key === "ArrowDown" || key === "ArrowUp") && target.matches &&
+        target.matches("[data-oa-chat-rows] a.oa-nav-item")) {
+      var list = chatRows();
+      var index = list.indexOf(target);
+      if (index < 0) return;
+      event.preventDefault();
+      if (key === "ArrowDown" && index + 1 < list.length) {
+        list[index + 1].focus();
+      } else if (key === "ArrowUp") {
+        if (index > 0) {
+          list[index - 1].focus();
+        } else if (searchBox()) {
+          searchBox().focus();
+        }
+      }
+    }
+  });
+
+  function selectRename() {
+    var input = document.querySelector("[data-oa-rename] input[name=title]");
+    if (input && !input._oaSelected) {
+      input._oaSelected = true;
+      input.focus();
+      input.select();
+    }
+  }
+  document.addEventListener("htmx:afterSettle", selectRename);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", selectRename);
+  } else {
+    selectRename();
+  }
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     if (!target || !target.closest) return;

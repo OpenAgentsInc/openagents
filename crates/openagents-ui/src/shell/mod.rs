@@ -19,6 +19,8 @@
 //!   ([`ComposerDropdown`]) and a [`ModelPickerTrigger`].
 //! - [`ComposerAction`], [`ComposerPanel`]: footer icon buttons and the
 //!   panels the selectors load above the composer.
+//! - [`RowMenu`], [`RowAction`], [`RowRename`], [`ChatSearch`]: organizing
+//!   chats in the left panel (pin, rename, archive, search).
 //! - [`Message`]: one turn of a conversation thread.
 //! - [`SuggestionChips`]: questions to ask with one tap, and links a reply
 //!   points to ([`SuggestionChip`]).
@@ -29,6 +31,7 @@
 //! `static/components/composer.css` ([`COMPOSER_CSS`]).
 
 mod breadcrumb;
+mod chat_row;
 mod composer;
 mod glyph;
 mod layout;
@@ -39,6 +42,7 @@ mod theme;
 mod thread;
 
 pub use breadcrumb::{AccountMenu, BREADCRUMB_ID, Breadcrumb};
+pub use chat_row::{ChatSearch, RowAction, RowMenu, RowRename};
 pub use composer::{
     Composer, ComposerAction, ComposerDropdown, ComposerPanel, HxGet, ModelPickerTrigger,
     composer_panel_host,

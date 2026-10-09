@@ -572,3 +572,85 @@ fn account_menu_opens_above_the_account_button() {
     assert!(html.contains(r#"<span class="oa-account-name">ada@example.com</span>"#));
     assert!(html.contains(r#"href="/cloud/app/settings""#));
 }
+
+#[test]
+fn chat_rows_organize_with_plain_forms_and_a_search_box() {
+    let menu = RowMenu::new("chat-menu-1", "Fix <it>")
+        .action(
+            RowAction::post("Pin", "/chat/1/pin")
+                .icon(crate::icons::Icon::Pin)
+                .field("pinned", "1")
+                .target("#chat-sidebar")
+                .swap("outerHTML"),
+        )
+        .action(RowAction::get("Rename", "/chat/1/rename").target("#chat-row-1"))
+        .action(RowAction::post("Archive", "/chat/1/archive").confirm("Archive it?"));
+    let list = ChatList::new()
+        .id("chat-sidebar")
+        .search(ChatSearch::new("/chat/list", "#chat-sidebar-rows").field("current", "1"))
+        .notice(html! { "Chat archived." })
+        .pinned([NavItem::new("Pinned one", "/chat/2")])
+        .item(
+            NavItem::new("Fix <it>", "/chat/1")
+                .row_id("chat-row-1")
+                .menu(menu),
+        )
+        .after(html! { p class="oa-chat-list-more" { a class="oa-chat-list-link" href="/a" { "Archived" } } })
+        .render()
+        .into_string();
+    // Pinned sits above the chats, in one box a search replaces.
+    let pinned = list.find(">Pinned<").unwrap();
+    assert!(pinned < list.find(">Chats<").unwrap());
+    assert!(list.contains(r#"id="chat-sidebar-rows""#));
+    assert!(list.find("role=\"search\"").unwrap() < list.find("chat-sidebar-rows").unwrap());
+    assert!(list.contains(r##"hx-select="#chat-sidebar-rows""##));
+    assert!(list.contains(r#"<input type="hidden" name="current" value="1">"#));
+    // Each menu entry submits its own hidden form, which works without HTMX.
+    assert!(list.contains(r#"<li class="oa-nav-row oa-nav-row--menu" id="chat-row-1">"#));
+    assert!(list.contains(r#"form="chat-menu-1-0""#) && list.contains(r#"form="chat-menu-1-2""#));
+    assert!(list.contains(
+        r##"<form id="chat-menu-1-0" hidden method="post" action="/chat/1/pin" hx-post="/chat/1/pin" hx-target="#chat-sidebar" hx-swap="outerHTML">"##
+    ));
+    assert!(list.contains(r#"method="get" action="/chat/1/rename" hx-get="/chat/1/rename""#));
+    assert!(list.contains(r#"hx-confirm="Archive it?""#));
+    assert!(list.contains(r#"aria-label="Options for Fix &lt;it&gt;""#));
+    assert!(list.contains("Chat archived.") && list.contains(">Archived<"));
+    // Nothing found: the plain line, still inside the box.
+    let none = ChatList::new()
+        .id("chat-sidebar")
+        .search(ChatSearch::new("/chat/list", "#chat-sidebar-rows").value("zz"))
+        .empty("No chats found")
+        .render()
+        .into_string();
+    assert!(none.contains(r#"<p class="oa-sidebar-empty">No chats found</p>"#));
+    assert!(none.contains(r#"value="zz""#));
+
+    let rename = RowRename::new("chat-row-1", "/chat/1/rename", "Fix it", "/chat/1")
+        .cancel_hx("/chat/list?current=1")
+        .field("csrf", "token")
+        .target("#chat-sidebar")
+        .swap("outerHTML")
+        .render()
+        .into_string();
+    assert!(rename.contains(r#"<li id="chat-row-1" class="oa-nav-row oa-nav-row--editing">"#));
+    assert!(rename.contains(r#"method="post" action="/chat/1/rename" hx-post="/chat/1/rename""#));
+    assert!(rename.contains(r#"name="title" value="Fix it" required maxlength="120""#));
+    assert!(rename.contains(r#"href="/chat/1" hx-get="/chat/list?current=1""#));
+
+    let css = crate::stylesheet();
+    let html = format!("{list}{none}{rename}");
+    for chunk in html.split("class=\"").skip(1) {
+        for class in chunk.split('"').next().unwrap().split_whitespace() {
+            assert!(css.contains(&format!(".{class}")), "{class} has no rule");
+        }
+    }
+    let script = crate::script();
+    for hook in [
+        "[data-oa-chat-rows]",
+        "[data-oa-rename-cancel]",
+        "BracketLeft",
+        "key.toLowerCase() === \"k\"",
+    ] {
+        assert!(script.contains(hook), "{hook}");
+    }
+}
