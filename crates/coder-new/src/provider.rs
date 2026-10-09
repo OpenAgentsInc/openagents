@@ -419,6 +419,7 @@ impl Provider {
             execution.redact(&mut assistant);
             redact_value(&mut assistant, self.key.expose());
             history.push(assistant);
+            let mut looks = Vec::new();
             for call in streamed.calls {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled before its next plugin call.".into());
@@ -566,7 +567,15 @@ impl Provider {
                 execution.redact(&mut observation);
                 redact_value(&mut observation, self.key.expose());
                 history.push(observation);
+                if safe_name == "computer"
+                    && let Some(look) = crate::computer_tool::look_message(&output)
+                {
+                    looks.push(look);
+                }
             }
+            // A screenshot the model asked to see follows every tool
+            // message of the batch, as a user message with the image.
+            history.append(&mut looks);
             // Claude query.ts drains user prompts only after the full tool batch.
             if let Some(inbox) = &execution.prompt_inbox {
                 for slot in inbox.lock().unwrap().drain(..) {

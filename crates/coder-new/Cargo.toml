@@ -39,6 +39,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
+# A screenshot the `computer` tool shows the model, as a data URL.
+base64 = "0.22"
 flate2 = "1"
 crc32fast = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal"] }

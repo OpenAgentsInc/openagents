@@ -28,6 +28,7 @@ host = [
     "dep:security-framework",
     "dep:keyring",
     "dep:pylon",
+    "dep:coder-desk",
 ]
 
 # Private Verse placements are opt-in, never part of the default Coder build.
@@ -94,6 +95,9 @@ security-framework = { version = "3.7", optional = true }
 # zbus store; reviewed in docs/coder/design/2026-09-29-auto-pairing.md.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "=4.2.0", optional = true }
+# The desk protocol: a screenshot and the open windows of the Coder
+# compositor or Hyprland session on this computer (NIP-HOST `computer`).
+coder-desk = { path = "../coder-desk", optional = true }
 
 # The Windows control pipe (`control/windows.rs`): its DACL and the peer's
 # token user. The Windows keychain key source: generic credentials in the

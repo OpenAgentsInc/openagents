@@ -51,6 +51,7 @@ pub(super) async fn listen(
         let Ok((stream, _)) = listener.accept().await else {
             continue;
         };
+        let _ = stream.set_nodelay(true);
         tokio::spawn(upgrade(
             shared.clone(),
             acceptor.clone(),

@@ -2101,6 +2101,181 @@
           }
         },
         {
+          "name": "screenshot",
+          "leaf": {
+            "path": [
+              "computer",
+              "screenshot"
+            ],
+            "usage": [
+              "screenshot HOST [--screen NAME | --android [--serial S]] [--out FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "screenshot"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "HOST"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "screen",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "android",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "serial",
+                    "value": "S",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A PNG of the computer's screen (or an attached Android device's), saved here; prints its path.",
+            "effect": "local_write",
+            "runs_on": "this_device"
+          }
+        },
+        {
+          "name": "apps",
+          "leaf": {
+            "path": [
+              "computer",
+              "apps"
+            ],
+            "usage": [
+              "apps HOST"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "apps"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "HOST"
+                  }
+                ]
+              }
+            ],
+            "summary": "The windows open on the computer's screen.",
+            "effect": "read_only",
+            "runs_on": "this_device"
+          }
+        },
+        {
+          "name": "push",
+          "leaf": {
+            "path": [
+              "computer",
+              "push"
+            ],
+            "usage": [
+              "push HOST LOCAL REMOTE [--overwrite]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "push"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "HOST"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "LOCAL"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "REMOTE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "overwrite",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Copy a file to the computer (at most 256 MiB); REMOTE is absolute or starts with ~/, and ending in / keeps the name. It lands only whole, with its SHA-256 checked, and never replaces a file without --overwrite.",
+            "effect": "publishes",
+            "runs_on": "this_device"
+          }
+        },
+        {
+          "name": "pull",
+          "leaf": {
+            "path": [
+              "computer",
+              "pull"
+            ],
+            "usage": [
+              "pull HOST REMOTE LOCAL [--overwrite] [--max-bytes N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pull"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "HOST"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "REMOTE"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "LOCAL"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "overwrite",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-bytes",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Copy a file from the computer, checked the same way.",
+            "effect": "local_write",
+            "runs_on": "this_device"
+          }
+        },
+        {
           "name": "journal",
           "leaf": {
             "path": [
@@ -2339,6 +2514,50 @@
           "kind": "option",
           "name": "remove",
           "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "screen",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "android",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "serial",
+          "value": "S",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "overwrite",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-bytes",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true

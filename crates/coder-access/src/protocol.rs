@@ -775,6 +775,12 @@ pub enum Operation {
     /// device only and answers what it holds.
     #[serde(rename = "artifact.put")]
     PutArtifact { artifact: crate::media::ArtifactPut },
+    /// The computer itself (`crate::computer`): a screenshot, its open
+    /// apps, or a file chunk read or written. Needs `terminal`. Not
+    /// retained: a read changes nothing and a write chunk is idempotent
+    /// where the host keeps it.
+    #[serde(rename = "computer")]
+    Computer { computer: crate::computer::Request },
     /// The host's background rules (the disk cleanup monitor), each with
     /// its state and last result. A read.
     #[serde(rename = "background.list")]
@@ -1184,7 +1190,10 @@ impl Operation {
     #[must_use]
     pub fn retains_reply(&self) -> bool {
         !self.reads_only()
-            && !matches!(self, Self::PutArtifact { .. } | Self::CloudRelease { .. })
+            && !matches!(
+                self,
+                Self::PutArtifact { .. } | Self::CloudRelease { .. } | Self::Computer { .. }
+            )
             && !self.background()
             && (!self.agent() || self.agent_effect())
     }
@@ -1270,6 +1279,7 @@ impl Operation {
             Self::ReviewTask { .. } => "task.review",
             Self::PublishTask { .. } => "task.publish",
             Self::PutArtifact { .. } => "artifact.put",
+            Self::Computer { .. } => "computer",
             Self::ListBackground {} => "background.list",
             Self::ShowBackground { .. } => "background.show",
             Self::LogBackground { .. } => "background.log",
@@ -1413,7 +1423,9 @@ impl Operation {
             | Self::NewAgent { .. }
             | Self::RetireAgent { .. }
             | Self::RotateAgent { .. } => Some(Right::Operate),
-            Self::OpenTerminal { .. } | Self::OpenTaskTerminal { .. } => Some(Right::Terminal),
+            Self::OpenTerminal { .. } | Self::OpenTaskTerminal { .. } | Self::Computer { .. } => {
+                Some(Right::Terminal)
+            }
             Self::DecideMerge { .. } => Some(Right::Review),
         }
     }
@@ -1530,6 +1542,7 @@ impl Operation {
                 crate::media::validate_all(&task.images)?;
             }
             Self::PutArtifact { artifact } => artifact.validate()?,
+            Self::Computer { computer } => computer.validate()?,
             Self::ListBackground {} => {}
             Self::ShowBackground { rule }
             | Self::RunBackground { rule }
@@ -1987,6 +2000,10 @@ pub enum Outcome {
     Artifact {
         artifact: crate::media::ArtifactState,
     },
+    /// The answer to a `computer` request.
+    Computer {
+        computer: crate::computer::Answer,
+    },
     /// A `background.*` answer: the `background` crate's JSON (rules and
     /// their state, one rule, log records, or an acknowledgement), at most
     /// [`MAX_BACKGROUND_BYTES`]. It is carried as JSON so this crate does
@@ -2079,6 +2096,7 @@ impl Outcome {
             Self::Tasks { tasks } => tasks.validate()?,
             Self::Task { task } => task.validate()?,
             Self::TaskOriginal { original } => original.validate()?,
+            Self::Computer { computer } => computer.validate()?,
             _ => {}
         }
         if matches!(
@@ -2431,6 +2449,9 @@ impl Outcome {
             (op, Self::Agent { .. }) if op.agent() => true,
             (Operation::PutArtifact { artifact }, Self::Artifact { artifact: state }) => {
                 state.digest == artifact.digest && state.received <= artifact.size
+            }
+            (Operation::Computer { computer }, Self::Computer { computer: answer }) => {
+                answer.answers(computer)
             }
             (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
                 recorded.request == receipt.request && recorded.grant == receipt.grant

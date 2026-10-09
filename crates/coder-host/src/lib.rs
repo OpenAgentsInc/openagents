@@ -32,6 +32,8 @@ pub mod cloud;
 #[cfg(feature = "host")]
 pub mod compute;
 #[cfg(feature = "host")]
+pub mod computer;
+#[cfg(feature = "host")]
 pub mod config;
 #[cfg(feature = "host")]
 pub mod control;

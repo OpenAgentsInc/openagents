@@ -51,6 +51,7 @@ for explicit provider configuration and uncertainty handling.
 | `message` | Direct-channel messages: host calls and answers, pings, the closing message, NIP-TERM bodies, and fragmentation. |
 | `mailbox` | Mailboxes derived from the host and device's NIP-44 conversation key, the terminal generation, and workspace IDs. |
 | `client` | `Device`, directory and reach fetches, summaries, nudges, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
+| `computer` | NIP-HOST `computer` for a device that holds `terminal`: a screenshot (the desk protocol, `grim`, X11 tools, `screencapture`, or `adb`), the open windows, and file chunks read and written, every file checked against its SHA-256 digest and none replaced without `overwrite`. |
 | `tasks` | The task-owner trait (creation, steering, cancellation, archiving, durable commands, and queue edits) and `NoTasks`. |
 | `nudge` | A device's stored note to its host that commands wait; the host answers with fresh presence when it reads one, even after being away. |
 | `spend` | Agent spending, phase 1: the book of spend requests an agent asks the owner's phone to pay (`coder host spend request|list|show`), which the phone reads and answers with NIP-HOST `spend.list` and `spend.settle`. Nothing here pays. See [the spend protocol](../../docs/breez/spend-protocol.md). |

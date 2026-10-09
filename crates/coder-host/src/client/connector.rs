@@ -385,6 +385,8 @@ async fn try_direct(
                 .await
                 .map_err(|_| None)?
                 .map_err(|_| None)?;
+            // Calls wait on their answers; see `serve::direct`.
+            let _ = stream.set_nodelay(true);
             Link::direct(device, stream, address, generation, HANDSHAKE_TIMEOUT).await
         }
         Transport::Websocket => {

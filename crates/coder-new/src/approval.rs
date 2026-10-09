@@ -187,6 +187,38 @@ impl Desk {
         confirm
     }
 
+    /// Waits for the owner's answer to one action on another computer
+    /// (the `computer` tool): a command that changes it, or a file that
+    /// replaces one there. The question names the computer, the exact
+    /// action, and why it asks; nothing else is approved by the answer.
+    pub(crate) async fn confirm_computer(
+        &self,
+        host: &str,
+        action: &str,
+        why: &str,
+        cancel: &AtomicBool,
+    ) -> bool {
+        if self.closed.load(Ordering::SeqCst) || cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        let id = self.begin(json!({"kind":"computer","host":host,"command":action,"why":why}));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(600);
+        let confirm = loop {
+            if self.closed.load(Ordering::SeqCst)
+                || cancel.load(Ordering::Relaxed)
+                || tokio::time::Instant::now() >= deadline
+            {
+                break false;
+            }
+            if let Some(confirm) = self.answered(id) {
+                break confirm;
+            }
+            tokio::time::sleep(POLL).await;
+        };
+        self.finish(id, confirm);
+        confirm
+    }
+
     /// Asks about `command`, which needs approval for `why`, and waits for
     /// the answer. `cancel` ends the wait as a rejection.
     pub fn ask(&self, command: &str, why: &str, cancel: &AtomicBool) -> bool {

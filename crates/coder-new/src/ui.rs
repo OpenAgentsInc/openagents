@@ -75,12 +75,21 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         height: area.height.saturating_sub(top_padding + 1),
     };
     if let Some(event) = &app.disclosure_event {
-        let input = serde_json::to_string_pretty(&event["input"]).unwrap_or_default();
-        let text = format!(
-            "Send this exact lookup to Brainstorm?\n\nRecipient: {}\n\n{}\n\nNo files or conversation are added. This approves this lookup input only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
-            event["recipient"].as_str().unwrap_or_default(),
-            input
-        );
+        let text = if event["kind"] == "computer" {
+            format!(
+                "Run this on {}?\n\n{}\n\nIt asks because {}. This approves this one action only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
+                event["host"].as_str().unwrap_or_default(),
+                event["command"].as_str().unwrap_or_default(),
+                event["why"].as_str().unwrap_or_default(),
+            )
+        } else {
+            let input = serde_json::to_string_pretty(&event["input"]).unwrap_or_default();
+            format!(
+                "Send this exact lookup to Brainstorm?\n\nRecipient: {}\n\n{}\n\nNo files or conversation are added. This approves this lookup input only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
+                event["recipient"].as_str().unwrap_or_default(),
+                input
+            )
+        };
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
         let lines = paragraph.line_count(area.width);
         let max_scroll = lines

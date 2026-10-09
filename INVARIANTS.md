@@ -296,6 +296,14 @@ path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
 | Terminal input is live only: nothing typed while the screen is not attached is queued or sent later. | New on 2026-09-27. | `a_build_without_the_live_service_refuses_clearly`; `Session::send` refuses unless attached |
 | Terminal output is untrusted data: it cannot read or write the phone's clipboard, and a paste cannot end a bracketed paste early. | New on 2026-09-27. | `title_bell_and_ignored_commands`, `a_paste_normalizes_newlines_and_cannot_close_the_bracket` in `crates/coder-vt` |
 
+## Your computers (screenshots, files, commands)
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| NIP-HOST `computer` (a screenshot, the open apps, a file read or written) needs the grant's `terminal` right on every request; a device without it is refused before the host touches the screen or a file. Its replies are not retained. | New on 2026-10-09 ([#11171](https://github.com/OpenAgentsInc/openagents/issues/11171)). | `required` in `crates/coder-access/src/protocol.rs`; `computer_needs_the_terminal_right_and_round_trips_a_file` in `crates/coder-host/tests/end_to_end.rs` |
+| A file copied either way is at most 256 MiB (a screenshot 64 MiB), moves in chunks of at most 32 KiB, and is delivered only whole and matching its SHA-256 digest: the host moves a pushed file into place only after the digest matched, and a pulled file is renamed into place here only after it matched. A push never replaces an existing file unless it says `overwrite`. | New on 2026-10-09 ([#11171](https://github.com/OpenAgentsInc/openagents/issues/11171)). | `a_write_lands_only_whole_and_checked_and_never_over_a_file_unasked`, `a_write_whose_bytes_differ_from_its_digest_is_refused_and_dropped` in `crates/coder-host`; `a_file_round_trips_with_its_digest_and_an_existing_one_is_kept` in `crates/coder-access` |
+| Coder's `computer` tool runs a command on another computer without asking only when Coder's effect classes call it read-only; a deny-listed command is refused, every other command and every push that replaces a file waits for the owner's answer, and with no one to ask it is refused with the command the owner can run. | New on 2026-10-09 ([#11171](https://github.com/OpenAgentsInc/openagents/issues/11171)). | `reads_run_changes_ask_and_denied_commands_are_refused`, `a_change_without_anyone_to_ask_is_refused_with_the_command_to_run`, `a_rejected_change_does_not_run` in `crates/coder-new` |
+
 ## Phone wallet
 
 The owner decided on 2026-09-28 to replace the phone's Mutinynet test wallet

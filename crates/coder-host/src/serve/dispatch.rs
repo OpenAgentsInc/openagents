@@ -433,6 +433,20 @@ impl Dispatch for Dispatcher {
         self.shared.tasks.clone().put_artifact(device, put)
     }
 
+    /// A screenshot, the open apps, or a file chunk: the computer itself,
+    /// for a device that holds `terminal` (`crate::computer`).
+    fn computer(
+        &mut self,
+        _device: &str,
+        request: &coder_access::computer::Request,
+    ) -> Result<coder_access::computer::Answer, Code> {
+        let state = self.shared.config.access.parent().map_or_else(
+            || std::path::PathBuf::from("."),
+            std::path::Path::to_path_buf,
+        );
+        crate::computer::answer(&state, request)
+    }
+
     /// A `background.*` operation, answered by this host's background
     /// runner.
     fn background(

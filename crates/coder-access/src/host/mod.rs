@@ -257,6 +257,16 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::media::ArtifactState, Code> {
         Err(Code::Unsupported)
     }
+    /// Answer a `computer` request for `device`, which holds `terminal`:
+    /// a screenshot, the open apps, or a file chunk (`crate::computer`). A
+    /// host that does not serve its computer answers `unsupported`.
+    fn computer(
+        &mut self,
+        _device: &str,
+        _request: &crate::computer::Request,
+    ) -> std::result::Result<crate::computer::Answer, Code> {
+        Err(Code::Unsupported)
+    }
     /// Answer a `background.*` operation for `device`, which holds the
     /// right it requires. A host without background rules has none.
     fn background(
@@ -1640,6 +1650,19 @@ impl Host {
                     }
                 }
                 Err(code) => Err(Error::new(code, "the host did not keep the image")),
+            },
+            Operation::Computer { computer } => match dispatch.computer(&p.key, computer) {
+                Ok(answer) => {
+                    let outcome = Outcome::Computer { computer: answer };
+                    match outcome.validate() {
+                        Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                        _ => Err(Error::new(
+                            Code::Unavailable,
+                            "the host's computer answer is invalid",
+                        )),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host refused the computer request")),
             },
             Operation::ListWalletLinks {} => match dispatch.links().map(|l| l.list(&p.key, now)) {
                 Some(Ok(mut links)) => {

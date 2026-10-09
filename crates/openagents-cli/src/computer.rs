@@ -55,6 +55,17 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   alias NAME HOST           Name a host; every HOST above accepts a name, the label
                             `list` shows, a key, or a unique prefix of a key or label.
                             `alias --list`, `alias --remove NAME`.
+  screenshot HOST [--screen NAME | --android [--serial S]] [--out FILE]
+                            A PNG of the computer's screen (or an attached Android
+                            device's), saved here; prints its path.
+  apps HOST                 The windows open on the computer's screen.
+  push HOST LOCAL REMOTE [--overwrite]
+                            Copy a file to the computer (at most 256 MiB); REMOTE
+                            is absolute or starts with ~/, and ending in / keeps
+                            the name. It lands only whole, with its SHA-256
+                            checked, and never replaces a file without --overwrite.
+  pull HOST REMOTE LOCAL [--overwrite] [--max-bytes N]
+                            Copy a file from the computer, checked the same way.
   journal [HOST] [--lines N]
                             What exec, watch, and tail ran, from this device's log.
   client-only               Record that this machine runs no local host.
@@ -95,6 +106,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::device("shell", Effect::LongRunning),
     Declared::device("watch", Effect::LongRunning),
     Declared::device("tail", Effect::ReadOnly),
+    Declared::device("screenshot", Effect::LocalWrite),
+    Declared::device("apps", Effect::ReadOnly),
+    Declared::device("push", Effect::Publishes),
+    Declared::device("pull", Effect::LocalWrite),
     Declared::device("alias", Effect::LocalWrite),
     Declared::device("journal", Effect::ReadOnly),
     Declared::device("client-only", Effect::LocalWrite),
@@ -127,6 +142,10 @@ pub(crate) fn open(args: &Args, runtime: &tokio::runtime::Runtime) -> Result<Liv
     if args.switch("same-machine") {
         settings.locality = Locality::SameMachine;
     }
+    // iroh first, as the apps do: a computer paired by connect code is
+    // then reached directly, not only through the Nostr relay, which
+    // matters for screenshots and file copies.
+    settings.iroh_secret = Some(coder_computers::live::load_or_create_iroh_key(&directory)?);
     let secret = load_or_create_key(&directory)?;
     let store = FileStore::open(&directory)?;
     Live::open(settings, secret, Box::new(store), runtime.handle().clone())
@@ -293,6 +312,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             "until-exit",
             "follow",
             "list",
+            "android",
+            "overwrite",
         ],
     ) {
         Ok(args) => args,
@@ -776,6 +797,30 @@ fn dispatch(
             connected(live, host, args)?;
             crate::terminal::shell(*output, live, runtime, host, args)
         }
+        "screenshot" | "shot" => {
+            let host = host_arg(live, args, 0)?;
+            connected(live, &host, args)?;
+            screenshot(output, live, &host, args)
+        }
+        "apps" => {
+            let host = host_arg(live, args, 0)?;
+            connected(live, &host, args)?;
+            apps(output, live, &host)
+        }
+        "push" => {
+            let host = host_arg(live, args, 0)?;
+            let local = positional(args, 1, "LOCAL")?;
+            let remote = positional(args, 2, "REMOTE")?;
+            connected(live, &host, args)?;
+            push(output, live, &host, local, remote, args)
+        }
+        "pull" => {
+            let host = host_arg(live, args, 0)?;
+            let remote = positional(args, 1, "REMOTE")?;
+            let local = positional(args, 2, "LOCAL")?;
+            connected(live, &host, args)?;
+            pull(output, live, &host, remote, local, args)
+        }
         "alias" => {
             if let Some(name) = args.option("remove") {
                 let removed = crate::hosts::remove_alias(&store, name)?;
@@ -840,6 +885,289 @@ fn dispatch(
         }
         other => Ok(output.usage("computer", &format!("unknown command `{other}`"), USAGE)),
     }
+}
+
+/// The calls a transfer makes: each one NIP-HOST `computer` request the
+/// host checks `terminal` on.
+fn caller<'a>(
+    live: &'a Live,
+    host: &'a str,
+) -> impl FnMut(coder_access::computer::Request) -> coder_access::Result<coder_access::computer::Answer>
++ 'a {
+    move |request| live.computer(host, request)
+}
+
+/// A progress line on standard error while a transfer runs, when a person
+/// watches it.
+fn progress(output: &Output) -> impl FnMut(u64, u64) + use<> {
+    let shown = !output.json() && std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let mut last = std::time::Instant::now();
+    move |done: u64, total: u64| {
+        if shown && (done == total || last.elapsed() >= Duration::from_millis(250)) {
+            last = std::time::Instant::now();
+            eprint!(
+                "\r{:.1} / {:.1} MB{}",
+                done as f64 / 1e6,
+                total as f64 / 1e6,
+                if done == total { "\n" } else { "" }
+            );
+        }
+    }
+}
+
+/// Words for a transfer failure, naming the way on for the ones a person
+/// can fix.
+fn transfer_error(error: &coder_access::Error, remote: &str) -> String {
+    match error.code {
+        coder_access::Code::Conflict if !error.message.contains("changed while") => format!(
+            "a file is already at {remote} on that computer, or what arrived did not match; \
+             pass --overwrite to replace it"
+        ),
+        coder_access::Code::MissingRight => {
+            "this device does not hold the `terminal` right on that computer".to_owned()
+        }
+        coder_access::Code::Unsupported => {
+            "that computer's host does not serve files and screenshots yet; update it".to_owned()
+        }
+        _ => error.message.clone(),
+    }
+}
+
+fn screenshot(output: &Output, live: &Live, host: &str, args: &Args) -> Result<u8, String> {
+    use coder_access::computer::{Answer, MAX_SCREENSHOT_BYTES, Request, Source};
+    let source = if args.switch("android") {
+        Source::Android {
+            serial: args.option("serial").map(str::to_owned),
+        }
+    } else {
+        Source::Screen {
+            screen: args.option("screen").map(str::to_owned),
+        }
+    };
+    let mut call = caller(live, host);
+    let started = std::time::Instant::now();
+    let answer = call(Request::Screenshot { source })
+        .and_then(Answer::able)
+        .map_err(|e| transfer_error(&e, "the capture"))?;
+    let Answer::File { file } = answer else {
+        return Err("the host did not answer a screenshot".into());
+    };
+    let local = match args.option("out") {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let dir = store_dir(args.option("store")).join("captures");
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            let name = crate::hosts::alias_of(&store_dir(args.option("store")), host)
+                .unwrap_or_else(|| host.chars().take(12).collect());
+            dir.join(format!("{name}-{}.png", now()))
+        }
+    };
+    let bytes = fetch_to(&mut call, &file, MAX_SCREENSHOT_BYTES, &local, true, output)?;
+    output.emit(
+        &json!({
+            "host": host, "path": local.display().to_string(), "remote": file.path,
+            "size": bytes, "digest": file.digest, "media_type": "image/png",
+            "seconds": started.elapsed().as_secs_f64(),
+        }),
+        |v| v["path"].as_str().unwrap_or("").to_owned(),
+    );
+    Ok(0)
+}
+
+fn apps(output: &Output, live: &Live, host: &str) -> Result<u8, String> {
+    use coder_access::computer::{Answer, Request};
+    let answer = live
+        .computer(host, Request::Apps {})
+        .and_then(Answer::able)
+        .map_err(|e| transfer_error(&e, "the app list"))?;
+    let Answer::Apps { apps, source } = answer else {
+        return Err("the host did not list its apps".into());
+    };
+    output.emit(
+        &json!({ "host": host, "source": source, "apps": apps }),
+        |v| {
+            let mut rows = vec![vec!["app".to_owned(), "pid".to_owned(), "title".to_owned()]];
+            for app in v["apps"].as_array().into_iter().flatten() {
+                rows.push(vec![
+                    format!(
+                        "{}{}",
+                        app["name"].as_str().unwrap_or(""),
+                        if app["focused"].as_bool().unwrap_or(false) {
+                            " *"
+                        } else {
+                            ""
+                        }
+                    ),
+                    app["pid"]
+                        .as_i64()
+                        .map_or_else(|| "-".into(), |p| p.to_string()),
+                    app["title"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(80)
+                        .collect(),
+                ]);
+            }
+            if rows.len() == 1 {
+                "no windows are open on that computer".to_owned()
+            } else {
+                out::table(&rows)
+            }
+        },
+    );
+    Ok(0)
+}
+
+/// Read `file` from the host into `local`: into a partial file beside it
+/// first, renamed only once every byte matched the digest. An existing
+/// `local` is replaced only when `overwrite` is set.
+fn fetch_to(
+    call: &mut dyn FnMut(
+        coder_access::computer::Request,
+    ) -> coder_access::Result<coder_access::computer::Answer>,
+    file: &coder_access::computer::FileInfo,
+    limit: u64,
+    local: &std::path::Path,
+    overwrite: bool,
+    output: &Output,
+) -> Result<u64, String> {
+    if local.exists() && !overwrite {
+        return Err(format!(
+            "{} already exists here; pass --overwrite to replace it",
+            local.display()
+        ));
+    }
+    let partial = local.with_file_name(format!(
+        ".{}.oa-partial",
+        local
+            .file_name()
+            .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned())
+    ));
+    let mut sink = std::io::BufWriter::new(
+        std::fs::File::create(&partial).map_err(|e| format!("{}: {e}", partial.display()))?,
+    );
+    let mut shown = progress(output);
+    let fetched = coder_access::computer::fetch_described(call, file, limit, &mut sink, &mut shown);
+    let flushed = std::io::Write::flush(&mut sink).map_err(|e| e.to_string());
+    drop(sink);
+    if let Err(error) = fetched
+        .map_err(|e| transfer_error(&e, &file.path))
+        .and(flushed)
+    {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
+    std::fs::rename(&partial, local).map_err(|e| format!("{}: {e}", local.display()))?;
+    Ok(file.size)
+}
+
+fn push(
+    output: &Output,
+    live: &Live,
+    host: &str,
+    local: &str,
+    remote: &str,
+    args: &Args,
+) -> Result<u8, String> {
+    use coder_access::computer::MAX_FILE_BYTES;
+    let local = std::path::Path::new(local);
+    let size = std::fs::metadata(local)
+        .map_err(|e| format!("{}: {e}", local.display()))?
+        .len();
+    if size > MAX_FILE_BYTES {
+        return Err(format!(
+            "{} is {size} bytes, over the {MAX_FILE_BYTES} byte limit",
+            local.display()
+        ));
+    }
+    let bytes = std::fs::read(local).map_err(|e| format!("{}: {e}", local.display()))?;
+    // A folder-shaped destination keeps the file's own name.
+    let remote = if remote.ends_with('/') || remote == "~" {
+        let name = local
+            .file_name()
+            .ok_or("LOCAL names no file")?
+            .to_string_lossy();
+        format!("{}/{name}", remote.trim_end_matches('/'))
+    } else {
+        remote.to_owned()
+    };
+    let started = std::time::Instant::now();
+    let mut call = caller(live, host);
+    let mut shown = progress(output);
+    let digest = coder_access::computer::send(
+        &mut call,
+        &remote,
+        &bytes,
+        args.switch("overwrite"),
+        &mut shown,
+    )
+    .map_err(|e| transfer_error(&e, &remote))?;
+    let seconds = started.elapsed().as_secs_f64();
+    output.emit(
+        &json!({ "host": host, "local": local.display().to_string(), "remote": remote,
+                 "size": size, "digest": digest, "seconds": seconds }),
+        |v| {
+            format!(
+                "{} -> {} ({} bytes, {})",
+                v["local"].as_str().unwrap_or(""),
+                v["remote"].as_str().unwrap_or(""),
+                v["size"],
+                v["digest"].as_str().unwrap_or("")
+            )
+        },
+    );
+    Ok(0)
+}
+
+fn pull(
+    output: &Output,
+    live: &Live,
+    host: &str,
+    remote: &str,
+    local: &str,
+    args: &Args,
+) -> Result<u8, String> {
+    use coder_access::computer::{Answer, MAX_FILE_BYTES, Request};
+    let limit: u64 = args.number("max-bytes", MAX_FILE_BYTES)?;
+    let started = std::time::Instant::now();
+    let mut call = caller(live, host);
+    let Answer::File { file } = call(Request::Stat {
+        path: remote.to_owned(),
+    })
+    .and_then(Answer::able)
+    .map_err(|e| transfer_error(&e, remote))?
+    else {
+        return Err("the host did not describe the file".into());
+    };
+    let mut local = PathBuf::from(local);
+    if local.is_dir() {
+        let name = file.path.rsplit(['/', '\\']).next().unwrap_or("file");
+        local = local.join(name);
+    }
+    let size = fetch_to(
+        &mut call,
+        &file,
+        limit,
+        &local,
+        args.switch("overwrite"),
+        output,
+    )?;
+    output.emit(
+        &json!({ "host": host, "remote": file.path, "local": local.display().to_string(),
+                 "size": size, "digest": file.digest,
+                 "seconds": started.elapsed().as_secs_f64() }),
+        |v| {
+            format!(
+                "{} -> {} ({} bytes, {})",
+                v["remote"].as_str().unwrap_or(""),
+                v["local"].as_str().unwrap_or(""),
+                v["size"],
+                v["digest"].as_str().unwrap_or("")
+            )
+        },
+    );
+    Ok(0)
 }
 
 #[cfg(test)]

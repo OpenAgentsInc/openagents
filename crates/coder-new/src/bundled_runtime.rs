@@ -402,6 +402,22 @@ pub(crate) async fn cli_at(
     if let crate::approval::Verdict::Refused(why) = crate::approval::check(&shown) {
         return Err(why);
     }
+    cli_checked(program, arguments, cwd, cancel, emit).await
+}
+
+/// Run the CLI after the caller applied its own approval policy, as the
+/// `computer` tool does for each action.
+pub(crate) async fn cli_checked(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_arguments(arguments)?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err("The CLI call was canceled before it started.".into());
+    }
     let mut command = std::process::Command::new(program);
     command.arg("--json").args(arguments).current_dir(cwd);
     prepare_cli_child(&mut command);

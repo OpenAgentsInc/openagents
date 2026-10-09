@@ -685,6 +685,7 @@ A request is `openagents.host-request.v1`:
 | `request.operation` | `observe`, then the original effect's current right | `request_operation` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `task.terminal.open` | `terminal` | `dispatched` |
+| `computer` | `terminal` | `computer` |
 | `workspace.list` | `operate` | `workspaces` |
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
@@ -796,6 +797,45 @@ Detach and close affect only that shell. Human worktree edits invalidate
 existing exact tree reviews; opening a shell supplies no review or merge
 approval. The terminal descriptor reports its directory, generation, and
 interactive access mode; clients retain the selected host and task identity.
+
+`computer` (added 2026-10-09) reaches the host's computer itself without a
+terminal: `{computer: {action, ...}}` with one of five actions, each needing
+`terminal`, because a device that can open a shell there can already do it.
+The answer is `{kind: "computer", computer: {kind, ...}}`.
+
+| `action` | Members | Answer |
+| --- | --- | --- |
+| `screenshot` | `source`: `{kind: "screen", screen}` or `{kind: "android", serial}`; `screen` and `serial` are optional names of at most 128 ASCII letters, digits, `-`, `_`, `.`, or `:` | `file`, a PNG the host keeps |
+| `apps` | none | `apps`: `{apps, source}`, at most 512 windows, each `{name, title, pid, focused}` |
+| `stat` | `path` | `file`: `{path, size, digest, media_type}` |
+| `read` | `path`, `offset`, `length` (1 to 32 KiB) | `chunk`: `{offset, data}`, base64, shorter only at the end |
+| `write` | `put`: `{path, size, digest, offset, data, overwrite}` | `written`: `{received, complete}` |
+
+Any action may instead answer `unable`: `{reason}`, a sentence of at most 512
+characters for a person (no screen session, no capture tool, no such file).
+Authority refusals stay refusal codes. A path is absolute or starts with
+`~/`, at most 4,096 bytes and without NUL. A file is at most 256 MiB, a
+screenshot 64 MiB, and a digest is `sha256:` and 64 lowercase hex digits.
+
+A device reads a file by `stat`, then `read` in order, and checks the digest
+of what it assembled against `stat`'s, so a file that changed meanwhile is
+refused rather than delivered torn. A `write` chunk names the whole file's
+size and digest; every chunk but the last is exactly 32 KiB at an offset that
+is a multiple of it. The host keeps the chunks in a hidden partial file beside
+the destination, named by the digest, and moves the file into place only when
+every byte arrived and the digest matched; a mismatch drops the partial and
+refuses as `conflict`. An existing file is replaced only with `overwrite`;
+without it the host refuses as `conflict`. A chunk at an offset the host
+already holds, or past it, changes nothing, and `received` says where to go
+on; the last chunk sent again after the file is in place answers `complete`.
+A screenshot goes to an owner-only `captures/` folder beside the access
+store, of which the host keeps the newest 8. On Linux the host finds the
+screen session even when the service manager started it outside one: the
+desk protocol of the Coder compositor or Hyprland, then `grim` on the
+session's Wayland socket, then `maim`, `scrot`, or `import` on its X11
+display; on macOS `screencapture`; an Android device through `adb exec-out
+screencap -p`. None of the replies is retained (see
+[Admission order and retention](#admission-order-and-retention)).
 `workspace.list` carries nothing and returns `{workspaces}`: the labels
 `task.create` accepts on this host, sorted and distinct, at most 64, each
 1–128 bytes without control characters. The roots they name stay on the
@@ -1196,7 +1236,7 @@ and act. Every operation, including an exact retry, repeats these checks.
 The idempotency key is the request ID. The host retains the signed reply of
 an admitted principal with the exact request event ID until the request
 expires. The exception is a read with no effect, `task.list`, `task.read`,
-`task.original`, the project and cloud reads, `thread.list`, `thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
+`task.original`, the project and cloud reads, `thread.list`, `thread.read`, the studio reads, and `computer`: its reply is not retained, so a device that polls a streaming
 thread never fills the host's store, and an exact retry reads again and may
 answer newer content. An identical retry returns the retained bytes while the principal
 is still current. Different bytes under the same request ID refuse as

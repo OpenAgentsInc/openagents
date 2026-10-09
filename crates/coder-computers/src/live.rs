@@ -245,6 +245,33 @@ pub fn load_or_create_key(directory: &Path) -> std::result::Result<SecretKey, St
     }
 }
 
+/// This device's iroh secret key from `directory/iroh.key`, created on
+/// first use (owner-only). It is transport only: an iroh `EndpointId`
+/// never admits anything, so with it a terminal client reaches a computer
+/// paired by connect code directly, as the apps do, rather than only
+/// through the Nostr relay.
+///
+/// # Errors
+/// The directory cannot be created, or the file is unreadable or
+/// malformed.
+pub fn load_or_create_iroh_key(directory: &Path) -> std::result::Result<[u8; 32], String> {
+    private_dir(directory)?;
+    let path = directory.join("iroh.key");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => text
+            .trim()
+            .parse::<SecretKey>()
+            .map(|secret| secret.secret_bytes())
+            .map_err(|_| "the iroh key file is malformed".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let secret = SecretKey::new(&mut secp256k1::rand::rng());
+            write_private(&path, secret.display_secret().to_string().as_bytes())?;
+            Ok(secret.secret_bytes())
+        }
+        Err(_) => Err("the iroh key file cannot be read".into()),
+    }
+}
+
 fn private_dir(directory: &Path) -> std::result::Result<(), String> {
     #[cfg(unix)]
     {
@@ -596,6 +623,26 @@ impl Live {
     pub fn terminals(&self) -> Terminals {
         Terminals {
             shared: self.shared.clone(),
+        }
+    }
+
+    /// One NIP-HOST `computer` request over the host's current link: a
+    /// screenshot, the open apps, or one file chunk
+    /// (`coder_access::computer`). The host checks `terminal` on every one.
+    ///
+    /// # Errors
+    /// The host's refusal or a transport failure.
+    pub fn computer(
+        &self,
+        host: &str,
+        request: coder_access::computer::Request,
+    ) -> Result<coder_access::computer::Answer> {
+        match self.call(host, Operation::Computer { computer: request })? {
+            Outcome::Computer { computer } => Ok(computer),
+            _ => Err(Error::new(
+                Code::Malformed,
+                "the host did not answer the computer request",
+            )),
         }
     }
 

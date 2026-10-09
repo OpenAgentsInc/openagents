@@ -460,6 +460,15 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     assert_eq!(direct.route(), &Route::Direct(path.address.to_string()));
     direct.ping().await.unwrap();
 
+    step("copy files to and from the computer, checked by digest");
+    computer_needs_the_terminal_right_and_round_trips_a_file(
+        &direct,
+        &store,
+        &relay,
+        &temp.path().join("files"),
+    )
+    .await;
+
     step("open a terminal and run a command");
     let generation = terminal_generation(&host_key, GENERATION);
     let opened = terminal(
@@ -851,6 +860,89 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     running.shutdown().await;
     assert!(!temp.path().join("host/runtime").exists());
     step("done");
+}
+
+/// NIP-HOST `computer` over a real direct channel: a file pushed and pulled
+/// back matches by digest, an existing file is kept without `overwrite`,
+/// a missing file answers a sentence, and a device without `terminal` is
+/// refused before anything is read.
+async fn computer_needs_the_terminal_right_and_round_trips_a_file(
+    direct: &Link,
+    store: &coder_host::access::host::Host,
+    relay: &str,
+    dir: &std::path::Path,
+) {
+    use coder_host::access::computer::{self, Answer, MAX_FILE_BYTES, Request};
+    std::fs::create_dir_all(dir).unwrap();
+    let handle = tokio::runtime::Handle::current();
+    let mut call = |request: Request| {
+        tokio::task::block_in_place(|| {
+            handle.block_on(direct.call(Operation::Computer { computer: request }))
+        })
+        .map_err(|error| match error {
+            Error::Access(error) => error,
+            other => coder_host::access::Error::new(Code::Transport, other.to_string()),
+        })
+        .and_then(|outcome| match outcome {
+            Outcome::Computer { computer } => Ok(computer),
+            _ => panic!("computer answered another outcome"),
+        })
+    };
+    let bytes: Vec<u8> = (0..(3 * computer::CHUNK_BYTES as u32 + 777))
+        .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
+        .collect();
+    let remote = dir.join("pushed.bin").display().to_string();
+    let digest = computer::send(&mut call, &remote, &bytes, false, &mut |_, _| {}).unwrap();
+    assert_eq!(digest, computer::digest(&bytes));
+    assert_eq!(std::fs::read(&remote).unwrap(), bytes);
+    let mut back = Vec::new();
+    let file = computer::fetch(
+        &mut call,
+        &remote,
+        MAX_FILE_BYTES,
+        &mut back,
+        &mut |_, _| {},
+    )
+    .unwrap();
+    assert_eq!(back, bytes);
+    assert_eq!(file.digest, digest);
+    let kept = computer::send(&mut call, &remote, b"other", false, &mut |_, _| {}).unwrap_err();
+    assert_eq!(kept.code, Code::Conflict);
+    assert_eq!(std::fs::read(&remote).unwrap(), bytes);
+    let missing = call(Request::Stat {
+        path: dir.join("nothing").display().to_string(),
+    })
+    .unwrap();
+    assert!(matches!(missing, Answer::Unable { reason } if reason.contains("no file")));
+
+    // A device whose grant leaves out `terminal` is refused.
+    let now = now();
+    let issued = store
+        .invite(
+            relay,
+            Rights::parse_list("observe,operate").unwrap(),
+            now,
+            now + 3600,
+        )
+        .unwrap();
+    let secret = key();
+    let access = coder_host::access::client::redeem(&issued.code, &secret, POLICY)
+        .await
+        .unwrap();
+    let narrow = Link::relay(
+        Arc::new(Device::new(access, secret, POLICY).unwrap()),
+        relay.to_owned(),
+    );
+    let refused = narrow
+        .call(Operation::Computer {
+            computer: Request::Stat { path: remote },
+        })
+        .await
+        .unwrap_err();
+    let Error::Access(refused) = refused else {
+        panic!("computer answered {refused:?}")
+    };
+    assert_eq!(refused.code, Code::MissingRight);
 }
 
 /// A screenshot reaches the task owner as its exact bytes, chunk by chunk,

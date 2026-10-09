@@ -15,6 +15,7 @@ pub mod cloud_tools;
 mod codex_usage;
 mod composer_history;
 pub mod composer_state;
+pub mod computer_tool;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
@@ -174,7 +175,9 @@ impl App {
         }
         if let Some(desk) = &self.disclosure_desk {
             for event in desk.drain() {
-                if event["event"] == "approval" && event["kind"] == "disclosure" {
+                if event["event"] == "approval"
+                    && (event["kind"] == "disclosure" || event["kind"] == "computer")
+                {
                     self.disclosure_event = Some(event);
                     self.disclosure_scroll = 0;
                     self.disclosure_seen = false;
@@ -1038,7 +1041,7 @@ impl App {
         execution.instructions = self.live.instructions.clone();
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
         if key.is_some()
-            && execution.brainstorm.is_some()
+            && (execution.brainstorm.is_some() || execution.cli)
             && execution.disclosure_desk.is_none()
             && self.interactive_disclosures
         {

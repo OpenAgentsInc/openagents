@@ -11,6 +11,7 @@ pub mod agent;
 pub mod cj;
 pub mod client;
 pub mod cloud;
+pub mod computer;
 pub mod crew;
 pub mod day_plan;
 pub mod environment;

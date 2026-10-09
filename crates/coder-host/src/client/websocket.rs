@@ -93,7 +93,8 @@ pub async fn connect(url: &str, tls: &Tls, timeout: Duration) -> Result<Stream> 
     let upgrade = tokio_tungstenite::connect_async_tls_with_config(
         url,
         Some(websocket::config()),
-        false,
+        // No Nagle: calls wait on their answers (`serve::direct`).
+        true,
         connector,
     );
     let (socket, _) = tokio::time::timeout(timeout, upgrade)

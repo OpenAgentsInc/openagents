@@ -34,6 +34,10 @@ pub(super) async fn listen(
         let Ok((stream, _)) = listener.accept().await else {
             continue;
         };
+        // A call and its answer are small messages that wait on each
+        // other: without this, Nagle and delayed ACKs hold each one back
+        // by up to a tenth of a second.
+        let _ = stream.set_nodelay(true);
         tokio::spawn(session(shared.clone(), acceptor.clone(), stream));
     }
 }
