@@ -19,6 +19,15 @@ pub const CALLBACK_PATH: &str = "/auth/github/callback";
 /// The scopes P1 requests: the profile and every email address.
 pub const SCOPES: [&str; 2] = ["read:user", "user:email"];
 
+/// The scopes connecting repositories asks for when the person wants their
+/// private repositories too (and those of their organizations). Asked only
+/// at that moment, never at sign-in.
+pub const PRIVATE_REPO_SCOPES: [&str; 3] = ["read:user", "repo", "read:org"];
+
+/// The scopes connecting public repositories only asks for: nothing more
+/// than sign-in already has, so GitHub shows no new permission screen.
+pub const PUBLIC_REPO_SCOPES: [&str; 1] = ["read:user"];
+
 /// Where GitHub (or the fake) answers. Defaults are GitHub's.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -165,11 +174,16 @@ impl GithubCredentials {
         &self.client_secret
     }
 
-    /// The key a stored GitHub token would be encrypted under. P1 keeps
-    /// no token; this exists so the file's shape is checked at startup.
+    /// Whether the key stored GitHub tokens are encrypted under is set.
     #[must_use]
     pub fn has_token_key(&self) -> bool {
         self.token_key != [0; 32]
+    }
+
+    /// The key a stored repository-access token is encrypted under
+    /// (AES-256-GCM, [`crate::repos`]). Never leaves this crate.
+    pub(crate) fn token_key(&self) -> &[u8; 32] {
+        &self.token_key
     }
 }
 

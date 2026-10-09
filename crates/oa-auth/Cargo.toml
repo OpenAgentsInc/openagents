@@ -15,6 +15,7 @@ local = ["dep:axum", "dep:tokio"]
 
 [dependencies]
 axum = { version = "0.8", optional = true }
+aes-gcm = "0.10"
 base64 = "0.22"
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest", "rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

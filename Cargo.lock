@@ -9657,6 +9657,7 @@ dependencies = [
 name = "oa-auth"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "axum 0.8.9",
  "base64 0.22.1",
  "oa-auth",

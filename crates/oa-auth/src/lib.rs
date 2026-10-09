@@ -4,6 +4,8 @@
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
 //! - [`github`]: the account-service half: code + verifier to profile.
+//! - [`repos`]: connected repositories and projects, with the token kept
+//!   encrypted.
 //! - [`service`]: the account service's GitHub routes over the tenancy
 //!   stores (find or create the account, issue the session).
 //! - [`device`]: device-code sign-in for apps (RFC 8628 shape) and the
@@ -19,10 +21,11 @@ pub mod flow;
 pub mod github;
 #[cfg(feature = "local")]
 pub mod local;
+pub mod repos;
 pub mod service;
 
 pub use config::{CALLBACK_PATH, Endpoints, GithubApp, GithubCredentials};
-pub use flow::{FLOW_COOKIE, Flow, return_to};
+pub use flow::{FLOW_COOKIE, Flow, Purpose, return_to};
 pub use github::Github;
 
 /// Why a sign-in did not complete. Carries no secret or provider detail.

@@ -1,6 +1,8 @@
 //! A fake GitHub for tests and the local fixture: the authorize page, the
-//! token endpoint (with real PKCE S256 checking and single-use codes), and
-//! `/user` and `/user/emails`. Nothing here talks to github.com.
+//! token endpoint (with real PKCE S256 checking and single-use codes),
+//! `/user` and `/user/emails`, and for connecting repositories
+//! `/user/repos` and `/repos/{owner}/{name}` (private ones only for a
+//! token granted `repo`). Nothing here talks to github.com.
 //!
 //! `GET /login/oauth/authorize` shows a small page listing the fake people
 //! (click one to approve as them) and a Cancel link. Tests skip the page
@@ -22,12 +24,14 @@ use sha2::{Digest, Sha256};
 
 use crate::config::{Endpoints, GithubApp, GithubCredentials};
 
-/// One fake GitHub person: the `/user` body and the `/user/emails` list
-/// (`None` answers 404, as GitHub does without the email scope).
+/// One fake GitHub person: the `/user` body, the `/user/emails` list
+/// (`None` answers 404, as GitHub does without the email scope), and their
+/// repositories (`id`, `full_name`, `default_branch`, `private`).
 #[derive(Clone, Debug)]
 pub struct FakeUser {
     pub user: Value,
     pub emails: Option<Value>,
+    pub repos: Vec<Value>,
 }
 
 impl FakeUser {
@@ -55,6 +59,11 @@ pub fn octo() -> FakeUser {
             {"email": "octo@users.noreply.github.com", "verified": true, "primary": false, "visibility": null},
             {"email": "old@example.com", "verified": false, "primary": false, "visibility": null}
         ])),
+        repos: vec![
+            json!({"id": 7001, "full_name": "octo-local/hello-world", "name": "hello-world", "default_branch": "main", "private": false}),
+            json!({"id": 7002, "full_name": "octo-local/secret-plans", "name": "secret-plans", "default_branch": "trunk", "private": true}),
+            json!({"id": 7003, "full_name": "acme/storefront", "name": "storefront", "default_branch": "main", "private": true}),
+        ],
     }
 }
 
@@ -68,6 +77,7 @@ pub fn quiet() -> FakeUser {
             "created_at": "2024-02-02T00:00:00Z"
         }),
         emails: None,
+        repos: Vec::new(),
     }
 }
 
@@ -75,6 +85,7 @@ struct Grant {
     user: usize,
     challenge: String,
     redirect: String,
+    scopes: Vec<String>,
 }
 
 struct Inner {
@@ -83,7 +94,7 @@ struct Inner {
     redirect: String,
     users: Vec<FakeUser>,
     codes: BTreeMap<String, Grant>,
-    tokens: BTreeMap<String, usize>,
+    tokens: BTreeMap<String, (usize, Vec<String>)>,
     exchanges: usize,
 }
 
@@ -115,6 +126,15 @@ impl Fake {
         }
     }
 
+    /// Revoke every token issued to `login`, as when the person removes
+    /// the App's access on GitHub.
+    pub fn revoke(&self, login: &str) {
+        let mut inner = self.0.lock().expect("fake GitHub state");
+        if let Some(index) = inner.users.iter().position(|u| u.login() == login) {
+            inner.tokens.retain(|_, (user, _)| *user != index);
+        }
+    }
+
     /// How many token exchanges succeeded.
     #[must_use]
     pub fn exchanges(&self) -> usize {
@@ -128,6 +148,8 @@ impl Fake {
             .route("/login/oauth/access_token", post(token))
             .route("/user", get(user))
             .route("/user/emails", get(emails))
+            .route("/user/repos", get(repos))
+            .route("/repos/{owner}/{name}", get(repo))
             .with_state(self.clone())
     }
 
@@ -163,7 +185,6 @@ struct Authorize {
     code_challenge_method: Option<String>,
     login: Option<String>,
     deny: Option<String>,
-    #[allow(dead_code)]
     scope: Option<String>,
     #[allow(dead_code)]
     response_type: Option<String>,
@@ -234,6 +255,14 @@ async fn authorize(
                 user: index,
                 challenge,
                 redirect: redirect.clone(),
+                scopes: query
+                    .scope
+                    .as_deref()
+                    .unwrap_or_default()
+                    .split([' ', ','])
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect(),
             },
         );
         return back(&redirect, &[("code", &code), ("state", &query.state)]);
@@ -299,27 +328,94 @@ async fn token(State(fake): State<Fake>, Form(form): Form<Exchange>) -> Response
         return bad("bad_verification_code");
     }
     let access = format!("gho_{}", random_hex(18));
-    inner.tokens.insert(access.clone(), grant.user);
+    let scope = grant.scopes.join(",");
+    inner
+        .tokens
+        .insert(access.clone(), (grant.user, grant.scopes));
     inner.exchanges += 1;
-    axum::Json(
-        json!({"access_token": access, "token_type": "bearer", "scope": "read:user,user:email"}),
-    )
-    .into_response()
+    axum::Json(json!({"access_token": access, "token_type": "bearer", "scope": scope}))
+        .into_response()
 }
 
-fn person(fake: &Fake, headers: &HeaderMap) -> Option<FakeUser> {
+fn holder(fake: &Fake, headers: &HeaderMap) -> Option<(FakeUser, Vec<String>)> {
     let token = headers
         .get(header::AUTHORIZATION)?
         .to_str()
         .ok()?
         .strip_prefix("Bearer ")?;
     let inner = fake.0.lock().expect("fake GitHub state");
-    inner.tokens.get(token).map(|i| inner.users[*i].clone())
+    inner
+        .tokens
+        .get(token)
+        .map(|(i, scopes)| (inner.users[*i].clone(), scopes.clone()))
+}
+
+fn person(fake: &Fake, headers: &HeaderMap) -> Option<FakeUser> {
+    holder(fake, headers).map(|(user, _)| user)
+}
+
+fn bad_credentials() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        axum::Json(json!({"message": "Bad credentials"})),
+    )
+        .into_response()
+}
+
+/// The person's repositories the token can see: private ones need `repo`.
+fn visible(user: &FakeUser, scopes: &[String]) -> Vec<Value> {
+    let private = scopes.iter().any(|s| s == "repo");
+    user.repos
+        .iter()
+        .filter(|r| private || !r["private"].as_bool().unwrap_or(false))
+        .cloned()
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct Page {
+    page: Option<u32>,
+}
+
+async fn repos(State(fake): State<Fake>, headers: HeaderMap, Query(page): Query<Page>) -> Response {
+    match holder(&fake, &headers) {
+        Some(_) if page.page.unwrap_or(1) > 1 => axum::Json(json!([])).into_response(),
+        Some((user, scopes)) => axum::Json(visible(&user, &scopes)).into_response(),
+        None => bad_credentials(),
+    }
+}
+
+async fn repo(
+    State(fake): State<Fake>,
+    headers: HeaderMap,
+    axum::extract::Path((owner, name)): axum::extract::Path<(String, String)>,
+) -> Response {
+    let Some((user, scopes)) = holder(&fake, &headers) else {
+        return bad_credentials();
+    };
+    let full = format!("{owner}/{name}");
+    match visible(&user, &scopes)
+        .into_iter()
+        .find(|r| r["full_name"] == full.as_str())
+    {
+        Some(found) => axum::Json(found).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            axum::Json(json!({"message": "Not Found"})),
+        )
+            .into_response(),
+    }
 }
 
 async fn user(State(fake): State<Fake>, headers: HeaderMap) -> Response {
-    match person(&fake, &headers) {
-        Some(found) => axum::Json(found.user).into_response(),
+    match holder(&fake, &headers) {
+        Some((found, scopes)) => {
+            let mut response = axum::Json(found.user).into_response();
+            if let Ok(value) = axum::http::HeaderValue::from_str(&scopes.join(", ")) {
+                response.headers_mut().insert("x-oauth-scopes", value);
+            }
+            response
+        }
         None => (
             StatusCode::UNAUTHORIZED,
             axum::Json(json!({"message": "Bad credentials"})),

@@ -1,9 +1,11 @@
 //! The account-service half: trade a GitHub authorization code (and its
 //! PKCE verifier) for the person's GitHub profile.
 //!
-//! The access token lives only inside [`Github::profile`]: it reads
-//! `/user` and `/user/emails` and is dropped. No redirects are followed,
-//! every call is time-bounded, and response bodies are size-bounded.
+//! The sign-in token lives only inside [`Github::profile`]: it reads
+//! `/user` and `/user/emails` and is dropped. Connecting repositories
+//! ([`crate::repos`]) exchanges its own code for a token it keeps
+//! encrypted. No redirects are followed, every call is time-bounded, and
+//! response bodies are size-bounded.
 
 use std::time::Duration;
 
@@ -48,6 +50,25 @@ impl Github {
     /// Exchange `code` with its PKCE `verifier`, read the profile and
     /// emails, and drop the token.
     pub async fn profile(&self, code: &str, verifier: &str) -> Result<GithubProfile, AuthError> {
+        let token = self.exchange(code, verifier).await?;
+        let bearer = token.as_str();
+        let user: User = self
+            .get(bearer, "/user")
+            .await?
+            .ok_or(AuthError::Unavailable)?;
+        // Without the email scope, or for an account with no addresses,
+        // GitHub answers an error or an empty list: the profile has none.
+        let emails: Vec<Email> = self
+            .get(bearer, "/user/emails")
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        Ok(user.into_profile(emails))
+    }
+
+    /// Trade `code` and its PKCE `verifier` for an access token.
+    pub(crate) async fn exchange(&self, code: &str, verifier: &str) -> Result<Secret, AuthError> {
         if code.is_empty()
             || code.len() > 256
             || verifier.len() < 43
@@ -83,20 +104,11 @@ impl Github {
                 | oauth2::RequestTokenError::Parse(..) => AuthError::Denied,
                 _ => AuthError::Unavailable,
             })?;
-        let bearer = token.access_token().secret();
-        let user: User = self
-            .get(bearer, "/user")
-            .await?
-            .ok_or(AuthError::Unavailable)?;
-        // Without the email scope, or for an account with no addresses,
-        // GitHub answers an error or an empty list: the profile has none.
-        let emails: Vec<Email> = self
-            .get(bearer, "/user/emails")
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        Ok(user.into_profile(emails))
+        let secret = token.access_token().secret();
+        if secret.is_empty() || secret.len() > 1024 {
+            return Err(AuthError::Denied);
+        }
+        Ok(Secret(secret.clone()))
     }
 
     async fn get<T: for<'de> Deserialize<'de>>(
@@ -104,6 +116,17 @@ impl Github {
         bearer: &str,
         path: &str,
     ) -> Result<Option<T>, AuthError> {
+        let answer = self.api(bearer, path).await?;
+        if !(200..300).contains(&answer.status) {
+            return Ok(None);
+        }
+        Ok(serde_json::from_value(answer.body).ok())
+    }
+
+    /// One GitHub API read with `bearer`: the status, the scopes GitHub
+    /// says the token holds (`X-OAuth-Scopes`), and the JSON body (null
+    /// when it isn't JSON).
+    pub(crate) async fn api(&self, bearer: &str, path: &str) -> Result<Api, AuthError> {
         let url = format!(
             "{}{path}",
             self.credentials.app.endpoints.api_url.trim_end_matches('/')
@@ -117,9 +140,20 @@ impl Github {
             .send()
             .await
             .map_err(|_| AuthError::Unavailable)?;
-        if !response.status().is_success() {
-            return Ok(None);
-        }
+        let status = response.status().as_u16();
+        let scopes = response
+            .headers()
+            .get("x-oauth-scopes")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|scope| !scope.is_empty() && scope.len() <= 64)
+                    .take(32)
+                    .map(str::to_string)
+                    .collect()
+            });
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| AuthError::Unavailable)? {
             body.extend_from_slice(&chunk);
@@ -127,8 +161,49 @@ impl Github {
                 return Err(AuthError::Unavailable);
             }
         }
-        Ok(serde_json::from_slice(&body).ok())
+        Ok(Api {
+            status,
+            scopes,
+            body: serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+        })
     }
+}
+
+/// A GitHub access token in memory. `Debug` never shows it, and the
+/// bytes are overwritten when it is dropped.
+pub(crate) struct Secret(String);
+
+impl Secret {
+    pub(crate) fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret([redacted])")
+    }
+}
+
+impl Drop for Secret {
+    fn drop(&mut self) {
+        // Overwrite the bytes in place before the allocation is freed.
+        let len = self.0.len();
+        self.0.clear();
+        self.0.extend(std::iter::repeat_n('\0', len));
+        self.0.clear();
+    }
+}
+
+/// One GitHub API answer.
+pub(crate) struct Api {
+    pub status: u16,
+    pub scopes: Option<Vec<String>>,
+    pub body: serde_json::Value,
 }
 
 /// GitHub's `/user`, tolerant of any extra fields.

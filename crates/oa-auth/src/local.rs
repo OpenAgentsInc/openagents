@@ -1,8 +1,9 @@
 //! A small account service over real tenancy stores, for local fixtures
 //! and tests: the routes the web server reads a session through
 //! (`/v1/session`, `/v1/account`, `/v1/workspaces/{id}`), sign-out, and the
-//! GitHub sign-in and link routes. Production serves the same GitHub
-//! routes from the gateway (`crates/gateway/src/accounts.rs`).
+//! GitHub sign-in and link routes, and the repository and project routes
+//! ([`crate::repos`]). Production serves the same GitHub routes from the
+//! gateway (`crates/gateway/src/accounts.rs`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,6 +20,8 @@ use tenancy::{Accounts, MemberStatus};
 use crate::AuthError;
 use crate::github::Github;
 use crate::service::{self, CodeRequest};
+
+mod repos;
 
 struct Inner {
     dir: PathBuf,
@@ -70,6 +73,7 @@ impl LocalService {
             .route("/v1/account", get(account))
             .route("/v1/workspaces/{id}", get(workspace))
             .with_state(self.clone())
+            .merge(repos::router(self.clone()))
     }
 
     /// Serve on `127.0.0.1:0`; answers the origin.
