@@ -445,8 +445,8 @@ async fn a_github_account_adds_sees_and_removes_its_own_claude_key() {
             &world,
             "/settings/claude",
             &[
-                ("csrf", &csrf),
-                ("request", &request),
+                ("csrf", csrf.as_str()),
+                ("request", request.as_str()),
                 ("material", "anthropic_api_key"),
                 ("value", KEY),
                 ("consent", "custody"),
@@ -473,7 +473,7 @@ async fn a_github_account_adds_sees_and_removes_its_own_claude_key() {
         .post(
             &world,
             "/settings/claude/remove",
-            &[("csrf", &csrf), ("request", &request)],
+            &[("csrf", csrf.as_str()), ("request", request.as_str())],
         )
         .await;
     assert_eq!(removed.status, StatusCode::SEE_OTHER, "{}", removed.body);
