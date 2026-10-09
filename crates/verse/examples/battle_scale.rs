@@ -269,6 +269,18 @@ fn rss_bytes() -> Option<u64> {
         })
         .map(|kb| kb * 1024)
 }
+/// Bytes the allocator holds for live allocations, separate from resident pages
+/// it keeps after frees (high water and fragmentation).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn heap_in_use_bytes() -> Option<u64> {
+    // SAFETY: mallinfo2 only reads allocator statistics.
+    let info = unsafe { libc::mallinfo2() };
+    Some((info.uordblks + info.hblkhd) as u64)
+}
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn heap_in_use_bytes() -> Option<u64> {
+    None
+}
 async fn connect(
     address: std::net::SocketAddr,
     tls: Arc<ClientConfig>,
@@ -737,7 +749,7 @@ async fn run(
             clock.tick().await;frame+=1;window_frames+=1;
             if window_frames>1800 {windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));window=FrameProfile::new(0);window_frames=1;}
             while let Ok(snapshot)=snapshots.try_recv() {native_frame=Some(snapshot.frame);projection_ms=snapshot.projection_ms;verified=Some(snapshot.applied_at);}
-            if frame%300==0 {rss.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"bytes":rss_bytes()}));}
+            if frame%300==0 {rss.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"bytes":rss_bytes(),"heap_in_use_bytes":heap_in_use_bytes()}));}
             if let Some(at)=verified {let age=at.elapsed().as_secs_f64()*1000.;profile.record(frame,"applied_snapshot_age_ms",age);window.record(frame,"applied_snapshot_age_ms",age);}
             if let Some(renderer)=renderer.as_mut() {
                 if let Some(scene)=native_frame.as_ref() {

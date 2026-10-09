@@ -164,9 +164,7 @@ impl History {
             .iter()
             .map(|(digest, bytes)| (*digest, bytes.clone()))
             .collect();
-        for (digest, bytes) in &nodes {
-            self.publish(*digest, bytes)?;
-        }
+        self.publish_all(&nodes)?;
         if !nodes.is_empty() {
             File::open(&self.0.path)
                 .and_then(|f| f.sync_all())
@@ -247,6 +245,52 @@ impl History {
         }
         self.publish(digest, &bytes)?;
         Ok(digest)
+    }
+    /// Publishes staged nodes in three passes: write every new node, sync each,
+    /// then rename. One node at a time paid a full journal commit per sync,
+    /// which stalled a battle's commit for 0.6-0.7 s on a busy disk (#10559).
+    /// A node still becomes visible only after its own bytes are durable.
+    fn publish_all(&self, nodes: &[([u8; 32], Arc<Vec<u8>>)]) -> Result<(), String> {
+        let mut written: Vec<(PathBuf, PathBuf, File)> = Vec::new();
+        let result = (|| {
+            for (digest, bytes) in nodes {
+                let path = self.0.path.join(hex(digest));
+                if path.exists() {
+                    self.read_disk(*digest)?;
+                    continue;
+                }
+                let mut nonce = [0; 16];
+                getrandom::fill(&mut nonce)
+                    .map_err(|_| "Cannot create reward history write identity")?;
+                let pending = self.0.path.join(format!("next-{}", hex(&nonce)));
+                let mut options = OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                let mut file = options
+                    .open(&pending)
+                    .map_err(|_| "Cannot create reward history node")?;
+                let wrote = file.write_all(bytes);
+                written.push((pending, path, file));
+                wrote.map_err(|_| "Cannot write and sync reward history node")?;
+            }
+            for (_, _, file) in &written {
+                file.sync_all()
+                    .map_err(|_| "Cannot write and sync reward history node")?;
+            }
+            while let Some((pending, path, _)) = written.first() {
+                std::fs::rename(pending, path).map_err(|_| "Cannot publish reward history node")?;
+                written.remove(0);
+            }
+            Ok(())
+        })();
+        for (pending, _, _) in written {
+            let _ = std::fs::remove_file(pending);
+        }
+        result
     }
     fn publish(&self, digest: [u8; 32], bytes: &[u8]) -> Result<(), String> {
         let path = self.0.path.join(hex(&digest));
