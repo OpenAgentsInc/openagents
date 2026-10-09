@@ -8,7 +8,9 @@
 //! | `POST /coder/sessions/{session}/status` `{working}` | Coder is replying (or not). `200`, `404 unknown`, `410 deleted` |
 //! | `DELETE /coder/sessions/{session}` | Deleted in Coder: remove it here. `200 {deleted}` |
 //! | `GET /coder/sessions` | `{sessions: [{session, deleted}]}`, so Coder learns of chats deleted on the website |
-//! | `POST /coder/check-in` `{computer}` | Coder runs on this computer with sync on (#11048). `200 {waiting: [session]}`: its chats with replies from the website, or with messages from a Cloud computer it hasn't taken |
+//! | `POST /coder/check-in` `{computer}` | Coder runs on this computer with sync on (#11048). `200 {waiting: [session], sync}`: its chats with replies from the website, or with messages from a Cloud computer it hasn't taken, and the computer's sync choice |
+//! | `GET /coder/sync?computer=` | The computer's sync choice (#11089): `200 {choice: "all" \| "local" \| null}` (null: not asked yet) |
+//! | `PUT /coder/sync` `{computer, choice}` | Coder's answer to "Sync all my chats?" for this computer. `200 {choice}` |
 //! | `POST /coder/sessions/{session}/replies` | Take what waits: the replies sent on the website join the transcript as the person's messages and the chat shows Working; `continued` are the messages added while the computer was offline (#11050), oldest first, for Coder to add to its own copy before answering the replies (#11052). Each is handed out once. `200 {replies: [{id, text}], continued: [{role, text}]}`, `404 unknown`, `410 deleted` |
 //!
 //! Every route takes `Authorization: Bearer sess_…`. A synced chat is an
@@ -40,7 +42,7 @@ use sha2::{Digest, Sha256};
 use crate::App;
 use crate::chat_store::{
     Computers, Conversation, Error, MAX_COMPUTERS, MAX_REPLY_IDS, MAX_WAITING_CHATS,
-    MAX_WEB_REPLIES, Message, Role, Store, Terminal, WebReply, account_owner, now_unix,
+    MAX_WEB_REPLIES, Message, Role, Store, SyncChoice, Terminal, WebReply, account_owner, now_unix,
 };
 use crate::cloud::protect;
 use crate::cloud::session::SessionError;
@@ -62,6 +64,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/coder/sessions/{session}/status", post(status))
         .route("/coder/sessions/{session}/replies", post(replies))
         .route("/coder/check-in", post(check_in_route))
+        .route("/coder/sync", get(choice_route).put(choose_route))
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -135,7 +138,7 @@ pub(crate) fn valid_session(session: &str) -> bool {
 }
 
 /// One line of plain text, at most `limit` characters.
-fn line(value: &str, limit: usize) -> String {
+pub(crate) fn line(value: &str, limit: usize) -> String {
     value
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -496,6 +499,53 @@ pub(crate) async fn check_in(
         .filter(|(_, on)| *on == computer)
         .map(|(session, _)| session)
         .collect()))
+}
+
+/// The computer's sync choice (#11089); `None` when it hasn't been asked.
+pub(crate) async fn choice(
+    store: &Store,
+    owner: &str,
+    computer: &str,
+) -> Result<Option<SyncChoice>, Error> {
+    let computer = line(computer, 64);
+    Ok(store.computers(owner).await?.sync.get(&computer).copied())
+}
+
+/// Remember the computer's sync choice (#11089), from Coder or the
+/// website. The oldest choices go first past [`MAX_COMPUTERS`].
+pub(crate) async fn choose(
+    store: &Store,
+    owner: &str,
+    computer: &str,
+    choice: SyncChoice,
+) -> Result<Result<SyncChoice, Saved>, Error> {
+    let computer = line(computer, 64);
+    if computer.is_empty() {
+        return Ok(Err(Saved::Invalid("Send the computer's name.")));
+    }
+    store
+        .update_computers(owner, move |computers| {
+            if computers.sync.get(&computer) == Some(&choice) {
+                return false;
+            }
+            computers.sync.insert(computer.clone(), choice);
+            while computers.sync.len() > MAX_COMPUTERS {
+                // Forget a computer not seen lately (else any other one).
+                let Some(oldest) = computers
+                    .sync
+                    .keys()
+                    .filter(|name| **name != computer)
+                    .min_by_key(|name| computers.seen.get(*name).copied().unwrap_or(0))
+                    .cloned()
+                else {
+                    break;
+                };
+                computers.sync.remove(&oldest);
+            }
+            true
+        })
+        .await?;
+    Ok(Ok(choice))
 }
 
 /// What became of a reply typed on the website.
@@ -1032,7 +1082,67 @@ async fn check_in_route(State(app): State<App>, headers: HeaderMap, body: Bytes)
         return refused(StatusCode::BAD_REQUEST, "invalid", "Send {computer}.");
     };
     match check_in(&app.config.chat_store, &owner, &sent.computer).await {
-        Ok(Ok(waiting)) => answer(StatusCode::OK, json!({"waiting": waiting})),
+        Ok(Ok(waiting)) => {
+            let sync = choice(&app.config.chat_store, &owner, &sent.computer)
+                .await
+                .ok()
+                .flatten()
+                .map(SyncChoice::as_str);
+            answer(StatusCode::OK, json!({"waiting": waiting, "sync": sync}))
+        }
+        Ok(Err(saved)) => respond(Ok(saved)),
+        Err(error) => stored(&error),
+    }
+}
+
+#[derive(Deserialize)]
+struct ChoiceQuery {
+    #[serde(default)]
+    computer: String,
+}
+
+async fn choice_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<ChoiceQuery>,
+) -> Response {
+    let owner = match owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    match choice(&app.config.chat_store, &owner, &query.computer).await {
+        Ok(found) => answer(
+            StatusCode::OK,
+            json!({"choice": found.map(SyncChoice::as_str)}),
+        ),
+        Err(error) => stored(&error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Choose {
+    computer: String,
+    choice: String,
+}
+
+async fn choose_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    let owner = match owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let Some((computer, picked)) = serde_json::from_slice::<Choose>(&body)
+        .ok()
+        .and_then(|sent| Some((sent.computer, SyncChoice::parse(&sent.choice)?)))
+    else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Send {computer, choice: all or local}.",
+        );
+    };
+    match choose(&app.config.chat_store, &owner, &computer, picked).await {
+        Ok(Ok(picked)) => answer(StatusCode::OK, json!({"choice": picked.as_str()})),
         Ok(Err(saved)) => respond(Ok(saved)),
         Err(error) => stored(&error),
     }
@@ -1582,6 +1692,53 @@ mod tests {
         assert_eq!(
             check_in(&store, &owner(), "Studio").await.unwrap(),
             Ok(Vec::new())
+        );
+    }
+
+    #[tokio::test]
+    async fn each_computer_keeps_its_own_sync_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        assert_eq!(choice(&store, &owner(), "Studio").await.unwrap(), None);
+        choose(&store, &owner(), "Studio", SyncChoice::All)
+            .await
+            .unwrap()
+            .unwrap();
+        choose(&store, &owner(), " Laptop ", SyncChoice::Local)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            choice(&store, &owner(), "Studio").await.unwrap(),
+            Some(SyncChoice::All)
+        );
+        assert_eq!(
+            choice(&store, &owner(), "Laptop").await.unwrap(),
+            Some(SyncChoice::Local)
+        );
+        // Another account's computers are its own.
+        assert_eq!(
+            choice(&store, &account_owner("acct_two"), "Studio")
+                .await
+                .unwrap(),
+            None
+        );
+        assert!(matches!(
+            choose(&store, &owner(), "  ", SyncChoice::All)
+                .await
+                .unwrap(),
+            Err(Saved::Invalid(_))
+        ));
+        // Bounded: the oldest go first.
+        for n in 0..MAX_COMPUTERS + 4 {
+            choose(&store, &owner(), &format!("box-{n}"), SyncChoice::All)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(
+            store.computers(&owner()).await.unwrap().sync.len(),
+            MAX_COMPUTERS
         );
     }
 

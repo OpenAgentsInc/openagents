@@ -197,13 +197,20 @@ the gateway and `oa_auth::local`), `openagents-web` (`device.rs`,
 | Website | `GET /device[?code=]` | Signed in (sign-in comes back here): "Sign in to Coder on <computer>?", Approve / Deny |
 | Website | `POST /device/token` `{device_code}` | `{access_token, token_type, expires_in, account}`, or `authorization_pending`, `slow_down` (+5 s, with `interval`), `access_denied`, `expired_token`, `invalid_grant` |
 | Website | `POST /device/sign-out` (app's bearer) | Ends the app's own token |
+| Website | `GET /settings/terminal` (#11089) | "Connect your terminal": install, `coder login --pair <code>`, the waiting sign-in with Approve right there, then where the computer's chats live |
 | Website | Settings → Computers, `POST /settings/computers/remove` | Lists signed-in apps; Remove ends one |
-| Account service | `POST /v1/sessions/device`, `/device/poll`, `/device/lookup`, `/device/decide`; `GET /v1/account/sessions`; `DELETE /v1/account/sessions/{id}` | The same, over the stores; lookup and decide need a browser session (not an app's own) |
+| Account service | `POST /v1/sessions/device`, `/device/poll`, `/device/lookup`, `/device/decide`, `/device/paired`; `GET /v1/account/sessions`; `DELETE /v1/account/sessions/{id}` | The same, over the stores; lookup, decide, and paired need a browser session (not an app's own) |
 
 - Both codes are stored only as SHA-256 digests in `sessions.json`; a grant
   lasts 10 minutes and issues one session, once. User codes are 8 letters
   from `BCDFGHJKLMNPQRSTVWXZ` (no vowels, no look-alikes); typing is
   case- and dash-insensitive.
+- A pair code (`coder login --pair <code>`, from the Connect page; the
+  page's code is an HMAC of the account id under the server's key) rides
+  along with `/device/code`. The grant keeps its digest and the user code
+  masked with it, so `/device/paired` can list the waiting sign-ins (with
+  their codes) to the browser holding the pair code, and nothing stored is
+  a code.
 - The app's token is an ordinary `sess_` user session labeled with the app
   and computer, lasting 30 days, so every account route takes it.
 - `coder-new login` / `logout` and `/login` / `/logout` keep it in

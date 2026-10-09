@@ -15,9 +15,10 @@
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
+use std::sync::mpsc;
 use std::time::Instant;
 
-use coder_sync::{Event, Job, Settings, Worker};
+use coder_sync::{Choice, Event, Job, Settings, Worker};
 use openagents_login::Saved;
 use serde_json::Value;
 
@@ -27,10 +28,12 @@ use crate::{App, sessions};
 pub const OFF: &str = "Saving chats to your account is off. /sync on saves new and changed chats; /sync all adds your earlier chats too.";
 /// What `/sync` says when it is on.
 pub const ON: &str = "Chats save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the ones already there.";
+/// What Coder asks, once, when signed in and nobody chose yet (#11089).
+pub const QUESTION: &str = "Where should this computer's chats live? /sync all syncs all your chats to your account; /sync off keeps them on this computer.";
 /// What Coder says when it answers a reply typed on the website.
 pub const ANSWERING: &str = "Answering your reply from openagents.com.";
 /// The most earlier chats `/sync all` sends (the newest).
-const EARLIER: usize = 150;
+pub(crate) const EARLIER: usize = 150;
 
 /// The session prefix of a chat started on openagents.com for Coder on
 /// this computer (the website's `coder_sync::web_session`): Coder takes
@@ -61,6 +64,12 @@ pub(crate) struct SyncState {
     taking: BTreeSet<String>,
     /// What was taken from the website, waiting for Coder to be free.
     inbox: VecDeque<Inbound>,
+    /// The website's choice for this computer, asked once at start
+    /// (#11089); `None` inside when it has none.
+    asked: Option<mpsc::Receiver<Option<Choice>>>,
+    /// When this computer last told the website its choice: the website's
+    /// answers just before that landed are older, so they wait.
+    told: Option<Instant>,
 }
 
 /// What one take brought for one chat.
@@ -140,8 +149,22 @@ impl App {
             listening: false,
             taking: BTreeSet::new(),
             inbox: VecDeque::new(),
+            asked: None,
+            told: None,
         });
         sync.settings = settings;
+        // Ask the website once where this computer's chats live: a choice
+        // made there (Settings, or the Connect page) applies here.
+        if sync.asked.is_none()
+            && let Some(saved) = signed_in(&dir)
+        {
+            let (send, asked) = mpsc::channel();
+            let computer = sync.computer.clone();
+            std::thread::spawn(move || {
+                let _ = send.send(coder_sync::choice_now(&saved, &computer));
+            });
+            sync.asked = Some(asked);
+        }
         if (sync.settings.on || !sync.settings.to_delete.is_empty())
             && sync.worker.is_none()
             && let Some(saved) = signed_in(&dir)
@@ -329,6 +352,13 @@ impl App {
     pub(crate) fn poll_sync(&mut self) {
         let busy = self.live.busy;
         let open = self.session_id().map(str::to_owned);
+        let asked = self
+            .sync
+            .as_mut()
+            .and_then(|sync| sync.asked.as_ref()?.try_recv().ok());
+        if let Some(web) = asked {
+            self.apply_web_choice(web);
+        }
         let Some(sync) = &mut self.sync else {
             return;
         };
@@ -369,7 +399,64 @@ impl App {
         self.answer_web_reply();
     }
 
+    /// The website's choice for this computer (#11089): one made there
+    /// applies here; with none there, this computer's own goes there, and
+    /// with neither, Coder asks.
+    pub(crate) fn apply_web_choice(&mut self, web: Option<Choice>) {
+        let Some(sync) = &self.sync else {
+            return;
+        };
+        let here = Choice::of(&sync.settings);
+        let fresh = sync
+            .told
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30));
+        match (web, here) {
+            (Some(web), here) if Some(web) != here && !fresh => {
+                let (argument, notice) = match web {
+                    Choice::All => (
+                        "all",
+                        "Syncing all your chats, as chosen on openagents.com.",
+                    ),
+                    Choice::Local => (
+                        "off",
+                        "Chats stay on this computer, as chosen on openagents.com.",
+                    ),
+                };
+                self.set_sync(argument, false);
+                self.notice = Some(notice.into());
+            }
+            (None, Some(here)) => self.tell_web(here),
+            (None, None) if self.account.is_some() && self.notice.is_none() => {
+                self.notice = Some(QUESTION.into());
+            }
+            _ => {}
+        }
+    }
+
+    /// Tell the website this computer's choice, off the terminal's thread.
+    fn tell_web(&mut self, choice: Choice) {
+        let Some(saved) = self.account_dir.as_deref().and_then(signed_in) else {
+            return;
+        };
+        if let Some(sync) = &mut self.sync {
+            sync.told = Some(Instant::now());
+        }
+        let computer = self
+            .sync
+            .as_ref()
+            .map_or_else(openagents_login::computer_name, |sync| {
+                sync.computer.clone()
+            });
+        std::thread::spawn(move || {
+            let _ = coder_sync::choose_now(&saved, &computer, choice);
+        });
+    }
+
     fn apply_sync(&mut self, event: Event) {
+        if let Event::Chosen { choice } = event {
+            self.apply_web_choice(Some(choice));
+            return;
+        }
         let open = self.session_id().map(str::to_owned);
         let dir = self.account_dir.clone();
         if let Event::Waiting { sessions } = &event {
@@ -443,7 +530,7 @@ impl App {
                     });
                 }
             }
-            Event::Waiting { .. } => {}
+            Event::Waiting { .. } | Event::Chosen { .. } => {}
             Event::Gone { session } => {
                 sync.taking.remove(&session);
                 sync.settings.sent.remove(&session);
@@ -485,6 +572,12 @@ impl App {
 
     /// `/sync`, `/sync on`, `/sync all`, `/sync off`, `/sync delete`.
     pub(crate) fn sync_command(&mut self, argument: &str) {
+        self.set_sync(argument, true);
+    }
+
+    /// [`Self::sync_command`]; `tell` sends the choice to the website (not
+    /// when it came from there).
+    fn set_sync(&mut self, argument: &str, tell: bool) {
         if self.account.is_none() {
             self.notice = Some("Sign in first with /login.".into());
             return;
@@ -497,11 +590,21 @@ impl App {
         };
         match argument.trim() {
             "" => {
-                self.notice = Some(if sync.settings.on { ON } else { OFF }.into());
+                self.notice = Some(
+                    if !sync.settings.chosen {
+                        QUESTION
+                    } else if sync.settings.on {
+                        ON
+                    } else {
+                        OFF
+                    }
+                    .into(),
+                );
                 return;
             }
             "on" => {
                 sync.settings.on = true;
+                sync.settings.chosen = true;
                 self.notice = Some(
                     "New and changed chats now save to your account. /sync all adds your earlier chats too."
                         .into(),
@@ -509,10 +612,12 @@ impl App {
             }
             "all" => {
                 sync.settings.on = true;
+                sync.settings.chosen = true;
                 self.notice = Some("Saving your chats to your account…".into());
             }
             "off" => {
                 sync.settings.on = false;
+                sync.settings.chosen = true;
                 sync.heartbeat = None;
                 self.notice = Some(
                     "Chats no longer save to your account. /sync delete removes the ones already there."
@@ -535,6 +640,12 @@ impl App {
             }
         }
         self.store_sync();
+        if tell
+            && matches!(argument.trim(), "on" | "all" | "off")
+            && let Some(choice) = self.sync.as_ref().and_then(|s| Choice::of(&s.settings))
+        {
+            self.tell_web(choice);
+        }
         // Start the sender if it isn't running; queue what is waiting.
         self.start_sync();
         let Some(sync) = &mut self.sync else {
@@ -602,15 +713,18 @@ mod tests {
         // the person is told to sign in again.
         app.account = Some("Octo".into());
         app.sync_command("");
-        assert_eq!(app.notice.as_deref(), Some(OFF));
+        assert_eq!(app.notice.as_deref(), Some(QUESTION));
         app.sync_command("on");
         assert!(Settings::load(dir.path()).on);
+        assert!(Settings::load(dir.path()).chosen);
         assert_eq!(
             app.notice.as_deref(),
             Some("Sign in again with /login to save chats to your account.")
         );
         app.sync_command("off");
         assert!(!Settings::load(dir.path()).on);
+        app.sync_command("");
+        assert_eq!(app.notice.as_deref(), Some(OFF));
         app.sync_command("sideways");
         assert_eq!(
             app.notice.as_deref(),

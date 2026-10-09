@@ -42,6 +42,7 @@ pub mod sales_remote;
 mod settings;
 mod suggestions;
 mod tasks;
+mod terminal_connect;
 pub mod theme;
 mod traces;
 pub mod ui_page;
@@ -239,6 +240,7 @@ pub fn router(config: Config) -> Router {
         .merge(device::routes())
         .merge(coder_sync::routes())
         .merge(traces::routes())
+        .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
         .merge(projects::routes())

@@ -395,3 +395,47 @@ async fn a_computer_signs_in_with_a_device_code_the_person_approves() {
     let (_, listed) = read(&world, browser, "/v1/account/sessions").await;
     assert!(listed["sessions"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_paired_sign_in_shows_on_the_browser_that_holds_the_pair_code() {
+    let world = world().await;
+    let browser = sign_in(&world, "octo-local").await;
+    let browser = browser["token"].as_str().unwrap();
+    let pair = "k7qxm2tz9w4v8r3nqq";
+    let (status, started) = post(
+        &world,
+        None,
+        "/v1/sessions/device",
+        json!({"app": "Coder", "computer": "octo-mbp", "pair": pair}),
+    )
+    .await;
+    assert_eq!(status, 200, "{started}");
+    let body = json!({"pair": pair});
+    assert_eq!(
+        post(&world, None, "/v1/sessions/device/paired", body.clone())
+            .await
+            .0,
+        401
+    );
+    let (status, shown) = post(
+        &world,
+        Some(browser),
+        "/v1/sessions/device/paired",
+        body.clone(),
+    )
+    .await;
+    assert_eq!(status, 200, "{shown}");
+    assert_eq!(shown["devices"][0]["user_code"], started["user_code"]);
+    assert_eq!(shown["devices"][0]["computer"], "octo-mbp");
+    let (_, other) = post(
+        &world,
+        Some(browser),
+        "/v1/sessions/device/paired",
+        json!({"pair": "someoneelsespairxx"}),
+    )
+    .await;
+    assert_eq!(other["devices"], json!([]));
+    let raw = std::fs::read_to_string(world._dir.path().join("sessions.json")).unwrap();
+    assert!(!raw.contains(pair));
+    assert!(!raw.contains(started["user_code"].as_str().unwrap()));
+}

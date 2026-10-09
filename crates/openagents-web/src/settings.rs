@@ -162,7 +162,7 @@ async fn settings(
         &crate::chat_store::account_owner(&viewer.account_id),
     )
     .await;
-    let computers = crate::device::computers_section(service, &headers, &viewer).await;
+    let computers = crate::device::computers_section(&app, service, &headers, &viewer).await;
     let plan = plan_section(&app, service, &headers, &viewer, returned);
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))

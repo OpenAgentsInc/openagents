@@ -9,6 +9,7 @@
 //! | `POST /v1/sessions/device/poll` `{device_code}` | the app (through the web server) | [`poll`] |
 //! | `POST /v1/sessions/device/lookup` `{user_code}` | a browser session | [`lookup`] |
 //! | `POST /v1/sessions/device/decide` `{user_code, approve}` | a browser session | [`decide`] |
+//! | `POST /v1/sessions/device/paired` `{pair}` | a browser session | [`paired`] |
 //! | `GET /v1/account/sessions` | a session | [`list`] |
 //! | `DELETE /v1/account/sessions/{id}` | a session | [`revoke`] |
 //!
@@ -102,7 +103,7 @@ fn push(log: &mut Vec<sessions::Access>, now: u64, mut event: sessions::Access) 
     sessions::push_access(log, event);
 }
 
-/// `POST /v1/sessions/device` — `{app, computer}`. Answers `device_code`,
+/// `POST /v1/sessions/device` — `{app, computer, pair?}`. Answers `device_code`,
 /// `user_code`, `expires_in`, and `interval`; the web server adds the
 /// verification addresses, which only it knows.
 pub fn start(dir: &Path, body: &Value) -> Answer {
@@ -118,7 +119,7 @@ pub fn start(dir: &Path, body: &Value) -> Answer {
         Err(answer) => return answer,
     };
     match sessions.mutate(|book, log, now| {
-        let issued = book.start_device(label, now)?;
+        let issued = book.start_paired_device(label, text(body, "pair"), now)?;
         push(
             log,
             now,
@@ -296,6 +297,34 @@ pub fn decide(dir: &Path, account: &str, session: Option<&str>, body: &Value) ->
         })),
         Err(refusal) => from_refusal(&refusal),
     }
+}
+
+/// `POST /v1/sessions/device/paired` — `{pair}` under a browser session:
+/// the sign-ins waiting that were started with this pair code, newest
+/// first, each with the code its app shows (`{devices: [{user_code, app,
+/// computer, created_at, expires_at}]}`). The "Connect your terminal" page
+/// shows them with Approve right there.
+pub fn paired(dir: &Path, account: &str, session: Option<&str>, body: &Value) -> Answer {
+    if let Err(answer) = browser_session(dir, account, session) {
+        return answer;
+    }
+    let pair = text(body, "pair").unwrap_or_default();
+    let store = match store(dir).and_then(|s| s.store().map_err(|_| unavailable())) {
+        Ok(store) => store,
+        Err(answer) => return answer,
+    };
+    let devices: Vec<Value> = store
+        .book
+        .paired_devices(pair, now())
+        .into_iter()
+        .take(8)
+        .map(|(grant, user_code)| {
+            let mut device = grant_json(grant);
+            device["user_code"] = json!(user_code);
+            device
+        })
+        .collect();
+    ok(json!({ "devices": devices }))
 }
 
 fn session_json(session: &sessions::Session, current: Option<&str>) -> Value {

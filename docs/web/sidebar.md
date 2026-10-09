@@ -174,7 +174,10 @@ Where each status comes from:
   read again every 5 seconds and the whole list every 2 minutes, for writes
   on another replica. A connection lasts 10 minutes; the browser then
   reconnects with the last event id (a unix time) and gets the rows changed
-  since.
+  since. A chat the tab has no row for (a terminal's chat synced while the
+  page is open, #11089) makes the stream send the whole list once, out of
+  band; the connection address names the open chat (`current`) and `hx` so
+  the list matches the page's.
 
 ## Narrow screens
 

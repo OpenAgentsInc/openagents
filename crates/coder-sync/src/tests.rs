@@ -123,8 +123,26 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                     == Some(&format!("Bearer {TOKEN}"))
             };
             let (a, b, c, d) = (log.clone(), log.clone(), log.clone(), log.clone());
-            let (e, f) = (log.clone(), log.clone());
+            let (e, f, g) = (log.clone(), log.clone(), log.clone());
             let router = Router::new()
+                // The computer's choice (#11089): "Studio" chose to keep
+                // its chats; others haven't been asked.
+                .route(
+                    "/coder/sync",
+                    get(
+                        |axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+                            let studio = query.as_deref() == Some("computer=Studio");
+                            Json(json!({"choice": if studio { json!("local") } else { Value::Null }}))
+                        },
+                    )
+                    .put(move |Json(body): Json<Value>| async move {
+                        g.lock().unwrap().push(format!(
+                            "choose {} {}",
+                            body["computer"], body["choice"]
+                        ));
+                        Json(json!({"choice": body["choice"]}))
+                    }),
+                )
                 .route(
                     "/coder/sessions",
                     get(move |headers: HeaderMap| async move {
@@ -349,6 +367,43 @@ fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
     );
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(checks(&seen.lock().unwrap()), before);
+}
+
+#[test]
+fn the_choice_is_read_and_told_to_the_website() {
+    let (origin, seen) = site();
+    let saved = saved(&origin);
+    assert_eq!(choice_now(&saved, "Studio"), Some(Choice::Local));
+    assert_eq!(choice_now(&saved, "Studio Mac"), None);
+    assert!(choose_now(&saved, "Studio Mac", Choice::All));
+    assert!(
+        seen.lock()
+            .unwrap()
+            .contains(&"choose \"Studio Mac\" \"all\"".to_string())
+    );
+    // A website that can't be reached has no choice.
+    assert_eq!(choice_now(&saved_at("http://127.0.0.1:9"), "Studio"), None);
+    assert_eq!(
+        Choice::of(&Settings {
+            on: true,
+            chosen: true,
+            ..Settings::default()
+        }),
+        Some(Choice::All)
+    );
+    assert_eq!(Choice::of(&Settings::default()), None);
+    let sent = send_now(
+        &saved,
+        vec![(
+            "s1".into(),
+            upload(&document(json!([])), "Studio", &Screen::host()),
+        )],
+    );
+    assert_eq!(sent.len(), 1);
+}
+
+fn saved_at(origin: &str) -> Saved {
+    saved(origin)
 }
 
 #[test]

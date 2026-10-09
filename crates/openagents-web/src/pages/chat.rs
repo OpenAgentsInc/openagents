@@ -1401,7 +1401,7 @@ pub(crate) async fn chat_list(
     let (list, working) = sidebar::render_working(app, owner, view, oob).await;
     html! {
         (list)
-        @if !oob { (live::connector(drawn, working.iter().map(String::as_str))) }
+        @if !oob { (live::connector_at(drawn, working.iter().map(String::as_str), current, hx)) }
     }
 }
 

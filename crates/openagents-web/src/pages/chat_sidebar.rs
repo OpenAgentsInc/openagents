@@ -189,10 +189,16 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
             "Manage projects"
         }
     });
+    // Signed in with no terminal chats yet: where to connect one (#11089).
+    // It is the empty list's way in too.
+    let terminal = view.projects.is_some() && !rows.iter().any(|chat| chat.terminal.is_some());
     if archived || projects.is_some() {
         list = list.after(html! {
             @if archived {
                 p.oa-chat-list-more { a.oa-chat-list-link href=(ARCHIVED) { "Archived chats" } }
+            }
+            @if terminal {
+                p.oa-chat-list-more { a.oa-chat-list-link href=(crate::terminal_connect::PAGE) { "Connect your terminal" } }
             }
             @if let Some(label) = projects {
                 p.oa-chat-list-more { a.oa-chat-list-link href=(crate::projects::PAGE) { (label) } }

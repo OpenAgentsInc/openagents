@@ -29,6 +29,20 @@ pub struct DeviceRequest {
     pub expires_at: u64,
 }
 
+/// A sign-in waiting under a pair code, with the code its app shows.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PairedRequest {
+    pub user_code: String,
+    pub app: String,
+    pub computer: String,
+    pub expires_at: u64,
+}
+
+/// Whether a pair code has the account service's shape.
+fn tenancy_pair(pair: &str) -> bool {
+    (16..=64).contains(&pair.len()) && pair.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 /// The account service's answer to a device call: status and body. A
 /// device flow's refusals (`authorization_pending`, `slow_down`, ...)
 /// are answers, not failures.
@@ -92,13 +106,22 @@ impl CloudSession {
 
     /// Start a device sign-in for an app. The answer adds the
     /// verification addresses on this site's origin (RFC 8628 3.2).
-    pub async fn device_start(&self, app: &str, computer: &str) -> Result<Answer> {
+    pub async fn device_start(
+        &self,
+        app: &str,
+        computer: &str,
+        pair: Option<&str>,
+    ) -> Result<Answer> {
+        let mut body = json!({"app": app, "computer": computer});
+        if let Some(pair) = pair.filter(|pair| tenancy_pair(pair)) {
+            body["pair"] = json!(pair);
+        }
         let mut answer = self
             .device_call(
                 reqwest::Method::POST,
                 "/v1/sessions/device",
                 None,
-                Some(json!({"app": app, "computer": computer})),
+                Some(body),
             )
             .await?;
         if answer.status == 200 {
@@ -149,6 +172,48 @@ impl CloudSession {
             401 => Err(SessionError::Unauthenticated),
             _ => Ok(Err(answer.code().unwrap_or("invalid_grant").to_string())),
         }
+    }
+
+    /// The sign-ins waiting under the viewer's pair code (the Connect
+    /// page's `coder login --pair`), newest first.
+    pub async fn device_paired(
+        &self,
+        headers: &HeaderMap,
+        pair: &str,
+    ) -> Result<Vec<PairedRequest>> {
+        let token = self.browser_token(headers)?;
+        let answer = self
+            .device_call(
+                reqwest::Method::POST,
+                "/v1/sessions/device/paired",
+                Some(&token),
+                Some(json!({"pair": pair})),
+            )
+            .await?;
+        match answer.status {
+            200 => serde_json::from_value(answer.body["devices"].clone())
+                .map_err(|_| SessionError::Unavailable),
+            401 => Err(SessionError::Unauthenticated),
+            _ => Err(SessionError::Unavailable),
+        }
+    }
+
+    /// The viewer's pair code for `coder login --pair`: the same for the
+    /// account on this server, unguessable without the server's key.
+    #[must_use]
+    pub fn pair_code(&self, viewer: &super::Viewer) -> String {
+        use hmac::{Hmac, Mac};
+        let mut mac =
+            Hmac::<sha2::Sha256>::new_from_slice(&self.csrf_key).expect("HMAC accepts this key");
+        mac.update(b"openagents.terminal.pair.v1\0");
+        mac.update(viewer.account_id.as_bytes());
+        const LETTERS: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+        mac.finalize()
+            .into_bytes()
+            .iter()
+            .take(20)
+            .map(|byte| LETTERS[usize::from(*byte) % LETTERS.len()] as char)
+            .collect()
     }
 
     /// The viewer's Approve or Deny.

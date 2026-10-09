@@ -51,16 +51,22 @@ Each step says what you should see. Start signed out.
    **Save**: it shows "Saved: Anthropic API key" with dots, never the key.
    **Remove**: it shows "Nothing saved." again. Settings also shows Plan:
    Pro with "Subscribing isn't open on this server yet." (expected here).
-6. **Coder sign-in.** In a terminal:
-   `~/.openagents/full-local/bin/coder login`. Your browser opens
-   `/device` with "Sign in to Coder on <your Mac>?" and the code the
-   terminal shows. **Approve**: the page says it's signed in, and the
-   terminal says "Signed in to OpenAgents as <you>." Settings → Computers
-   lists the Mac.
+6. **Connect your terminal.** Sidebar → **Connect your terminal** (or
+   Settings → Computers → **Connect your terminal**). Copy step 2's
+   command (`OPENAGENTS_ORIGIN=http://127.0.0.1:4301
+   ~/.openagents/full-local/bin/coder login --pair …`) into a terminal.
+   The page shows "Coder on <your Mac> wants to sign in" with the code
+   the terminal shows: **Approve**. The terminal says "Signed in to
+   OpenAgents as <you>." and asks where this computer's chats live; pick
+   **Sync all my chats** on the page (or type 1 in the terminal). The
+   terminal syncs your earlier chats and the page says "Your terminal is
+   connected"; the chats appear in the sidebar without a reload, each with
+   "Terminal · <your Mac>". Settings → Computers lists the Mac with its
+   choice and Switch.
 7. **Sync a Coder chat.** In a project folder run
-   `~/.openagents/full-local/bin/coder`, type `/sync on`, ask Coder
-   something. Within seconds the chat shows in the web sidebar with
-   "Terminal · <your Mac>" under its title, with the same messages.
+   `~/.openagents/full-local/bin/coder` and ask Coder something. Within
+   seconds the chat shows in the web sidebar with "Terminal · <your Mac>"
+   under its title, with the same messages.
 8. **Reply from the web.** Open that chat on the website, type a reply,
    send. It shows "Waiting for Coder on <your Mac>." Coder picks it up,
    answers in the terminal, and the answer appears on the website.

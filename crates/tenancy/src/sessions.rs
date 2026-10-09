@@ -60,7 +60,7 @@ use crate::workspaces::{Membership, UserId, Workspace, WorkspaceId};
 mod device;
 pub use device::{
     APP_SESSION_TTL, AppLabel, DEVICE_CODE_TTL, DEVICE_POLL_INTERVAL, DeviceGrant, DeviceIssued,
-    DevicePoll, DeviceRefusal, DeviceState, normalize_user_code,
+    DevicePoll, DeviceRefusal, DeviceState, Paired, normalize_user_code, valid_pair,
 };
 
 /// The session token's wire prefix, so a pasted token announces its

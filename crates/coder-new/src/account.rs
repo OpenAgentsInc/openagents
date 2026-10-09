@@ -42,7 +42,7 @@ pub enum Event {
     Code {
         user_code: String,
         url: String,
-        opened: bool,
+        opened: Opened,
     },
     Signed(Saved),
     Failed(String),
@@ -66,7 +66,7 @@ impl Login {
                 let _ = send.send(Event::Failed("Couldn't start sign-in.".into()));
                 return;
             };
-            let outcome = runtime.block_on(run(&origin, |user_code, url, opened| {
+            let outcome = runtime.block_on(run(&origin, None, |user_code, url, opened| {
                 let _ = send.send(Event::Code {
                     user_code: user_code.into(),
                     url: url.into(),
@@ -89,35 +89,66 @@ impl Login {
 
 /// The whole flow: start, show the code (and open the browser when there
 /// is one), wait for approval.
-async fn run(origin: &str, show: impl FnOnce(&str, &str, bool)) -> Result<Saved, Error> {
-    let started = openagents_login::start(origin, APP, &openagents_login::computer_name()).await?;
-    let complete = started
-        .verification_uri_complete
-        .clone()
-        .unwrap_or_else(|| started.verification_uri.clone());
-    let opened = openagents_login::open_browser(&complete);
+///
+/// With a pair code (from the website's "Connect your terminal" page) the
+/// sign-in shows on that page, so no browser opens.
+async fn run(
+    origin: &str,
+    pair: Option<&str>,
+    show: impl FnOnce(&str, &str, Opened),
+) -> Result<Saved, Error> {
+    let started =
+        openagents_login::start_paired(origin, APP, &openagents_login::computer_name(), pair)
+            .await?;
+    let opened = if pair.is_some() {
+        Opened::Paired
+    } else {
+        let complete = started
+            .verification_uri_complete
+            .clone()
+            .unwrap_or_else(|| started.verification_uri.clone());
+        if openagents_login::open_browser(&complete) {
+            Opened::Browser
+        } else {
+            Opened::No
+        }
+    };
     show(&started.user_code, &started.verification_uri, opened);
     openagents_login::wait(origin, &started).await
 }
 
-/// `coder-new login`: prints the code and the page, waits, and saves the
-/// account in `dir`.
-pub fn login_command(dir: &Path, out: &mut impl Write) -> Result<(), String> {
+/// Where the person approves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Opened {
+    /// The browser opened the approval page.
+    Browser,
+    /// On the Connect page that gave the pair code.
+    Paired,
+    /// Nowhere yet: the person opens the page.
+    No,
+}
+
+/// `coder-new login [--pair CODE]`: prints the code and the page, waits,
+/// saves the account in `dir`, then asks once where this computer's chats
+/// live (#11089) unless that was chosen already, here or on the website.
+pub fn login_command(dir: &Path, out: &mut impl Write, pair: Option<&str>) -> Result<(), String> {
     let origin = origin();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|_| "Couldn't start sign-in.".to_string())?;
     let saved = runtime
-        .block_on(run(&origin, |user_code, url, opened| {
+        .block_on(run(&origin, pair, |user_code, url, opened| {
             let _ = writeln!(out, "{}", code_text(user_code, url, opened));
             let _ = writeln!(out, "Waiting for you to approve…");
             let _ = out.flush();
         }))
         .map_err(|error| error.to_string())?;
+    drop(runtime);
     let label = saved.label.clone();
     saved.store(dir)?;
-    writeln!(out, "Signed in to OpenAgents as {label}.").map_err(|e| e.to_string())
+    writeln!(out, "Signed in to OpenAgents as {label}.").map_err(|e| e.to_string())?;
+    crate::login_choice::after_login(dir, &saved, out)
 }
 
 /// `coder-new logout`: ends the token on the website and removes it here.
@@ -147,11 +178,15 @@ pub fn logout_command(dir: &Path, out: &mut impl Write) -> Result<(), String> {
 
 /// What to tell the person once the code exists.
 #[must_use]
-pub fn code_text(user_code: &str, url: &str, opened: bool) -> String {
-    if opened {
-        format!("Your browser opened {url}. Check that it shows {user_code}, then approve.")
-    } else {
-        format!("Open {url} and enter {user_code}.")
+pub fn code_text(user_code: &str, url: &str, opened: Opened) -> String {
+    match opened {
+        Opened::Browser => {
+            format!("Your browser opened {url}. Check that it shows {user_code}, then approve.")
+        }
+        Opened::Paired => format!(
+            "Approve on the Connect your terminal page in your browser. Check that it shows {user_code}."
+        ),
+        Opened::No => format!("Open {url} and enter {user_code}."),
     }
 }
 
@@ -236,9 +271,17 @@ impl crate::App {
                         });
                     match stored {
                         Ok(_) => {
-                            self.notice = Some(format!("Signed in to OpenAgents as {label}."));
-                            self.account = Some(label);
+                            self.account = Some(label.clone());
                             self.start_sync();
+                            let chosen = self.sync.as_ref().is_some_and(|s| s.settings.chosen);
+                            self.notice = Some(if chosen {
+                                format!("Signed in to OpenAgents as {label}.")
+                            } else {
+                                format!(
+                                    "Signed in to OpenAgents as {label}. {}",
+                                    crate::account_sync::QUESTION
+                                )
+                            });
                         }
                         Err(error) => self.notice = Some(error),
                     }
@@ -261,12 +304,20 @@ mod tests {
     #[test]
     fn the_code_text_says_where_to_go_and_what_to_check() {
         assert_eq!(
-            code_text("BCDF-GHJK", "https://openagents.com/device", false),
+            code_text("BCDF-GHJK", "https://openagents.com/device", Opened::No),
             "Open https://openagents.com/device and enter BCDF-GHJK."
         );
         assert!(
-            code_text("BCDF-GHJK", "https://openagents.com/device", true)
-                .contains("shows BCDF-GHJK")
+            code_text(
+                "BCDF-GHJK",
+                "https://openagents.com/device",
+                Opened::Browser
+            )
+            .contains("shows BCDF-GHJK")
+        );
+        assert!(
+            code_text("BCDF-GHJK", "https://openagents.com/device", Opened::Paired)
+                .contains("Connect your terminal page")
         );
     }
 

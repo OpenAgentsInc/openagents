@@ -115,6 +115,19 @@ pub(crate) async fn scope(request: Request, next: Next) -> Response {
     REQUEST.scope(context, next.run(request)).await
 }
 
+/// Runs `work` as if inside a request with `headers` (the sidebar's live
+/// stream draws the list after its request's scope has ended).
+pub(crate) async fn with_headers<F: std::future::Future>(headers: HeaderMap, work: F) -> F::Output {
+    if !has_session(&headers) {
+        return work.await;
+    }
+    let context = Arc::new(Context {
+        headers,
+        sidebar: tokio::sync::OnceCell::new(),
+    });
+    REQUEST.scope(context, work).await
+}
+
 /// The signed-in person's projects for this request, or `None` when nobody
 /// is signed in (or the account service can't be reached).
 pub(crate) async fn sidebar(app: &App) -> Option<Arc<Sidebar>> {

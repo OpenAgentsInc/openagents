@@ -287,22 +287,44 @@ fn run() -> io::Result<()> {
     result.and(extra_restore)
 }
 
-/// `coder login` and `coder logout [--state DIR]`.
+/// `coder login [--pair CODE] [--state DIR]` and `coder logout [--state DIR]`.
 fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
-    let dir = match rest {
-        [] => model_access::store::openagents_dir().map(|root| root.join("coder-new")),
-        [flag, dir] if flag == "--state" => Some(dir.into()),
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Usage: coder {command} [--state DIR]"),
-            ));
+    let usage = || {
+        let pair = if command == "login" {
+            " [--pair CODE]"
+        } else {
+            ""
+        };
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Usage: coder {command}{pair} [--state DIR]"),
+        )
+    };
+    let mut state: Option<std::path::PathBuf> = None;
+    let mut pair: Option<String> = None;
+    let mut args = rest.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--state" => state = Some(args.next().ok_or_else(usage)?.into()),
+            "--pair" if command == "login" => {
+                let code = args.next().ok_or_else(usage)?;
+                if !openagents_login::valid_pair(code) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "That pair code isn't right. Copy the command from the Connect your terminal page again.",
+                    ));
+                }
+                pair = Some(code.clone());
+            }
+            _ => return Err(usage()),
         }
     }
-    .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    let dir = state
+        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
     let mut out = io::stdout();
     if command == "login" {
-        coder_new::account::login_command(&dir, &mut out)
+        coder_new::account::login_command(&dir, &mut out, pair.as_deref())
     } else {
         coder_new::account::logout_command(&dir, &mut out)
     }

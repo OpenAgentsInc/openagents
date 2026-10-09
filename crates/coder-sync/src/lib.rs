@@ -23,6 +23,12 @@
 //! ([`LEFT_OUT`]), never uploaded. Plugin keys, model credentials, and
 //! files are never read here.
 //!
+//! Where this computer's chats live is the person's choice, asked once
+//! (#11089): "Sync all my chats" or "Keep chats on this computer"
+//! ([`Choice`]). The website keeps the same choice per computer
+//! (`/coder/sync`, [`choice`], [`choose`]), so it can be made or changed
+//! there too.
+//!
 //! [`Settings`] lives in `sync.json` (0600) beside the account file.
 
 pub mod traces;
@@ -66,6 +72,10 @@ pub struct Settings {
     /// Save chats to the account.
     #[serde(default)]
     pub on: bool,
+    /// The person answered where this computer's chats live (#11089);
+    /// until then Coder asks.
+    #[serde(default)]
+    pub chosen: bool,
     /// Per session, the digest of the last upload the website accepted.
     #[serde(default)]
     pub sent: BTreeMap<String, String>,
@@ -418,6 +428,161 @@ pub async fn deleted_on_site(http: &reqwest::Client, saved: &Saved) -> Result<Ve
     }
 }
 
+/// Where a computer's chats live (#11089).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// Sync all my chats.
+    All,
+    /// Keep chats on this computer.
+    Local,
+}
+
+impl Choice {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Local => "local",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(Self::All),
+            "local" => Some(Self::Local),
+            _ => None,
+        }
+    }
+
+    /// The choice `settings` stand for, once the person made one.
+    #[must_use]
+    pub fn of(settings: &Settings) -> Option<Self> {
+        settings
+            .chosen
+            .then_some(if settings.on { Self::All } else { Self::Local })
+    }
+}
+
+/// The website's record of this computer's choice; `None` when it has
+/// none (or is a website without choices).
+pub async fn choice(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+) -> Result<Option<Choice>, Answer> {
+    let query: String = line(computer, 64)
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    let query = format!("computer={query}");
+    match call(
+        http,
+        saved,
+        reqwest::Method::GET,
+        &format!("/coder/sync?{query}"),
+        None,
+    )
+    .await
+    {
+        (Answer::Done, body) => Ok(body["choice"].as_str().and_then(Choice::parse)),
+        (Answer::Unknown, _) => Ok(None),
+        (answer, _) => Err(answer),
+    }
+}
+
+/// Tell the website this computer's choice.
+pub async fn choose(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    choice: Choice,
+) -> Answer {
+    let body = json!({"computer": line(computer, 64), "choice": choice.as_str()});
+    call(
+        http,
+        saved,
+        reqwest::Method::PUT,
+        "/coder/sync",
+        Some(&body),
+    )
+    .await
+    .0
+}
+
+/// [`choice`] from a plain thread, waiting at most a few seconds.
+#[must_use]
+pub fn choice_now(saved: &Saved, computer: &str) -> Option<Choice> {
+    let http = client()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+    runtime.block_on(async {
+        tokio::time::timeout(Duration::from_secs(10), choice(&http, saved, computer))
+            .await
+            .ok()?
+            .ok()?
+    })
+}
+
+/// [`choose`] from a plain thread; true when the website took it.
+#[must_use]
+pub fn choose_now(saved: &Saved, computer: &str, picked: Choice) -> bool {
+    let Some(http) = client() else {
+        return false;
+    };
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return false;
+    };
+    runtime.block_on(async {
+        matches!(
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                choose(&http, saved, computer, picked)
+            )
+            .await,
+            Ok(Answer::Done)
+        )
+    })
+}
+
+/// Send these chats now, oldest first, from a plain thread: `coder login`'s
+/// "Sync all my chats". Returns how many the website has afterwards and
+/// the digests it accepted, to keep in [`Settings::sent`].
+#[must_use]
+pub fn send_now(saved: &Saved, uploads: Vec<(String, Upload)>) -> Vec<(String, String)> {
+    let Some(http) = client() else {
+        return Vec::new();
+    };
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return Vec::new();
+    };
+    runtime.block_on(async {
+        let mut sent = Vec::new();
+        for (session, upload) in uploads {
+            match put(&http, saved, &session, &upload).await {
+                Answer::Done => sent.push((session, upload.digest)),
+                Answer::SignedOut | Answer::Full => break,
+                _ => {}
+            }
+        }
+        sent
+    })
+}
+
 /// A reply typed on the website for one of this computer's chats.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reply {
@@ -426,12 +591,12 @@ pub struct Reply {
 }
 
 /// Say this computer is online; the answer is its chats with replies
-/// from the website waiting.
+/// from the website waiting, and the computer's choice there.
 pub async fn check_in(
     http: &reqwest::Client,
     saved: &Saved,
     computer: &str,
-) -> Result<Vec<String>, Answer> {
+) -> Result<(Vec<String>, Option<Choice>), Answer> {
     let body = json!({"computer": line(computer, 64)});
     match call(
         http,
@@ -442,14 +607,17 @@ pub async fn check_in(
     )
     .await
     {
-        (Answer::Done, body) => Ok(body["waiting"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .filter(|session| session_path(session).is_some())
-            .map(str::to_owned)
-            .collect()),
+        (Answer::Done, body) => Ok((
+            body["waiting"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .filter(|session| session_path(session).is_some())
+                .map(str::to_owned)
+                .collect(),
+            body["sync"].as_str().and_then(Choice::parse),
+        )),
         (answer, _) => Err(answer),
     }
 }
@@ -593,6 +761,8 @@ pub enum Event {
     Refused { session: String, message: String },
     /// These chats have replies from the website waiting.
     Waiting { sessions: Vec<String> },
+    /// The website says this computer's choice is this (#11089).
+    Chosen { choice: Choice },
     /// The answer to a [`Job::Take`]: the replies taken from the website
     /// for this chat, oldest first, and the messages added there while
     /// this computer was offline (none when there was nothing to take).
@@ -763,9 +933,12 @@ async fn round(
     {
         *listen_at = Instant::now() + CHECK_IN_EVERY;
         match check_in(http, saved, &computer).await {
-            Ok(sessions) => {
+            Ok((sessions, chosen)) => {
                 if !sessions.is_empty() {
                     let _ = outbox.send(Event::Waiting { sessions });
+                }
+                if let Some(choice) = chosen {
+                    let _ = outbox.send(Event::Chosen { choice });
                 }
             }
             Err(Answer::SignedOut) => return Round::SignedOut,

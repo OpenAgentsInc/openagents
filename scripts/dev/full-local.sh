@@ -381,7 +381,7 @@ EOF
 # coder-new from $root, signed in to http://127.0.0.1:$web_port only.
 export OPENAGENTS_ORIGIN=http://127.0.0.1:$web_port
 case "\${1:-}" in
-login | logout) exec "$target/debug/coder-new" "\$1" --state "$state/coder" ;;
+login | logout) command=\$1; shift; exec "$target/debug/coder-new" "\$command" --state "$state/coder" "\$@" ;;
 esac
 exec "$target/debug/coder-new" --state "$state/coder" "\$@"
 EOF

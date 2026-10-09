@@ -155,6 +155,38 @@ pub(crate) struct Computers {
     pub seen: BTreeMap<String, u64>,
     #[serde(default)]
     pub waiting: BTreeMap<String, String>,
+    /// Per computer, the person's choice: sync all its chats to the
+    /// account, or keep them on the computer (#11089). A computer with no
+    /// entry hasn't been asked yet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sync: BTreeMap<String, SyncChoice>,
+}
+
+/// Where a computer's chats live (#11089).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SyncChoice {
+    /// Sync all my chats.
+    All,
+    /// Keep chats on this computer.
+    Local,
+}
+
+impl SyncChoice {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Local => "local",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(Self::All),
+            "local" => Some(Self::Local),
+            _ => None,
+        }
+    }
 }
 
 /// The most computers one account's record keeps (the oldest go first).
@@ -165,6 +197,8 @@ pub(crate) const MAX_WAITING_CHATS: usize = 64;
 impl Computers {
     fn valid(&self) -> bool {
         self.seen.len() <= MAX_COMPUTERS
+            && self.sync.len() <= MAX_COMPUTERS
+            && self.sync.keys().all(|name| bounded_text(name, 128))
             && self.waiting.len() <= MAX_WAITING_CHATS
             && self.seen.keys().all(|name| bounded_text(name, 128))
             && self

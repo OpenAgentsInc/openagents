@@ -7,7 +7,7 @@ pub(crate) mod chat;
 mod cloud;
 mod connect;
 pub(crate) mod content;
-mod download;
+pub(crate) mod download;
 mod efficiency;
 mod everglade;
 mod home;

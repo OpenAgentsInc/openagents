@@ -22,6 +22,7 @@ mod delegation_events;
 mod demo;
 pub mod jev_plugin;
 pub mod live;
+pub mod login_choice;
 pub mod model_catalog;
 pub mod models;
 #[cfg(unix)]

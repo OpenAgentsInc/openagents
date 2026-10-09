@@ -86,6 +86,7 @@ impl LocalService {
             .route("/v1/sessions/device/poll", post(device_poll))
             .route("/v1/sessions/device/lookup", post(device_lookup))
             .route("/v1/sessions/device/decide", post(device_decide))
+            .route("/v1/sessions/device/paired", post(device_paired))
             .route("/v1/account/sessions", get(app_sessions))
             .route(
                 "/v1/account/sessions/{id}",
@@ -375,6 +376,24 @@ async fn device_decide(
     };
     let body = request.map(|j| j.0).unwrap_or(Value::Null);
     answer(crate::device::decide(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &body,
+    ))
+}
+
+async fn device_paired(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    request: JsonBody,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::device::paired(
         &state.0.dir,
         &account,
         Some(&id),

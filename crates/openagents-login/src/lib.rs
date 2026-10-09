@@ -47,6 +47,12 @@ pub fn origin_from(get_env: impl Fn(&str) -> Option<String>) -> String {
         .unwrap_or_else(|| DEFAULT_ORIGIN.to_string())
 }
 
+/// Whether `pair` looks like a pair code: 16 to 64 letters and digits.
+#[must_use]
+pub fn valid_pair(pair: &str) -> bool {
+    (16..=64).contains(&pair.len()) && pair.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 /// This computer's name, as the approval page shows it.
 #[must_use]
 pub fn computer_name() -> String {
@@ -259,15 +265,24 @@ async fn post(
 
 /// Ask `origin` to start a sign-in for `app` on this computer.
 pub async fn start(origin: &str, app: &str, computer: &str) -> Result<Started, Error> {
+    start_paired(origin, app, computer, None).await
+}
+
+/// [`start`] with the pair code from the website's "Connect your
+/// terminal" page (`coder login --pair <code>`), so the sign-in shows on
+/// that page to approve there.
+pub async fn start_paired(
+    origin: &str,
+    app: &str,
+    computer: &str,
+    pair: Option<&str>,
+) -> Result<Started, Error> {
     let http = client()?;
-    let (status, body) = post(
-        &http,
-        origin,
-        "/device/code",
-        json!({"app": app, "computer": computer}),
-        None,
-    )
-    .await?;
+    let mut body = json!({"app": app, "computer": computer});
+    if let Some(pair) = pair.filter(|pair| valid_pair(pair)) {
+        body["pair"] = json!(pair);
+    }
+    let (status, body) = post(&http, origin, "/device/code", body, None).await?;
     if status != 200 {
         return Err(Error::Refused(
             body["error_description"]

@@ -20,6 +20,12 @@
 //! Only the owner's chats are read (every read is keyed by the cookie's
 //! owner), so only the owner's rows are ever sent.
 //!
+//! A chat this tab hasn't drawn (a terminal's chat synced while the page is
+//! open, #11089) makes the stream send the whole list once, out of band, so
+//! the new row appears without a reload. The page names its open chat and
+//! whether rows load with HTMX in the connection address, so the list it
+//! sends matches the one it replaces.
+//!
 //! Tasks started from a chat (Claude Code runs in its environment, #11037,
 //! [`super::work`]) count too: a running task draws the row as Working, and
 //! a Working chat's check first writes any change in its tasks' states
@@ -57,12 +63,31 @@ pub(super) fn routes() -> Router<App> {
 /// not inside it, so the list's own out-of-band replacements (pin, rename, a
 /// new answer) keep the connection. `after` is when the page read the list;
 /// `working` names the chats it drew as Working.
+#[cfg(test)]
 pub(super) fn connector<'a>(after: u64, working: impl IntoIterator<Item = &'a str>) -> Markup {
+    connector_at(after, working, None, false)
+}
+
+/// [`connector`] for a page whose open chat is `current` and whose rows
+/// load with HTMX (`hx`), so a list the stream sends matches the page's.
+pub(super) fn connector_at<'a>(
+    after: u64,
+    working: impl IntoIterator<Item = &'a str>,
+    current: Option<&str>,
+    hx: bool,
+) -> Markup {
     let working: Vec<&str> = working.into_iter().take(MAX_WORKING).collect();
     let mut url = format!("{EVENTS}?after={after}");
     if !working.is_empty() {
         url.push_str("&working=");
         url.push_str(&working.join(","));
+    }
+    if let Some(current) = current.filter(|id| valid_id(id)) {
+        url.push_str("&current=");
+        url.push_str(current);
+    }
+    if hx {
+        url.push_str("&hx=1");
     }
     html! {
         div #chat-sidebar-live hidden hx-ext="sse" sse-connect=(url) {
@@ -76,6 +101,10 @@ struct Resume {
     after: Option<u64>,
     #[serde(default)]
     working: String,
+    #[serde(default)]
+    current: String,
+    #[serde(default)]
+    hx: String,
 }
 
 /// What the stream knows: each chat's status as last sent or drawn. A chat
@@ -95,6 +124,13 @@ struct Watch {
     retry: Option<Instant>,
     next_working: Instant,
     next_all: Instant,
+    /// The chats the tab's list has rows for; `None` until first read. A
+    /// chat not in it makes the stream send the whole list.
+    known: Option<HashSet<String>>,
+    /// What the tab's list was drawn with, to draw it again.
+    current: Option<String>,
+    hx: bool,
+    headers: HeaderMap,
 }
 
 async fn events(
@@ -114,7 +150,10 @@ async fn events(
     let now_unix = now();
     let cursor = reconnect.or(resume.after).unwrap_or(now_unix).min(now_unix);
     let working = parse_working(&resume.working);
-    let watch = Watch::new(app, owner, cursor, working);
+    let mut watch = Watch::new(app, owner, cursor, working);
+    watch.current = Some(resume.current).filter(|id| valid_id(id));
+    watch.hx = resume.hx == "1";
+    watch.headers = headers;
     let stream = futures_util::stream::unfold(watch, |mut watch| async move {
         let body = watch.next().await?;
         let event = Event::default()
@@ -164,7 +203,53 @@ impl Watch {
             retry: None,
             next_working: start + WORKING_EVERY,
             next_all: start + ALL_EVERY,
+            known: None,
+            current: None,
+            hx: false,
+            headers: HeaderMap::new(),
         }
+    }
+
+    /// The chats the tab drew: every one last changed by its cursor (or
+    /// drawn Working). A reconnect after a gap takes the list as it is.
+    async fn seed(&mut self) {
+        if self.known.is_some() {
+            return;
+        }
+        let all = self.catch_up;
+        if let Ok(rows) = self.app.config.chat_store.list(&self.owner).await {
+            self.known = Some(
+                rows.iter()
+                    .filter(|chat| {
+                        all || chat.updated_unix <= self.cursor || self.shown.contains_key(&chat.id)
+                    })
+                    .map(|chat| chat.id.clone())
+                    .collect(),
+            );
+        }
+    }
+
+    /// Whether `chat` is one the tab has no row for yet (and now has).
+    fn is_new(&mut self, chat: &Conversation) -> bool {
+        chat.archived_unix.is_none()
+            && self
+                .known
+                .as_mut()
+                .is_some_and(|known| known.insert(chat.id.clone()))
+    }
+
+    /// The whole list, out of band, as the tab drew it.
+    async fn list(&self) -> String {
+        let view = sidebar::View {
+            current: self.current.as_deref(),
+            hx: self.hx,
+            ..sidebar::View::default()
+        };
+        let render = sidebar::render(&self.app, &self.owner, view, true);
+        crate::projects::with_headers(self.headers.clone(), render)
+            .await
+            .render()
+            .into_string()
     }
 
     /// Waits for the next batch of changed status slots; `None` when the
@@ -178,6 +263,7 @@ impl Watch {
                 tokio::time::sleep_until(at.min(self.ends)).await;
                 continue;
             }
+            self.seed().await;
             if !self.catch_up && self.dirty.is_empty() {
                 self.wait().await?;
             }
@@ -288,6 +374,7 @@ impl Watch {
     async fn read_dirty(&mut self) -> Result<String, String> {
         let ids: Vec<String> = self.dirty.drain().collect();
         let mut slots = String::new();
+        let mut fresh = false;
         let store = self.app.config.chat_store.clone();
         let mut ids = ids.into_iter();
         while let Some(id) = ids.next() {
@@ -296,6 +383,7 @@ impl Watch {
                 // wakes this stream again, and then nothing differs).
                 Ok(Some(loaded)) => {
                     let loaded = work::sync(&self.app, loaded).await;
+                    fresh |= self.is_new(&loaded.conversation);
                     slots.push_str(&self.slot(&loaded.conversation));
                 }
                 // A deleted chat's row is gone with it.
@@ -309,6 +397,9 @@ impl Watch {
                     return Err(slots);
                 }
             }
+        }
+        if fresh {
+            slots.insert_str(0, &self.list().await);
         }
         Ok(slots)
     }
@@ -327,7 +418,14 @@ impl Watch {
         };
         self.catch_up = false;
         self.dirty.clear();
-        Ok(self.changed_rows(&rows))
+        let fresh = rows
+            .iter()
+            .fold(false, |fresh, chat| self.is_new(chat) || fresh);
+        let mut slots = self.changed_rows(&rows);
+        if fresh {
+            slots.insert_str(0, &self.list().await);
+        }
+        Ok(slots)
     }
 
     /// The slots for `rows` changed since the cursor, and the baseline for
@@ -497,6 +595,29 @@ mod tests {
         );
         assert!(slots.contains(r#"data-status="failed""#), "{slots}");
         assert!(!slots.contains(A), "{slots}");
+    }
+
+    #[tokio::test]
+    async fn a_chat_the_tab_has_no_row_for_brings_the_whole_list() {
+        let directory = tempfile::tempdir().unwrap();
+        let app = app(&directory);
+        let mut drawn = chat(A, OWNER, 100);
+        drawn.pending = None;
+        app.config.chat_store.create(&drawn).await.unwrap();
+        let mut watch = Watch::new(app.clone(), OWNER.into(), now() - 1, Vec::new());
+        watch.current = Some(A.into());
+        watch.seed().await;
+        // A terminal's chat arrives while the page is open.
+        let mut synced = chat(B, OWNER, now() + 1);
+        synced.pending = None;
+        app.config.chat_store.create(&synced).await.unwrap();
+        let slots = next(&mut watch).await;
+        assert!(slots.contains(r#"id="chat-sidebar""#), "{slots}");
+        assert!(slots.contains(r#"hx-swap-oob="outerHTML""#), "{slots}");
+        assert!(slots.contains(&format!("chat-row-{B}")), "{slots}");
+        assert!(slots.contains(&format!("chat-row-{A}")), "{slots}");
+        // Known now: its next change is only its status, if any.
+        assert!(!watch.is_new(&synced));
     }
 
     #[tokio::test]

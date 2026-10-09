@@ -57,6 +57,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/sessions/device/poll", post(device_poll)),
         ("/v1/sessions/device/lookup", post(device_lookup)),
         ("/v1/sessions/device/decide", post(device_decide)),
+        ("/v1/sessions/device/paired", post(device_paired)),
         ("/v1/account/sessions", get(app_sessions)),
         ("/v1/account/sessions/{session}", delete(app_session_revoke)),
         ("/v1/session", get(session_status).delete(logout)),
@@ -817,6 +818,26 @@ async fn device_decide(
     };
     let body = body.map_or(Value::Null, |Json(body)| body);
     device_answer(oa_auth::device::decide(
+        &state.dir,
+        &account,
+        session.as_deref(),
+        &body,
+    ))
+}
+
+/// `POST /v1/sessions/device/paired` — `{pair}`, under a browser session:
+/// the sign-ins started with that pair code, for the Connect page.
+async fn device_paired(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let (account, session) = match device_caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    device_answer(oa_auth::device::paired(
         &state.dir,
         &account,
         session.as_deref(),

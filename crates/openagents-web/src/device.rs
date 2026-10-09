@@ -26,7 +26,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
-use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, TextLink};
+use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 use openagents_ui::forms::{Field, Input};
 use serde::Deserialize;
@@ -110,7 +110,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         "" => "Coder",
         name => name,
     };
-    match service.device_start(app_name, text("computer")).await {
+    let pair = Some(text("pair")).filter(|pair| !pair.is_empty());
+    match service.device_start(app_name, text("computer"), pair).await {
         Ok(answer) if answer.status == 200 => {
             let mut body = answer.body;
             if let Some(object) = body.as_object_mut() {
@@ -450,10 +451,12 @@ async fn decide(
     respond(&headers, service, &viewer, StatusCode::OK, title, body)
 }
 
-/// Settings' Computers section: the signed-in apps, each with Remove.
-/// Empty when the account service can't be reached, so Settings still
-/// opens.
+/// Settings' Computers section: the signed-in apps, each with Remove and
+/// its chats' choice (sync all or keep on the computer, #11089), and the
+/// way to connect one. Empty when the account service can't be reached,
+/// so Settings still opens.
 pub(crate) async fn computers_section(
+    app: &App,
     service: &CloudSession,
     headers: &HeaderMap,
     viewer: &Viewer,
@@ -461,41 +464,76 @@ pub(crate) async fn computers_section(
     let Ok(sessions) = service.app_sessions(headers).await else {
         return html! {};
     };
+    let owner = crate::chat_store::account_owner(&viewer.account_id);
+    let choices = app
+        .config
+        .chat_store
+        .computers(&owner)
+        .await
+        .map(|computers| computers.sync)
+        .unwrap_or_default();
     let rows: Vec<_> = sessions
         .iter()
         .filter_map(|session| {
             let csrf = service
                 .csrf(headers, viewer, "computer-remove", &session.id)
                 .ok()?;
-            Some((session, csrf))
+            let computer = crate::coder_sync::line(&session.computer, 64);
+            let sync = service
+                .csrf(headers, viewer, "terminal-sync", &computer)
+                .ok()?;
+            let choice = choices.get(&computer).copied();
+            Some(Row {
+                session,
+                csrf,
+                sync,
+                choice,
+            })
         })
         .collect();
     computers_markup(&rows)
 }
 
-fn computers_markup(rows: &[(&crate::cloud::session::device::AppSession, String)]) -> Markup {
+/// One signed-in computer in Settings.
+struct Row<'a> {
+    session: &'a crate::cloud::session::device::AppSession,
+    /// The Remove ticket.
+    csrf: String,
+    /// The choice forms' ticket.
+    sync: String,
+    choice: Option<crate::chat_store::SyncChoice>,
+}
+
+fn computers_markup(rows: &[Row<'_>]) -> Markup {
     html! {
         div class="oa-settings" {
             section class="oa-settings-group" aria-labelledby="settings-computers" {
                 h2 #settings-computers { "Computers" }
-                @if rows.is_empty() {
-                    div class="oa-settings-row" {
-                        div class="oa-settings-text" {
-                            span class="oa-settings-label" { "No computers are signed in" }
-                            span class="oa-settings-hint" {
-                                "Install Coder from " (TextLink::new("Download", "/download"))
-                                ", then run " code { "coder login" } " in a terminal to sign one in."
-                            }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" {
+                            @if rows.is_empty() { "No computers are signed in" } @else { "Connect your terminal" }
                         }
+                        span class="oa-settings-hint" { "Install Coder, sign in, and choose where its chats live." }
+                    }
+                    div class="oa-settings-control" {
+                        (action_link("Connect your terminal", crate::terminal_connect::PAGE))
                     }
                 }
-                @for (session, csrf) in rows {
+                @for row in rows {
                     form class="oa-settings-row" method="post" action=(REMOVE) {
-                        input type="hidden" name="csrf" value=(csrf);
-                        input type="hidden" name="session" value=(session.id);
+                        input type="hidden" name="csrf" value=(row.csrf);
+                        input type="hidden" name="session" value=(row.session.id);
                         div class="oa-settings-text" {
-                            span class="oa-settings-label" { (session.app) " on " (session.computer) }
-                            span class="oa-settings-hint" { "Signed in " (date(session.created_at)) }
+                            span class="oa-settings-label" { (row.session.app) " on " (row.session.computer) }
+                            span class="oa-settings-hint" {
+                                "Signed in " (date(row.session.created_at)) " · "
+                                @match row.choice {
+                                    Some(crate::chat_store::SyncChoice::All) => "Syncs all its chats",
+                                    Some(crate::chat_store::SyncChoice::Local) => "Keeps chats on this computer",
+                                    None => "Not asked yet where its chats live",
+                                }
+                            }
                         }
                         div class="oa-settings-control" {
                             (Button::new("Remove")
@@ -504,6 +542,12 @@ fn computers_markup(rows: &[(&crate::cloud::session::device::AppSession, String)
                                 .color(Color::Secondary))
                         }
                     }
+                    (crate::terminal_connect::choice_forms(
+                        &crate::coder_sync::line(&row.session.computer, 64),
+                        &row.sync,
+                        row.choice,
+                        true,
+                    ))
                 }
             }
         }
@@ -588,8 +632,8 @@ mod tests {
     #[test]
     fn settings_lists_computers_with_remove_or_says_how_to_add_one() {
         let empty = computers_markup(&[]).into_string();
-        assert!(empty.contains("<code>coder login</code>"));
-        assert!(empty.contains("href=\"/download\""));
+        assert!(empty.contains("/settings/terminal"));
+        assert!(empty.contains("No computers are signed in"));
         let session = crate::cloud::session::device::AppSession {
             id: "a".repeat(64),
             app: "Coder".into(),
@@ -597,9 +641,18 @@ mod tests {
             created_at: 1_791_504_000,
             expires_at: 0,
         };
-        let html = computers_markup(&[(&session, "t".into())]).into_string();
+        let html = computers_markup(&[Row {
+            session: &session,
+            csrf: "t".into(),
+            sync: "s".into(),
+            choice: Some(crate::chat_store::SyncChoice::All),
+        }])
+        .into_string();
         assert!(html.contains("Coder on chris-mbp"));
         assert!(html.contains("Signed in 2026-10-09"));
+        assert!(html.contains("Syncs all its chats"));
+        assert!(html.contains("Sync all my chats (chosen)"));
+        assert!(html.contains(r#"name="back" value="settings""#));
         assert!(html.contains(">Remove<"));
         crate::copy_guard::assert_plain("/settings", &html);
         crate::copy_guard::assert_plain("/settings", &empty);

@@ -13,6 +13,12 @@
 //!   issues one session, exactly once, labeled with the app and the
 //!   computer, and the grant is spent. Polling faster than the grant's
 //!   interval answers `slow_down` and widens the interval.
+//! - A grant can carry a pair code ([`valid_pair`]): the website's
+//!   "Connect your terminal" page shows the person `coder login --pair
+//!   <code>`, then lists the grants started with it
+//!   ([`SessionBook::paired_devices`]) so the person approves right there.
+//!   The pair code is kept as a digest and the user code under it only
+//!   masked with the pair code, so the store still holds no code.
 //! - App sessions are ordinary `user` sessions with an [`AppLabel`], so
 //!   every route that takes a `sess_` token takes them; they stand
 //!   [`APP_SESSION_TTL`] and are listed and revoked one by one
@@ -117,6 +123,57 @@ pub struct DeviceGrant {
     /// The session the grant issued, once redeemed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<SessionId>,
+    /// The pair code the app started with, for the page that shows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair: Option<Paired>,
+}
+
+/// A grant started with a pair code: the code's digest, and the user
+/// code masked with the pair code (hex), so only someone holding the pair
+/// code reads it back.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Paired {
+    pub id: String,
+    pub code: String,
+}
+
+/// Whether `pair` can be a pair code: 16 to 64 ASCII letters and digits.
+#[must_use]
+pub fn valid_pair(pair: &str) -> bool {
+    (16..=64).contains(&pair.len()) && pair.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// The pad a pair code masks its grant's user code with.
+fn pair_pad(pair: &str) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"openagents.device.pair.v1\0");
+    hash.update(pair.as_bytes());
+    hash.finalize().into()
+}
+
+fn mask(code: &str, pair: &str) -> String {
+    code.bytes()
+        .zip(pair_pad(pair))
+        .map(|(byte, pad)| format!("{:02x}", byte ^ pad))
+        .collect()
+}
+
+fn unmask(masked: &str, pair: &str) -> Option<String> {
+    if masked.len() != USER_CODE_LEN * 2 {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..masked.len())
+        .step_by(2)
+        .zip(pair_pad(pair))
+        .map(|(at, pad)| {
+            u8::from_str_radix(masked.get(at..at + 2)?, 16)
+                .ok()
+                .map(|b| b ^ pad)
+        })
+        .collect();
+    let code = normalize_user_code(&String::from_utf8(bytes?).ok()?)?;
+    Some(format!("{}-{}", &code[..4], &code[4..]))
 }
 
 impl DeviceGrant {
@@ -241,6 +298,17 @@ fn fresh_user_code() -> Result<String, Refusal> {
 impl SessionBook {
     /// Start a device sign-in for `label`. Prunes long-finished grants.
     pub fn start_device(&mut self, label: AppLabel, now: u64) -> Result<DeviceIssued, Refusal> {
+        self.start_paired_device(label, None, now)
+    }
+
+    /// [`Self::start_device`] with an optional pair code ([`valid_pair`];
+    /// an invalid one is ignored).
+    pub fn start_paired_device(
+        &mut self,
+        label: AppLabel,
+        pair: Option<&str>,
+        now: u64,
+    ) -> Result<DeviceIssued, Refusal> {
         self.devices
             .retain(|_, grant| grant.expires_at + DEVICE_KEEP > now);
         let live = self
@@ -275,6 +343,10 @@ impl SessionBook {
             account: None,
             decided_at: None,
             session: None,
+            pair: pair.filter(|pair| valid_pair(pair)).map(|pair| Paired {
+                id: digest_secret(pair),
+                code: mask(&normalize_user_code(&user_code).expect("valid"), pair),
+            }),
         };
         self.devices.insert(grant.id.clone(), grant.clone());
         Ok(DeviceIssued {
@@ -302,6 +374,27 @@ impl SessionBook {
             return Err(Refusal::Device(DeviceRefusal::Expired));
         }
         Ok(grant)
+    }
+
+    /// The grants waiting for approval that were started with `pair`,
+    /// newest first, each with its user code (`BCDF-GHJK`).
+    #[must_use]
+    pub fn paired_devices(&self, pair: &str, now: u64) -> Vec<(&DeviceGrant, String)> {
+        if !valid_pair(pair) {
+            return Vec::new();
+        }
+        let id = digest_secret(pair);
+        let mut found: Vec<(&DeviceGrant, String)> = self
+            .devices
+            .values()
+            .filter(|grant| grant.state == DeviceState::Pending && !grant.expired(now))
+            .filter_map(|grant| {
+                let paired = grant.pair.as_ref().filter(|paired| paired.id == id)?;
+                Some((grant, unmask(&paired.code, pair)?))
+            })
+            .collect();
+        found.sort_by_key(|(grant, _)| std::cmp::Reverse(grant.created_at));
+        found
     }
 
     /// The signed-in `account` approves (or denies) the grant behind a
@@ -516,6 +609,43 @@ mod tests {
         );
         book.revoke_session(&account, &id, 1_040).unwrap();
         assert!(book.app_sessions(&account, 1_040).is_empty());
+    }
+
+    #[test]
+    fn a_paired_grant_lists_under_its_pair_code_only_and_stores_no_code() {
+        let mut book = SessionBook::new(100, 100);
+        let pair = "k7qxm2tz9w4v8r3n";
+        let issued = book
+            .start_paired_device(label(), Some(pair), 1_000)
+            .unwrap();
+        book.start_device(label(), 1_001).unwrap();
+        let stored = serde_json::to_string(&book).unwrap();
+        assert!(!stored.contains(&issued.user_code));
+        assert!(!stored.contains(&normalize_user_code(&issued.user_code).unwrap()));
+        assert!(!stored.contains(pair));
+        let found = book.paired_devices(pair, 1_010);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].1, issued.user_code);
+        assert_eq!(found[0].0.label.computer, "chris-mbp");
+        assert!(book.paired_devices("someoneelsespair1", 1_010).is_empty());
+        assert!(book.paired_devices("short", 1_010).is_empty());
+        // Approved, it leaves the list; expired ones never show.
+        book.decide_device(&issued.user_code, &UserId::from("a"), true, 1_011)
+            .unwrap();
+        assert!(book.paired_devices(pair, 1_012).is_empty());
+        let late = book
+            .start_paired_device(label(), Some(pair), 2_000)
+            .unwrap();
+        assert_eq!(book.paired_devices(pair, 2_001)[0].1, late.user_code);
+        assert!(
+            book.paired_devices(pair, 2_000 + DEVICE_CODE_TTL)
+                .is_empty()
+        );
+        // An invalid pair code is ignored.
+        let plain = book
+            .start_paired_device(label(), Some("x y"), 3_000)
+            .unwrap();
+        assert!(plain.grant.pair.is_none());
     }
 
     #[test]

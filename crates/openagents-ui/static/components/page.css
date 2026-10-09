@@ -63,6 +63,36 @@
   margin: calc(var(--spacing) * 4) 0;
 }
 
+/* A command to type, with its Copy button beside it (Connect your
+   terminal). Long commands wrap instead of running off the page. */
+.oa-terminal-command {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  margin: calc(var(--spacing) * 2) 0 calc(var(--spacing) * 5);
+}
+
+.oa-terminal-command pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A short inline form: a label, a field, and its button. */
+.oa-terminal-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin: calc(var(--spacing) * 4) 0;
+}
+
 /* A form under a page's intro text, set off from it. */
 .oa-page-form {
   margin-top: calc(var(--spacing) * 6);
