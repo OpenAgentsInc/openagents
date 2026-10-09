@@ -11,6 +11,7 @@
 //! without records or secrets. The design follows the private Coder
 //! service's site, reimplemented here.
 
+pub mod account;
 pub mod ask;
 pub mod backend;
 mod chat_html;
@@ -195,6 +196,7 @@ pub fn router(config: Config) -> Router {
         .merge(tasks::routes())
         .merge(wellknown::routes())
         .fallback(not_found)
+        .layer(middleware::from_fn_with_state(app.clone(), account::scope))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }

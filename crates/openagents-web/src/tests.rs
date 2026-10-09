@@ -173,8 +173,12 @@ async fn every_public_page_answers_in_development() {
             assert!(body.contains("&quot;allowEval&quot;:false"));
             assert!(!body.contains("src=\"/static/chat.js\""));
         }
-        assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
-        assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
+        // Only the home page shows the legal links (along its bottom).
+        assert_eq!(
+            body.contains("class=\"oa-home-legal\""),
+            uri == "/",
+            "{uri}: legal links only on home"
+        );
         // The UiPage shell's wordmark (UI-12; the legacy header is gone, UI-13).
         assert!(
             body.contains("class=\"oa-wordmark\""),
@@ -341,7 +345,7 @@ async fn the_homepage_composer_is_the_design_language_component() {
     // The homepage posts a plain form and follows the redirect to the chat.
     assert!(!home.contains("hx-post="));
     assert!(home.contains("id=\"chat-card\" class=\"oa-composer-body\""));
-    assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
+    assert!(home.contains("placeholder=\"Ask OpenAgents anything\""));
     assert!(home.contains("maxlength=\"4000\""));
     assert!(
         home.contains("<button type=\"submit\" class=\"oa-composer-send\" aria-label=\"Send\"")
@@ -364,9 +368,17 @@ async fn the_homepage_composer_is_the_design_language_component() {
         );
     }
     assert!(!home.contains("Voice input") && !home.contains("Model: Auto"));
-    // The legal links are quiet text at the bottom of the left panel.
+    // The legal links are quiet text centered along the bottom of the main
+    // area, after the composer, and only here.
     assert!(!home.contains("<footer") && !home.contains("class=\"oa-legal\""));
-    assert!(home.contains("class=\"oa-sidebar-legal\""));
+    let legal = home
+        .find("<div class=\"oa-home-legal\">")
+        .expect("legal links");
+    assert!(home.find("class=\"oa-home-stage\"").unwrap() < legal);
+    assert!(home.find("</main>").unwrap() > legal && home.find("</aside>").unwrap() < legal);
+    // Home has no breadcrumb; New chat carries its Ctrl+N shortcut.
+    assert!(!home.contains("class=\"oa-breadcrumb\""));
+    assert!(home.contains("aria-keyshortcuts=\"Control+N\""));
     let (status, headers, css) = get_with(site, "/static/ui.css", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
@@ -467,8 +479,25 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     assert!(html.contains("<header class=\"oa-main-header\">"));
     assert!(html.contains("class=\"oa-layout\" data-mode=\"app\""));
     assert!(!html.contains("<footer"), "the chat page has no footer");
-    assert!(html.contains("class=\"oa-sidebar-legal\""));
-    assert_eq!(html.matches("href=\"/terms\"").count(), 1);
+    assert!(
+        !html.contains("class=\"oa-sidebar-legal\""),
+        "legal links only on home"
+    );
+    // The chat's title is the header row's breadcrumb, left of the actions;
+    // the thread has no title row and no Beginning/Latest words.
+    let crumb = html
+        .find("<nav id=\"oa-breadcrumb\" class=\"oa-breadcrumb\" aria-label=\"Breadcrumb\">")
+        .expect("breadcrumb");
+    assert!(crumb < html.find("class=\"oa-main-header-actions\"").unwrap());
+    assert!(html[crumb..].contains("aria-current=\"page\" title=\"Set up OpenAgents"));
+    assert!(!html.contains("oa-thread-header") && !html.contains("oa-thread-title"));
+    assert!(!html.contains(">Beginning<") && !html.contains(">Latest<"));
+    // The scroll-to-bottom button floats above the docked composer.
+    let button = html
+        .find("<button type=\"button\" class=\"oa-scroll-bottom\" data-oa-scroll-bottom=\"#chat-thread\" aria-label=\"Scroll to bottom\"")
+        .expect("scroll-to-bottom button");
+    assert!(html.find("id=\"chat-thread\"").unwrap() < button);
+    assert!(button < html.find("class=\"oa-main-composer\"").unwrap());
     assert!(html.contains("<main id=\"content\" class=\"oa-workspace\""));
     // The open chat is the current row of the recent-chat list, and it
     // loads into the content area with HTMX.
@@ -499,7 +528,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     );
     assert!(html.contains("id=\"chat-feedback\""));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("class=\"oa-sidebar-legal\""));
+    assert!(home.contains("class=\"oa-home-legal\""));
     assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     // The homepage lists the same visitor's chats as plain links.
     let home = site
@@ -1229,7 +1258,7 @@ async fn unknown_addresses_and_documents_answer_404_in_the_frame() {
     for uri in ["/nope", "/terms/../../etc/passwd", "/u/-bad-"] {
         let (status, body) = get(router(config(root.path().into())), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
-        assert!(body.contains("href=\"/terms\""), "{uri}");
+        assert!(body.contains("class=\"oa-wordmark\""), "{uri}");
     }
 }
 
@@ -1714,7 +1743,7 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
         let (status, _, body) = get_with(site.clone(), uri, "openagents.com").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert!(
-            body.contains("href=\"/terms\""),
+            body.contains("class=\"oa-wordmark\""),
             "{uri}: in the site's frame"
         );
     }

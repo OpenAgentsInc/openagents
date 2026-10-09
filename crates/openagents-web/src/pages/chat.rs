@@ -20,7 +20,8 @@ use openagents_ui::content::MarkdownRoot;
 // use openagents_ui::icons::Icon;
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
-    ChatList, Composer, HxGet, Message as ThreadMessage, NavItem, composer_panel_host,
+    Breadcrumb, ChatList, Composer, HxGet, Message as ThreadMessage, NavItem, ScrollToBottom,
+    composer_panel_host,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -407,6 +408,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
+        .breadcrumb(Breadcrumb::new(chat.title.clone()))
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
@@ -448,7 +450,7 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         &chat.selection.clone().unwrap_or_default(),
     )
     .await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (content(chat,None)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -873,22 +875,16 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool)
     } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob && selectors { (crate::composer::controls(&selection, true)) } }
 }
 
+/// The thread, and the scroll-to-bottom button over it. The title is the
+/// header row's breadcrumb, not part of the thread.
 fn content(chat: &Conversation, before: Option<usize>) -> Markup {
-    let beginning = format!("/chat/{}/transcript?before=24", chat.id);
-    let latest = format!("/chat/{}/transcript", chat.id);
     html! {
-        header.oa-thread-header {
-            h1.oa-thread-title { (chat.title) }
-            div.oa-thread-links {
-                a href=(beginning) hx-get=(beginning) hx-target="#chat-transcript" data-chat-history="start" { "Beginning" }
-                a href=(latest) hx-get=(latest) hx-target="#chat-transcript" data-chat-history="end" { "Latest" }
-            }
-        }
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
                 div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) }
             }
         }
+        (ScrollToBottom::new("#chat-thread"))
     }
 }
 
@@ -914,7 +910,12 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
     html! {
         input type="hidden" id="chat-history-window" value=(if before.is_some() {"older"}else{"latest"});
         @if start>0 {p.oa-thread-notice {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-get=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-target="#chat-transcript" {"Read earlier messages"}}}
-        @if before.is_some() && end<chat.messages.len() {p.oa-thread-notice {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"} " · " a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}}}
+        @if before.is_some() && end<chat.messages.len() {
+            p.oa-thread-notice {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"}}
+            // The newest messages are not loaded: the scroll-to-bottom
+            // button follows this link to them.
+            a hidden href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" data-oa-scroll-tail {}
+        }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
             (turn(message, index + start))
         }
@@ -1114,7 +1115,7 @@ pub(crate) fn composer(
         .input_id("chat-input")
         .body_id("chat-card")
         .max_chars(MAX_CHARS)
-        .placeholder("Ask OpenAgents to build, fix bugs, explore")
+        .placeholder("Ask OpenAgents anything")
         .autofocus(true)
         // Disabled until the composer can attach files or tools: the "+"
         // button only opened a panel restating the repository selector and

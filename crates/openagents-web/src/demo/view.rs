@@ -2,9 +2,10 @@
 //! left panel, the thread, and the docked composer.
 
 use maud::{Markup, html};
-use openagents_ui::actions::{Badge, Color, Variant};
 use openagents_ui::content::MarkdownRoot;
-use openagents_ui::shell::{Composer, HxGet, Message, NavItem, SidebarSection};
+use openagents_ui::shell::{
+    Breadcrumb, Composer, HxGet, Message, NavItem, ScrollToBottom, SidebarSection,
+};
 
 use super::chats::{CHATS, DemoChat};
 
@@ -36,15 +37,19 @@ pub(crate) fn chat_list(current: &DemoChat, oob: bool) -> SidebarSection {
         }))
 }
 
-/// The thread: a header with the title and a demo badge, then the turns
-/// in the scrolling column. `extra` turns follow the script (a message sent
-/// from the composer without JavaScript).
+/// The header row's breadcrumb for `chat`: "Demo / title". With `oob` it
+/// replaces the page's breadcrumb when HTMX swaps the thread.
+pub(crate) fn breadcrumb(chat: &DemoChat, oob: bool) -> Breadcrumb {
+    Breadcrumb::new(chat.title)
+        .crumb("Demo", "/demo")
+        .swap_oob(oob)
+}
+
+/// The turns in the scrolling column and the scroll-to-bottom button; the
+/// title is the header row's [`breadcrumb`]. `extra` turns follow the
+/// script (a message sent from the composer without JavaScript).
 pub(crate) fn thread(chat: &DemoChat, extra: &[Message]) -> Markup {
     html! {
-        header.oa-thread-header {
-            h1.oa-thread-title { (chat.title) }
-            (Badge::new("Demo").color(Color::Secondary).variant(Variant::Outline).pill(true))
-        }
         section #demo-thread.oa-thread aria-label="Conversation" {
             div.oa-thread-column {
                 p.oa-thread-notice { "A scripted conversation. Nothing here ran on a real machine." }
@@ -55,6 +60,7 @@ pub(crate) fn thread(chat: &DemoChat, extra: &[Message]) -> Markup {
                 }
             }
         }
+        (ScrollToBottom::new("#demo-thread"))
     }
 }
 
@@ -77,7 +83,7 @@ pub(crate) fn dock(chat: &DemoChat, oob: bool) -> Markup {
     let composer = Composer::new("demo-composer", format!("/demo/{}/message", chat.slug))
         .label("Message the demo")
         .input_label("Message")
-        .placeholder("Message OpenAgents")
+        .placeholder("Ask OpenAgents anything")
         .max_chars(MAX_PROMPT_CHARS)
         .rows(1);
     // The model picker, repository/branch selectors, and "add context"

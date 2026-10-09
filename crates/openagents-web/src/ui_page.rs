@@ -4,7 +4,11 @@
 //! canvas pages renders through [`UiPage`]: the `openagents-ui` document (theme from the cookie, else the system
 //! setting), the shared app shell with the site navigation, the theme
 //! toggle, and the design-language assets. Pages supply only their content,
-//! and optionally a header, actions, a composer, or extra sidebar sections.
+//! and optionally a breadcrumb, actions, a composer, or extra sidebar
+//! sections. The header row shows the page's name as its breadcrumb unless
+//! the page gives one (a chat's title) or is the home page. The bottom of
+//! the left panel holds the account ([`crate::account`]): the signed-in
+//! account's menu, or Docs and a sign-in link.
 
 use axum::http::header;
 use axum::http::{HeaderMap, StatusCode};
@@ -13,13 +17,21 @@ use maud::{Markup, PreEscaped, Render, html};
 use openagents_ui::actions::{ButtonLink, ButtonVariant, Color, ControlSize};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 use openagents_ui::icons::{Icon, IconSize};
+use openagents_ui::overlays::MenuItem;
 use openagents_ui::shell::{
-    AppShell, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE, Sidebar, ThemeToggle,
-    sidebar_collapsed_from_cookie,
+    AccountMenu, AppShell, Breadcrumb, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE,
+    Sidebar, ThemeToggle, sidebar_collapsed_from_cookie,
 };
 
+use crate::account::Account;
 use crate::layout::{COPYRIGHT, DOCS, DOWNLOAD, GITHUB, X};
 use crate::theme;
+
+/// Where the account menu's entries go (the signed-in Cloud pages).
+const SETTINGS: &str = "/cloud/app/settings";
+const BILLING: &str = "/cloud/app/billing";
+const SIGN_IN: &str = "/cloud/sign-in";
+const SIGN_OUT: &str = "/cloud/sign-out";
 
 /// One page: title, current section, content, and optional shell slots.
 #[must_use]
@@ -28,6 +40,8 @@ pub struct UiPage {
     section: Option<String>,
     return_to: String,
     mode: MainMode,
+    breadcrumb: Option<Option<Markup>>,
+    account: Option<Account>,
     header: Option<Markup>,
     actions: Option<Markup>,
     content: Option<Markup>,
@@ -47,6 +61,8 @@ impl UiPage {
             section: None,
             return_to: "/".to_owned(),
             mode: MainMode::Scroll,
+            breadcrumb: None,
+            account: None,
             header: None,
             actions: None,
             content: None,
@@ -76,6 +92,26 @@ impl UiPage {
     /// the composer docks under it.
     pub fn app(mut self) -> Self {
         self.mode = MainMode::App;
+        self
+    }
+
+    /// The header row's breadcrumb, in place of the page's name (a chat's
+    /// title, see [`Breadcrumb`]).
+    pub fn breadcrumb(mut self, breadcrumb: impl Render) -> Self {
+        self.breadcrumb = Some(Some(breadcrumb.render()));
+        self
+    }
+
+    /// No breadcrumb (the home page).
+    pub fn without_breadcrumb(mut self) -> Self {
+        self.breadcrumb = Some(None);
+        self
+    }
+
+    /// The account to show, in place of the one [`crate::account::current`]
+    /// resolved for this request.
+    pub fn account(mut self, account: Account) -> Self {
+        self.account = Some(account);
         self
     }
 
@@ -144,25 +180,48 @@ impl UiPage {
             .nav(
                 NavItem::new("New chat", "/")
                     .icon(Icon::ComposeEditSquare.size(IconSize::Md))
-                    .current(current == Some("/")),
+                    .current(current == Some("/"))
+                    .shortcut("Control+N", "Ctrl N"),
             );
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
-        let sidebar = sidebar
-            .bottom(
-                NavItem::new("Docs", DOCS)
-                    .icon(Icon::Book.size(IconSize::Md))
-                    .current(current == Some(DOCS)),
-            )
-            .footer(
-                LegalLinks::new()
-                    .link("Terms", "/terms")
-                    .link("Privacy", "/privacy")
-                    .link("GitHub", GITHUB)
-                    .link("X", X)
-                    .note(COPYRIGHT),
-            );
+        let docs = NavItem::new("Docs", DOCS)
+            .icon(Icon::Book.size(IconSize::Md))
+            .current(current == Some(DOCS));
+        // A page whose policy allows no form gets no sign-out form.
+        let forms = self.toggle;
+        let sidebar = match self.account.unwrap_or_else(crate::account::current) {
+            Account::SignedIn { name, sign_out } => {
+                let mut menu = AccountMenu::new(name)
+                    .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
+                    .item(MenuItem::link("Billing", BILLING).icon(Icon::CreditCard))
+                    .item(MenuItem::separator())
+                    .item(MenuItem::link("Docs", DOCS).icon(Icon::Book))
+                    .item(MenuItem::link("Download", DOWNLOAD).icon(Icon::Download));
+                let sign_out = sign_out.filter(|_| forms);
+                if sign_out.is_some() {
+                    menu = menu.item(MenuItem::separator()).item(
+                        MenuItem::button("Sign out")
+                            .icon(Icon::ExitLogout)
+                            .submit()
+                            .form("oa-sign-out"),
+                    );
+                }
+                sidebar.footer(html! {
+                    (menu)
+                    @if let Some(csrf) = sign_out {
+                        form id="oa-sign-out" method="post" action=(SIGN_OUT) hidden {
+                            input type="hidden" name="csrf" value=(csrf);
+                        }
+                    }
+                })
+            }
+            Account::SignedOut => sidebar
+                .bottom(docs)
+                .bottom(NavItem::new("Sign in", SIGN_IN).icon(Icon::EnterLogin.size(IconSize::Md))),
+            Account::Unknown => sidebar.bottom(docs),
+        };
         let toggle = self.toggle.then(|| {
             ThemeToggle::new()
                 .fallback_action(theme::TOGGLE_PATH)
@@ -189,6 +248,14 @@ impl UiPage {
             .sidebar(sidebar)
             .sidebar_collapsed(sidebar_collapsed(headers))
             .actions(actions);
+        let breadcrumb = match self.breadcrumb {
+            Some(breadcrumb) => breadcrumb,
+            None if current == Some("/") => None,
+            None => Some(Breadcrumb::new(self.title.clone()).render()),
+        };
+        if let Some(breadcrumb) = breadcrumb {
+            shell = shell.breadcrumb(breadcrumb);
+        }
         if let Some(header) = self.header {
             shell = shell.header(header);
         }
@@ -214,6 +281,21 @@ impl UiPage {
     pub fn respond(self, headers: &HeaderMap) -> Response {
         let status = self.status;
         (status, Html(self.render(headers).into_string())).into_response()
+    }
+}
+
+/// The quiet legal and project links the home page centers along the
+/// bottom of its main area (no other page shows them).
+pub fn legal_links() -> Markup {
+    html! {
+        div.oa-home-legal {
+            (LegalLinks::new()
+                .link("Terms", "/terms")
+                .link("Privacy", "/privacy")
+                .link("GitHub", GITHUB)
+                .link("X", X)
+                .note(COPYRIGHT))
+        }
     }
 }
 
@@ -299,6 +381,8 @@ mod tests {
             "data-oa-sidebar-toggle",
             "href=\"/\" aria-current=\"page\"",
             ">New chat</span>",
+            "aria-keyshortcuts=\"Control+N\"",
+            "<kbd class=\"oa-nav-shortcut\" aria-hidden=\"true\">Ctrl N</kbd>",
         ] {
             assert!(html.contains(needle), "{needle}");
         }
@@ -309,6 +393,8 @@ mod tests {
         assert!(!html.contains("Open sidebar") && !html.contains("Close sidebar"));
         assert!(html.contains("data-sidebar=\"expanded\""));
         assert!(!html.contains("<footer"), "no page footer");
+        // The home page has no breadcrumb.
+        assert!(!html.contains("oa-breadcrumb"));
     }
 
     #[test]
@@ -323,26 +409,25 @@ mod tests {
     }
 
     #[test]
-    fn download_is_a_pill_beside_the_toggle_and_docs_and_legal_sit_at_the_sidebar_bottom() {
+    fn download_is_a_pill_beside_the_toggle_and_docs_sits_at_the_sidebar_bottom() {
         let html = UiPage::new("Download OpenAgents")
             .section("/download")
             .scriptless()
             .content(html! { p { "x" } })
             .render(&HeaderMap::new())
             .into_string();
-        assert_eq!(html.matches("href=\"/terms\"").count(), 1);
-        assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
-        assert!(html.contains(
-            "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
-        ));
-        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
-        assert!(html.contains(COPYRIGHT));
+        // Legal links are only on the home page.
+        assert!(!html.contains("href=\"/terms\"") && !html.contains(COPYRIGHT));
         assert!(!html.contains("<footer") && !html.contains("oa-legal\""));
-        // The legal links and Docs live in the left panel's footer.
+        // Docs lives in the left panel's footer.
         let aside_end = html.find("</aside>").unwrap();
         let sidebar_footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
-        assert!(sidebar_footer < html.find("href=\"/docs\"").unwrap());
-        assert!(html.find("href=\"/terms\"").unwrap() < aside_end);
+        let docs = html.find("href=\"/docs\"").unwrap();
+        assert!(sidebar_footer < docs && docs < aside_end);
+        // The page's name is the header row's breadcrumb.
+        assert!(html.contains(
+            "<span class=\"oa-breadcrumb-current\" aria-current=\"page\" title=\"Download OpenAgents\">"
+        ));
         // Download is a pill link in the header actions, before the toggle.
         let actions = html.find("class=\"oa-main-header-actions\"").unwrap();
         let download = html.find("href=\"/download\"").unwrap();
@@ -356,6 +441,69 @@ mod tests {
         );
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
+    }
+
+    #[test]
+    fn legal_links_list_terms_privacy_and_the_project() {
+        let html = legal_links().into_string();
+        assert!(html.starts_with("<div class=\"oa-home-legal\">"));
+        assert_eq!(html.matches("href=\"/terms\"").count(), 1);
+        assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
+        assert!(html.contains(
+            "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
+        ));
+        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
+        assert!(html.contains(COPYRIGHT));
+    }
+
+    #[test]
+    fn the_account_sits_at_the_bottom_left() {
+        let page = |account: Account| {
+            UiPage::new("Docs")
+                .account(account)
+                .render(&HeaderMap::new())
+                .into_string()
+        };
+        // Signed in: an account menu above the button with settings,
+        // billing, docs, download and a sign-out form.
+        let html = page(Account::SignedIn {
+            name: "Ada <Lovelace>".into(),
+            sign_out: Some("token".into()),
+        });
+        let footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
+        let account = html.find("<div class=\"oa-account\">").expect("account");
+        assert!(footer < account && account < html.find("</aside>").unwrap());
+        assert!(html.contains("<span class=\"oa-account-name\">Ada &lt;Lovelace&gt;</span>"));
+        assert!(html.contains("data-side=\"top\""));
+        for href in [SETTINGS, BILLING, DOCS, DOWNLOAD] {
+            assert!(
+                html[account..].contains(&format!("href=\"{href}\"")),
+                "{href}"
+            );
+        }
+        assert!(html.contains(
+            "<form id=\"oa-sign-out\" method=\"post\" action=\"/cloud/sign-out\" hidden>"
+        ));
+        assert!(html.contains("form=\"oa-sign-out\""));
+        assert!(html.contains("name=\"csrf\" value=\"token\""));
+        assert!(!html.contains(">Sign in<"));
+        // A page that allows no form gets no sign-out button.
+        let strict = UiPage::new("x")
+            .without_toggle()
+            .account(Account::SignedIn {
+                name: "a".into(),
+                sign_out: Some("t".into()),
+            })
+            .render(&HeaderMap::new())
+            .into_string();
+        assert!(!strict.contains("<form") && !strict.contains(">Sign out<"));
+        // Signed out: Docs and a sign-in link.
+        let html = page(Account::SignedOut);
+        assert!(html.contains("href=\"/cloud/sign-in\"") && html.contains(">Sign in</span>"));
+        assert!(html.contains("href=\"/docs\"") && !html.contains("oa-account"));
+        // No sign-in on this server: Docs only.
+        let html = page(Account::Unknown);
+        assert!(!html.contains("/cloud/sign-in") && html.contains("href=\"/docs\""));
     }
 
     #[test]

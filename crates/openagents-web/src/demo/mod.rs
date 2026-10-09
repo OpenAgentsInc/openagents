@@ -73,6 +73,7 @@ fn page(headers: &HeaderMap, chat: &DemoChat, extra: &[Message]) -> Response {
             meta name="htmx-config" content=(HTMX_CONFIG);
             script src="/static/htmx.min.js" defer {}
         })
+        .breadcrumb(view::breadcrumb(chat, false))
         .sidebar_section(view::chat_list(chat, false))
         .content(html! {
             div id=(view::CONTENT_ID) class="oa-thread-view" { (view::thread(chat, extra)) }
@@ -105,6 +106,7 @@ async fn thread(headers: HeaderMap, Path(slug): Path<String>) -> Response {
     let body = html! {
         title { (chat.title) " \u{b7} OpenAgents" }
         (view::thread(chat, &[]))
+        (view::breadcrumb(chat, true))
         (view::chat_list(chat, true))
         (view::dock(chat, true))
     };

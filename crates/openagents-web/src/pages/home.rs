@@ -1,6 +1,7 @@
 //! The homepage: a composer that starts a chat at `/chat/{uuid}`, with the
 //! visitor's recent chats in the left panel. The header links `/download`;
-//! the Grid's screenshot is on `/docs/the-grid`.
+//! the legal links sit centered along the bottom of the main area (only
+//! here); the Grid's screenshot is on `/docs/the-grid`.
 
 use axum::Router;
 use axum::extract::State;
@@ -29,6 +30,7 @@ async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
             input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
             input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
         }
+        (crate::ui_page::legal_links())
     };
     let mut page = UiPage::new("OpenAgents")
         .section("/")
