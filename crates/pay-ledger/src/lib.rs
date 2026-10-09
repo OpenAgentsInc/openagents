@@ -318,6 +318,43 @@ impl PayoutState {
     }
 }
 
+/// Replace the payable views only when their stored text differs. Reopening an
+/// unchanged ledger must not rewrite it: a rewrite bumps the schema cookie and
+/// file change counter, so byte-level checkpoint comparisons would see live
+/// accounting change on every open.
+fn install_payable_views(connection: &mut Connection) -> Result<()> {
+    const SQL: &str = include_str!("payable.sql");
+    let expected: Vec<(&str, &str)> = SQL
+        .match_indices("CREATE VIEW ")
+        .map(|(start, _)| {
+            let rest = &SQL[start..];
+            let statement = rest[..rest.find(';').unwrap_or(rest.len())].trim_end();
+            let name = statement["CREATE VIEW ".len()..]
+                .split_whitespace()
+                .next()
+                .unwrap_or_default();
+            (name, statement)
+        })
+        .collect();
+    let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let mut current = true;
+    for (name, statement) in &expected {
+        let stored: Option<String> = tx
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='view' AND name=?",
+                [name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        current &= stored.as_deref() == Some(*statement);
+    }
+    if !current || expected.is_empty() {
+        tx.execute_batch(SQL)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 pub struct Ledger {
     connection: Connection,
     #[cfg(unix)]
@@ -373,9 +410,7 @@ impl Ledger {
         connection.execute_batch(adjustment::TABLES)?;
         connection.execute_batch(commission::TABLES)?;
         connection.execute_batch(commission_abuse::TABLES)?;
-        connection.execute_batch("BEGIN IMMEDIATE;")?;
-        connection.execute_batch(include_str!("payable.sql"))?;
-        connection.execute_batch("COMMIT;")?;
+        install_payable_views(&mut connection)?;
         // Existing ledgers predate plugin release attribution. Serialize the
         // check and alteration so concurrent receiver opens migrate once.
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1102,6 +1137,33 @@ fn read_record(connection: &Connection, key: &str) -> Result<Option<Recorded>> {
 #[cfg(test)]
 mod origin_tests {
     use super::*;
+    #[test]
+    fn reopening_an_unchanged_ledger_leaves_its_bytes_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("native.db");
+        drop(Ledger::open(&path).unwrap());
+        let before = std::fs::read(&path).unwrap();
+        drop(Ledger::open(&path).unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        // A changed view definition is still replaced on open.
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "DROP VIEW payable_share; CREATE VIEW payable_share AS SELECT 1 AS stale;",
+            )
+            .unwrap();
+        drop(connection);
+        let book = Ledger::open(&path).unwrap();
+        let stored: String = book
+            .connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='view' AND name='payable_share'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored.contains("FROM share s"));
+    }
     #[test]
     fn native_origin_survives_reopen_copy_and_read_only_without_relabeling() {
         let dir = tempfile::tempdir().unwrap();
