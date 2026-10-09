@@ -254,3 +254,144 @@ async fn the_authorize_page_lists_the_fake_people_and_a_cancel_link() {
     assert!(page.contains("Continue as octo-local") && page.contains("Continue as quiet-local"));
     assert!(page.contains("Cancel") && page.contains("&amp;deny=1"));
 }
+
+async fn post(world: &World, token: Option<&str>, path: &str, body: Value) -> (u16, Value) {
+    let mut request = world
+        .http
+        .post(format!("{}{path}", world.service))
+        .json(&body);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status().as_u16(), response.json().await.unwrap())
+}
+
+async fn poll(world: &World, device_code: &Value) -> (u16, Value) {
+    post(
+        world,
+        None,
+        "/v1/sessions/device/poll",
+        json!({"device_code": device_code}),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_computer_signs_in_with_a_device_code_the_person_approves() {
+    let world = world().await;
+    let browser = sign_in(&world, "octo-local").await;
+    let browser = browser["token"].as_str().unwrap();
+
+    let (status, started) = post(
+        &world,
+        None,
+        "/v1/sessions/device",
+        json!({"app": "Coder", "computer": "octo-mbp"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{started}");
+    let device_code = started["device_code"].as_str().unwrap();
+    let user_code = started["user_code"].as_str().unwrap();
+    assert_eq!(started["expires_in"], 600);
+    assert_eq!(started["interval"], 5);
+
+    let (status, pending) = poll(&world, &started["device_code"]).await;
+    assert_eq!(status, 400);
+    assert_eq!(pending["error"]["code"], "authorization_pending");
+    let (_, fast) = poll(&world, &started["device_code"]).await;
+    assert_eq!(fast["error"]["code"], "slow_down");
+    assert_eq!(fast["interval"], 10);
+
+    // Looking a code up and deciding need a signed-in browser.
+    let lookup = json!({"user_code": user_code});
+    assert_eq!(
+        post(&world, None, "/v1/sessions/device/lookup", lookup)
+            .await
+            .0,
+        401
+    );
+    let (status, shown) = post(
+        &world,
+        Some(browser),
+        "/v1/sessions/device/lookup",
+        json!({"user_code": user_code.to_lowercase().replace('-', " ")}),
+    )
+    .await;
+    assert_eq!(status, 200, "{shown}");
+    assert_eq!(shown["device"]["computer"], "octo-mbp");
+    assert_eq!(shown["device"]["app"], "Coder");
+    let (status, _) = post(
+        &world,
+        Some(browser),
+        "/v1/sessions/device/decide",
+        json!({"user_code": user_code, "approve": true}),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let (status, signed) = poll(&world, &started["device_code"]).await;
+    assert_eq!(status, 200, "{signed}");
+    let app_token = signed["token"].as_str().unwrap();
+    assert!(app_token.starts_with("sess_"));
+    assert_eq!(signed["account"]["label"], "Octo Local");
+    assert_eq!(signed["session"]["computer"], "octo-mbp");
+    // The token works like any session, and it was handed out once.
+    let (status, account) = read(&world, app_token, "/v1/account").await;
+    assert_eq!(status, 200);
+    assert_eq!(account["account"]["label"], "Octo Local");
+    let (_, again) = poll(&world, &started["device_code"]).await;
+    assert_eq!(again["error"]["code"], "invalid_grant");
+    let raw = std::fs::read_to_string(world._dir.path().join("sessions.json")).unwrap();
+    assert!(!raw.contains(app_token) && !raw.contains(device_code) && !raw.contains(user_code));
+
+    // An app session can't approve another computer.
+    let (_, second) = post(
+        &world,
+        None,
+        "/v1/sessions/device",
+        json!({"app": "Coder", "computer": "other"}),
+    )
+    .await;
+    let (status, refused) = post(
+        &world,
+        Some(app_token),
+        "/v1/sessions/device/decide",
+        json!({"user_code": second["user_code"], "approve": true}),
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    // Deny answers access_denied to the app.
+    post(
+        &world,
+        Some(browser),
+        "/v1/sessions/device/decide",
+        json!({"user_code": second["user_code"], "approve": false}),
+    )
+    .await;
+    let (_, denied) = poll(&world, &second["device_code"]).await;
+    assert_eq!(denied["error"]["code"], "access_denied");
+
+    // Settings lists the computer; Remove signs it out.
+    let (status, listed) = read(&world, browser, "/v1/account/sessions").await;
+    assert_eq!(status, 200);
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["computer"], "octo-mbp");
+    assert_eq!(sessions[0]["current"], false);
+    let removed = world
+        .http
+        .delete(format!(
+            "{}/v1/account/sessions/{}",
+            world.service,
+            sessions[0]["id"].as_str().unwrap()
+        ))
+        .bearer_auth(browser)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(removed.status(), 200);
+    assert_eq!(read(&world, app_token, "/v1/account").await.0, 401);
+    let (_, listed) = read(&world, browser, "/v1/account/sessions").await;
+    assert!(listed["sessions"].as_array().unwrap().is_empty());
+}

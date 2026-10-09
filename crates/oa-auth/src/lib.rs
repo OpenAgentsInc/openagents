@@ -6,10 +6,13 @@
 //! - [`github`]: the account-service half: code + verifier to profile.
 //! - [`service`]: the account service's GitHub routes over the tenancy
 //!   stores (find or create the account, issue the session).
+//! - [`device`]: device-code sign-in for apps (RFC 8628 shape) and the
+//!   account's signed-in apps list.
 //! - `fake` (feature): an in-process fake GitHub for tests and fixtures.
 //! - `local` (feature): a small account service for local fixtures.
 
 pub mod config;
+pub mod device;
 #[cfg(feature = "fake")]
 pub mod fake;
 pub mod flow;

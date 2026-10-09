@@ -57,6 +57,15 @@ impl LocalService {
         Router::new()
             .route("/v1/sessions/github", post(github_sign_in))
             .route("/v1/account/identities/github", post(github_link))
+            .route("/v1/sessions/device", post(device_start))
+            .route("/v1/sessions/device/poll", post(device_poll))
+            .route("/v1/sessions/device/lookup", post(device_lookup))
+            .route("/v1/sessions/device/decide", post(device_decide))
+            .route("/v1/account/sessions", get(app_sessions))
+            .route(
+                "/v1/account/sessions/{id}",
+                axum::routing::delete(app_session_revoke),
+            )
             .route("/v1/session", get(session).delete(sign_out))
             .route("/v1/account", get(account))
             .route("/v1/workspaces/{id}", get(workspace))
@@ -289,6 +298,87 @@ async fn workspace(
             "You are not a member of this workspace.",
         ),
     }
+}
+
+fn answer(answer: crate::device::Answer) -> Response {
+    (
+        StatusCode::from_u16(answer.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        axum::Json(answer.body),
+    )
+        .into_response()
+}
+
+type JsonBody = Result<axum::Json<Value>, axum::extract::rejection::JsonRejection>;
+
+async fn device_start(State(state): State<LocalService>, request: JsonBody) -> Response {
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::device::start(&state.0.dir, &body))
+}
+
+async fn device_poll(State(state): State<LocalService>, request: JsonBody) -> Response {
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::device::poll(&state.0.dir, &body))
+}
+
+async fn device_lookup(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    request: JsonBody,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::device::lookup(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &body,
+    ))
+}
+
+async fn device_decide(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    request: JsonBody,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::device::decide(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &body,
+    ))
+}
+
+async fn app_sessions(State(state): State<LocalService>, headers: HeaderMap) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    answer(crate::device::list(&state.0.dir, &account, Some(&id)))
+}
+
+async fn app_session_revoke(
+    State(state): State<LocalService>,
+    UrlPath(target): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    answer(crate::device::revoke(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &target,
+    ))
 }
 
 fn now() -> u64 {

@@ -57,6 +57,12 @@ use sha2::{Digest, Sha256};
 
 use crate::workspaces::{Membership, UserId, Workspace, WorkspaceId};
 
+mod device;
+pub use device::{
+    APP_SESSION_TTL, AppLabel, DEVICE_CODE_TTL, DEVICE_POLL_INTERVAL, DeviceGrant, DeviceIssued,
+    DevicePoll, DeviceRefusal, DeviceState, normalize_user_code,
+};
+
 /// The session token's wire prefix, so a pasted token announces its
 /// shape: `sess_<hex>`.
 const SESSION_PREFIX: &str = "sess";
@@ -169,6 +175,10 @@ pub struct Session {
     /// When the session last left `active`, when it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed_at: Option<u64>,
+    /// The app and computer, for a session an app signed in with a
+    /// device code; `None` for a browser session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<AppLabel>,
 }
 
 impl Session {
@@ -422,6 +432,8 @@ pub enum Refusal {
     /// The membership read underneath `active_for` refused — a removed
     /// member is a different answer from a missing one.
     Membership(crate::workspaces::Refusal),
+    /// A device sign-in step was refused.
+    Device(DeviceRefusal),
 }
 
 impl std::fmt::Display for Refusal {
@@ -483,6 +495,7 @@ impl std::fmt::Display for Refusal {
                  `{budget}`; sign in to keep going"
             ),
             Self::Membership(refusal) => write!(f, "{refusal}"),
+            Self::Device(refusal) => write!(f, "{refusal}"),
         }
     }
 }
@@ -523,6 +536,11 @@ pub struct SessionBook {
     /// Budget id to anonymous funding — spent ones included.
     #[serde(default)]
     pub onboarding: BTreeMap<String, Onboarding>,
+    /// Device-code digest to device sign-in grant. Left out of the
+    /// document while empty, so stores written before it keep their
+    /// digest.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub devices: BTreeMap<String, DeviceGrant>,
 }
 
 impl SessionBook {
@@ -620,6 +638,7 @@ impl SessionBook {
             expires_at: now + self.session_ttl,
             state: SessionState::Active,
             closed_at: None,
+            app: None,
         };
         self.sessions.insert(session.id.clone(), session.clone());
         Ok(Issued {
@@ -967,6 +986,13 @@ impl Store {
             if !is_digest(session.id.as_str()) {
                 return Err(format!(
                     "{name}: session `{id}` carries an id that is not 64 hex characters"
+                ));
+            }
+        }
+        for (digest, grant) in &self.book.devices {
+            if *digest != grant.id || !is_digest(digest) || !is_digest(&grant.user_code) {
+                return Err(format!(
+                    "{name}: a device sign-in is filed under a digest that is not its own"
                 ));
             }
         }
