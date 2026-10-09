@@ -248,8 +248,8 @@ impl UiPage {
                 let mut menu = AccountMenu::new(name)
                     .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
                     .item(MenuItem::separator())
-                    .item(MenuItem::link("Docs", DOCS).icon(Icon::Book))
-                    .item(MenuItem::link("Download", DOWNLOAD).icon(Icon::Download));
+                    // Download lives in the header's pill only, not twice.
+                    .item(MenuItem::link("Docs", DOCS).icon(Icon::Book));
                 if picture {
                     menu = menu.picture(crate::account::AVATAR);
                 }
@@ -529,7 +529,7 @@ mod tests {
                 .into_string()
         };
         // Signed in: an account menu above the button with settings,
-        // docs, download and a sign-out form; no billing yet.
+        // docs and a sign-out form; Download is the header pill only.
         let html = page(Account::SignedIn {
             name: "Ada <Lovelace>".into(),
             sign_out: Some("token".into()),
@@ -541,7 +541,10 @@ mod tests {
         assert!(html.contains("<span class=\"oa-account-name\">Ada &lt;Lovelace&gt;</span>"));
         assert!(html.contains("data-side=\"top\""));
         assert!(!html.contains(">Billing<"));
-        for href in [SETTINGS, DOCS, DOWNLOAD] {
+        // Download is the header pill, not a second menu entry.
+        let aside_end = html.find("</aside>").unwrap();
+        assert!(!html[account..aside_end].contains(&format!("href=\"{DOWNLOAD}\"")));
+        for href in [SETTINGS, DOCS] {
             assert!(
                 html[account..].contains(&format!("href=\"{href}\"")),
                 "{href}"
