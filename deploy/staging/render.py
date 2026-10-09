@@ -58,7 +58,9 @@ def main():
         ],
         "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},
         "startupProbe": {
-            "httpGet": {"path": "/health", "port": 8080},
+            # A TCP check: the site answers only its public hosts, so an
+            # HTTP probe on the instance address is refused.
+            "tcpSocket": {"port": 8080},
             "periodSeconds": 2,
             "failureThreshold": 60,
         },
@@ -66,7 +68,8 @@ def main():
     gateway = {
         "name": "gateway",
         "image": args.stack_image,
-        "command": ["/usr/local/bin/gateway.sh"],
+        "command": ["/bin/sh"],
+        "args": ["-c", (here / "gateway.sh").read_text()],
         "env": [
             plain("STACK_STATE", "/stack"),
             plain("PUBLIC_ORIGIN", ORIGIN),
@@ -88,12 +91,14 @@ def main():
     worker = {
         "name": "worker",
         "image": args.stack_image,
-        "command": ["/usr/local/bin/worker.sh"],
+        "command": ["/bin/sh"],
+        "args": ["-c", (here / "worker.sh").read_text()],
         "env": [
             plain("STACK_STATE", "/stack"),
             plain("OPENAGENTS_PRODUCT_KB_EMBEDDINGS", "gateway"),
             secret("openagents-chat-worker-staging-secret", "CODER_WORKER_SECRET"),
             secret("openagents-gateway-staging-ai-gateway-key", "CODER_AI_GATEWAY_KEY"),
+            secret("openagents-gateway-staging-typesafe-key", "TYPESAFE_API_KEY"),
         ],
         "volumeMounts": [stack],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
