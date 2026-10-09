@@ -20,8 +20,8 @@ use openagents_ui::content::MarkdownRoot;
 // use openagents_ui::icons::Icon;
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
-    Breadcrumb, ChatList, ChatStatus, Composer, HxGet, Message as ThreadMessage, NavItem,
-    ScrollToBottom, composer_panel_host,
+    Breadcrumb, ChatList, ChatStatus, Composer, Message as ThreadMessage, ScrollToBottom,
+    composer_panel_host,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -51,6 +51,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/chat/{id}/transcript", get(transcript))
         .route("/chat/{id}/events", get(events))
         .route("/chat/{id}/messages/{index}/original", get(original))
+        .merge(sidebar::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -287,6 +288,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         }],
         selection,
         updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -810,12 +813,13 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     }
 }
 
-/// The visitor's recent chats in the left panel, newest first (the store
-/// sorts by last update), `current` marked. On a chat page (`hx`) a row also
-/// loads its conversation into `#chat-content`; elsewhere rows are plain
-/// links. Responses that change the list carry it again with `oob`,
-/// replacing `#chat-sidebar` in place. An unavailable store leaves the list
-/// empty rather than showing an error in the sidebar.
+/// The visitor's chats in the left panel: a search box, the Pinned group in
+/// pin order, then the rest newest first (the store sorts by last update),
+/// `current` marked, archived chats left out (see [`sidebar`]). On a chat
+/// page (`hx`) a row also loads its conversation into `#chat-content`;
+/// elsewhere rows are plain links. Responses that change the list carry it
+/// again with `oob`, replacing `#chat-sidebar` in place. An unavailable
+/// store leaves the list empty rather than showing an error in the sidebar.
 pub(crate) async fn chat_list(
     app: &App,
     owner: &str,
@@ -823,32 +827,12 @@ pub(crate) async fn chat_list(
     hx: bool,
     oob: bool,
 ) -> ChatList {
-    let list = ChatList::new().id("chat-sidebar").swap_oob(oob);
-    let rows = match app.config.chat_store.list(owner).await {
-        Ok(rows) => rows,
-        Err(error) => {
-            eprintln!("openagents-web: chat list: {error}");
-            return list;
-        }
+    let view = sidebar::View {
+        current,
+        hx,
+        ..sidebar::View::default()
     };
-    list.items(rows.iter().map(|row| {
-        let mut item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
-            .current(current == Some(row.id.as_str()));
-        if let Some(detail) = row_detail(row) {
-            item = item.detail(detail);
-        }
-        if let Some(status) = row_status(row) {
-            item = item.trailing(status);
-        }
-        if hx {
-            item.hx(HxGet::new(format!("/chat/{}/workspace", row.id))
-                .target("#chat-content")
-                .swap("innerHTML")
-                .sync("#chat-content:replace"))
-        } else {
-            item
-        }
-    }))
+    sidebar::render(app, owner, view, oob).await
 }
 
 /// A chat row's second line: the repository and branch it was started
@@ -1244,6 +1228,9 @@ mod uuid_tests {
         assert!(!valid_id("00000000-0000-0000-0000-000000000000"));
     }
 }
+
+#[path = "chat_sidebar.rs"]
+mod sidebar;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

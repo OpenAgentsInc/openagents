@@ -38,6 +38,14 @@ pub(crate) struct Conversation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection: Option<Selection>,
     pub updated_unix: u64,
+    /// When the owner pinned the chat; pinned chats list in this order at
+    /// the top of the sidebar. Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_unix: Option<u64>,
+    /// When the owner archived the chat; archived chats leave the sidebar
+    /// and list on the Archived page until restored. Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_unix: Option<u64>,
 }
 
 /// GitHub metadata identifies a selected source; it does not authorize execution.
@@ -1256,6 +1264,8 @@ mod tests {
             }],
             selection: None,
             updated_unix: 1,
+            pinned_unix: None,
+            archived_unix: None,
         }
     }
 
@@ -1287,9 +1297,21 @@ mod tests {
             serde_json::from_slice(&encode(&retained).unwrap()).unwrap();
         let record = encoded["conversation"].as_object().unwrap();
         assert!(!record.contains_key("selection"));
+        assert!(retained.pinned_unix.is_none() && retained.archived_unix.is_none());
+        assert!(!record.contains_key("pinned_unix") && !record.contains_key("archived_unix"));
         let request = encoded["conversation"]["requests"][0].as_object().unwrap();
         assert!(!request.contains_key("selection"));
         assert!(!request.contains_key("cloud"));
+    }
+
+    #[test]
+    fn pins_and_archives_round_trip() {
+        let mut record = conversation();
+        record.pinned_unix = Some(7);
+        record.archived_unix = Some(9);
+        let retained = decode(&encode(&record).unwrap(), OWNER, ID).unwrap();
+        assert_eq!(retained.pinned_unix, Some(7));
+        assert_eq!(retained.archived_unix, Some(9));
     }
 
     #[test]

@@ -193,6 +193,8 @@ mod tests {
             }],
             selection: None,
             updated_unix: 1,
+            pinned_unix: None,
+            archived_unix: None,
         }
     }
 

@@ -367,6 +367,34 @@ html:has(> body.oa-body) {
   color: var(--color-text-tertiary);
 }
 
+/* The Archived chats page: one row per chat with its Restore button. */
+.oa-chat-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oa-chat-archive-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+  margin: 0;
+}
+.oa-chat-archive-row > a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-chat-archive-row > form {
+  flex: none;
+  margin: 0;
+}
+
 /* The search box over the chat list. */
 .oa-chat-search {
   display: flex;

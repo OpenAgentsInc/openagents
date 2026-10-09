@@ -88,6 +88,8 @@ impl Fixture {
                 }],
                 selection,
                 updated_unix: 1,
+                pinned_unix: None,
+                archived_unix: None,
             })
             .await
             .unwrap()
@@ -492,6 +494,8 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         requests: Vec::new(),
         selection: None,
         updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
     };
     assert_eq!(row_detail(&chat), None);
     assert_eq!(row_status(&chat), None);
@@ -520,4 +524,224 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         job_id: None,
     });
     assert_eq!(row_status(&chat), Some(ChatStatus::Working));
+}
+
+#[tokio::test]
+async fn pin_rename_search_and_archive_work_end_to_end() {
+    let fixture = Fixture::new();
+    let initial = fixture.record(None).await;
+    let csrf = csrf(&fixture.app, OWNER);
+    let row = format!("id=\"chat-row-{CHAT}\"");
+
+    // The list carries the row menu and the search box.
+    let (status, body) = fixture
+        .request(
+            Method::GET,
+            &format!("/chat/list?current={CHAT}"),
+            OWNER,
+            &[],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(&row) && body.contains("Search chats"),
+        "{body}"
+    );
+    assert!(body.contains(">Pin<") && body.contains(">Rename<") && body.contains(">Archive<"));
+    assert!(!body.contains(">Pinned<") && !body.contains("Archived chats"));
+
+    // A wrong token or another visitor changes nothing.
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/pin"),
+            OWNER,
+            &[("csrf", "changed"), ("pinned", "1")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let other = super::csrf(&fixture.app, OTHER_OWNER);
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/pin"),
+            OTHER_OWNER,
+            &[("csrf", &other), ("pinned", "1")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(fixture.read().await.generation, initial.generation);
+
+    // Pin: the chat moves to the Pinned group and the menu offers Unpin.
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/pin"),
+            OWNER,
+            &[("csrf", &csrf), ("current", CHAT), ("pinned", "1")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(">Pinned<") && body.contains(">Unpin<"),
+        "{body}"
+    );
+    let pinned = fixture.read().await.conversation;
+    assert!(pinned.pinned_unix.is_some());
+    assert_eq!(pinned.revision, 2);
+    assert_eq!(
+        pinned.updated_unix, 1,
+        "pinning keeps the chat's place in time"
+    );
+
+    // Rename: the field replaces the row, then the new name is saved and the
+    // open chat's header follows.
+    let (status, body) = fixture
+        .request(
+            Method::GET,
+            &format!("/chat/{CHAT}/rename?current={CHAT}"),
+            OWNER,
+            &[],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&row) && body.contains("data-oa-rename"));
+    assert!(body.contains(r#"value="Existing conversation""#), "{body}");
+    let long = "x".repeat(121);
+    for bad in ["   ", long.as_str(), "two\nlines"] {
+        let (status, _) = fixture
+            .request(
+                Method::POST,
+                &format!("/chat/{CHAT}/rename"),
+                OWNER,
+                &[("csrf", &csrf), ("current", CHAT), ("title", bad)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/rename"),
+            OWNER,
+            &[("csrf", &csrf), ("current", CHAT), ("title", "  New name ")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(">New name<") && body.contains("hx-swap-oob"),
+        "{body}"
+    );
+    assert_eq!(fixture.read().await.conversation.title, "New name");
+
+    // Search: titles as you type, message text from two characters.
+    for (q, found) in [("NEW", true), ("s", false), ("sa", true), ("zzz", false)] {
+        let (status, body) = fixture
+            .request(
+                Method::GET,
+                &format!("/chat/list?current={CHAT}&q={q}"),
+                OWNER,
+                &[],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.contains(&row), found, "{q}: {body}");
+        assert_eq!(body.contains("No chats found"), !found, "{q}: {body}");
+    }
+
+    // Archive: the row leaves the list with an Undo notice, and the
+    // Archived page lists it with Restore.
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/archive"),
+            OWNER,
+            &[("csrf", &csrf), ("current", CHAT), ("archived", "1")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body.contains(&row), "{body}");
+    assert!(
+        body.contains("Chat archived.") && body.contains(">Undo<"),
+        "{body}"
+    );
+    assert!(body.contains("href=\"/chat/archived\""));
+    assert!(fixture.read().await.conversation.archived_unix.is_some());
+    let (status, body) = fixture
+        .request(Method::GET, "/chat/archived", OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("New name") && body.contains("Restore"),
+        "{body}"
+    );
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/archive"),
+            OWNER,
+            &[("csrf", &csrf), ("archived", "0"), ("back", "archived")],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(&row) && !body.contains("Chat archived."),
+        "{body}"
+    );
+    let restored = fixture.read().await.conversation;
+    assert!(restored.archived_unix.is_none() && restored.pinned_unix.is_some());
+    assert_eq!(restored.requests.len(), initial.conversation.requests.len());
+    fixture.no_worker();
+}
+
+#[test]
+fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
+    let chat = |id: &str, title: &str| Conversation {
+        id: id.into(),
+        owner: OWNER.into(),
+        revision: 1,
+        title: title.into(),
+        messages: Vec::new(),
+        pending: None,
+        requests: Vec::new(),
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+    };
+    let mut first = chat(CHAT, "First pinned");
+    first.pinned_unix = Some(5);
+    let mut second = chat(NEXT, "Second pinned");
+    second.pinned_unix = Some(9);
+    let mut working = chat("32345678-1234-4234-8234-123456789abc", "Working one");
+    working.pending = Some(Pending {
+        request_id: NEXT.into(),
+        started_unix: 2,
+        job_id: None,
+    });
+    let mut gone = chat("42345678-1234-4234-8234-123456789abc", "Archived one");
+    gone.archived_unix = Some(3);
+    // The store lists newest first; pins still show in pin order.
+    let rows = vec![second, working, gone, first];
+    let html = sidebar::build(
+        ChatList::new().id("chat-sidebar"),
+        &rows,
+        "token",
+        sidebar::View::default(),
+    )
+    .render()
+    .into_string();
+    let at = |text: &str| html.find(text).unwrap_or_else(|| panic!("{text}: {html}"));
+    assert!(at(">Pinned<") < at("First pinned"));
+    assert!(at("First pinned") < at("Second pinned"));
+    assert!(at("Second pinned") < at(">Chats<"));
+    assert!(at(">Chats<") < at("Working one"));
+    assert!(!html.contains("Archived one"));
+    assert!(html.contains("hx-confirm=\"This chat is still working. Archive it anyway?\""));
+    assert_eq!(html.matches("hx-confirm").count(), 1);
+    assert!(html.contains("href=\"/chat/archived\""));
+    // Rows on a page without an open chat are plain links.
+    assert!(!html.contains("/workspace"));
+    assert_eq!(sidebar::clean_title("  Fine  ").as_deref(), Some("Fine"));
+    assert_eq!(sidebar::clean_title("tab\there"), None);
 }

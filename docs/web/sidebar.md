@@ -31,9 +31,11 @@ Top to bottom:
    exist this is the only list, as today.
 5. Docs and the account menu at the bottom, unchanged.
 
-Archived chats leave the sidebar; **Archived** in Settings lists them with
-**Restore** (phase 4). The open chat always stays visible, even inside a
-closed group.
+Archived chats leave the sidebar; an **Archived chats** link under the list
+(shown only when there are some) opens `/chat/archived`, which lists them
+with **Restore** (phase 4; chats belong to the browser's visitor cookie, so
+the page is not under Settings, which needs sign-in). The open chat always
+stays visible, even inside a closed group.
 
 Order inside a list: activity time, which is the latest of the last message
 sent, the last answer, and the last task change. Pinned order is the
@@ -156,7 +158,13 @@ menu need no hover: the `…` is always visible on touch.
    project, sidebar groups.
 3. **Live status**: the sidebar event stream; Cloud job and Coder task
    statuses (Waiting for you, Paused until, Done) on rows.
-4. **Organize**: pin, rename, archive, search, keyboard.
+4. **Organize** (built, #11036): pin, rename, archive, search, keyboard.
+   `chat_store` keeps `pinned_unix` and `archived_unix`; the routes are
+   `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the
+   field), `GET /chat/list?q=` (search), and `GET /chat/archived`
+   (`pages/chat_sidebar.rs`). The parts are `openagents_ui::shell`'s
+   `RowMenu`, `RowRename`, and `ChatSearch`. Move to project waits for
+   projects (phase 2).
 5. **Environment and task links**: a chat records the environment and the
    tasks it started; line 2 shows the environment and version; a long task
    shows its steps.
