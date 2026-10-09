@@ -451,6 +451,39 @@ when retention is complete and their SHA-256 matches the retained manifest.
 The stop control on a purchase returns to it; observation-only scopes see no
 control, and other accounts reach none of these pages.
 
+## Billing statements and commercial lanes
+
+`/cloud/app/billing` is reachable once a workspace is selected. Each lane is
+read from its own native owner with the viewer's current session; nothing on
+these pages grants a spending, invocation, or publication right.
+
+- `/cloud/app/billing/statements` reads the gateway's joined
+  `openagents.joined-statement.v1` page (`joined=true` on the workspace usage
+  route) and shows every original row typed in full: native source and
+  canonical mapping (attribution only), source unit and units, conversion,
+  quote, terms, reserved, charged, released (never a refund), returned, loss,
+  recovered, conversion fee and remainder, allocations including plugin
+  release author fees and payout references, and the original gateway
+  projection joined by row key. Millisatoshis, satoshis, and currency
+  millionths are never added together; a missing charge reads `unknown`; a
+  row the page cannot type exactly refuses as **Statement record
+  unreadable**. Payee earnings stay a separate section with their own
+  cursors. `/statements/export` returns the same page as private NDJSON.
+  Without a reviewed statement grant the section reads **Unavailable**.
+- The same page lists each current retail delegation with the native account,
+  each journaled funding invoice checked against the service's current
+  record (a differing amount or hash refuses as changed), and each purchase's
+  retained first-observed quote and settlement. A purchase not yet retained
+  says so instead of estimating a charge.
+- `/cloud/app/billing/decisions?door=ID` shows the gateway's current purchase
+  context for one decision resource: payer workspace, role and membership
+  epochs, invocation right, team policy, canonical mapping, and the exact
+  price reference. A context naming another account, workspace, or membership
+  epoch refuses. `/decisions/{door}/receipt?digest=sha256:…` reads the
+  original verified receipt and its settlement claim. The browser offers no
+  quote approval, payment, or invocation for these lanes; those stay with the
+  installed customer client and its own native controls.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

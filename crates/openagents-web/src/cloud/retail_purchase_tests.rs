@@ -570,3 +570,78 @@ async fn concurrent_spending_changed_quotes_and_revoked_rights_are_refused() {
     );
     assert_eq!(retail.wallet.issued(), 1);
 }
+
+/// WEB-11: the retail statement is built from the native account, the
+/// journaled invoice, and the retained settlement; restart and duplicate
+/// payment evidence show the same original charge.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn retail_statement_recovers_original_invoice_and_charge() {
+    const STATEMENT: &str = "/cloud/app/billing/statements";
+    let mut fixture = fixture().await;
+    let retail = retail();
+    retail.attach(&mut fixture, &[ALICE]);
+    let cookies = alice(&fixture).await;
+    let invoice = funded(&fixture, &cookies, &retail, "alice-retail", "1000").await;
+    keyed(&fixture, &cookies, "alice-retail").await;
+    let execution = bought(&fixture, &cookies, &retail, "alice-retail").await;
+
+    // Before settlement the charge is unknown and nothing is guessed.
+    let held = get(&fixture, &cookies, STATEMENT).await;
+    assert_eq!(held.status, StatusCode::OK, "{}", held.body);
+    private(&held);
+    no_secret(&held.body);
+    assert!(held.body.contains("Joined statement · Unavailable"));
+    assert!(held.body.contains(&format!(
+        "invoice {} · 1000000 msat · state",
+        invoice["payment_hash"].as_str().unwrap()
+    )));
+    assert!(held.body.contains(&purchase("alice-retail", &execution)));
+    assert!(held.body.contains("not yet retained here"));
+
+    retail.dispatch(&execution);
+    let resource = retail.resource(&execution);
+    let task = retail_cloud::dispatch::task_id(&execution);
+    retail.runtime.owner.set_status(
+        &resource,
+        &task,
+        TaskStatus::Ended {
+            end: retail_cloud::dispatch::ExecutorEnd::Completed,
+            patch: Some(retail_cloud::sha256_hex(b"patch\n")),
+            checks: vec![],
+        },
+    );
+    retail.runtime.provider.set_usage(&resource, 30);
+    retail.settle();
+    // Opening the purchase retains its original settlement.
+    let detail = get(&fixture, &cookies, &purchase("alice-retail", &execution)).await;
+    assert_eq!(detail.status, StatusCode::OK, "{}", detail.body);
+    let settled = get(&fixture, &cookies, STATEMENT).await;
+    assert_eq!(settled.status, StatusCode::OK, "{}", settled.body);
+    let line = settled
+        .body
+        .split(&format!("Purchase {execution}</a> · "))
+        .nth(1)
+        .unwrap()
+        .split("</li>")
+        .next()
+        .unwrap()
+        .to_owned();
+    assert!(line.contains("· charged "), "{line}");
+    assert!(line.contains("(not a refund)"), "{line}");
+
+    // Duplicate payment evidence and a site restart show the same record.
+    retail.fund(&invoice);
+    retail.settle();
+    retail.reload(&mut fixture);
+    let again = get(&fixture, &cookies, STATEMENT).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.body);
+    assert!(again.body.contains(&line));
+    assert_eq!(again.body.matches("<li>invoice ").count(), 1);
+    assert_eq!(retail.wallet.issued(), 1);
+    assert_eq!(retail.runtime.owner.started(), 1);
+
+    // Another account sees none of this retail record.
+    let bob = login(&fixture, "bob").await;
+    let theirs = get(&fixture, &bob, STATEMENT).await;
+    assert!(!theirs.body.contains(&execution));
+}

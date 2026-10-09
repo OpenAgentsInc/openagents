@@ -47,7 +47,7 @@ pub(super) fn routes() -> Router<App> {
         )
 }
 
-pub(super) fn href(delegation: &str, execution: &str) -> String {
+pub(crate) fn href(delegation: &str, execution: &str) -> String {
     format!(
         "{PAGE}/{}/purchases/{}",
         escape(delegation),
@@ -149,6 +149,16 @@ impl Retained {
             });
         }
     }
+}
+
+/// The retained first-observed bindings of one purchase, read without
+/// observing the native owner again or creating a record.
+pub(super) fn retained(
+    delegation: &Delegation,
+    root: &FsPath,
+    execution: &str,
+) -> Result<BTreeMap<String, Value>, Failure> {
+    Ok(Retained::load(root, delegation, execution)?.binding)
 }
 
 // ---- Joining the journal and the native owner ------------------------------

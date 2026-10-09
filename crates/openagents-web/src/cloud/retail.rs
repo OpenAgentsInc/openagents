@@ -39,6 +39,7 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 mod purchases;
+pub(crate) use purchases::href as purchase_href;
 
 pub const SCHEMA: &str = "openagents.cloud.retail-delegations.v1";
 const JOURNAL_SCHEMA: &str = "openagents.cloud.retail-web-requests.v1";
@@ -266,7 +267,7 @@ impl From<CustodyError> for Failure {
     }
 }
 
-fn answer(error: Failure) -> Response {
+pub(crate) fn answer(error: Failure) -> Response {
     match error {
         Failure::Session(error) => refused(error),
         Failure::ReadOnly => failure(
@@ -616,6 +617,95 @@ impl Delegations {
             }
             journal.save(journals, delegation)?;
             Ok(value)
+        })
+        .await
+    }
+}
+
+/// One journaled funding request and the native owner's current record of it.
+pub(crate) struct Funding {
+    pub request: String,
+    pub amount_sats: Option<u64>,
+    /// The first recorded native answer; `None` when the outcome is unknown.
+    pub recorded: Option<native::Purchase>,
+    /// The owner's current record, or `None` when it did not answer now.
+    pub current: Option<native::Purchase>,
+}
+
+/// A retail statement built from the native account, this site's journaled
+/// funding answers, and each purchase's retained first-observed record.
+pub(crate) struct Statement {
+    pub account: native::Account,
+    pub funding: Vec<Funding>,
+    pub purchases: Vec<(String, BTreeMap<String, Value>)>,
+    pub more: bool,
+}
+
+impl Delegations {
+    /// Read the retail statement for one delegation. Nothing here creates,
+    /// retries, or settles a purchase; changed original records refuse.
+    pub(crate) async fn statement(&self, viewer: &Viewer, id: &str) -> Result<Statement, Failure> {
+        self.native(viewer, id, |delegation, client, journals, _| {
+            let account = client.account()?;
+            let journal = Journal::load(journals, delegation)?;
+            let mut records: Vec<(&String, &Record)> = journal
+                .records
+                .iter()
+                .filter(|(_, r)| r.op == "top_up")
+                .collect();
+            records.sort_by(|a, b| b.1.at.cmp(&a.1.at).then(a.0.cmp(b.0)));
+            let mut funding = Vec::new();
+            for (request, record) in records.into_iter().take(32) {
+                let recorded: Option<native::Purchase> = match &record.outcome {
+                    Some(value) => Some(
+                        serde_json::from_value(value.clone())
+                            .map_err(|_| Failure::Changed("invoice"))?,
+                    ),
+                    None => None,
+                };
+                let current = match &recorded {
+                    Some(original) => match client.top_up_status(&original.purchase) {
+                        Ok(current) => {
+                            if current.account != original.account
+                                || current.amount_msat != original.amount_msat
+                                || current.payment_hash != original.payment_hash
+                            {
+                                return Err(Failure::Changed("invoice"));
+                            }
+                            Some(current)
+                        }
+                        Err(native::Error::Refused(message)) => {
+                            return Err(Failure::Refused(message));
+                        }
+                        Err(_) => None,
+                    },
+                    None => None,
+                };
+                funding.push(Funding {
+                    request: request.clone(),
+                    amount_sats: record.params["amount_sats"].as_u64(),
+                    recorded,
+                    current,
+                });
+            }
+            let page = client.executions(None)?;
+            let listed = page["executions"].as_array().cloned().unwrap_or_default();
+            let mut purchases = Vec::new();
+            for entry in &listed {
+                let Some(execution) = entry["execution"].as_str().filter(|e| valid_id(e)) else {
+                    continue;
+                };
+                purchases.push((
+                    execution.to_owned(),
+                    purchases::retained(delegation, journals, execution)?,
+                ));
+            }
+            Ok(Statement {
+                account,
+                funding,
+                purchases,
+                more: page["next"].is_string() && listed.len() >= 32,
+            })
         })
         .await
     }

@@ -2,6 +2,7 @@
 //! site, local task browser, and separately granted services remain distinct.
 
 mod agents;
+mod billing;
 pub mod byo;
 pub(crate) mod composer;
 mod controls;
@@ -69,7 +70,7 @@ const SECTIONS: [(&str, &str, &str); 12] = [
     (
         "Billing",
         "billing",
-        "Configure an explicit native financial delegation.",
+        "Select a workspace to read its original statements and admitted billing lanes.",
     ),
     (
         "Sales",
@@ -109,12 +110,13 @@ pub(crate) fn routes() -> Router<App> {
         .merge(verse::routes())
         .merge(agents::routes())
         .merge(retail::routes())
+        .merge(billing::routes())
         .merge(byo::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
         if !matches!(
             slug,
-            "agents" | "computers" | "projects" | "workbench" | "verse"
+            "agents" | "computers" | "projects" | "workbench" | "verse" | "billing"
         ) {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
@@ -473,8 +475,8 @@ fn workspace_shell(
             nav.push_str(&format!("<a href=\"/cloud/app/{slug}\">{label}</a>"));
         } else if slug == "workbench" && workbench::available(app, viewer) {
             nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
-        } else if slug == "billing" && retail::available(app, viewer) {
-            nav.push_str("<a href=\"/cloud/app/billing/retail\">Billing</a>");
+        } else if slug == "billing" && billing::available(viewer) {
+            nav.push_str("<a href=\"/cloud/app/billing\">Billing</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else if slug == "verse" {

@@ -21,6 +21,8 @@ mod task_relay;
 
 #[path = "agents_tests.rs"]
 mod agents;
+#[path = "billing_tests.rs"]
+mod billing;
 #[path = "control_tests.rs"]
 mod controls;
 
@@ -73,6 +75,71 @@ struct Native {
     signins: usize,
     signouts: usize,
     expiry: u64,
+    /// Original native billing documents for alice-personal (WEB-11).
+    statement: Option<Value>,
+    decision: Option<Value>,
+    receipt: Option<Value>,
+}
+
+/// The fake gateway serves billing documents only to alice in alice-personal.
+fn billing_read(
+    state: &Native,
+    headers: &HeaderMap,
+    id: &str,
+    document: &Option<Value>,
+) -> Response {
+    if state.offline {
+        return native_refusal(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let Some(account) = acting(headers, state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    match document {
+        Some(value) if account == "alice" && id == "alice-personal" => {
+            Json(value.clone()).into_response()
+        }
+        _ => (
+            StatusCode::CONFLICT,
+            Json(json!({"error":{"code":"scope_denied","message":CANARY}})),
+        )
+            .into_response(),
+    }
+}
+
+async fn native_usage(
+    State(state): State<Arc<Mutex<Native>>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    request: axum::extract::RawQuery,
+) -> Response {
+    let state = state.lock().unwrap();
+    if !request.0.unwrap_or_default().contains("joined=true") {
+        return native_refusal(StatusCode::BAD_REQUEST);
+    }
+    billing_read(&state, &headers, &id, &state.statement)
+}
+
+async fn native_context(
+    State(state): State<Arc<Mutex<Native>>>,
+    Path((id, door)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    let state = state.lock().unwrap();
+    let document = state.decision.clone().filter(|d| d["door"] == json!(door));
+    billing_read(&state, &headers, &id, &document)
+}
+
+async fn native_receipt(
+    State(state): State<Arc<Mutex<Native>>>,
+    Path((id, digest)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    let state = state.lock().unwrap();
+    let document = state
+        .receipt
+        .clone()
+        .filter(|r| r["receipt"]["digest"] == json!(digest));
+    billing_read(&state, &headers, &id, &document)
 }
 
 fn acting(headers: &HeaderMap, state: &Native) -> Option<&'static str> {
@@ -206,6 +273,16 @@ async fn fixture() -> Fixture {
         .route("/v1/session", get(native_session).delete(native_sign_out))
         .route("/v1/account", get(native_details))
         .route("/v1/workspaces/{id}", get(native_workspace))
+        .route("/v1/workspaces/{id}/usage", get(native_usage))
+        .route("/v1/workspaces/{id}/usage/export", get(native_usage))
+        .route(
+            "/v1/workspaces/{id}/purchase-context/{door}",
+            get(native_context),
+        )
+        .route(
+            "/v1/workspaces/{id}/usage/receipts/{digest}",
+            get(native_receipt),
+        )
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());

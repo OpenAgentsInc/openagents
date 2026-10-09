@@ -10436,6 +10436,7 @@ dependencies = [
  "paper-mono",
  "pay-ledger",
  "pulldown-cmark",
+ "receipts",
  "reqwest 0.12.28",
  "retail-cloud",
  "retail-qualify",

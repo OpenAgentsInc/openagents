@@ -418,7 +418,7 @@ async fn delegation_refuses_other_accounts_workspaces_and_epochs() {
     no_secret(&page.body);
     assert!(page.body.contains("Delegation alice-retail"));
     assert!(page.body.contains("Account retail-customer"));
-    assert!(page.body.contains("href=\"/cloud/app/billing/retail\""));
+    assert!(page.body.contains("href=\"/cloud/app/billing\""));
     let top_up = format!("{PAGE}/alice-retail/top-up");
     let fields = hidden(&page.body, &top_up);
 

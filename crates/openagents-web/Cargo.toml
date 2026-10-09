@@ -19,6 +19,7 @@ coder-host = { path = "../coder-host", default-features = false }
 coder-demo-ui = { path = "../coder-demo-ui" }
 coder-ui = { path = "../coder-ui" }
 compute-workbench = { path = "../compute-workbench", features = ["client"] }
+receipts = { path = "../receipts" }
 retail-cloud = { path = "../retail-cloud" }
 rust-native = { path = "../rust-native" }
 rust-native-web = { path = "../rust-native-web" }

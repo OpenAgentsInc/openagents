@@ -55,24 +55,28 @@ impl Account<'_> {
         {
             return Err(Error::Config("Invalid bounded statement selection.".into()));
         }
-        let mut params = url::form_urlencoded::Serializer::new(String::new());
-        params.append_pair("joined", "true");
-        if let Some(c) = &query.cursor {
-            params.append_pair("cursor", c);
-        }
-        if let Some(n) = query.limit {
-            params.append_pair("limit", &n.to_string());
-        }
-        if let Some(n) = query.after_earning {
-            params.append_pair("after_earning", &n.to_string());
-        }
-        if let Some(n) = query.after_payout {
-            params.append_pair("after_payout", &n.to_string());
-        }
-        let path = format!(
-            "/v1/workspaces/{workspace}/usage{}?{}",
-            if export { "/export" } else { "" },
+        // The serializer is not `Send`; finish it before the request so the
+        // returned future can run on a multi-threaded server.
+        let params = {
+            let mut params = url::form_urlencoded::Serializer::new(String::new());
+            params.append_pair("joined", "true");
+            if let Some(c) = &query.cursor {
+                params.append_pair("cursor", c);
+            }
+            if let Some(n) = query.limit {
+                params.append_pair("limit", &n.to_string());
+            }
+            if let Some(n) = query.after_earning {
+                params.append_pair("after_earning", &n.to_string());
+            }
+            if let Some(n) = query.after_payout {
+                params.append_pair("after_payout", &n.to_string());
+            }
             params.finish()
+        };
+        let path = format!(
+            "/v1/workspaces/{workspace}/usage{}?{params}",
+            if export { "/export" } else { "" },
         );
         let raw = self
             .client
