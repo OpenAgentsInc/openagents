@@ -408,11 +408,31 @@ pub fn source_violations(src: &str, allow: &[&str]) -> Vec<(usize, Violation)> {
         .into_iter()
         .filter(|s| looks_like_copy(&s.text))
         .flat_map(|s| {
-            violations(&s.text, allow)
+            violations(&unescape(&s.text), allow)
                 .into_iter()
                 .map(move |v| (s.line, v))
         })
         .collect()
+}
+
+/// A literal's escapes as the reader sees them, so a term right after `\n`
+/// still starts a word: whitespace escapes and line continuations become a
+/// space, and any other escaped character stands for itself.
+fn unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n' | 't' | 'r' | '\n') => out.push(' '),
+            Some(other) => out.push(other),
+            None => {}
+        }
+    }
+    out
 }
 
 /// Scan every `.rs` file under `dir` (skipping `tests.rs`, `*_tests.rs`,
@@ -544,6 +564,16 @@ fn after() -> &'static str { "Still scanned after tests" }
         let hits = source_violations(src, &[]);
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[1].0, 9);
+    }
+
+    #[test]
+    fn terms_after_escapes_are_still_words() {
+        let src = r#"fn f() -> &'static str { "Origin\nProvenance: {}\tjournal" }"#;
+        let terms: Vec<_> = source_violations(src, &[])
+            .into_iter()
+            .map(|(_, v)| v.term)
+            .collect();
+        assert_eq!(terms, ["provenance", "journal"]);
     }
 
     #[test]
