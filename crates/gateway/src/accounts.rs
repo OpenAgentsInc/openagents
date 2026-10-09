@@ -53,6 +53,12 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/sessions", post(sign_in)),
         ("/v1/sessions/github", post(github_sign_in)),
         ("/v1/account/identities/github", post(github_link)),
+        ("/v1/sessions/device", post(device_start)),
+        ("/v1/sessions/device/poll", post(device_poll)),
+        ("/v1/sessions/device/lookup", post(device_lookup)),
+        ("/v1/sessions/device/decide", post(device_decide)),
+        ("/v1/account/sessions", get(app_sessions)),
+        ("/v1/account/sessions/{session}", delete(app_session_revoke)),
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
         ("/v1/account", get(account_view)),
@@ -443,6 +449,7 @@ pub(crate) fn sessions_refusal(refusal: sessions::Refusal) -> Response {
         R::AnonymousBudgetSpent { .. } => (StatusCode::FORBIDDEN, "budget_spent"),
         R::AnonymousSessionCapped { .. } => (StatusCode::FORBIDDEN, "session_capped"),
         R::Membership(_) => (StatusCode::FORBIDDEN, "forbidden"),
+        R::Device(device) => (StatusCode::BAD_REQUEST, device.code()),
     };
     refused(status, code, refusal.to_string())
 }
@@ -736,6 +743,116 @@ async fn github_link(
         ),
         Err(error) => auth_refused(error),
     }
+}
+
+fn device_answer(answer: oa_auth::device::Answer) -> Response {
+    (
+        StatusCode::from_u16(answer.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        Json(answer.body),
+    )
+        .into_response()
+}
+
+/// The signed-in account and its session for the device and app-session
+/// routes; an anonymous session has no account.
+fn device_caller(
+    state: &ServeState,
+    headers: &HeaderMap,
+) -> Result<(String, Option<String>), Response> {
+    let principal = principal(state, headers)?;
+    let account = member_account(&principal)?.to_string();
+    Ok((account, principal.session().map(str::to_string)))
+}
+
+/// `POST /v1/sessions/device` — `{app, computer}`: start a device sign-in
+/// (RFC 8628 shape; `oa_auth::device`). No credential: the app has none
+/// yet.
+async fn device_start(
+    State(state): State<Arc<ServeState>>,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    device_answer(oa_auth::device::start(&state.dir, &body))
+}
+
+/// `POST /v1/sessions/device/poll` — `{device_code}`: the app's poll.
+async fn device_poll(
+    State(state): State<Arc<ServeState>>,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    device_answer(oa_auth::device::poll(&state.dir, &body))
+}
+
+/// `POST /v1/sessions/device/lookup` — `{user_code}`, under a browser
+/// session: what the approval page shows.
+async fn device_lookup(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let (account, session) = match device_caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    device_answer(oa_auth::device::lookup(
+        &state.dir,
+        &account,
+        session.as_deref(),
+        &body,
+    ))
+}
+
+/// `POST /v1/sessions/device/decide` — `{user_code, approve}`, under a
+/// browser session.
+async fn device_decide(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let (account, session) = match device_caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    device_answer(oa_auth::device::decide(
+        &state.dir,
+        &account,
+        session.as_deref(),
+        &body,
+    ))
+}
+
+/// `GET /v1/account/sessions` — the account's signed-in apps.
+async fn app_sessions(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    let (account, session) = match device_caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    device_answer(oa_auth::device::list(
+        &state.dir,
+        &account,
+        session.as_deref(),
+    ))
+}
+
+/// `DELETE /v1/account/sessions/{session}` — sign one app out.
+async fn app_session_revoke(
+    State(state): State<Arc<ServeState>>,
+    Path(target): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let (account, session) = match device_caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    device_answer(oa_auth::device::revoke(
+        &state.dir,
+        &account,
+        session.as_deref(),
+        &target,
+    ))
 }
 
 /// The anonymous half of sign-in: a session against the funded budget.
