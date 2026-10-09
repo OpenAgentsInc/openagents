@@ -20,6 +20,30 @@ and 6). Adapters, the router, and the HTTP routes build on both.
 | `stream` | `Sequencer`, `Accumulator` (events folded into a response), `StreamCheck` (a stream checked against the spec's order) |
 | `chat` | Chat Completions request, reply, and chunk types; translation both ways; `ChunkWriter` (events to chunks), `EventWriter` (chunks to events), `CompletionBuilder` |
 
+## Router
+
+`router::plan` turns a request into at most three (model, upstream)
+attempts, a pure function of the request and a `router::Context`: the
+`Offering`s adapters advertise (capabilities, zero retention, payer,
+billed account), the `ClassTable` (the spec's starting table is the
+default), the meter's rate card and ledger, live rates, Gym `Scores`, and
+the `Bench`. The module docs list the steps. Choices the spec leaves open:
+
+- Without Gym scores for a class, the table's model order comes first and
+  the credit-first ranking orders each model's upstreams; with scores,
+  candidates below the floor go and the ranking orders the rest.
+- Free capacity (the Pro door) and prepaid balances rank as credit;
+  among them the sooner expiry goes first.
+- Price limits compare the caller's price (cost plus margin) per million
+  tokens. When every candidate is over the limit the answer is
+  `403 limit_reached` with `param: "openagents.max_price"`; otherwise an
+  empty plan is `503 no_route`.
+- `openagents/auto` without a judge falls back to `chat`.
+- `router::fall_back`: an attempt that fails before the first output token
+  falls back, except a `400` from the upstream (the next one would refuse
+  it too). `Bench::observe` benches an upstream for five minutes on a 401
+  or 402.
+
 ## Strict and lenient
 
 - **Strict where the spec is strict.** A known item, part, or event `type`

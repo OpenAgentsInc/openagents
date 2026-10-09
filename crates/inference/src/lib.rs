@@ -9,6 +9,8 @@
 //!   a stream into a response, and checking a stream's order.
 //! - [`chat`]: OpenAI Chat Completions types and their translation onto
 //!   the same internal request, both directions, streaming included.
+//! - [`router`]: model ids and task classes to ordered upstream attempts
+//!   (section 5).
 //! - [`meter`]: the measurement half (sections 5 and 6): one record per
 //!   upstream attempt, live rates, and the credit ledger with burn-down
 //!   alerts. Adapters report each attempt through [`meter::Recorder`].
@@ -26,6 +28,7 @@ pub mod meter;
 pub mod openagents;
 pub mod request;
 pub mod response;
+pub mod router;
 pub mod sse;
 pub mod stream;
 

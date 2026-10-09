@@ -119,6 +119,22 @@ pub struct Cost {
     pub extra: Extra,
 }
 
+impl Cost {
+    /// A cost from micros of US dollars, as the meter's rate card prices
+    /// an attempt (`meter::card::Priced`).
+    #[must_use]
+    pub fn from_micros(upstream: u64, margin: u64, price_sats: Option<u64>) -> Self {
+        use crate::router::micros_usd;
+        Self {
+            upstream_usd: micros_usd(upstream),
+            margin_usd: micros_usd(margin),
+            price_usd: micros_usd(upstream.saturating_add(margin)),
+            price_sats,
+            extra: Extra::new(),
+        }
+    }
+}
+
 /// The response's `openagents` object.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResponseInfo {
