@@ -240,6 +240,7 @@ mod tests {
         Conversation {
             id: id.into(),
             owner: owner.into(),
+            project: None,
             revision: 1,
             title: "A chat".into(),
             messages: vec![Message {

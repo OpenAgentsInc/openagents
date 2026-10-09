@@ -18,15 +18,13 @@ applies_when: >-
   what they write in the chat, who else can read their chats, whether the
   chat runs locally, or whether they can turn provider access off.
 answer: >-
-  In the web chat, our website reads your messages and saves your chats on
-  our servers. In the apps, messages are encrypted to our chat worker, our
-  relay keeps nothing, and chats are saved on your device. The worker stores
-  no message text. To reply, it sends the conversation to TypeSafe's Jev
-  through the Vercel AI Gateway, to Space Bunny Alpha on OpenRouter, and to
-  Gemini 3.8 Flash on the Vercel AI Gateway when Space Bunny can't answer.
-  We ask the providers of those two models not to keep or train on what we
-  send them, and don't use a model whose provider can't agree. Product
-  lookups also reach an embeddings provider. No setting turns the providers off.
+  The web chat saves your chats on our servers. In the apps, messages are
+  encrypted to our chat worker, our relay keeps nothing, and chats stay on
+  your device. The worker stores no message text. To reply, it sends the
+  conversation to Jev (Vercel AI Gateway), Space Bunny Alpha (OpenRouter),
+  and Gemini 3.8 Flash when Space Bunny can't answer. We ask Space Bunny's
+  and Gemini's providers not to keep or train on what we send, and skip any
+  that can't agree. Product lookups also reach an embeddings provider.
 status: admitted
 author: openagents
 provenance:

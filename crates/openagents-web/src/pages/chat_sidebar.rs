@@ -717,7 +717,7 @@ async fn move_chat(
     Path(id): Path<String>,
     Form(form): Form<Change>,
 ) -> Response {
-    let owner = match validate_form(&app, &headers, &form.csrf) {
+    let owner = match validate_form(&app, &headers, &form.csrf).await {
         Ok(v) => v,
         Err(r) => return r,
     };

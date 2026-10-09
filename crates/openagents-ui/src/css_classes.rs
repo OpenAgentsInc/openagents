@@ -8,8 +8,9 @@ use std::collections::BTreeSet;
 /// The byte budget for [`crate::stylesheet()`], the only stylesheet a
 /// `UiPage` page links. Set about 10% above its size when the legacy web
 /// stylesheets were removed (262,873 bytes); raising it is a decision to
-/// make in review, not a drift.
-pub const STYLESHEET_BUDGET_BYTES: usize = 290_000;
+/// make in review, not a drift. Raised to 300,000 on 2026-10-09 for the
+/// sidebar project groups, row menus, and plugin cards.
+pub const STYLESHEET_BUDGET_BYTES: usize = 300_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

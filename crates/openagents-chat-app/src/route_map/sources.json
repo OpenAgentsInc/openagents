@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@fa5fc920491f",
+  "bank": "chat-answers-v1@cafcfbb63adb",
   "routes": [
     {
       "id": "meta",
@@ -478,7 +478,7 @@
     },
     {
       "id": "meta.data_retention",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -1093,6 +1093,22 @@
       "sources": [
         "docs/extensions/evaluation.md",
         "crates/coder/src/router/gym.rs"
+      ]
+    },
+    {
+      "id": "plugins.web",
+      "version": 1,
+      "routes": [
+        "eval.run"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "deploy/eval-runner/catalog",
+        "crates/openagents-web/content/docs/test-a-plugin.md",
+        "docs/web/plugin-card.md"
       ]
     },
     {

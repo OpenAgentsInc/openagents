@@ -188,6 +188,21 @@ impl Browser {
     }
 }
 
+/// The chat owner for the account that signed in with GitHub `login`.
+fn account_owner_of(world: &World, login: &str) -> String {
+    let store = tenancy::Accounts::open(&world._root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap();
+    let identity = store
+        .identities
+        .github
+        .values()
+        .find(|identity| identity.profile.login == login)
+        .unwrap_or_else(|| panic!("no account for {login}"));
+    crate::chat_store::account_owner(&identity.account)
+}
+
 /// The value of the first hidden `name` input after `marker` in `html`.
 fn hidden(html: &str, marker: &str, name: &str) -> String {
     let from = html
@@ -325,7 +340,8 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     );
 
     // Chats in the project group under it; a chat outside stays in Chats.
-    let owner = browser.0["oa_visitor"].clone();
+    // Signed in, chats belong to the account (#11039).
+    let owner = account_owner_of(&world, "octo-local");
     world
         .store
         .create(&chat(CHAT, &owner, "Fix the login", Some(&id)))
@@ -395,17 +411,16 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
         .await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
 
-    // Signed out (same browser, no session): no names, chats ungrouped.
+    // Signed out (same browser, no session): the account's chats and
+    // project names stay with the account.
     let mut out = Browser::default();
-    out.0.insert("oa_visitor".into(), owner.clone());
     let home = out.get(&world, "/").await;
-    assert!(home.body.contains("Fix the login"), "{}", home.body);
+    assert!(!home.body.contains("Fix the login"), "{}", home.body);
     assert!(!home.body.contains("storefront"), "{}", home.body);
     assert!(!home.body.contains("acme/"));
 
     // Another account in that browser sees no names either.
     let mut other = Browser::default();
-    other.0.insert("oa_visitor".into(), owner.clone());
     other.sign_in(&world, "quiet-local").await;
     let home = other.get(&world, "/").await;
     assert!(!home.body.contains("storefront"), "{}", home.body);
