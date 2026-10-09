@@ -54,6 +54,20 @@ fn ephemeral_git_auth_never_writes_the_token() {
     assert!(text.contains(&format!("password={GH_SECRET}")), "{text}");
     assert!(text.contains("username=x-access-token"));
 
+    // Any other host, or plain http, gets nothing: a setup command's Git
+    // dependency or submodule elsewhere is never handed the token.
+    for asked in [
+        &b"protocol=https\nhost=evil.example\n\n"[..],
+        b"protocol=https\nhost=github.com.evil.example\n\n",
+        b"protocol=http\nhost=github.com\n\n",
+    ] {
+        let mut fill = git(&["credential", "fill"], true).spawn().unwrap();
+        fill.stdin.take().unwrap().write_all(asked).unwrap();
+        let out = fill.wait_with_output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(!text.contains(GH_SECRET), "{text}");
+    }
+
     let work = dir.path().join("work");
     let work_s = work.to_str().unwrap();
     assert!(

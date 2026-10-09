@@ -217,7 +217,9 @@ impl Admission {
 /// Per-process Git configuration for ephemeral auth. The helper answers
 /// `get` with the value of the credential *variable* at run time; neither
 /// this map nor any file Git writes holds the token. The empty first helper
-/// clears any helper a repository or user config would add.
+/// clears any helper a repository or user config would add. It answers only
+/// for `https://github.com`: setup commands also fetch Git dependencies and
+/// submodules from other hosts, and those must never be handed the token.
 pub fn git_auth_env(credential: &str) -> BTreeMap<String, String> {
     BTreeMap::from([
         ("GIT_CONFIG_COUNT".into(), "2".into()),
@@ -227,7 +229,7 @@ pub fn git_auth_env(credential: &str) -> BTreeMap<String, String> {
         (
             "GIT_CONFIG_VALUE_1".into(),
             format!(
-                "!f() {{ test \"$1\" = get || exit 0; echo username=x-access-token; echo \"password=${{{credential}}}\"; }}; f"
+                "!f() {{ test \"$1\" = get || exit 0; p=; h=; while IFS='=' read -r k v; do case \"$k\" in protocol) p=$v;; host) h=$v;; esac; done; test \"$p\" = https && test \"$h\" = github.com || exit 0; echo username=x-access-token; echo \"password=${{{credential}}}\"; }}; f"
             ),
         ),
         ("GIT_TERMINAL_PROMPT".into(), "0".into()),

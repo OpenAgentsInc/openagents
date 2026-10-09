@@ -10,6 +10,9 @@
 //!   fetched by URL with no remote recorded, so no token or credential
 //!   helper reaches `.git/config` or any other file. A URL that embeds a
 //!   credential is refused before anything runs.
+//! - A failed fetch is tried once more after two seconds (GitHub drops
+//!   some pack transfers of large repositories). Submodules are not
+//!   fetched by this step.
 //! - `HEAD` must equal the pinned commit and the tree must be clean; the
 //!   command exits non-zero otherwise, so an exit code of zero and the
 //!   report agree. The report also says the checkout's Git configuration
@@ -176,7 +179,7 @@ pub fn script(pin: &SourcePin, mode: Mode) -> Result<String, &'static str> {
                  \x20 git init -q . || fail init\n\
                  fi\n\
                  if [ \"$(git rev-parse -q --verify HEAD 2>/dev/null)\" != \"$rev\" ]; then\n\
-                 \x20 git fetch -q --no-tags --depth=1 {url} \"$rev\" || fail fetch\n\
+                 \x20 git fetch -q --no-tags --depth=1 {url} \"$rev\" || {{ sleep 2; git fetch -q --no-tags --depth=1 {url} \"$rev\"; }} || fail fetch\n\
                  \x20 git checkout -q --detach \"$rev\" || fail checkout\n\
                  \x20 fetched=yes\n\
                  fi\n",

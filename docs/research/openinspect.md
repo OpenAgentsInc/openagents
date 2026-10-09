@@ -465,6 +465,64 @@ Use isolated fixtures first, then separately authorized provider resources and
 staging. Never use the owner's personal checkout or ambient login as the test
 environment. Record owner-only activation in [NEEDS_OWNER](../../NEEDS_OWNER.md).
 
+## GitHub handling compared with background-agents
+
+Added on October 9, 2026, after `/projects` told a real person "GitHub isn't
+answering". The cause was not GitHub being down. Our API reader refused any
+body over 256 KB, and a real page of 100 repositories is about 600 KB
+(fixed in `f5e93e06b5`). The tests missed it because the fake GitHub answered
+with tiny objects.
+
+This section compares the upstream, `ColeMurray/background-agents` (local
+read-only clone at `~/work/projects/repos/background-agents`), with our
+code, flow by flow. It looks for the kind of bug that only real data
+exposes.
+
+| Flow | background-agents | OpenAgents before | OpenAgents now |
+| --- | --- | --- | --- |
+| Repository access | GitHub App, per-repository installs, 1-hour installation tokens cached in memory and KV (reused under 50 minutes old with 5 minutes left), refresh de-duplicated, one forced refresh on 401 (`control-plane/src/auth/github-app.ts`) | OAuth App with `repo read:org`, long-lived token sealed per account | Unchanged; plan in [#11056](https://github.com/OpenAgentsInc/openagents/issues/11056) |
+| Listing | `/installation/repositories`, reads `total_count`, then fetches every page at once with no limit; a failed later page fails the whole list | Page counting; "more" guessed from a full page | One GitHub page of 30 per request (Show more loads the next); "more" from GitHub's `Link: rel="next"`, followed only on the same API origin; a 2xx that isn't a list is an error, never an empty list |
+| Rate limits | Not handled: 403 counts as permanent, 429/5xx as transient, and nothing reads `x-ratelimit-*` or `Retry-After` | Every non-2xx except 401/404 said "GitHub isn't answering" | `github_rate_limited` for 429, or 403 with `remaining: 0`, `Retry-After`, or a rate-limit message |
+| Single sign-on and organization policy | 403 means "no access" (`null`) | "isn't answering" | `github_sso_required` (`X-GitHub-SSO: required`), `github_forbidden` (OAuth App restrictions, disabled repositories), and a note when `X-GitHub-SSO: partial-results` hid repositories |
+| Bodies, timeouts, retries | 60-second fetch timeout; a byte-budget reader for blobs; zod parsing that names drifted fields | 256 KB cap (now 8 MB), 10-second timeout, no retry | 8 MB, checked against `Content-Length` first; 15 seconds per read; one retry of a dropped connection or a 502/503/504; a 2xx that isn't JSON is `github_bad_answer` |
+| Archived and disabled | Archived dropped, `disabled` never read | Both listed as normal | Disabled left out and refused as a project; archived marked and badged |
+| Environment commits | — | `/commits/{branch}` read the whole commit, every changed file and patch | `Accept: application/vnd.github.sha`, 40 bytes |
+| Clone auth | Host-scoped credential helper backed by a broker (refreshes with 5 minutes left; never uses a stale token); token kept out of the sandbox environment | Per-process helper answered **any** host, so a setup command's Git dependency on another host received the GitHub token | Answers only `https://github.com` |
+| Clone shape | `--depth 100 --branch`; 300 s clone / 120 s fetch limits with a separate `TIMED_OUT` outcome; no retries, no submodules, no LFS | `--depth=1` fetch of the exact pin, no retry | One retry; submodules, LFS and timeouts planned in [#11058](https://github.com/OpenAgentsInc/openagents/issues/11058) |
+| Sandbox liveness | Heartbeat every 30 s, stale at 90 s; spawn circuit breaker (3 failures in 5 minutes); idle 10 minutes with one 5-minute extension for viewers | Idle and absolute bounds; a silent turn holds the computer until the absolute bound | Planned in [#11059](https://github.com/OpenAgentsInc/openagents/issues/11059) |
+| Shared budget | Stale-while-revalidate repository-list cache (fresh 5 minutes, kept 1 hour) | Composer reads `api.github.com` anonymously (60 per hour per server IP, shared by every visitor) | Planned in [#11057](https://github.com/OpenAgentsInc/openagents/issues/11057) |
+| Tests | Token parsing, nullable fields, archived exclusion. No multi-page, 401-retry or rate-limit tests | Tiny objects, one page, no `Link`, no failures | See below |
+
+**The fake GitHub now behaves like github.com.** `crates/oa-auth/src/fake.rs`:
+
+- answers with whole repository objects, about 6 KB each with synthetic values (`fake::repository`);
+- pages `/user/repos` with `per_page` and `page` and sends GitHub's `Link` header;
+- sends `x-ratelimit-*` headers on every API answer;
+- fails on request (`Fake::fail`, `Fake::fail_later`, `fake::Fault`) the ways GitHub does: hourly and secondary rate limits, 429, 5xx, an HTML page, single sign-on, and organization restrictions;
+- includes `fake::busy(n)`, a person with `n` repositories across two organizations, some private, archived or disabled.
+
+The new end-to-end tests in `crates/oa-auth/tests/repos.rs` cover:
+
+- a 250-repository account paged by GitHub's `Link` headers;
+- every refusal code;
+- a retried 502, and two 502s in a row;
+- organizations hidden by single sign-on.
+
+**Worth adopting from them:**
+
+- the installation-token cache rules and the host-scoped credential broker (#11056);
+- stale-while-revalidate repository lists (#11057);
+- clone and fetch timeouts with their own outcome (#11058);
+- heartbeat staleness and a spawn circuit breaker (#11059).
+
+**Not worth copying:**
+
+- unbounded parallel page fetches;
+- treating 403 as "no access";
+- having no rate-limit handling;
+- tokens in clone URLs;
+- untested pagination.
+
 ## What to avoid
 
 - Do not adopt the single-organization trust model for public Cloud customers.
