@@ -17,7 +17,7 @@ use openagents_wallet::LightningWallet;
 use pay_ledger::compute::{Need, Principal, credential_digest};
 use retail_cloud::{
     authority::{Current, DisclosureConsent, ExecuteGrant, GrantSource, ObserveGrant, SpendRight},
-    cancel, contract, dispatch, material,
+    cancel, contract, dispatch, environment, material,
     offer::{self, Capacity, ConfirmedVia, FundedRequest},
     provision::Provider,
     retain::Artifacts,
@@ -297,6 +297,13 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         }
         Ok(advertisement)
     }
+    /// The owner's environment launch, or closed.
+    fn environments(&self) -> Result<&types::EnvironmentLaunch> {
+        self.config
+            .environments
+            .as_ref()
+            .ok_or(Error::Unavailable("saved environments are not available"))
+    }
     fn require_open(&self, store: &Store, exclude: Option<&str>) -> Result<()> {
         if self.advertisement(store, exclude)?.paid_capacity.is_none() {
             return Err(Error::Unavailable("paid retail capacity is closed"));
@@ -381,7 +388,12 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let mut guard = self.lock()?;
         let store = &mut *guard;
         let need = match request {
-            Request::TopUp { .. } | Request::Offer { .. } | Request::Confirm { .. } => Need::Spend,
+            Request::TopUp { .. }
+            | Request::Offer { .. }
+            | Request::Confirm { .. }
+            | Request::EnvironmentOffer { .. }
+            | Request::EnvironmentConfirm { .. }
+            | Request::EnvironmentRenew { .. } => Need::Spend,
             _ => Need::Read,
         };
         let (identity, grant) = self.authenticate(&store, principal, secret, need)?;
@@ -631,6 +643,70 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     retail_cloud::reserve::reserve(&mut store.ledger, &funded, &current, now)?;
                 json!({"execution":funded.execution,"request":funded.request,"offer":funded.offer,"admission":funded.admission.digest(),"accepted":true,"state":hold.state.as_str()})
             }
+            Request::EnvironmentOffer {
+                idempotency,
+                request,
+            } => {
+                if !grant.execute || !grant.disclose {
+                    return Err(Error::Denied);
+                }
+                let launch = self.environments()?;
+                let id = opaque("re", &identity.account, &idempotency)?;
+                let p = environment::offer(
+                    &mut store.journal,
+                    &launch.book,
+                    &launch.gate,
+                    &identity.account,
+                    &id,
+                    &request,
+                    now,
+                )?;
+                environment_value(&p, &identity.account, now)?
+            }
+            Request::EnvironmentConfirm { purchase, digest } => {
+                if !grant.execute || !grant.disclose {
+                    return Err(Error::Denied);
+                }
+                let launch = self.environments()?;
+                let p = environment::confirm(
+                    &mut store.journal,
+                    &mut store.ledger,
+                    &launch.book,
+                    &launch.gate,
+                    &identity.account,
+                    &purchase,
+                    &digest,
+                    identity.rights.spend,
+                    now,
+                )?;
+                environment_value(&p, &identity.account, now)?
+            }
+            Request::Environment { purchase } => {
+                let p = environment::purchase(&store.journal, &identity.account, &purchase)?
+                    .ok_or(Error::Denied)?;
+                environment_value(&p, &identity.account, now)?
+            }
+            Request::EnvironmentRenew {
+                purchase,
+                idempotency,
+                days,
+            } => {
+                let launch = self.environments()?;
+                let renewal = opaque("rr", &identity.account, &idempotency)?;
+                let p = environment::renew(
+                    &mut store.journal,
+                    &mut store.ledger,
+                    &launch.book,
+                    &launch.gate,
+                    &identity.account,
+                    &purchase,
+                    &renewal,
+                    days,
+                    identity.rights.spend,
+                    now,
+                )?;
+                environment_value(&p, &identity.account, now)?
+            }
             Request::Executions { after } => {
                 if let Some(cursor) = &after {
                     self.funded_for(store, &identity.account, cursor)?;
@@ -805,6 +881,20 @@ fn offer_value(
         json!({"terms":custody_terms(made, commercial),"digest":custody_digest(made, commercial)});
     value
 }
+/// One saved-environment purchase as its own account reads it.
+fn environment_value(p: &environment::Purchase, account: &str, now: i64) -> Result<Value> {
+    Ok(json!({
+        "purchase": p.id,
+        "digest": p.digest,
+        "request": p.request,
+        "quote": p.quote,
+        "admission": p.admission,
+        "phase": p.phase,
+        "retention": p.retention,
+        "selectable": environment::may_select(p, account, now),
+    }))
+}
+
 fn opaque(prefix: &str, account: &str, idempotency: &str) -> Result<String> {
     if idempotency.is_empty()
         || idempotency.len() > 64

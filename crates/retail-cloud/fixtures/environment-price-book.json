@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.cloud.environment-price-book.v1",
+  "version": "retail-env-2026-10-09.0",
+  "status": "proposed",
+  "effective_at": 1791504000,
+  "credit": { "name": "credit", "sats": 1 },
+  "class": {
+    "computer": "retail-env-boat-large-v1",
+    "task": "retail-environment-setup-v1",
+    "compute_msats_per_machine_second": 40,
+    "machines": 4,
+    "max_seconds": 7200,
+    "coordination_sats": 200,
+    "storage_msats_per_gb_day": 3000,
+    "image_gb_max": 50,
+    "retention_days_max": 90,
+    "recipient": "openagents",
+    "model": { "kind": "caller_key", "provider": "openai" }
+  }
+}

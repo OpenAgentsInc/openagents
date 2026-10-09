@@ -100,7 +100,7 @@ async fn killed_service_resumes_original_resource_task_and_settlement() {
     let key_path = root.join("boat.key");
     private(&key_path, "synthetic-retail-boat-key");
     let config_path = root.join("host.json");
-    private(&config_path,&serde_json::to_string(&json!({"mode":"development","customer":Config {schema:SCHEMA.into(),state:root.join("service"),ledger:ledger_path.clone(),template:"oa-coder-main-2026-10-07".into(),grants:vec![RetailGrant {principal:"cli:alice".into(),account:"alice".into(),generation:1,observe:true,execute:true,disclose:true}],contract_confirmed:true,qualification:Some(receipt.clone()),supported_plan:receipt.plan.clone(),plan_starts_left:Some(4)},"listen":address,"boat_api_base":boat.base(),"boat_org":null,"boat_key_file":key_path,"wallet_home":wallet_home,"poll_seconds":1})).unwrap());
+    private(&config_path,&serde_json::to_string(&json!({"mode":"development","customer":Config {schema:SCHEMA.into(),state:root.join("service"),ledger:ledger_path.clone(),template:"oa-coder-main-2026-10-07".into(),grants:vec![RetailGrant {principal:"cli:alice".into(),account:"alice".into(),generation:1,observe:true,execute:true,disclose:true}],contract_confirmed:true,qualification:Some(receipt.clone()),supported_plan:receipt.plan.clone(),plan_starts_left:Some(4),environments:None},"listen":address,"boat_api_base":boat.base(),"boat_org":null,"boat_key_file":key_path,"wallet_home":wallet_home,"poll_seconds":1})).unwrap());
     let operator_key = root.join("operator.key");
     private(&operator_key, "synthetic-operator-key");
     let ingress = root.join("Caddyfile");

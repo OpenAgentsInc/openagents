@@ -24,6 +24,9 @@
 //! - [`cancel`]: separate stop, teardown, usage, and settled-charge receipts.
 //! - [`settle`]: atomic measured debits and unused hold releases.
 //! - [`journal`]: the durable intents and observations a restart reads.
+//! - [`environment`]: saved customer environments (ENV-10), their price
+//!   book, holds, settlement, prepaid retention, and recovery, closed until
+//!   the owner reviews and qualifies them.
 //! - `boat` (feature `boat`): the live Boat binding for the provider,
 //!   sandbox, task-owner, stop, and artifact seams (#10748).
 
@@ -33,6 +36,7 @@ pub mod boat;
 pub mod cancel;
 pub mod contract;
 pub mod dispatch;
+pub mod environment;
 pub mod fake;
 pub mod journal;
 pub mod material;
@@ -70,6 +74,9 @@ pub enum Error {
     /// Material was not delivered.
     #[error("material refused: {0:?}")]
     Material(material::MaterialRefusal),
+    /// A saved-environment step was refused, with its typed reason.
+    #[error("environment refused: {0:?}")]
+    Environment(environment::Refusal),
     /// A live binding's call failed; its effect may be unknown.
     #[error("remote: {0}")]
     Remote(String),
@@ -85,6 +92,7 @@ pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
     cancel::SCHEMA,
     recover::SCHEMA,
     settle::SCHEMA,
+    environment::SCHEMA,
 ];
 
 pub type Result<T> = std::result::Result<T, Error>;

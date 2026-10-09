@@ -755,6 +755,25 @@ versions sealed on GCE are not yet selectable for operator Cloud jobs,
 which start on Boat. A real GCE build and verification is the owner-only
 ENV-09 entry in `NEEDS_OWNER.md`.
 
+ENV-10 is the proposed customer contract
+[`retail-environment-contract.md`](../retail-environment-contract.md)
+(`openagents.cloud.retail-environment.v1`) and its funded lifecycle in
+[`retail_cloud::environment`](../../../crates/retail-cloud/src/environment.rs).
+It covers the price book (compute per machine-second, coordination, and
+storage per GB-day), the hold of the quoted maximum, a once-only settlement
+recorded under its own ledger resource, prepaid renewal, and lapse, which
+stops selection and makes the image due for deletion. Only the buying
+account may select a saved version. The customer's own OpenAI key is the
+only credential, and there is no terminal or publication. Customers reach it
+through the authenticated retail transport (`environment_offer`,
+`environment_confirm`, `environment`, `environment_renew` on `/v1/retail`,
+and the native client). The retail worker's tick recovers it after a
+restart. It is closed until the owner reviews the contract, publishes a
+reviewed book by digest, and records a funded qualification; the
+checked-in book is `proposed`. The step that runs a paid purchase's
+machines through the ENV-03 to ENV-05 owners on a retail grant is part of
+that owner-funded qualification. The tests here use fake funding only.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

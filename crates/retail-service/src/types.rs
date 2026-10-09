@@ -38,6 +38,20 @@ pub struct Config {
     pub qualification: Option<QualificationReceipt>,
     pub supported_plan: String,
     pub plan_starts_left: Option<u32>,
+    /// Saved customer environments (ENV-10); absent keeps them closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environments: Option<EnvironmentLaunch>,
+}
+
+/// The owner's published environment price book and the gate that opens
+/// it (`docs/cloud/retail-environment-contract.md`). The gate stays shut
+/// unless it names this book's digest, the reviewed contract, and a
+/// funded qualification.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentLaunch {
+    pub book: retail_cloud::environment::PriceBook,
+    pub gate: retail_cloud::environment::Gate,
 }
 
 /// Customer credentials are transient request material. Neither debug nor
@@ -99,6 +113,22 @@ pub enum Request {
     },
     Receipt {
         execution: String,
+    },
+    EnvironmentOffer {
+        idempotency: String,
+        request: retail_cloud::environment::EnvironmentRequest,
+    },
+    EnvironmentConfirm {
+        purchase: String,
+        digest: Digest,
+    },
+    Environment {
+        purchase: String,
+    },
+    EnvironmentRenew {
+        purchase: String,
+        idempotency: String,
+        days: u64,
     },
 }
 

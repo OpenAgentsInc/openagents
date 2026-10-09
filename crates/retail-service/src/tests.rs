@@ -220,6 +220,7 @@ impl Fixture {
             qualification: Some(receipt),
             supported_plan: plan.digest(),
             plan_starts_left: Some(20),
+            environments: None,
         };
         crate::store::private_file_fixture(&config.ledger);
         let mut ledger = pay_ledger::Ledger::open(&config.ledger).unwrap();
@@ -2117,3 +2118,120 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
 
 #[path = "tests/shared.rs"]
 mod shared;
+
+fn environment_request() -> Value {
+    json!({"source":{"repository":"https://github.com/OpenAgentsInc/example","commit":"c".repeat(40)},"objective":"Build and test the workspace.","profile":"rust-library","checks":["cargo test -p parser"],"max_seconds":600,"retention_days":1,"ceiling_sats":null})
+}
+
+#[test]
+fn saved_environments_use_the_retail_transport_and_stay_closed_by_default() {
+    let mut f = Fixture::new();
+    // Closed: no owner launch in the configuration.
+    let closed = f.open();
+    assert!(matches!(
+        call(
+            &closed,
+            "alice",
+            json!({"op":"environment_offer","idempotency":"e1","request":environment_request()}),
+        ),
+        Err(Error::Unavailable(_))
+    ));
+    drop(closed);
+    // A synthetic owner launch: a published copy of the proposed book.
+    // It is a fixture, not a reviewed price or a funded qualification.
+    let mut book = retail_cloud::environment::price_book();
+    book.status = retail_cloud::environment::BookStatus::Published;
+    f.config.environments = Some(types::EnvironmentLaunch {
+        gate: retail_cloud::environment::Gate {
+            contract_reviewed: true,
+            book: Some(book.digest()),
+            qualification: Some("synthetic-qualification-fixture".into()),
+        },
+        book,
+    });
+    let s = f.open();
+    let offer = call(
+        &s,
+        "alice",
+        json!({"op":"environment_offer","idempotency":"e1","request":environment_request()}),
+    )
+    .unwrap()["result"]
+        .clone();
+    // 600 s x 4 machines x 40 msat + 200 + 50 GB x 1 day x 3 sat.
+    assert_eq!(offer["quote"]["max_sats"], 96 + 200 + 150);
+    let purchase = offer["purchase"].as_str().unwrap().to_owned();
+    // Another customer cannot read or confirm it; a reader cannot spend.
+    assert!(matches!(
+        call(&s, "bob", json!({"op":"environment","purchase":purchase})),
+        Err(Error::Lifecycle(retail_cloud::Error::Environment(_)))
+    ));
+    let confirm = json!({"op":"environment_confirm","purchase":purchase,"digest":offer["digest"]});
+    assert!(matches!(
+        call(&s, "bob", confirm.clone()),
+        Err(Error::Lifecycle(retail_cloud::Error::Environment(_)))
+    ));
+    assert!(matches!(
+        s.call(
+            "reader",
+            "reader",
+            serde_json::from_value(confirm.clone()).unwrap(),
+            NOW
+        ),
+        Err(Error::Denied)
+    ));
+    // Confirm holds the maximum once.
+    let before = balance(&s, "alice");
+    let confirmed = call(&s, "alice", confirm.clone()).unwrap()["result"].clone();
+    assert_eq!(confirmed["phase"]["phase"], "confirmed");
+    call(&s, "alice", confirm).unwrap();
+    let held = balance(&s, "alice");
+    assert_eq!(
+        held["held_msat"].as_i64().unwrap() - before["held_msat"].as_i64().unwrap(),
+        446_000
+    );
+    // The runner records a saved version; the worker settles it once.
+    {
+        let mut store = s.lock().unwrap();
+        let store = &mut *store;
+        retail_cloud::environment::end(
+            &mut store.journal,
+            &mut store.ledger,
+            &purchase,
+            retail_cloud::environment::Ending::Saved,
+            Some(retail_cloud::environment::Usage {
+                machine_seconds: 1000,
+                image_gb: Some(5),
+            }),
+            Some(retail_cloud::environment::Saved {
+                environment: "env-1".into(),
+                version: "env-1-v1".into(),
+                image_id: "oaenv-build-1-abc".into(),
+            }),
+            NOW + 1,
+        )
+        .unwrap();
+    }
+    s.tick(NOW + 2).unwrap();
+    s.tick(NOW + 3).unwrap();
+    let read =
+        call(&s, "alice", json!({"op":"environment","purchase":purchase})).unwrap()["result"]
+            .clone();
+    assert_eq!(read["phase"]["phase"], "settled");
+    assert_eq!(read["selectable"], true);
+    let after = balance(&s, "alice");
+    // 1000 machine-seconds (40) + 200 + 5 GB x 1 day (15).
+    assert_eq!(
+        after["settled_msat"].as_i64().unwrap() - before["settled_msat"].as_i64().unwrap(),
+        255_000
+    );
+    assert_eq!(after["held_msat"], before["held_msat"]);
+    // A renewal is prepaid; its retry is the same renewal.
+    let renew = json!({"op":"environment_renew","purchase":purchase,"idempotency":"r1","days":2});
+    call(&s, "alice", renew.clone()).unwrap();
+    call(&s, "alice", renew).unwrap();
+    assert_eq!(
+        balance(&s, "alice")["settled_msat"].as_i64().unwrap()
+            - after["settled_msat"].as_i64().unwrap(),
+        30_000
+    );
+}

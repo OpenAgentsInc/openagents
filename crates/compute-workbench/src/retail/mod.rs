@@ -889,6 +889,31 @@ impl Client {
         }
         self.call(json!({"op":"cancel","execution":execution}))
     }
+    /// Offer one saved environment (`docs/cloud/retail-environment-contract.md`).
+    /// The service refuses until the owner opens environments.
+    pub fn environment_offer(
+        &self,
+        idempotency: &str,
+        request: &retail_cloud::environment::EnvironmentRequest,
+    ) -> Result<Value> {
+        self.authority(true)?;
+        self.call(json!({"op":"environment_offer","idempotency":idempotency,"request":request}))
+    }
+    /// Confirm the displayed environment offer: its maximum is held.
+    pub fn environment_confirm(&self, purchase: &str, digest: &Digest) -> Result<Value> {
+        self.authority(true)?;
+        self.call(json!({"op":"environment_confirm","purchase":purchase,"digest":digest}))
+    }
+    pub fn environment(&self, purchase: &str) -> Result<Value> {
+        self.call(json!({"op":"environment","purchase":purchase}))
+    }
+    /// Keep a saved environment `days` more days, paid now.
+    pub fn environment_renew(&self, purchase: &str, idempotency: &str, days: u64) -> Result<Value> {
+        self.mutable()?;
+        self.call(
+            json!({"op":"environment_renew","purchase":purchase,"idempotency":idempotency,"days":days}),
+        )
+    }
     pub fn artifact(&self, execution: &str, name: &str) -> Result<Value> {
         self.call(json!({"op":"artifact","execution":execution,"name":name}))
     }

@@ -132,6 +132,22 @@ fn response(result: crate::Result<serde_json::Value>) -> axum::response::Respons
                 Error::Lifecycle(retail_cloud::Error::Conflict(_)) => {
                     (StatusCode::CONFLICT, "terms_conflict")
                 }
+                Error::Lifecycle(retail_cloud::Error::Environment(r)) => {
+                    use retail_cloud::environment::Refusal as R;
+                    match r {
+                        R::NotYours | R::NoSpendRight | R::SharedBalance => {
+                            (StatusCode::FORBIDDEN, "access_denied")
+                        }
+                        R::Changed | R::Lapsed | R::Phase => {
+                            (StatusCode::CONFLICT, "terms_conflict")
+                        }
+                        R::Unsupported { .. }
+                        | R::AboveCeiling { .. }
+                        | R::ImageTooLarge
+                        | R::Malformed { .. } => (StatusCode::BAD_REQUEST, "invalid_request"),
+                        R::Closed => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+                    }
+                }
                 _ => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
             };
             (status, json!({"schema":SCHEMA,"error":code}))

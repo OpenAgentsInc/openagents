@@ -30,6 +30,11 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let store = &mut *guard;
         retail_cloud::topup::reconcile(&mut store.ledger, &*self.wallet, now)?;
         store.check()?;
+        // Saved environments: finish lost confirmations, settle known
+        // endings once, and lapse retention that ran out.
+        let environments =
+            retail_cloud::environment::recover(&mut store.journal, &mut store.ledger, now);
+        store.check()?;
         let mut expired = store.db.prepare(
             "SELECT id FROM offer WHERE confirmation IS NULL AND done=0 AND created_at<=? ORDER BY created_at,id LIMIT 16",
         )?;
@@ -59,6 +64,9 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             pending: 0,
             failed: vec![],
         };
+        if environments.is_err() {
+            report.failed.push("environments".into());
+        }
         for id in ids {
             report.visited += 1;
             match self.advance(store, &id, now) {
