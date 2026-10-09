@@ -4702,6 +4702,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown-stream"
+version = "0.1.0"
+dependencies = [
+ "pulldown-cmark",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6790,6 +6797,7 @@ name = "rust-native"
 version = "0.1.0"
 dependencies = [
  "code-highlight",
+ "markdown-stream",
  "paper-mono",
  "pulldown-cmark",
  "serde",

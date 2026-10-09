@@ -191,6 +191,25 @@ binds and rules. The compositor is `crates/coder-compositor`, built by
 neither compositor option builds neither. `compositorBinary` runs a build
 from a checkout instead.
 
+### The product workspace
+
+`os/bin/oa-workspace` puts the whole product on one desk (desk 5) in four
+panes: the Android emulator with the OpenAgents preview app on its Verse
+tab, the website from `scripts/dev/full-local.sh` in a Chromium app window
+with a demo chat, the Verse client in Everglade at the owner's workshop
+(`verse --owners-house`), and two Coder panes running `coder-new`. Run it
+from a checkout on the host, over SSH or from a pane:
+
+```sh
+os/bin/oa-workspace build   # origin/main (when the checkout is clean), then every build, through `openagents lease build`
+os/bin/oa-workspace         # start what is not running, lay it out, show desk 5
+os/bin/oa-workspace shot /tmp/workspace.png
+os/bin/oa-workspace stop
+```
+
+Builds go to `~/work/openagents-target-workspace`, never to the host
+service's `target/release`. The script's header lists its settings.
+
 ## Run the Coder host
 
 Turn on both modules for the account that runs the host:

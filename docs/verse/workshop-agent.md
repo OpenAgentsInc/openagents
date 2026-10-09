@@ -93,7 +93,7 @@ draws her as `ALICE / owner only` and gives no F prompt.
 
 To go through the whole flow:
 
-1. Run Verse, or the OpenAgents desktop app, and walk into your house: the
+1. Run Verse and walk into your house (the OpenAgents desktop app's Verse page draws only the Grid, with no Everglade yet): the
    east end of Library Way, in through the front door. `verse
    --owners-house` starts just inside the door, facing her.
 1. Walk up to her workstation and press F. The first time, she sets

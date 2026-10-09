@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+# The product workspace on a CoderOS screen: the whole product at once, on
+# one desk, in four panes (#11124).
+#
+#   ┌──────────┬─────────────────────┬─────────────────────┐
+#   │ Android  │ the website, local, │ the Verse: Everglade│
+#   │ emulator │ with a demo chat    │ at the owner's      │
+#   │ (Verse   │                     │ workshop            │
+#   │  tab)    ├──────────┬──────────┴─────────────────────┤
+#   │          │ coder    │ coder                          │
+#   └──────────┴──────────┴────────────────────────────────┘
+#
+#   oa-workspace            start what is not running, lay it out, show the desk
+#   oa-workspace build      bring this checkout to origin/main (when it is
+#                           clean) and rebuild everything the panes run
+#   oa-workspace shot FILE  write a PNG of the screen
+#   oa-workspace stop       close the panes and stop the local web stack
+#
+# Run it from a checkout of this repository on the box (it builds and runs
+# that checkout), over SSH or from a pane. It finds the desk socket itself.
+#
+# What each pane runs:
+#
+#   Android   os/bin/android-emulator, with the OpenAgents app built with
+#             OPENAGENTS_MOBILE_PREVIEW=on for x86_64 (the Verse tab shows only
+#             in a preview build), opened on the Verse tab.
+#   Website   scripts/dev/full-local.sh (gateway, chat worker, website on
+#             127.0.0.1:4301) in a Chromium app window on its own profile,
+#             with one starter question sent through the local stack.
+#   Verse     the `verse` desktop client with --owners-house: Everglade, just
+#             inside the owner's house, facing the workshop agent. The
+#             openagents-desktop window's Verse page draws only the Grid, with
+#             no Everglade; `build` still builds it, with
+#             OPENAGENTS_DESKTOP_PREVIEW=on.
+#   Coder     two foot panes running coder-new built from this checkout.
+#
+# Nothing here touches the host service binary, ~/openagents/target/release/
+# coder: every build goes to OA_WORKSPACE_TARGET, and every build waits its
+# turn through `openagents lease build`.
+#
+# Settings, with their defaults:
+#
+#   OA_WORKSPACE_TARGET   ~/work/openagents-target-workspace   the cargo target
+#   OA_WORKSPACE_DESK     5                                    the desk it uses
+#   OA_WORKSPACE_SPARE_DESK 9                                  where the emulator's
+#                                                              side toolbar goes
+#   OA_WORKSPACE_STATE    ~/.openagents/workspace              browser profile
+#   OA_WORKSPACE_QUESTION What is OpenAgents?                  the demo question
+set -uo pipefail
+
+root=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+target=${OA_WORKSPACE_TARGET:-$HOME/work/openagents-target-workspace}
+desk=${OA_WORKSPACE_DESK:-5}
+spare_desk=${OA_WORKSPACE_SPARE_DESK:-9}
+state=${OA_WORKSPACE_STATE:-$HOME/.openagents/workspace}
+question=${OA_WORKSPACE_QUESTION:-What is OpenAgents?}
+web_port=4301
+cdp_port=9223
+serial=emulator-5554
+app=com.openagents.app
+apk="$target/openagents-android/gradle/app/outputs/apk/debug/app-debug.apk"
+web_class="chrome-127.0.0.1__-Default"
+log="$state/logs"
+mkdir -p "$state" "$log"
+export PROTOC="${PROTOC:-$(command -v protoc || echo "$HOME/.nix-profile/bin/protoc")}"
+
+say() { printf 'oa-workspace: %s\n' "$*" >&2; }
+
+# The desk the session serves. Over SSH nothing announces it, so take the
+# socket whose compositor is alive.
+desk_env() {
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -n "${CODER_DESK_SOCKET:-}" ] && [ -S "$CODER_DESK_SOCKET" ]; then
+        return 0
+    fi
+    local sock pid
+    for sock in "$XDG_RUNTIME_DIR"/coder-desk/*.sock; do
+        [ -S "$sock" ] || continue
+        pid=$(basename "$sock" .sock)
+        if kill -0 "$pid" 2>/dev/null; then
+            export CODER_DESK_SOCKET="$sock"
+            return 0
+        fi
+    done
+    [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && return 0
+    say "no desktop session on this machine"
+    exit 3
+}
+
+# window JQ-FILTER: the handle of the first window the filter selects.
+window() { coder-desk list 2>/dev/null | jq -r "[.[] | select($1)][0].handle // empty"; }
+
+open_on_desk() { coder-desk open --desk "$desk" --silent -- "$1"; }
+
+# wait_for SECONDS COMMAND...: run COMMAND each second until it succeeds.
+wait_for() {
+    local seconds=$1 i=0
+    shift
+    while [ "$i" -lt "$seconds" ]; do
+        "$@" >/dev/null 2>&1 && return 0
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+# The real Chromium, not the shim that hands every launch to the Coder Browser.
+chromium_bin() {
+    if [ -n "${OA_WORKSPACE_CHROMIUM:-}" ]; then echo "$OA_WORKSPACE_CHROMIUM"; return; fi
+    local launcher
+    launcher=$(command -v coder-browser 2>/dev/null) || { command -v chromium; return; }
+    launcher=$(grep -o '/nix/store/[^ ]*-coder-browser/bin/coder-browser' "$(readlink -f "$launcher")" | head -1 || true)
+    [ -n "$launcher" ] || launcher=$(readlink -f "$(command -v coder-browser)")
+    local dir
+    dir=$(grep -o '/nix/store/[^:"]*ungoogled-chromium-[0-9.]*/bin' "$launcher" | head -1)
+    if [ -n "$dir" ] && [ -x "$dir/chromium" ]; then echo "$dir/chromium"; else command -v chromium; fi
+}
+
+# cdp JS: evaluate JS in the website window's page and print the value.
+cdp() {
+    node --input-type=module - "$cdp_port" "$1" << 'NODE'
+const [port, expr] = process.argv.slice(2);
+const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const page = list.find((t) => t.type === "page");
+if (!page) process.exit(1);
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((r) => (ws.onopen = r));
+ws.onmessage = (m) => {
+  const d = JSON.parse(m.data);
+  if (d.id !== 1) return;
+  const v = d.result?.result?.value;
+  console.log(typeof v === "string" ? v : JSON.stringify(v ?? null));
+  process.exit(0);
+};
+ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate",
+  params: { expression: expr, awaitPromise: true, returnByValue: true } }));
+setTimeout(() => process.exit(1), 10000);
+NODE
+}
+
+lease_build() {
+    (cd "$root" && CARGO_TARGET_DIR="$target" openagents lease build --keep-target-dir --priority owner -- "$@")
+}
+
+build() {
+    if [ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]; then
+        if git -C "$root" fetch -q origin main; then
+            if [ "$(git -C "$root" symbolic-ref -q --short HEAD || true)" = main ]; then
+                git -C "$root" merge -q --ff-only origin/main
+            else
+                git -C "$root" checkout -q --detach origin/main
+            fi
+        fi
+    else
+        say "$root has uncommitted changes; building it as it is"
+    fi
+    say "building $(git -C "$root" log -1 --format='%h %s' | cut -c1-70)"
+    local shell="nix develop $root/os#compositor -c"
+    say "web stack and coder-new"
+    lease_build $shell cargo build -p gateway --bin gateway -p coder --bin coder-worker \
+        --bin chat-goldens -p openagents-web --bin openagents-web -p coder-new --bin coder-new \
+        -p tenancy --example bootstrap_registry || return 1
+    say "the Verse client"
+    # The Verse plays sound, and the compositor shell carries no ALSA.
+    local alsa
+    alsa=$(nix build --no-link --print-out-paths --inputs-from "$root/os" nixpkgs#alsa-lib.dev) || return 1
+    lease_build $shell bash -c "PKG_CONFIG_PATH=$alsa/lib/pkgconfig:\${PKG_CONFIG_PATH:-} cargo build -p verse --bin verse" || return 1
+    say "openagents-desktop (preview)"
+    OPENAGENTS_DESKTOP_PREVIEW=on lease_build $shell cargo build -p openagents-desktop \
+        --bin openagents-desktop || return 1
+    say "Android app (preview, x86_64)"
+    OPENAGENTS_MOBILE_PREVIEW=on OPENAGENTS_ANDROID_ABI=x86_64 \
+        lease_build nix develop "$root/os#android" -c bash bins/openagents-android/build.sh package || return 1
+    say "built"
+}
+
+web_running() { curl -fsS -o /dev/null "http://127.0.0.1:$web_port/health"; }
+
+start_web() {
+    if ! web_running; then
+        say "starting the local web stack"
+        CARGO_TARGET_DIR="$target" FULL_LOCAL_ENVIRONMENTS=0 \
+            sh "$root/scripts/dev/full-local.sh" start --no-build > "$log/full-local.log" 2>&1 \
+            || { say "the web stack did not start; see $log/full-local.log"; return 1; }
+    fi
+    if [ -z "$(window ".app_id == \"$web_class\"")" ]; then
+        open_on_desk "$(chromium_bin) --ozone-platform=wayland --disable-features=Vulkan \
+--force-dark-mode --user-data-dir=$state/chromium --remote-debugging-address=127.0.0.1 \
+--remote-debugging-port=$cdp_port --no-first-run --no-default-browser-check \
+--app=http://127.0.0.1:$web_port/"
+        wait_for 30 cdp "1" || { say "the browser did not open"; return 1; }
+        sleep 2
+    fi
+    # The demo chat: one starter question, asked through the local stack.
+    case "$(cdp 'location.pathname')" in
+        /chat/*) ;;
+        *)
+            say "asking: $question"
+            cdp "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === $(printf '%s' "$question" | jq -Rs .))?.click(); 1" > /dev/null
+            local i=0
+            while [ "$i" -lt 20 ] && [ "$(cdp 'location.pathname' | cut -c1-6)" != /chat/ ]; do
+                sleep 1
+                i=$((i + 1))
+            done
+            # The answer streams from the chat worker in a few seconds.
+            sleep 20
+            ;;
+    esac
+    # Without the chat's Wasm build the answer shows on the next load.
+    cdp 'location.reload(); 1' > /dev/null
+}
+
+start_android() {
+    if [ -z "$(window '.app_id == "Emulator"')" ]; then
+        say "starting the Android emulator"
+        open_on_desk "android-emulator start"
+    fi
+    wait_for 180 sh -c "[ \"\$(adb -s $serial shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]" \
+        || { say "the emulator did not boot"; return 1; }
+    if [ -f "$apk" ]; then
+        local sum
+        sum=$(sha256sum "$apk" | cut -c1-64)
+        if [ "$(cat "$state/apk.sha256" 2>/dev/null)" != "$sum" ] \
+            || ! adb -s "$serial" shell pm path "$app" > /dev/null 2>&1; then
+            say "installing the Android app"
+            adb -s "$serial" install -r "$apk" > "$log/adb-install.log" 2>&1 && echo "$sum" > "$state/apk.sha256"
+        fi
+    else
+        say "no Android build at $apk; run oa-workspace build"
+    fi
+    adb -s "$serial" shell am start -S -n "$app/.MainActivity" --es tab verse > /dev/null 2>&1
+}
+
+verse_pid() { pgrep -f "^$target/debug/verse --owners-house" | head -1; }
+
+start_verse() {
+    if [ -z "$(verse_pid)" ]; then
+        say "opening the Verse at the owner's workshop"
+        open_on_desk "nix develop $root/os#compositor -c $target/debug/verse --owners-house > $log/verse.log 2>&1"
+        wait_for 90 sh -c "pgrep -f '^$target/debug/verse --owners-house'" || true
+    fi
+}
+
+# The question each new Coder pane is asked, so both show a turn. Empty
+# leaves a pane at its prompt.
+ask_1=${OA_WORKSPACE_ASK_1-In three short bullets, what does os/bin/oa-workspace put on the screen?}
+ask_2=${OA_WORKSPACE_ASK_2-List the crates under crates/ whose names start with verse, one line each.}
+opened_coders=()
+
+start_coders() {
+    local n
+    for n in 1 2; do
+        if [ -z "$(window ".app_id == \"oa-workspace-coder-$n\"")" ]; then
+            open_on_desk "env CODER_PANE_CLIENT=$target/debug/coder-new CODER_PANE_DIRECTORY=$root coder-pane --app-id oa-workspace-coder-$n"
+            opened_coders+=("$n")
+        fi
+    done
+}
+
+# Type each new pane's question once the layout has settled.
+ask_coders() {
+    local n handle text
+    for n in "${opened_coders[@]}"; do
+        if [ "$n" = 1 ]; then text=$ask_1; else text=$ask_2; fi
+        handle=$(window ".app_id == \"oa-workspace-coder-$n\"")
+        [ -n "$text" ] && [ -n "$handle" ] || continue
+        coder-desk focus "$handle" && coder-desk type "$text" && coder-desk key return
+    done
+}
+
+# place HANDLE X Y W H: float the window on the desk at that rectangle.
+place() {
+    [ -n "$1" ] || return 0
+    coder-desk place "$1" "$desk" 2>/dev/null
+    coder-desk shape "$1" --float 2>/dev/null
+    coder-desk shape "$1" --at "$2,$3" --size "$4x$5"
+}
+
+layout() {
+    local screen w h g=6
+    screen=$(coder-desk screens | jq -c '.[0].size')
+    w=$(jq -r .width <<< "$screen")
+    h=$(jq -r .height <<< "$screen")
+    local left=$((w / 4)) top=$((h * 3 / 5))
+    local mid=$(((w - left) / 2))
+    local verse_win=""
+    local pid
+    pid=$(verse_pid)
+    [ -n "$pid" ] && verse_win=$(coder-desk list | jq -r --argjson p "$pid" '[.[] | select(.pid == $p)][0].handle // empty')
+    [ -z "$verse_win" ] && verse_win=$(window '(.title | test("^Verse"; "i")) and .app_id != "foot"')
+    place "$(window '.app_id == "Emulator" and (.title | startswith("Android Emulator"))')" "$g" "$g" $((left - 2 * g)) $((h - 2 * g))
+    # The emulator's side toolbar is a window of its own: off this desk.
+    local toolbar
+    toolbar=$(window '.app_id == "Emulator" and (.title | startswith("Android Emulator") | not)')
+    [ -n "$toolbar" ] && coder-desk place "$toolbar" "$spare_desk"
+    place "$(window ".app_id == \"$web_class\"")" $((left)) "$g" $((mid - g)) $((top - 2 * g))
+    place "$verse_win" $((left + mid)) "$g" $((mid - g)) $((top - 2 * g))
+    place "$(window '.app_id == "oa-workspace-coder-1"')" "$left" "$top" $((mid - g)) $((h - top - g))
+    place "$(window '.app_id == "oa-workspace-coder-2"')" $((left + mid)) "$top" $((mid - g)) $((h - top - g))
+    coder-desk key "super+$desk"
+    # The Verse enters Everglade only while its window has the focus.
+    [ -n "$verse_win" ] && coder-desk focus "$verse_win"
+}
+
+case "${1:-start}" in
+    start)
+        desk_env
+        command -v coder-desk > /dev/null || { say "coder-desk is not on PATH"; exit 1; }
+        [ -x "$target/debug/coder-new" ] || { say "nothing built in $target yet; run: $0 build"; exit 1; }
+        start_android &
+        android=$!
+        start_web
+        start_verse
+        start_coders
+        wait "$android"
+        sleep 3
+        layout
+        if [ "${#opened_coders[@]}" -gt 0 ]; then
+            sleep 5
+            ask_coders
+            layout
+        fi
+        say "the workspace is on desk $desk"
+        ;;
+    build)
+        build
+        ;;
+    layout)
+        desk_env
+        layout
+        ;;
+    shot)
+        desk_env
+        out=${2:-$state/shot.png}
+        # A window placed a moment ago draws its new size on its next frame.
+        sleep 2
+        screen=$(coder-desk screens | jq -r '.[0].name')
+        coder-desk shot --screen "$screen" "$out" && echo "$out"
+        ;;
+    stop)
+        desk_env
+        for sel in ".app_id == \"$web_class\"" '.app_id == "oa-workspace-coder-1"' '.app_id == "oa-workspace-coder-2"'; do
+            h=$(window "$sel")
+            [ -n "$h" ] && coder-desk close "$h"
+        done
+        pid=$(verse_pid)
+        [ -n "$pid" ] && kill "$pid"
+        android-emulator stop || true
+        CARGO_TARGET_DIR="$target" sh "$root/scripts/dev/full-local.sh" stop
+        ;;
+    -h | --help | help)
+        sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+        ;;
+    *)
+        sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2
+        exit 2
+        ;;
+esac
