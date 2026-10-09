@@ -883,7 +883,7 @@ impl Embeds {
             );
         }
         y += header + 28.0 * s;
-        // <h1>Download Coder</h1>
+        // <h1>Download OpenAgents</h1>
         let h1 = 19.6 * s;
         runs(
             &mut frame,
@@ -891,10 +891,10 @@ impl Embeds {
             x0,
             y + (h1 * 1.3 - line) / 2.0,
             h1,
-            &[("Download Coder", Weight::Bold, W100, false)],
+            &[("Download OpenAgents", Weight::Bold, W100, false)],
         );
         y += h1 * 1.3 + 14.0 * s;
-        // <h2>Coder + OpenAgents CLI</h2> and the release candidate.
+        // <h2>Coder</h2> and the release candidate.
         let h2 = 16.1 * s;
         runs(
             &mut frame,
@@ -902,7 +902,7 @@ impl Embeds {
             x0,
             y + (h2 * 1.3 - line) / 2.0,
             h2,
-            &[("Coder + OpenAgents CLI", Weight::Bold, W100, false)],
+            &[("Coder", Weight::Bold, W100, false)],
         );
         y += h2 * 1.3 + 3.5 * s;
         let lead = format!("Release candidate {}.", download.version);
@@ -956,7 +956,7 @@ impl Embeds {
             }
             y += pre.h + 14.0 * s;
         }
-        // What the installers put on the computer.
+        // How to open what the installer put on the computer.
         runs(
             &mut frame,
             &mut self.fonts,
@@ -964,13 +964,9 @@ impl Embeds {
             y,
             base,
             &[
-                ("Installs ", Weight::Regular, W75, false),
+                ("Run ", Weight::Regular, W75, false),
                 ("coder", Weight::Regular, W100, false),
-                (", ", Weight::Regular, W75, false),
-                ("openagents", Weight::Regular, W100, false),
-                (", and ", Weight::Regular, W75, false),
-                ("microcoder", Weight::Regular, W100, false),
-                (" together.", Weight::Regular, W75, false),
+                (" to open the new terminal.", Weight::Regular, W75, false),
             ],
         );
         y += line + 28.0 * s;
@@ -981,7 +977,7 @@ impl Embeds {
             x0,
             y,
             base,
-            &[("Download binaries manually", Weight::Regular, W100, true)],
+            &[("Download Coder manually", Weight::Regular, W100, true)],
         );
         y += line + 28.0 * s;
         y - area.y
@@ -1100,17 +1096,13 @@ mod tests {
             download.ps1
         );
         for phrase in [
-            "Download Coder",
-            "Coder + OpenAgents CLI",
+            "\"Download OpenAgents\"",
+            "\"Coder\"",
             "Release candidate ",
             "macOS and Linux:",
             "Windows, in PowerShell:",
-            "Installs ",
-            "\"coder\"",
-            "\"openagents\"",
-            "\"microcoder\"",
-            " together.",
-            "Download binaries manually",
+            "\"Run \" code { \"coder\" } \" to open the new terminal.",
+            "Download Coder manually",
         ] {
             assert!(DOWNLOAD_SOURCE.contains(phrase), "{phrase}");
         }
