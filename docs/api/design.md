@@ -374,6 +374,8 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `POST /v1/threads/{id}/stop` | — | Stop an answer | PUBLIC | key `threads` / session | `chat.threads` | planned |
 | `GET /v1/threads/{id}/events` | web `GET /chat/{id}/events` | One thread live (SSE) | FIRST-PARTY | session | `chat.messages` | launch |
 | `GET /v1/events` | web `GET /chats/events` | Thread list live (SSE) | FIRST-PARTY | session | `chat.threads` | launch |
+| `GET /v1/threads`, `GET /v1/threads/{id}`, `POST /v1/threads/{id}/messages` (app token) | web `crates/openagents-web/src/phone_api.rs` | The apps read the account's web, terminal, and phone chats and reply (#11107) | FIRST-PARTY | app | `chat.threads`, `chat.messages` | built (staging) |
+| `POST /v1/computers/{name}/activity`, `GET /v1/agents`, `POST /v1/agents/actions` | web `phone_api.rs` | Coder reports what runs on a computer and takes stop, approve, deny, and message; the phone lists and acts (#11165) | FIRST-PARTY | app | `work.runs` (per-account `agents/activity.json` today) | built (staging) |
 | `GET /v1/threads?surface=terminal`, `PUT`/`DELETE /v1/threads/{id}` | web `GET /coder/sessions`, `PUT`/`DELETE /coder/sessions/{session}` | Terminal chats synced to the account | FIRST-PARTY | app | `chat.threads`, `chat.messages` + bucket | launch |
 | `POST /v1/threads/{id}/status`, `POST /v1/threads/{id}/replies/take` | web `/coder/sessions/{session}/status`, `/replies` | Working status; take replies typed on the web | FIRST-PARTY | app | `chat.threads`, `chat.messages` | launch |
 | `POST /v1/files` | — | Upload an attachment | PUBLIC | key / session | `chat.attachments` + bucket | planned |
