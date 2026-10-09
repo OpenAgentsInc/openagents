@@ -1,6 +1,6 @@
 ---
 id: openagents.install-coder
-version: 6
+version: 7
 kind: product
 title: "Getting Coder on a computer"
 summary: >-
@@ -14,8 +14,8 @@ applies_when: >-
   using Coder. Not how to sign Coder in to their account
   (openagents.coder-sync).
 answer: >-
-  Install Coder from openagents.com/download. On macOS or Linux, run `curl
-  -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in
+  Install Coder from https://openagents.com/download. On macOS or Linux, run
+  `curl -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in
   PowerShell, run `irm https://openagents.com/cli/install.ps1 | iex`. It
   installs `coder` and the `openagents` command together. Then run `coder`
   from your project folder. Run the install command again to update.
@@ -34,11 +34,12 @@ evidence:
   - "2026-10-01: version 4 (#10101): a coding reply on the phone starts Coder on the Mac at once, as on the Mac itself, unless the Mac's Coder setting is Ask first; checked against INVARIANTS.md and docs/cli/settings.md."
   - "2026-10-09: v5 (chat goldens): the download page offers the Coder terminal and the OpenAgents command-line program with one-line installers, not the Mac app, so the answer gives the install commands from download.rs; checked against it and scripts/install/coder.sh."
   - "2026-10-09: v6: Coder is one download; the engine it runs with is part of Coder, not a separate install, so the answer names only `coder` and `openagents`; checked against download.rs and scripts/install/coder.sh."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-Install Coder from openagents.com/download. On macOS or Linux, run `curl -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in PowerShell, run `irm https://openagents.com/cli/install.ps1 | iex`. It installs `coder` and the `openagents` command together. Then run `coder` from your project folder. Run the install command again to update.
+Install Coder from https://openagents.com/download. On macOS or Linux, run `curl -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in PowerShell, run `irm https://openagents.com/cli/install.ps1 | iex`. It installs `coder` and the `openagents` command together. Then run `coder` from your project folder. Run the install command again to update.
 
 ## Details
 

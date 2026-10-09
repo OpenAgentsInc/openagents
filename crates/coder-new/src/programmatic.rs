@@ -424,9 +424,9 @@ fn execute_with_demo_policy(
             let config = app.plugins.bundled.cloud(p);
             if !config.enabled {
                 return Err(Error::from(if p == coder_cloud::Placement::Boat {
-                    "Enable boat-cloud with plugins enable boat-cloud first."
+                    "Enable boat-cloud first: `openagents coder plugins enable boat-cloud`."
                 } else {
-                    "Enable gce-cloud with plugins enable gce-cloud first."
+                    "Enable gce-cloud first: `openagents coder plugins enable gce-cloud`."
                 }));
             }
             if command == "delegate" {

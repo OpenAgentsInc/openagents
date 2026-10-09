@@ -1,13 +1,13 @@
 ---
 id: openagents.wallet-send
-version: 1
+version: 2
 kind: product
 title: "Sending bitcoin"
 summary: >-
   Send takes a pasted or scanned invoice, Lightning address, LNURL code, npub,
   or Spark or Bitcoin address, and pays only after you confirm the amount and
   fee.
-tags: [wallet, send, pay, invoice, scan]
+tags: [wallet, send, pay, invoice, scan, in-app]
 applies_when: >-
   The user asks how to send, pay, or withdraw bitcoin, pay an invoice or a
   Lightning address, or pay another person by npub.
@@ -26,6 +26,7 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

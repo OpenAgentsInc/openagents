@@ -35,12 +35,13 @@ reaches first, its routes, the prepared answers and knowledge behind them,
 the chat model, Coder, the coding agents, the plugins, and the screens an
 answer can open. Each kind has its own color, listed in the legend.
 
-Open it from **Map** in the sidebar's footer, from **Commands** (Cmd+K,
+Open it from **Map** in the sidebar's footer of
+[OpenAgents for Mac](/docs/mac), from **Commands** (Cmd+K,
 **Open the map**), or from the **Window** menu. Or ask in a Mac chat: "show
 me how you route things".
 
 - Drag to pan; pinch, or Cmd and the wheel, to zoom.
-- Click a node to see its details; double-click to zoom in.
+- A click on a node shows its details; a double-click zooms in.
 - A ring shows health: no ring is measured and good, a red ring is
   measured and weak, and a dashed ring isn't measured yet. A red dot marks
   a gap, where OpenAgents is thin.

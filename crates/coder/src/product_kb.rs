@@ -530,6 +530,7 @@ pub fn read(
                 relevance: relevance(n),
                 answer: if chosen { entry.answer.clone() } else { None },
                 off_computer: entry.tags.iter().any(|tag| tag == OFF_COMPUTER_TAG),
+                in_app: entry.tags.iter().any(|tag| tag == product::IN_APP_TAG),
             }
         })
         .collect();

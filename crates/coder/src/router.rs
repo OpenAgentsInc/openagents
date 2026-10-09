@@ -2034,9 +2034,16 @@ pub enum Grounded {
 /// answer when the top passage carries one at [`KB_ANSWER_CONFIDENCE`] and
 /// the message needs no specifics, else the relevant passages. In a chat
 /// on a computer (`here`), an answer written for a chat that is not
-/// ([`seams::Passage::off_computer`]) is never whole.
+/// ([`seams::Passage::off_computer`]) is never whole, and on the website
+/// (`web`), neither is one that walks through the app's screens
+/// ([`seams::Passage::in_app`]).
 #[must_use]
-pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64, here: bool) -> Grounded {
+pub fn grounded(
+    grounding: &seams::Grounding,
+    needs_specifics: f64,
+    here: bool,
+    web: bool,
+) -> Grounded {
     if grounding.needs_dispatch {
         return Grounded::Dispatch;
     }
@@ -2052,6 +2059,7 @@ pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64, here: bool) 
         && top.relevance >= KB_ANSWER_CONFIDENCE
         && needs_specifics < policy::SPECIFICS_CEILING
         && !(here && top.off_computer)
+        && !(web && top.in_app)
         && top
             .answer
             .as_deref()
@@ -2132,6 +2140,7 @@ mod tests {
             relevance: 0.95,
             answer: None,
             off_computer: false,
+            in_app: false,
         };
         let note = grounded_note(Corpus::Product, std::slice::from_ref(&passage), None);
         assert!(note.contains(PRODUCT_LINKS));
@@ -2177,6 +2186,34 @@ mod tests {
         assert_eq!(odd, Context::default());
     }
 
+    /// A knowledge answer that walks through the app's screens is never
+    /// shown whole on the website, where those screens are not; it still
+    /// grounds the reply.
+    #[test]
+    fn an_in_app_answer_is_never_whole_on_the_website() {
+        let grounding = seams::Grounding {
+            passages: vec![seams::Passage {
+                id: "openagents.wallet-send@1".into(),
+                title: "Sending bitcoin".into(),
+                text: "In the Wallet, choose Send.".into(),
+                source: "knowledge/openagents/openagents.wallet-send.md".into(),
+                relevance: 0.95,
+                answer: Some("In the Wallet, choose Send.".into()),
+                off_computer: false,
+                in_app: true,
+            }],
+            ..seams::Grounding::default()
+        };
+        assert!(matches!(
+            grounded(&grounding, 0.0, false, false),
+            Grounded::Answer(_)
+        ));
+        assert!(matches!(
+            grounded(&grounding, 0.0, false, true),
+            Grounded::Passages(passages) if passages.len() == 1
+        ));
+    }
+
     /// A knowledge answer written for a chat that is not on a computer is
     /// never shown whole on one; it still grounds the reply (#10077).
     #[test]
@@ -2190,15 +2227,16 @@ mod tests {
                 relevance: 0.95,
                 answer: Some("From the chat we can't reach your computer.".into()),
                 off_computer: true,
+                in_app: false,
             }],
             ..seams::Grounding::default()
         };
         assert!(matches!(
-            grounded(&grounding, 0.0, false),
+            grounded(&grounding, 0.0, false, false),
             Grounded::Answer(_)
         ));
         assert!(matches!(
-            grounded(&grounding, 0.0, true),
+            grounded(&grounding, 0.0, true, false),
             Grounded::Passages(passages) if passages.len() == 1
         ));
         // The corpus marks exactly the entries that say so.

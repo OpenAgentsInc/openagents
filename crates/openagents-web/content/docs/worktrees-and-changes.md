@@ -21,8 +21,8 @@ files, your branch, and any uncommitted changes stay as they were.
 When a finished task recorded its change, the chat shows a **What changed**
 card.
 
-1. Open the card. The diff shows in a pane on the right (on the phone, in
-   the chat). The pane is read-only.
+1. The card opens on a click, and the diff shows in a pane on the right
+   (on the phone, in the chat). The pane is read-only.
 2. The card names the exact commits it shows. If the worktree changes
    while you look, the card says the view is out of date and offers
    **Refresh**.

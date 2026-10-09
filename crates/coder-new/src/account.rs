@@ -13,6 +13,14 @@ use openagents_login::{Error, Saved};
 /// The app name the approval page shows: "Sign in to Coder on …?".
 pub const APP: &str = "Coder";
 
+/// The one command that installs or updates Coder on this computer, as the
+/// download page (https://openagents.com/download) shows it.
+pub const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://openagents.com/cli/install.ps1 | iex"
+} else {
+    "curl -fsSL https://openagents.com/cli/install.sh | bash"
+};
+
 /// The website to sign in to.
 #[must_use]
 pub fn origin() -> String {

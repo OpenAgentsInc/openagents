@@ -8,22 +8,36 @@
 //! in a document this site ships ([`render_document`]) whose image is one
 //! of the site's own files under `/static/`.
 
-use pulldown_cmark::{Alignment, CowStr, Event, Options, Parser, Tag, TagEnd, html};
+use maud::Render;
+use openagents_ui::actions::{ButtonVariant, Color, ControlSize, CopyButton};
+use openagents_ui::content::CodeBlock;
+use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
 /// Renders `source` as HTML, every image as its alt text.
 #[must_use]
 pub fn render(source: &str) -> String {
-    rendered(source, false)
+    rendered(source, false, false)
+}
+
+/// Renders an assistant reply: as [`render`], but every code block is an
+/// `openagents-ui` [`CodeBlock`] whose header carries a "Copy" button (a
+/// CopyButton holding the code, handled by the site's component script), so
+/// a command in a reply copies in one click. An inline code span with a
+/// space in it (a command with arguments, like `coder login`) is followed by
+/// a small icon-only copy button; a single-word span gets none.
+#[must_use]
+pub fn render_reply(source: &str) -> String {
+    rendered(source, false, true)
 }
 
 /// Renders a document this site ships: as [`render`], but an image whose
 /// source is one of the site's own files under `/static/` draws.
 #[must_use]
 pub fn render_document(source: &str) -> String {
-    rendered(source, true)
+    rendered(source, true, false)
 }
 
-fn rendered(source: &str, own_images: bool) -> String {
+fn rendered(source: &str, own_images: bool, copyable_code: bool) -> String {
     let mut kept_images = Vec::new();
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
     let mut kept_links = Vec::new();
@@ -89,7 +103,57 @@ fn rendered(source: &str, own_images: bool) -> String {
         other => Some(other),
     });
     let mut out = String::new();
-    html::push_html(&mut out, events);
+    if copyable_code {
+        html::push_html(&mut out, with_copyable_code(events).into_iter());
+    } else {
+        html::push_html(&mut out, events);
+    }
+    out
+}
+
+/// Replaces each code block with a [`CodeBlock`]: the escaped code, a
+/// language label from a fenced block's info string, and a Copy button.
+/// Follows each inline code span that holds a space with an icon-only
+/// [`CopyButton`].
+fn with_copyable_code<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
+    let mut out = Vec::new();
+    let mut open: Option<(Option<String>, String)> = None;
+    for event in events {
+        match (event, open.as_mut()) {
+            (Event::Start(Tag::CodeBlock(kind)), None) => {
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().map(str::to_owned)
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                open = Some((language, String::new()));
+            }
+            (Event::End(TagEnd::CodeBlock), Some(_)) => {
+                let (language, code) = open.take().unwrap_or_default();
+                let mut block = CodeBlock::new(code.strip_suffix('\n').unwrap_or(&code));
+                if let Some(language) = language {
+                    block = block.language(&language);
+                }
+                out.push(Event::Html(CowStr::from(block.render().into_string())));
+            }
+            (Event::Text(text), Some((_, code))) => code.push_str(&text),
+            (Event::Code(text), None) if text.trim().contains(char::is_whitespace) => {
+                let button = CopyButton::new(text.trim())
+                    .aria_label("Copy command")
+                    .copied_label("Copied")
+                    .size(ControlSize::Xs3)
+                    .variant(ButtonVariant::Ghost)
+                    .color(Color::Secondary)
+                    .class("oa-inline-copy")
+                    .render()
+                    .into_string();
+                out.push(Event::Code(text));
+                out.push(Event::InlineHtml(CowStr::from(button)));
+            }
+            (other, _) => out.push(other),
+        }
+    }
     out
 }
 
@@ -153,6 +217,78 @@ mod tests {
         assert!(!html.contains("javascript"), "{html}");
         assert!(html.contains("href=\"https://x.example\""), "{html}");
         assert!(html.contains("href=\"/terms\""), "{html}");
+    }
+
+    #[test]
+    fn a_replys_code_block_has_a_copy_button() {
+        let command = "curl -fsSL https://openagents.com/cli/install.sh | bash";
+        let html = render_reply(&format!(
+            "Install it:\n\n```bash\n{command}\n```\n\nThen <b>run</b> it."
+        ));
+        assert!(
+            html.contains("class=\"oa-code-block\" data-language=\"bash\""),
+            "{html}"
+        );
+        assert!(
+            html.contains(&format!("data-oa-copy=\"{command}\"")),
+            "{html}"
+        );
+        assert!(html.contains("<span>Copy</span>"), "{html}");
+        assert!(html.contains(&format!(">{command}</code>")), "{html}");
+        // No inline script or handler, and raw HTML stays text.
+        assert!(
+            !html.contains("<script") && !html.contains("onclick"),
+            "{html}"
+        );
+        assert!(html.contains("&lt;b&gt;run&lt;/b&gt;"), "{html}");
+        // Code is escaped in the block and in its copy value.
+        let html = render_reply("```\n<script>alert(1)</script>\n```");
+        assert!(!html.contains("<script"), "{html}");
+        assert!(html.contains("data-oa-copy=\"&lt;script&gt;"), "{html}");
+        // An indented block is copyable too; pages that are not replies keep
+        // plain blocks.
+        assert!(render_reply("    ls -la\n").contains("data-oa-copy=\"ls -la\""));
+        assert!(!render("```\nx\n```").contains("data-oa-copy"));
+    }
+
+    #[test]
+    fn an_inline_command_in_a_reply_has_a_copy_button() {
+        let html = render_reply(
+            "On macOS or Linux, run `curl -fsSL https://openagents.com/cli/install.sh | bash`; then run `coder login`, type `/sync on`, and use `coder`.",
+        );
+        for command in [
+            "curl -fsSL https://openagents.com/cli/install.sh | bash",
+            "coder login",
+            "/sync on",
+        ] {
+            let span = format!("<code>{command}</code><button");
+            assert!(html.contains(&span), "{command}: {html}");
+            assert!(
+                html.contains(&format!("data-oa-copy=\"{command}\"")),
+                "{html}"
+            );
+        }
+        assert_eq!(
+            html.matches("aria-label=\"Copy command\"").count(),
+            3,
+            "{html}"
+        );
+        assert!(html.contains("oa-inline-copy"), "{html}");
+        // A single word gets no button; nothing inline runs.
+        assert!(!html.contains("data-oa-copy=\"coder\""), "{html}");
+        assert!(html.contains("<code>coder</code>."), "{html}");
+        assert!(
+            !html.contains("<script") && !html.contains("onclick"),
+            "{html}"
+        );
+        // Escaped, and plain pages get no inline buttons.
+        let html = render_reply("run `echo \"<b>\" > x`");
+        assert!(
+            html.contains("data-oa-copy=\"echo &quot;&lt;b&gt;&quot; &gt; x\""),
+            "{html}"
+        );
+        assert!(!html.contains("<b>"), "{html}");
+        assert!(!render("run `coder login`").contains("data-oa-copy"));
     }
 
     #[test]

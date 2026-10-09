@@ -16,8 +16,10 @@ a hosted computer yet.
 
 ## Do I need an account?
 
-No. Each device makes its own key the first time it runs. There's no
-sign-in and no password.
+Not for the apps or Coder: each device makes its own key the first time it
+runs. An account ([log in](https://openagents.com/login)) keeps your
+website chats, and with `coder login` it shows Coder's chats from a
+[connected computer](/docs/connect-a-computer).
 
 ## Which model answers the chat?
 

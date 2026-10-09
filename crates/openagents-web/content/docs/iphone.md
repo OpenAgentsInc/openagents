@@ -15,13 +15,14 @@ plugin**, **What's new**, and **Check a result**.
 - **Chat with OpenAgents** opens a new chat, ready to type. You don't need
   a computer or an account.
 - **Earlier chats** are behind the menu button at the top left, newest
-  first. A connected computer's own chats (the ones started in the Mac app
-  or the Terminal) are listed there too, labelled with the computer. Open
-  one and send a message, and the computer answers it.
+  first. A [connected computer](/docs/connect-a-computer)'s own chats (the
+  ones started in the Mac app or the Terminal) are listed there too,
+  labelled with the computer. Open one and send a message, and the
+  computer answers it.
 - **Under a reply** you may see buttons: **Run Coder on** a computer,
   **Connect a computer**, a screen to open, or a command card with
   **Run**. Nothing happens until you tap one.
-- **Tap outside the keyboard** to put it away.
+- **The keyboard** goes away when you tap outside it.
 
 When a message is coding work and your computer is set to start Coder at
 once, Coder starts there without a tap, and the chat shows where it runs
@@ -60,6 +61,7 @@ are.
 ## Android
 
 The Android app has the same four tabs and runs the same code underneath.
-It is still in testing and isn't published; build it from source.
+It is still in testing and isn't published; build it from
+[source](https://github.com/OpenAgentsInc/openagents).
 
 Next: [OpenAgents Terminal](/docs/terminal).

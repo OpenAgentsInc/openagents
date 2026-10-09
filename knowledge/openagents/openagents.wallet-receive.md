@@ -1,13 +1,13 @@
 ---
 id: openagents.wallet-receive
-version: 1
+version: 2
 kind: product
 title: "Receiving bitcoin"
 summary: >-
   Receive offers a Lightning invoice, a Spark address, a Bitcoin deposit
   address, and the device's npub, each with a QR code; there is no receiving
   Lightning address yet.
-tags: [wallet, receive, invoice, address, qr]
+tags: [wallet, receive, invoice, address, qr, in-app]
 applies_when: >-
   The user asks how to receive or get paid bitcoin, how to make an invoice,
   what address to share, or whether they have a Lightning address.
@@ -27,6 +27,7 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

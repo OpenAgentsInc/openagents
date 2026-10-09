@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@b47179db0087",
+  "bank": "chat-answers-v1@ad6b923c106e",
   "routes": [
     {
       "id": "meta",
@@ -206,7 +206,7 @@
     },
     {
       "id": "meta.who.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -330,7 +330,7 @@
     },
     {
       "id": "meta.capabilities.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -345,7 +345,7 @@
     },
     {
       "id": "meta.tools.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -390,7 +390,7 @@
     },
     {
       "id": "meta.limits_chat.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -449,7 +449,7 @@
     },
     {
       "id": "meta.coder.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -465,7 +465,7 @@
     },
     {
       "id": "meta.github",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -495,7 +495,7 @@
     },
     {
       "id": "meta.github.website",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -826,7 +826,7 @@
     },
     {
       "id": "dispatch.no_computer.here",
-      "version": 3,
+      "version": 4,
       "routes": [
         "work.dispatch"
       ],
@@ -1735,7 +1735,8 @@
           "agents",
           "spending",
           "approve",
-          "payments"
+          "payments",
+          "in-app"
         ],
         "answer": true
       },
@@ -1775,7 +1776,8 @@
           "coder",
           "auto-start",
           "host",
-          "permissions"
+          "permissions",
+          "in-app"
         ],
         "answer": true
       },
@@ -1903,7 +1905,8 @@
           "queue",
           "steer",
           "stop",
-          "approve"
+          "approve",
+          "in-app"
         ],
         "answer": true
       },
@@ -1977,13 +1980,14 @@
           "account",
           "manage",
           "remove",
-          "terminal"
+          "terminal",
+          "in-app"
         ],
         "answer": true
       },
       {
         "id": "openagents.connect-computer",
-        "title": "Connecting your phone to a computer",
+        "title": "Connecting a computer",
         "path": "knowledge/openagents/openagents.connect-computer.md",
         "status": "admitted",
         "tags": [
@@ -1994,7 +1998,10 @@
           "mac",
           "qr",
           "nearby",
-          "setup"
+          "setup",
+          "coder",
+          "login",
+          "sync"
         ],
         "answer": true
       },
@@ -2333,7 +2340,8 @@
           "nostr",
           "npub",
           "nsec",
-          "security"
+          "security",
+          "in-app"
         ],
         "answer": true
       },
@@ -2414,7 +2422,8 @@
           "xp",
           "link",
           "keys",
-          "computer"
+          "computer",
+          "in-app"
         ],
         "answer": true
       },
@@ -2576,7 +2585,8 @@
           "report",
           "bug",
           "feedback",
-          "playtest"
+          "playtest",
+          "in-app"
         ],
         "answer": true
       },
@@ -2712,7 +2722,8 @@
           "trainer",
           "xp",
           "level",
-          "account"
+          "account",
+          "in-app"
         ],
         "answer": true
       },
@@ -3118,7 +3129,8 @@
           "grid",
           "controls",
           "move",
-          "camera"
+          "camera",
+          "in-app"
         ],
         "answer": true
       },
@@ -3159,7 +3171,8 @@
           "version",
           "build",
           "changelog",
-          "account"
+          "account",
+          "in-app"
         ],
         "answer": true
       },
@@ -3201,7 +3214,8 @@
           "buy",
           "moonpay",
           "cash-app",
-          "dollars"
+          "dollars",
+          "in-app"
         ],
         "answer": true
       },
@@ -3228,7 +3242,8 @@
           "receive",
           "invoice",
           "address",
-          "qr"
+          "qr",
+          "in-app"
         ],
         "answer": true
       },
@@ -3243,7 +3258,8 @@
           "recovery",
           "seed",
           "restore",
-          "security"
+          "security",
+          "in-app"
         ],
         "answer": true
       },
@@ -3257,7 +3273,8 @@
           "send",
           "pay",
           "invoice",
-          "scan"
+          "scan",
+          "in-app"
         ],
         "answer": true
       },
@@ -3301,7 +3318,8 @@
           "verse",
           "trainer",
           "world-key",
-          "privacy"
+          "privacy",
+          "in-app"
         ],
         "answer": true
       }

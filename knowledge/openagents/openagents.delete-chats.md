@@ -1,6 +1,6 @@
 ---
 id: openagents.delete-chats
-version: 1
+version: 2
 kind: product
 title: "Deleting and archiving web chats"
 summary: >-
@@ -15,11 +15,12 @@ applies_when: >-
   or train on chats in general (openagents.chat-privacy).
 answer: >-
   On openagents.com, open a chat's menu in the left panel and choose
-  **Delete**, or use Delete on the chat's page; it's removed from our
-  servers right away. **Delete all chats** is in Settings when you're
-  signed in, or on a chat's delete step when you're not. Our storage
-  provider may keep a recoverable copy for up to 7 days. To hide a chat
-  without deleting it, choose **Archive**; Archived chats lists those.
+  **Delete**, or use Delete on the chat's page; it's removed from our servers
+  right away. **Delete all chats** is in Settings when you're signed in
+  (https://openagents.com/settings), or on a chat's delete step when you're
+  not. Our storage provider may keep a recoverable copy for up to 7 days. To
+  hide a chat without deleting it, choose **Archive**; Archived chats lists
+  those.
 status: admitted
 author: openagents
 provenance:
@@ -31,11 +32,12 @@ provenance:
     - knowledge/openagents/openagents.chat-privacy.md
 evidence:
   - "2026-10-09: written from the cited code and the privacy note and checked against them (#11036, #11038, chat goldens); the answer text awaits the owner's copy review."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-On openagents.com, open a chat's menu in the left panel and choose **Delete**, or use Delete on the chat's page; it's removed from our servers right away. **Delete all chats** is in Settings when you're signed in, or on a chat's delete step when you're not. Our storage provider may keep a recoverable copy for up to 7 days. To hide a chat without deleting it, choose **Archive**; Archived chats lists those.
+On openagents.com, open a chat's menu in the left panel and choose **Delete**, or use Delete on the chat's page; it's removed from our servers right away. **Delete all chats** is in Settings when you're signed in (https://openagents.com/settings), or on a chat's delete step when you're not. Our storage provider may keep a recoverable copy for up to 7 days. To hide a chat without deleting it, choose **Archive**; Archived chats lists those.
 
 ## Details
 

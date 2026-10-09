@@ -6,7 +6,7 @@ reports on the issue.
 
 ## Before you start
 
-- Run Coder in a checkout of the issue's repository.
+- Run `coder` in a checkout of the issue's repository.
 - Install the GitHub CLI and sign in: `gh auth login`.
 
 ## Ask for it

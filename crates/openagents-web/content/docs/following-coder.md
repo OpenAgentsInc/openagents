@@ -10,7 +10,7 @@ phone.
   and the project.
 - Each step shows as a short line: reads and searches fold into one row
   ("Read 3 files, Searched 2 patterns"); each command or edit has its own
-  row with its result. Click a row on the Mac, or press Ctrl+O in the
+  row with its result. Click a row on the Mac, or press `Ctrl+O` in the
   Terminal, to see it in full.
 - The working line shows the step, Jev's estimate of how much is done, and
   the time: "Coder is working · step 5 · ≈40% done · 9s".

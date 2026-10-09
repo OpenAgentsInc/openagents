@@ -294,6 +294,7 @@ fn a_grounded_reply_is_checked_against_the_passages_it_was_given() {
             relevance: 0.9,
             answer: None,
             off_computer: false,
+            in_app: false,
         }],
         commit: None,
         needs_dispatch: false,
@@ -415,6 +416,7 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
             relevance: 0.9,
             answer: None,
             off_computer: false,
+            in_app: false,
         }],
         ..Grounding::default()
     };

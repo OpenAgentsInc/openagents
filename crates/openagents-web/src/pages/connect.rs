@@ -119,8 +119,8 @@ pub(crate) async fn connect(headers: HeaderMap) -> Response {
         }
         (MarkdownRoot::new(html! {
             p.oa-page-meta {
-                "On a computer? " a href="/download" { "Get OpenAgents for Mac" }
-                ", and it shows the code to scan."
+                "On a computer? OpenAgents for Mac shows the code to scan; build it from "
+                a href="https://github.com/OpenAgentsInc/openagents" { "source" } "."
             }
         }))
     });

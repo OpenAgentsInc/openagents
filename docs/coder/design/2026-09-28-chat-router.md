@@ -481,6 +481,16 @@ Rules for every entry:
   row, or a doc, in `sources`. The lint checks the paths exist. A privacy
   claim must cite an invariant row with a test, or it does not ship.
 - **Short.** At most 600 characters; one to three sentences on a phone.
+- **Advice is actionable** (the owner's rule of 2026-10-09). An entry that
+  tells the reader to do something carries the exact page as an
+  `https://openagents.com/...` link or the one command to run in
+  backticks, or an offer that does it; short numbered steps only when more
+  than one step is truly needed. The bank lint and the product-note check
+  flag an instruction with neither (`knowledge::product::unlinked_instruction`,
+  a heuristic over our own reviewed copy, never over a person's message).
+  The rare exception says why in the entry's `unlinked` field; a product
+  note whose steps are screens of the app the reader is in is tagged
+  `in-app`, and the website's chat never shows that note whole.
 - **True before any work happens.** A canned answer never claims work was
   done or started; offers carry their own action.
 - **`when` is written for Jev**, as a description of the messages it answers,

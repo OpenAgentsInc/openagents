@@ -224,18 +224,29 @@ fn download_guidance_matches_the_published_apps() {
     // installers, and no Mac disk image.
     let page = std::fs::read_to_string(repository().join(download_source)).expect("the page");
     assert!(page.contains("Download Coder") && page.contains("install.sh"));
-    assert!(!page.contains(".dmg"), "the download page offers a .dmg again: update these notes");
+    assert!(
+        !page.contains(".dmg"),
+        "the download page offers a .dmg again: update these notes"
+    );
     for (id, minimum_version, claims) in [
         (
             "openagents.get-the-app",
             6,
-            &["openagents.com/download", "macOS, Linux, and Windows", "from source"][..],
+            &[
+                "openagents.com/download",
+                "macOS, Linux, and Windows",
+                "from source",
+            ][..],
         ),
         ("openagents.overview", 4, &["openagents.com/download"][..]),
         (
             "openagents.playtesting",
             3,
-            &["openagents.com/download", "macOS, Linux, and Windows", "from source"][..],
+            &[
+                "openagents.com/download",
+                "macOS, Linux, and Windows",
+                "from source",
+            ][..],
         ),
         (
             "openagents.install-coder",
@@ -312,4 +323,52 @@ fn desktop_grid_guidance_keeps_the_world_off_chat() {
             "missing desktop guidance: {claim}"
         );
     }
+}
+
+/// Advice to do something carries the exact page or the one command to
+/// run (the owner's rule of 2026-10-09); a description is not advice.
+#[test]
+fn an_instruction_carries_its_link_or_command() {
+    for text in [
+        "Open OpenAgents for Mac and it shows a QR code.",
+        "To keep your chats, sign in with GitHub at the top right.",
+        "In the Wallet, choose Send.",
+        "Get Coder at openagents.com/download and run it.",
+        "We can help. Then run the installer.",
+        "Install it from the menu.",
+    ] {
+        assert!(unlinked_instruction(text).is_some(), "{text}");
+    }
+    for text in [
+        "Install Coder: `curl -fsSL https://openagents.com/cli/install.sh | bash`.",
+        "Sign in at https://openagents.com/login.",
+        "Coder runs on your own computer, with its own git login.",
+        "When you add a result to the Gym, other trainers check it.",
+        "The Wallet opens to your balance; Send and Receive are under it.",
+        "We can't run code, browse the web, or open your files from here.",
+    ] {
+        assert_eq!(unlinked_instruction(text), None, "{text}");
+    }
+    // An unclosed backtick is not a command.
+    assert!(unlinked_instruction("Run the ` thing.").is_some());
+}
+
+#[test]
+fn an_unlinked_instruction_is_a_problem_unless_in_app() {
+    let e = entry(
+        "openagents.a",
+        "product",
+        &["README.md"],
+        "Open Settings and choose Delete.",
+    );
+    assert!(
+        problems(&e)
+            .iter()
+            .any(|p| p.contains("tells the reader to act")),
+        "{:?}",
+        problems(&e)
+    );
+    let mut tagged = e.clone();
+    tagged.tags.push(IN_APP_TAG.into());
+    assert!(problems(&tagged).is_empty(), "{:?}", problems(&tagged));
 }

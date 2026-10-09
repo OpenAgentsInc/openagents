@@ -454,7 +454,7 @@ impl Routed {
                             ));
                         }
                         if let router::Grounded::Answer(passage) =
-                            router::grounded(&found, routing.needs_specifics, false)
+                            router::grounded(&found, routing.needs_specifics, false, true)
                         {
                             observed.tier = Some("canned".into());
                             observed.answer = Some(passage.id.clone());

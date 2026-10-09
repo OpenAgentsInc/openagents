@@ -106,7 +106,9 @@ pub fn start_host() -> io::Result<()> {
     if host_running() {
         return Ok(());
     }
-    let coder = coder_path().ok_or_else(|| io::Error::other("coder.exe is not installed"))?;
+    let coder = coder_path().ok_or_else(|| io::Error::other(
+            "it is not installed on this PC. Install it in PowerShell with `irm https://openagents.com/cli/install.ps1 | iex`",
+        ))?;
     Command::new(coder)
         .args(HOST_ARGS)
         .stdin(Stdio::null())

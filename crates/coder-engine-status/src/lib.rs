@@ -169,7 +169,7 @@ impl Status {
     pub fn terminal_notice(&self) -> Option<String> {
         match self.state {
             State::SignedOut | State::Expiring | State::Expired => Some(format!(
-                "{} Type claude in a terminal on this computer to sign in through Anthropic's own flow.",
+                "{} Run `claude` in a terminal on this computer and type /login to sign in through Anthropic's own flow.",
                 self.summary()
             )),
             State::RateLimited => Some(self.summary()),
@@ -410,7 +410,7 @@ mod tests {
             assert_eq!(
                 status
                     .terminal_notice()
-                    .is_some_and(|text| text.contains("Type claude")),
+                    .is_some_and(|text| text.contains("Run `claude`")),
                 status.renew()
             );
             assert_eq!(

@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-and-coder
-version: 3
+version: 4
 kind: product
 title: "Chatting with OpenAgents and sending Coder"
 summary: >-
@@ -13,13 +13,14 @@ applies_when: >-
   what Coder is, or when Coder gets involved; not how to connect a computer,
   and not what model the chat uses.
 answer: >-
-  In this chat you talk with us, OpenAgents: we answer questions and help
-  you plan, but from the chat we can't run code, read files, or reach your
-  computer. Coder is our coding agent, and it does that work on a
-  computer. From openagents.com, get Coder at openagents.com/download and
-  run it in your terminal. From the phone app, we send Coder to a computer
-  you've paired, with the conversation as its task. Coder uses that
-  computer's own git and GitHub login.
+  In this chat you talk with us, OpenAgents: we answer questions and help you
+  plan, but from the chat we can't run code, read files, or reach your
+  computer. Coder is our coding agent, and it does that work in a terminal on a computer. To
+  get it on macOS or Linux, run `curl -fsSL
+  https://openagents.com/cli/install.sh | bash` (Windows:
+  https://openagents.com/download), then run `coder` in your project. From the
+  phone app, we send Coder to a computer you've paired, with the conversation
+  as its task. Coder uses that computer's own git and GitHub login.
 status: admitted
 author: openagents
 provenance:
@@ -32,11 +33,12 @@ evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
   - "2026-10-09: v3 (chat goldens): the web chat sends Coder nowhere (docs/web/cloud-reset.md); on openagents.com Coder is the terminal agent from the download page, so the answer says both ways."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-In this chat you talk with us, OpenAgents: we answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent, and it does that work on a computer. From openagents.com, get Coder at openagents.com/download and run it in your terminal. From the phone app, we send Coder to a computer you've paired, with the conversation as its task. Coder uses that computer's own git and GitHub login.
+In this chat you talk with us, OpenAgents: we answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent, and it does that work in a terminal on a computer. To get it on macOS or Linux, run `curl -fsSL https://openagents.com/cli/install.sh | bash` (Windows: https://openagents.com/download), then run `coder` in your project. From the phone app, we send Coder to a computer you've paired, with the conversation as its task. Coder uses that computer's own git and GitHub login.
 
 ## Details
 

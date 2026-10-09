@@ -669,7 +669,8 @@ async fn show_terminal(
 pub(crate) fn terminal_note(computer: &str) -> Markup {
     html! {
         p.oa-thread-notice #chat-terminal-note {
-            "This chat runs in Coder on " (computer) ". To reply here, open Coder there with /sync on."
+            "This chat runs in Coder on " (computer) ". To reply here, open Coder there and type "
+            code { "/sync on" } "."
         }
     }
 }
@@ -1509,7 +1510,7 @@ fn turn(
                 data-oa-tier=[reply.and_then(|r| r.tier.as_deref())]
                 data-oa-route=[reply.and_then(|r| r.route.as_deref())]
                 data-oa-answer=[reply.and_then(|r| r.answer.as_deref())] {}
-            (MarkdownRoot::new(PreEscaped(crate::markdown::render(&message.text))))
+            (MarkdownRoot::new(PreEscaped(crate::markdown::render_reply(&message.text))))
             (crate::suggestions::plugin_cards(plugins))
             span hidden data-oa-reply-end {}
         })

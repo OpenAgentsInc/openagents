@@ -182,6 +182,11 @@ pub struct Passage {
     /// entry's `off-computer` tag), so a chat on the computer Coder runs on
     /// never shows it whole; the passage still grounds the model (#10077).
     pub off_computer: bool,
+    /// The reviewed answer walks through screens of the OpenAgents phone
+    /// or desktop app (the entry's `in-app` tag), so the website's chat,
+    /// where those screens are not, never shows it whole; the passage
+    /// still grounds the model.
+    pub in_app: bool,
 }
 
 /// What a retrieval found.

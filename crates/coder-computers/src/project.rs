@@ -20,6 +20,10 @@ use nostr::activity_summary::{ActivitySummary, Attention, Phase, SubjectKind};
 use rust_native::style::{Color, Space, Style, TextWeight};
 use rust_native::{Axis, Element, Node, TextRole};
 
+/// How to update Coder on a computer: its install command again, as
+/// https://openagents.com/download shows it.
+pub const UPDATE_CODER: &str = "on the computer, run `curl -fsSL https://openagents.com/cli/install.sh | bash` (on Windows, `irm https://openagents.com/cli/install.ps1 | iex` in PowerShell).";
+
 fn color(intensity: Intensity) -> Color {
     let rgb = intensity.color();
     Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
@@ -192,7 +196,7 @@ pub fn status_line(host: &HostRecord, now: u64) -> String {
         },
         HostStatus::OutOfDate { side } => match side {
             OutOfDate::Host => {
-                "Out of date: the computer runs an older Coder. Update Coder on the computer.".into()
+                format!("Out of date: the computer runs an older Coder. To update it, {UPDATE_CODER}")
             }
             OutOfDate::ThisApp => {
                 "Out of date: this app is older than the computer supports. Update this app.".into()

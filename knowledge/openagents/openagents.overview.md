@@ -1,6 +1,6 @@
 ---
 id: openagents.overview
-version: 4
+version: 5
 kind: product
 title: "What OpenAgents is"
 summary: >-
@@ -13,12 +13,12 @@ applies_when: >-
   AI model powers the chat.
 answer: >-
   OpenAgents is where you chat with us and get work done on your code. On
-  openagents.com you can chat without an account, or sign in with GitHub
-  to keep your chats and add your repositories as projects. Coder, our
-  coding agent, runs in your terminal on your own computer: get it at
-  openagents.com/download. Our phone and desktop apps add Verse, the
+  openagents.com you can chat without an account, or sign in with GitHub to
+  keep your chats and add your repositories as projects. Coder, our coding
+  agent, runs in your terminal on your own computer: get it at
+  https://openagents.com/download. Our phone and desktop apps add Verse, the
   shared Grid, and a bitcoin Wallet. Everything is open source, at
-  github.com/OpenAgentsInc/openagents.
+  https://github.com/OpenAgentsInc/openagents.
 status: admitted
 author: openagents
 provenance:
@@ -34,11 +34,12 @@ evidence:
   - "2026-10-01: We checked the download page and corrected the installation guidance."
   - "2026-10-01: The page offers Mac and Terminal release candidates. All other apps require source builds."
   - "2026-10-09: v4 (chat goldens): the download page offers Coder, not a Mac .dmg, and the website has accounts and projects, so the answer leads with the website and Coder."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-OpenAgents is where you chat with us and get work done on your code. On openagents.com you can chat without an account, or sign in with GitHub to keep your chats and add your repositories as projects. Coder, our coding agent, runs in your terminal on your own computer: get it at openagents.com/download. Our phone and desktop apps add Verse, the shared Grid, and a bitcoin Wallet. Everything is open source, at github.com/OpenAgentsInc/openagents.
+OpenAgents is where you chat with us and get work done on your code. On openagents.com you can chat without an account, or sign in with GitHub to keep your chats and add your repositories as projects. Coder, our coding agent, runs in your terminal on your own computer: get it at https://openagents.com/download. Our phone and desktop apps add Verse, the shared Grid, and a bitcoin Wallet. Everything is open source, at https://github.com/OpenAgentsInc/openagents.
 
 ## Details
 

@@ -521,7 +521,7 @@ async fn branch_panel(
             Err(message) => {
                 return panel(
                     "Branch",
-                    html! { p role="alert" { (message) } p { "Nothing changed." } },
+                    html! { (github_problem(message)) p { "Nothing changed." } },
                 );
             }
         };
@@ -736,10 +736,7 @@ async fn select(
     }
     .await;
     if let Err(message) = change {
-        return response(panel(
-            "Selection unchanged",
-            html! { p role="alert" { (message) } },
-        ));
+        return response(panel("Selection unchanged", github_problem(message)));
     }
     next.revision = match previous
         .revision
@@ -869,6 +866,19 @@ impl Reader {
 }
 
 const UNREACHABLE: &str = "Couldn't reach GitHub. Try again.";
+/// GitHub access the person had has ended.
+const ACCESS_ENDED: &str = "GitHub access ended. Connect GitHub again.";
+
+/// A GitHub problem, with a link to Projects where it says to connect
+/// GitHub, so the advice is one click.
+fn github_problem(message: &str) -> Markup {
+    html! {
+        p role="alert" { (message) }
+        @if message == LIMITED_ANONYMOUS || message == ACCESS_ENDED {
+            p { (openagents_ui::actions::TextLink::new("Connect GitHub", crate::projects::PAGE)) }
+        }
+    }
+}
 /// GitHub's shared limit for reads without a sign-in is spent.
 pub(crate) const LIMITED_ANONYMOUS: &str =
     "GitHub is limiting requests without a sign-in. Connect GitHub, or try again later.";
@@ -961,7 +971,7 @@ async fn metadata<T: DeserializeOwned>(
         }
         return Err(match status {
             404 => "That repository or branch wasn't found.",
-            401 => "GitHub access ended. Connect GitHub again.",
+            401 => ACCESS_ENDED,
             403 => "GitHub didn't allow access to that repository.",
             301 | 302 | 307 | 308 => "The repository moved. Enter its current owner and name.",
             500..=599 => "GitHub had a problem answering. Try again in a minute.",

@@ -630,6 +630,10 @@ fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &st
         (MarkdownRoot::new(html! {
             h1 { "Claude credential" }
             p { "Add your own Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential, to run Claude Code tasks in parallel. Usage bills to your own account." }
+            p {
+                "Create an Anthropic API key at "
+                a href="https://console.anthropic.com/settings/keys" { "console.anthropic.com" } "."
+            }
             @match saved {
                 Some(material) => {
                     p { "Saved: " (material_label(material)) }

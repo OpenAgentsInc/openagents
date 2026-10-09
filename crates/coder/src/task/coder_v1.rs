@@ -131,7 +131,8 @@ pub fn cli_binary() -> Result<PathBuf, String> {
         .ok_or_else(|| {
             format!(
                 "Coder V1 is not installed: no openagents program beside this one or on PATH; \
-                 install Coder with scripts/install-coder.sh or set {CLI_VAR}"
+                 install Coder with `curl -fsSL https://openagents.com/cli/install.sh | bash` \
+                 (Windows PowerShell: `irm https://openagents.com/cli/install.ps1 | iex`) or set {CLI_VAR}"
             )
         })
 }

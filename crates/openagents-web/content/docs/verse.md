@@ -7,7 +7,7 @@ blocks, dominoes, and the Gym. There's no chat in the Grid. See
 
 ## On your phone
 
-Open the globe tab.
+Open the globe tab in [OpenAgents for iPhone](/docs/iphone).
 
 - **Walk:** push the faint stick at the bottom left.
 - **Look:** push the stick at the bottom right, or drag anywhere. Both
@@ -19,7 +19,7 @@ Open the globe tab.
 
 ## On your Mac
 
-Click **Verse** in the sidebar's footer. **Watch** shows the Grid live from
+Click **Verse** in the sidebar's footer of [OpenAgents for Mac](/docs/mac). **Watch** shows the Grid live from
 above; nobody sees you. **Play** puts you in it, in the same world as the
 phones.
 
@@ -27,7 +27,7 @@ phones.
   **E**) step sideways. **Space** jumps; **Shift** sprints.
 - Hold the right mouse button to look and turn; hold the left to orbit.
   The wheel zooms, into first person and back.
-- Click a board in the Gym to open it. **Esc** closes a board, then
+- A click on a board in the Gym opens it. **Esc** closes a board, then
   releases the mouse.
 - **Full screen** (F11, or Ctrl+Cmd+F) hides everything but the world.
 

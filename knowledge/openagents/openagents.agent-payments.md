@@ -1,12 +1,12 @@
 ---
 id: openagents.agent-payments
-version: 1
+version: 2
 kind: product
 title: "Approving payments your agents ask for"
 summary: >-
   An agent on your computer can ask the phone to pay; nothing pays until you
   approve it, with Face ID above ₿1,000.
-tags: [wallet, agents, spending, approve, payments]
+tags: [wallet, agents, spending, approve, payments, in-app]
 applies_when: >-
   The user asks how agents pay for things, how to approve or deny an agent's
   payment request, or how to stop a computer from asking for payments.
@@ -25,6 +25,7 @@ provenance:
     - docs/breez/spend-protocol.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

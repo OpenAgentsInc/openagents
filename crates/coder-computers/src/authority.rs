@@ -139,7 +139,10 @@ impl Denial {
             Self::AlreadyClientOnly => "This computer already runs with no local host.".into(),
             Self::NotEnrolled => "This device has no access to this computer.".into(),
             Self::Revoked => "This computer revoked this device's access.".into(),
-            Self::OutOfDate => "Update Coder first. This app and the computer don't match.".into(),
+            Self::OutOfDate => format!(
+                "This app and the computer don't match. Update this app, or update Coder: {}",
+                crate::project::UPDATE_CODER
+            ),
             Self::Offline => "The computer is offline. Connect it first.".into(),
             Self::MissingRight(right) => format!(
                 "This device doesn't have the \"{}\" right on this computer.",

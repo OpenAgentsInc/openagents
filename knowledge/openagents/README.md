@@ -21,6 +21,16 @@ Each file is a knowledge entry of kind `product` with an id under
   neighbor is close.
 - **Body.** The answer, then details a grounded reply may use, then the
   sources.
+- **Actionable.** When an `answer` tells the reader to do something, it
+  carries the exact page as an `https://` link or the one command to run in
+  backticks (`curl -fsSL https://openagents.com/cli/install.sh | bash`,
+  `coder login`). The corpus check refuses an answer that gives an
+  instruction with neither. Short numbered steps only when more than one
+  step is truly needed.
+- **`in-app`.** Tag an entry whose `answer` walks through screens of the
+  OpenAgents phone or desktop app (Account > Computers, the Wallet's Send).
+  The screen is the action there, so the check allows it, and the
+  website's chat, where those screens are not, never shows it whole.
 - **`off-computer`.** Tag an entry whose `answer` assumes the chat is not
   on a computer ("we can't reach your computer"). A chat on the computer
   Coder runs on (the desktop app, or `openagents chat`) never shows that

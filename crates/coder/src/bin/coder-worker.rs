@@ -3242,7 +3242,12 @@ impl Job {
                             }
                         }
                         (SeamOutcome::Grounded(Ok(found)), Tier::Grounded { corpus, lead: shown }) => {
-                            match router::grounded(&found, routing.needs_specifics, turn.context.here()) {
+                            match router::grounded(
+                                &found,
+                                routing.needs_specifics,
+                                turn.context.here(),
+                                turn.context.surface() == router::Surface::Web,
+                            ) {
                                 router::Grounded::Answer(passage) => {
                                     let text = passage.answer.clone().unwrap_or_default();
                                     send(0, &text)?;
@@ -5915,6 +5920,7 @@ mod tests {
             relevance,
             answer: answer.map(str::to_string),
             off_computer: false,
+            in_app: false,
         }
     }
 

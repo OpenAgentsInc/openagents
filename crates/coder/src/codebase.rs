@@ -796,6 +796,7 @@ pub fn passages(judged: &Judged) -> Vec<crate::router::seams::Passage> {
             relevance: excerpt.relevance,
             answer: None,
             off_computer: false,
+            in_app: false,
         })
         .collect()
 }

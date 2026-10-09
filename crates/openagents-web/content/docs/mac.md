@@ -1,15 +1,17 @@
 # OpenAgents for Mac
 
 OpenAgents for Mac is where you chat with OpenAgents on your computer, run
-Coder in your projects, and connect your phone to the Mac. To install it,
-see [Download](/docs/download).
+Coder in your projects, and connect your phone to the Mac. It isn't
+published for download yet; build it from
+[source](https://github.com/OpenAgentsInc/openagents). To use Coder on a
+Mac without it, run the one-line install on the [download page](/download).
 
 ## The window
 
 - **The sidebar** lists your chats: pinned first, then recent, then
   archived. Drag its edge to resize it. **Cmd+B** hides or shows it.
 - **New chat** (Cmd+N) starts a chat at the top of the list.
-- **The composer** at the bottom is where you type. Enter sends.
+- **The composer** at the bottom is where you type; the Enter key sends.
 - **The footer** opens the **Map**, the **Verse**, **Phones and computers**,
   and **Settings**.
 
@@ -43,7 +45,7 @@ of its usage window you've used; **Settings → Coder** shows the details.
 
 **Saved sessions** lists the Codex and Claude Code sessions saved on this
 Mac. Open one to read it, or choose **Continue with Coder** to hand its
-newest part to Coder as a new task.
+newest part to [Coder](/docs/coder) as a new task.
 
 ## Your phone
 
@@ -70,6 +72,6 @@ front, a notification names the chat (never the message). Turn them off in
 ## Linux and Windows
 
 OpenAgents for Linux and Windows aren't published for download yet; build
-them from source. The Verse page isn't available on Windows.
+them from [source](https://github.com/OpenAgentsInc/openagents). The Verse page isn't available on Windows.
 
 Next: [OpenAgents for iPhone](/docs/iphone).

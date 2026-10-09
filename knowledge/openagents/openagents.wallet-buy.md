@@ -1,12 +1,12 @@
 ---
 id: openagents.wallet-buy
-version: 1
+version: 2
 kind: product
 title: "Buying bitcoin with dollars"
 summary: >-
   Buy pays with dollars through MoonPay or Cash App on their own pages;
   on-chain deposits are claimed automatically.
-tags: [wallet, buy, moonpay, cash-app, dollars]
+tags: [wallet, buy, moonpay, cash-app, dollars, in-app]
 applies_when: >-
   The user asks how to buy bitcoin, add funds, or use a card, dollars,
   MoonPay, or Cash App.
@@ -24,6 +24,7 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

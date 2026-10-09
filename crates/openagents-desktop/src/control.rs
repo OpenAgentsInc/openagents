@@ -80,6 +80,14 @@ impl std::error::Error for ControlError {}
 
 pub type ControlResult<T> = Result<T, ControlError>;
 
+/// How to update Coder on this computer: run its install command again,
+/// as https://openagents.com/download says.
+pub const UPDATE_CODER: &str = if cfg!(windows) {
+    "run `irm https://openagents.com/cli/install.ps1 | iex` in PowerShell."
+} else {
+    "run `curl -fsSL https://openagents.com/cli/install.sh | bash` in a terminal."
+};
+
 /// The operations the window uses, over any transport.
 pub trait HostControl: Send {
     fn import_task(
@@ -91,7 +99,10 @@ pub trait HostControl: Send {
         let _ = (request, chat, task);
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "Update Coder on this computer to continue saved sessions.".into(),
+            message: format!(
+                "Update Coder on this computer to continue saved sessions: {}",
+                UPDATE_CODER
+            ),
         })
     }
     fn task_chat(
@@ -101,7 +112,10 @@ pub trait HostControl: Send {
         let _ = request;
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "Update Coder on this computer to open this chat.".into(),
+            message: format!(
+                "Update Coder on this computer to open this chat: {}",
+                UPDATE_CODER
+            ),
         })
     }
 
@@ -113,7 +127,10 @@ pub trait HostControl: Send {
         let _ = command;
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "Update Coder on this computer to chat here.".into(),
+            message: format!(
+                "Update Coder on this computer to chat here: {}",
+                UPDATE_CODER
+            ),
         })
     }
 

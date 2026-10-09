@@ -177,6 +177,15 @@ pub fn check(entries: &[Entry], root: Option<&Path>) -> Vec<Problem> {
                         "the answer says `{word}`; speak as \"we\", never in the first person singular"
                     ));
                 }
+                let allowed = entry.tags.iter().any(|tag| tag == IN_APP_TAG)
+                    || UNLINKED_ANSWERS.iter().any(|(id, _)| *id == entry.id);
+                if !allowed && let Some(step) = unlinked_instruction(answer) {
+                    problem(format!(
+                        "the answer tells the reader to act (\"{step}\") with no https:// link \
+                         and no `command`; add the exact page or the one command to run, or tag \
+                         it {IN_APP_TAG} when the steps are screens of the app the reader is in"
+                    ));
+                }
             }
         }
         if let Some(word) = singular(&entry.body) {
@@ -186,6 +195,119 @@ pub fn check(entries: &[Entry], root: Option<&Path>) -> Vec<Problem> {
         }
     }
     problems
+}
+
+/// The tag of an entry whose answer walks through screens of the OpenAgents
+/// phone or desktop app, which the reader is in: the screen is the action,
+/// so its steps need no link or command, and the website's chat never
+/// shows that answer whole.
+pub const IN_APP_TAG: &str = "in-app";
+
+/// Product entries whose answers read as instructions but tell no one to
+/// do anything, each with the reason. Keep this short: fix the answer
+/// instead when a person is meant to act on it.
+pub const UNLINKED_ANSWERS: &[(&str, &str)] = &[(
+    "openagents.ttc-measure-next",
+    "an essay's list of our own open problems, not advice to the reader",
+)];
+
+/// Words that start an instruction to the reader.
+const IMPERATIVES: &[&str] = &[
+    "open", "tap", "click", "install", "run", "download", "go to", "visit", "connect", "sign in",
+    "sign up", "log in", "choose", "pick", "type", "scan", "enter", "paste", "press", "select",
+    "get", "turn on", "add", "update", "build",
+];
+
+/// Leading phrases that set up an instruction ("To add a key, open …",
+/// "In the Wallet, choose …"): the instruction is what follows the comma.
+const SETUPS: &[&str] = &[
+    "to ",
+    "in ",
+    "on ",
+    "from ",
+    "once ",
+    "after ",
+    "signed in",
+    "while ",
+    "when ",
+    "if ",
+];
+
+/// The first instruction to the reader in `text` that carries neither an
+/// absolute `https://` link nor a code-formatted command, or `None` when
+/// every instruction can be acted on as written.
+///
+/// This is a lint heuristic over reviewed, user-facing copy (the owner's
+/// rule of 2026-10-09: advice to do something always carries the link or
+/// the one command to run). It reads our own text, never a person's
+/// message, and decides nothing about routing.
+#[must_use]
+pub fn unlinked_instruction(text: &str) -> Option<String> {
+    if text.contains("https://") || has_code(text) {
+        return None;
+    }
+    instruction(text)
+}
+
+/// Whether `text` has a non-empty `` `code` `` span.
+fn has_code(text: &str) -> bool {
+    text.split('`')
+        .enumerate()
+        .any(|(n, part)| n % 2 == 1 && !part.trim().is_empty() && n + 1 < text.split('`').count())
+}
+
+/// The first clause of `text` that starts with an instruction.
+fn instruction(text: &str) -> Option<String> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = text.chars().collect();
+    for (n, c) in chars.iter().enumerate() {
+        let ends = matches!(c, '.' | '!' | '?' | ';' | ':')
+            && chars.get(n + 1).is_none_or(|next| next.is_whitespace());
+        if ends || matches!(c, '(' | ')') {
+            clauses.push(std::mem::take(&mut current));
+        } else {
+            current.push(*c);
+        }
+    }
+    clauses.push(current);
+    let pieces = clauses.into_iter().flat_map(|clause| {
+        clause
+            .replace(", then ", "\u{1}")
+            .replace(" then ", "\u{1}")
+            .split('\u{1}')
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    });
+    for piece in pieces {
+        let mut low = piece
+            .trim()
+            .trim_matches('*')
+            .trim()
+            .to_lowercase()
+            .replace('\u{2019}', "'");
+        if SETUPS.iter().any(|setup| low.starts_with(setup))
+            && let Some((_, rest)) = low.split_once(", ")
+        {
+            low = rest.trim().to_string();
+        }
+        for lead in [
+            "and ", "or ", "then ", "just ", "please ", "first, ", "first ",
+        ] {
+            if let Some(rest) = low.strip_prefix(lead) {
+                low = rest.to_string();
+            }
+        }
+        let low = low.trim_start_matches('*').to_string();
+        if IMPERATIVES.iter().any(|verb| {
+            low == *verb
+                || low.starts_with(&format!("{verb} "))
+                || low.starts_with(&format!("{verb},"))
+        }) {
+            return Some(piece.trim().chars().take(80).collect());
+        }
+    }
+    None
 }
 
 /// The file a cite names: the cite without a `#section` anchor.
@@ -291,7 +413,8 @@ its id in square brackets, such as [openagents.wallet-send]. Do not add facts ab
 its app, prices, dates, or plans that the entries do not state. If the entries do not answer what \
 the user asked, say plainly that we don't have that documented yet, and give only what the \
 entries do say. When you summarize or describe a document an entry links, such as one of our \
-essays, give its link from the entry. Keep it short for a phone screen, and use Markdown only when \
+essays, give its link from the entry. When you tell the user to do something, give the exact \
+https:// link or the command to run that the entries give, with a command in a code span. Keep it short for a phone screen, and use Markdown only when \
 it helps.\n",
     );
     for reference in references {

@@ -135,7 +135,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
     ),
     (
         "Computers",
-        "Connect your phone to a computer, and manage them.",
+        "Connect a computer to your account or your phone, and manage them.",
         "connect-a-computer",
     ),
     (
@@ -405,6 +405,144 @@ mod tests {
         assert_eq!(
             section_anchor("The Gym, the Verse, and the wallet"),
             "the-gym-the-verse-and-the-wallet"
+        );
+    }
+
+    /// The how-to verbs that start an instruction to the reader.
+    const HOW_TO: [&str; 19] = [
+        "open", "tap", "click", "install", "run", "download", "go to", "visit", "connect",
+        "sign in", "log in", "choose", "pick", "type", "scan", "enter", "paste", "press", "select",
+    ];
+
+    /// Instructions that rightly carry no link or command: the guide, the
+    /// start of the sentence, and why. Fix the guide instead when you can.
+    const UNLINKED: [(&str, &str, &str); 0] = [];
+
+    /// A guide's paragraphs and list items, outside code blocks, headings,
+    /// and tables, each on one line. A paragraph ending in `:` just before
+    /// a code block is marked with a code span: the block is its command.
+    fn passages(source: &str) -> Vec<String> {
+        let mut passages: Vec<String> = Vec::new();
+        let mut current: Vec<&str> = Vec::new();
+        let mut fenced = false;
+        let flush = |current: &mut Vec<&str>, passages: &mut Vec<String>| {
+            if !current.is_empty() {
+                passages.push(current.join(" "));
+                current.clear();
+            }
+        };
+        for line in source.lines() {
+            let line = line.trim();
+            if line.starts_with("```") {
+                flush(&mut current, &mut passages);
+                if !fenced && let Some(last) = passages.last_mut() {
+                    if last.ends_with(':') {
+                        last.push_str(" `…`");
+                    }
+                }
+                fenced = !fenced;
+                continue;
+            }
+            if fenced {
+                continue;
+            }
+            if line.is_empty() || line.starts_with('#') || line.starts_with('|') {
+                flush(&mut current, &mut passages);
+                continue;
+            }
+            let item = line
+                .strip_prefix("- ")
+                .or_else(|| line.strip_prefix("* "))
+                .or_else(|| {
+                    let digits = line.find(|c: char| !c.is_ascii_digit())?;
+                    (digits > 0).then(|| line[digits..].strip_prefix(". "))?
+                });
+            if let Some(item) = item {
+                flush(&mut current, &mut passages);
+                current.push(item.trim_start());
+            } else {
+                current.push(line.trim_start_matches("> "));
+            }
+        }
+        flush(&mut current, &mut passages);
+        passages
+    }
+
+    /// The sentence in `passage` that starts with a how-to verb, if any.
+    /// A quoted sentence is an example message, not an instruction.
+    fn instruction(passage: &str) -> Option<String> {
+        passage
+            .replace(". ", ".\n")
+            .replace("? ", "?\n")
+            .replace("! ", "!\n")
+            .lines()
+            .map(|sentence| sentence.trim_start_matches([' ', '*', '_', '(']))
+            .find(|sentence| {
+                let lower = sentence.to_ascii_lowercase();
+                HOW_TO.iter().any(|verb| {
+                    lower.starts_with(verb)
+                        && !lower[verb.len()..].starts_with(|c: char| c.is_ascii_alphabetic())
+                })
+            })
+            .map(str::to_owned)
+    }
+
+    /// The owner's rule (2026-10-09): advice to do something is always a
+    /// link to follow or a command to run. Every paragraph or list item in
+    /// the served docs that tells the reader to open, install, run, … must
+    /// carry a Markdown link or a code span. A content lint over reviewed
+    /// guides, not a reading of anyone's message.
+    #[test]
+    fn every_instruction_carries_a_link_or_a_command() {
+        let guides = DOCS
+            .iter()
+            .map(|(slug, source)| (format!("docs/{slug}"), *source))
+            .chain(
+                crate::pages::api_docs::API_DOCS
+                    .iter()
+                    .map(|(slug, source)| (format!("docs/api/{slug}"), *source)),
+            );
+        let mut bare = Vec::new();
+        for (path, source) in guides {
+            for passage in passages(source) {
+                if passage.contains("](") || passage.contains('`') {
+                    continue;
+                }
+                let Some(sentence) = instruction(&passage) else {
+                    continue;
+                };
+                let allowed = UNLINKED
+                    .iter()
+                    .any(|(guide, start, _)| *guide == path && sentence.starts_with(start));
+                if !allowed {
+                    bare.push(format!("{path}: {sentence}"));
+                }
+            }
+        }
+        assert!(
+            bare.is_empty(),
+            "instructions with no link or command:\n{}",
+            bare.join("\n")
+        );
+    }
+
+    /// The lint finds a bare instruction, and passes one that links or
+    /// carries its command.
+    #[test]
+    fn the_instruction_lint_reads_paragraphs_and_items() {
+        let found = passages(
+            "Intro.\n\n1. Open the app.\n2. Run `coder login`.\n\nEnter:\n\n```sh\ncoder\n```\n",
+        );
+        assert_eq!(found[1], "Open the app.");
+        assert_eq!(instruction(&found[1]).as_deref(), Some("Open the app."));
+        assert!(found[2].contains('`'));
+        assert!(found[3].ends_with("`…`"));
+        assert_eq!(instruction("The Enter key sends."), None);
+        assert_eq!(instruction("Opening it is quick."), None);
+        assert_eq!(instruction("Ask \"open my wallet\"."), None);
+        assert_eq!(
+            instruction("See openagents.com. Run it.").as_deref(),
+            Some("Run it.")
         );
     }
 

@@ -5,7 +5,7 @@
 The Mac app says "Coder isn't answering on this Mac" when its background
 helper (the host) doesn't answer. The app keeps trying on its own.
 
-1. Click **Try again**.
+1. Click **Try again** in [OpenAgents for Mac](/docs/mac).
 2. If the app says "OpenAgents needs your OK to run in the background",
    click **Open Login Items** and turn on OpenAgents under **Allow in the
    Background**, then come back.
@@ -13,13 +13,25 @@ helper (the host) doesn't answer. The app keeps trying on its own.
    quit OpenAgents and open it again.
 4. Still stuck? Report a problem (below) with what the screen says.
 
+## My computer's chats don't show on the website
+
+1. Run `coder login` on that computer and approve the code at
+   [openagents.com/device](https://openagents.com/device).
+2. In Coder, type `/sync on`.
+3. Check [Settings](https://openagents.com/settings): the computer should
+   be listed. A reply from the site reaches Coder only while Coder is open on that computer.
+
+See [Connect a computer](/docs/connect-a-computer).
+
 ## My phone won't connect
 
-- Make sure OpenAgents is open on the Mac, on an unlocked screen, and
-  showing its QR code. The code only shows while the window is open.
-- Scan again. Each code works once and changes every minute.
+- Make sure [OpenAgents for Mac](/docs/mac) is open, on an unlocked screen,
+  and showing its QR code. The code only shows while the window is open.
+- Scan again in [OpenAgents for iPhone](/docs/iphone). Each code works once
+  and changes every minute.
 - Try **Can't scan? Copy a code instead** on the Mac, and paste the code in
-  the app under **Account → Computers → Add another way**.
+  [OpenAgents for iPhone](/docs/iphone) under **Account → Computers → Add
+  another way**.
 - On the same Wi-Fi, try **Nearby** in the app and check that both screens
   show the same six-digit number.
 - On a computer without the Mac app, check that its host is running:

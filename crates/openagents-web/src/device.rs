@@ -26,7 +26,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
-use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
+use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, TextLink};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 use openagents_ui::forms::{Field, Input};
 use serde::Deserialize;
@@ -276,7 +276,7 @@ fn code_form(typed: &str, problem: Option<&str>) -> Markup {
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Sign in on another computer" }
-            p { "Enter the code shown in your terminal." }
+            p { "Enter the code " code { "coder login" } " shows in your terminal." }
         }))
         form method="get" action=(PAGE) autocomplete="off" {
             (field.clone().control(
@@ -427,7 +427,10 @@ async fn decide(
         Ok(request) if approve => html! {
             (MarkdownRoot::new(html! {
                 h1 { (request.app) " on " (request.computer) " is signed in" }
-                p { "Go back to your terminal. You can close this tab." }
+                p {
+                    "Go back to your terminal. To show its chats here, type "
+                    code { "/sync on" } " in Coder. You can close this tab."
+                }
             }))
             p { (action_link("Settings", crate::settings::PAGE)) }
         },
@@ -480,7 +483,8 @@ fn computers_markup(rows: &[(&crate::cloud::session::device::AppSession, String)
                         div class="oa-settings-text" {
                             span class="oa-settings-label" { "No computers are signed in" }
                             span class="oa-settings-hint" {
-                                "Run " code { "coder-new login" } " in a terminal to sign one in."
+                                "Install Coder from " (TextLink::new("Download", "/download"))
+                                ", then run " code { "coder login" } " in a terminal to sign one in."
                             }
                         }
                     }
@@ -584,7 +588,8 @@ mod tests {
     #[test]
     fn settings_lists_computers_with_remove_or_says_how_to_add_one() {
         let empty = computers_markup(&[]).into_string();
-        assert!(empty.contains("coder-new login"));
+        assert!(empty.contains("<code>coder login</code>"));
+        assert!(empty.contains("href=\"/download\""));
         let session = crate::cloud::session::device::AppSession {
             id: "a".repeat(64),
             app: "Coder".into(),

@@ -1594,7 +1594,7 @@ mod tests {
             "This chat is too long to save to your account.",
             "Sign in again with coder login.",
             // The chat page's words for a reply sent to Coder (#11048).
-            "This chat runs in Coder on Studio. To reply here, open Coder there with /sync on.",
+            "This chat runs in Coder on Studio. To reply here, open Coder there and type /sync on.",
             "Reply to Coder on Studio",
             "Waiting for Coder on Studio.",
             "Coder on Studio isn't online now. Open Coder there to reply.",

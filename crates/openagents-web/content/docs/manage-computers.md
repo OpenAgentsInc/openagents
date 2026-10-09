@@ -1,17 +1,23 @@
 # Manage computers
 
+## On the website
+
+[Settings](https://openagents.com/settings) lists the computers signed in
+to your account, each with **Remove**, which signs it out. To add one, run `coder login` on it;
+see [Connect a computer](/docs/connect-a-computer).
+
 ## On your phone
 
-**Account → Computers** lists your computers, each with a one-word status.
+In [OpenAgents for iPhone](/docs/iphone), **Account → Computers** lists your computers, each with a one-word status.
 
-- **Tap a computer** to see its status, order work, open a terminal on it,
-  see its access, and see its recent work.
+- **Each computer** opens on a tap: its status, ordering work, a terminal
+  on it, its access, and its recent work.
 - **Its menu** switches it off or on, tries it now, opens its access, or
   forgets it. **Forget** stops this phone connecting and drops the
   computer from the list; the computer keeps the phone's access until you
   remove it there.
 - **Connect a computer** opens the scanner, and **Add another way** takes a
-  pasted code.
+  pasted code. See [Connect a computer](/docs/connect-a-computer).
 
 ## What your phone sees of a computer
 

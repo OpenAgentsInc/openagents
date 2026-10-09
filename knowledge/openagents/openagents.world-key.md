@@ -1,12 +1,12 @@
 ---
 id: openagents.world-key
-version: 1
+version: 2
 kind: product
 title: "The world key and the trainer key"
 summary: >-
   The Grid signs with a separate world key, which is also the trainer key XP
   belongs to, kept apart from the device key.
-tags: [keys, verse, trainer, world-key, privacy]
+tags: [keys, verse, trainer, world-key, privacy, in-app]
 applies_when: >-
   The user asks what key the Grid or Verse uses, what the trainer key is, what
   the code over their head means, or why they have more than one key.
@@ -26,6 +26,7 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

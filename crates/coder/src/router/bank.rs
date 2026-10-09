@@ -241,6 +241,11 @@ pub struct Entry {
     /// `id.here` ([`HERE_SUFFIX`]).
     #[serde(default)]
     pub place: Place,
+    /// Why the text may tell the reader to do something without an
+    /// `https://` link, a `command`, or an offer: the rare exception to
+    /// the rule that advice always carries the page or the one command to
+    /// run ([`knowledge::product::unlinked_instruction`]).
+    pub unlinked: Option<String>,
     /// The bank has this entry's `.website` variant, so the website shows that
     /// instead ([`Bank::parse`] sets it; never written in the file).
     #[serde(skip)]
@@ -608,6 +613,20 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                     push(id, format!("names a control (`{control}`)"));
                 }
             }
+            // Advice to do something carries the exact page or the one
+            // command to run, or the offer that does it (2026-10-09).
+            if entry.offer.is_none()
+                && entry.unlinked.is_none()
+                && let Some(step) = knowledge::product::unlinked_instruction(text)
+            {
+                push(
+                    id,
+                    format!(
+                        "tells the reader to act (\"{step}\") with no https:// link, \
+                         `command`, or offer; add the page or command, or say why in unlinked"
+                    ),
+                );
+            }
             if let Some(offer) = &entry.offer
                 && text.contains(offer.label.as_str())
             {
@@ -829,7 +848,7 @@ mod tests {
             ("meta.capabilities", 3),
             ("meta.limits_chat", 3),
             ("meta.coder", 3),
-            ("meta.github", 2),
+            ("meta.github", 3),
             ("meta.open_source", 1),
             ("smalltalk.hello", 1),
             ("smalltalk.how_are_you", 1),
@@ -868,6 +887,23 @@ routes = ["meta"]
 when = "x"
 stem = "We'll"
 
+[[answer]]
+id = "meta.unlinked"
+version = 1
+routes = ["meta"]
+when = "x"
+text = "Open OpenAgents for Mac and it shows a code."
+sources = ["README.md"]
+
+[[answer]]
+id = "meta.excused"
+version = 1
+routes = ["meta"]
+when = "x"
+text = "Open the door."
+unlinked = "a test of the exception"
+sources = ["README.md"]
+
 [[opener]]
 id = "ok"
 text = "Sure."
@@ -875,6 +911,7 @@ when = "x"
 "#;
         let bank = Bank::parse(bad).unwrap();
         let problems = lint(&bank, Some(&root())).join("\n");
+        assert!(!problems.contains("meta.excused"), "{problems}");
         for expected in [
             "name an unknown route",
             "speaks in the singular (I)",
@@ -890,6 +927,7 @@ when = "x"
             "meta.nochip: cites no sources",
             "ok: is filler",
             "machine talk (\"retained\"",
+            "meta.unlinked: tells the reader to act",
         ] {
             assert!(
                 problems.contains(expected),

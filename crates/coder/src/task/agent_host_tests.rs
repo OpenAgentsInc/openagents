@@ -691,7 +691,7 @@ fn her_replies_never_send_the_owner_through_hoops() {
     // No Coder at all.
     let dir = tempfile::tempdir().unwrap();
     let agents = host(&dir, vec![]).with_engine(Arc::new(|_: &Record| {
-        Err("Coder V1 is not installed: install Coder with scripts/install-coder.sh".into())
+        Err("Coder V1 is not installed: install Coder with `curl -fsSL https://openagents.com/cli/install.sh | bash`".into())
     }));
     ask(&agents, "k1", "hello", false).unwrap();
     let seen = until(&agents, |v| !v.busy && v.headline == "no coder");

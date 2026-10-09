@@ -291,9 +291,9 @@ pub(crate) fn branch(
 }
 
 fn says(markdown: &str) -> Message {
-    Message::assistant(MarkdownRoot::new(PreEscaped(crate::markdown::render(
-        markdown,
-    ))))
+    Message::assistant(MarkdownRoot::new(PreEscaped(
+        crate::markdown::render_reply(markdown),
+    )))
     .author(AUTHOR)
 }
 

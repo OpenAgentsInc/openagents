@@ -21,9 +21,13 @@ it off if you don't want Coder to use it.
 Each agent is signed in with its own program, on the same computer and as
 the same user that runs Coder:
 
-1. Install the agent's command-line program (Codex, Claude Code, Grok
-   Build, OpenCode, or Devin).
-2. Run it once in a terminal and sign in.
+1. Install the agent's command-line program. Codex:
+   `npm install -g @openai/codex`. Claude Code:
+   `npm install -g @anthropic-ai/claude-code`. OpenCode: see
+   [opencode.ai](https://opencode.ai). Grok Build and Devin install from
+   their makers' own instructions.
+2. Run it once in a terminal (for example `codex`, `claude`, or
+   `opencode`) and sign in.
 3. Check: the Mac app's sidebar and **Settings → Coder** say **Signed in**
    for it, and OpenAgents Terminal lists it under **Agents**.
 

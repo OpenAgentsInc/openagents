@@ -9,6 +9,6 @@ vertical stack
     body "Coder uses Codex or Claude Code on this Mac" [bold]
     body "–  Codex · not signed in"
     body "–  Claude Code · not signed in"
-    status "Sign in to Codex or Claude Code on this Mac so Coder can work here."
+    status "Sign in to Codex or Claude Code on this Mac so Coder can work here: run `codex login`, or run `claude` and log in."
   checkbox [x] "Let my phone start Coder here" -> toggle_autostart
   button "Done" -> done

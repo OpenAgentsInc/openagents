@@ -738,7 +738,7 @@ mod tests {
                 tier: Some("canned".into()),
                 answer: Some("meta.github.website@1".into()),
                 text: Some(
-                    "Sign in with GitHub, open Projects in the left panel, and connect GitHub."
+                    "Sign in with GitHub, open Projects at https://openagents.com/projects, and connect GitHub."
                         .into(),
                 ),
                 first_ms: Some(900),

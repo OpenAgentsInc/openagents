@@ -41,7 +41,7 @@
           "answers": ["meta.who.website"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["OpenAgents"], ["openagents.com/download", "Coder"]],
+          "required": [["OpenAgents"], ["https://openagents.com/download"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -61,7 +61,7 @@
           "answers": ["meta.capabilities.website", "meta.tools.website"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Coder"], ["openagents.com/download"]],
+          "required": [["Coder"], ["https://openagents.com/download"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -71,7 +71,7 @@
           "answers": ["meta.model"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Jev"]],
+          "required": [["router"], ["model"]],
           "forbidden": []
         },
         {
@@ -114,7 +114,7 @@
           "answers": ["meta.github.website", "openagents.github-projects"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Projects"], ["connect GitHub", "Connect GitHub"]],
+          "required": [["Projects"], ["connect GitHub", "Connect GitHub"], ["https://openagents.com/projects"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -140,8 +140,18 @@
           "answers": ["openagents.web-account"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["GitHub"]],
+          "required": [["GitHub"], ["https://openagents.com/login"]],
           "forbidden": ["download the app", "OpenAgents app does"]
+        },
+        {
+          "id": "account.connect_computer",
+          "phrasings": ["How do I connect a computer?", "how do i connect my laptop", "connect my computer to openagents", "how do I add a computer"],
+          "route": ["account", "product.kb", "meta"],
+          "answers": ["openagents.connect-computer"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["curl -fsSL https://openagents.com/cli/install.sh | bash"], ["`coder login`"], ["https://openagents.com/device"], ["`/sync on`"]],
+          "forbidden": ["QR code", "scan", "OpenAgents for Mac", "tap "]
         }
       ]
     },
@@ -166,7 +176,7 @@
           "answers": ["openagents.install-coder", "openagents.get-the-app"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["openagents.com/download", "install.sh"]],
+          "required": [["curl -fsSL https://openagents.com/cli/install.sh | bash"], ["https://openagents.com/download", "install.ps1"]],
           "forbidden": ["QR code", "scan"]
         },
         {
@@ -176,7 +186,7 @@
           "answers": ["openagents.coder-sync"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["coder login", "/login"], ["openagents.com/device"]],
+          "required": [["`coder login`", "`/login`"], ["https://openagents.com/device"]],
           "forbidden": []
         },
         {
@@ -186,7 +196,7 @@
           "answers": ["openagents.coder-sync"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["/sync on"]],
+          "required": [["`/sync on`"]],
           "forbidden": []
         }
       ]
@@ -238,7 +248,7 @@
           "answers": ["openagents.claude-key"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Settings"], ["Claude credential"]],
+          "required": [["Settings"], ["Claude credential"], ["https://openagents.com/settings/claude"]],
           "forbidden": ["paste it here", "send it to us", "share it here"]
         },
         {
@@ -378,7 +388,7 @@
           "answers": ["meta.limits_chat.website", "meta.capabilities.website"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Coder"], ["openagents.com/download"]],
+          "required": [["Coder"], ["https://openagents.com/download"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -440,7 +450,7 @@
           "answers": [],
           "tier": ["model", "opener", "grounded"],
           "speed": "model",
-          "required": [["openagents.com/download", "Coder"]],
+          "required": [["Coder"], ["install.sh", "https://openagents.com/download"]],
           "forbidden": ["I've fixed", "we've fixed", "I fixed the test"]
         }
       ]

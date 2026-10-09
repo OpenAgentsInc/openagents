@@ -1,12 +1,12 @@
 ---
 id: openagents.report-a-problem
-version: 1
+version: 2
 kind: product
 title: "Reporting a problem"
 summary: >-
   Report a problem is in Account and on a long press of the tab bar; reports
   go privately to the triage key, and **My reports** lists them.
-tags: [report, bug, feedback, playtest]
+tags: [report, bug, feedback, playtest, in-app]
 applies_when: >-
   The user asks how to report a bug, crash, or problem, send feedback, or find
   reports they sent.
@@ -28,6 +28,7 @@ provenance:
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

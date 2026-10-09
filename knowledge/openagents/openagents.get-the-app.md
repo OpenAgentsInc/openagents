@@ -1,6 +1,6 @@
 ---
 id: openagents.get-the-app
-version: 6
+version: 7
 kind: product
 title: "Getting the apps"
 summary: >-
@@ -13,12 +13,13 @@ applies_when: >-
   Windows, Linux, or Android, where to get the desktop app, or whether
   it's in the App Store or Play Store.
 answer: >-
-  openagents.com/download has Coder, our coding agent for your terminal,
-  with the `openagents` command-line program, for macOS, Linux, and
-  Windows, each installed with one command. The iPhone, Android, and
-  desktop apps aren't on the download page right now; you can build them
-  from source at github.com/OpenAgentsInc/openagents. And you can chat
-  with us right here on openagents.com.
+  https://openagents.com/download has Coder, our coding agent for your
+  terminal, with the `openagents` command-line program, for macOS, Linux, and
+  Windows, each installed with one command. On macOS or Linux, run `curl -fsSL
+  https://openagents.com/cli/install.sh | bash`. The iPhone, Android, and
+  desktop apps aren't on the download page right now; you can build them from
+  source at https://github.com/OpenAgentsInc/openagents. And you can chat with
+  us right here on openagents.com.
 status: admitted
 author: openagents
 provenance:
@@ -34,11 +35,12 @@ evidence:
   - "2026-10-01: The page offers Mac and Terminal release candidates. All other apps require source builds."
   - "2026-10-09: v5 (chat goldens): the download page now offers only Coder and the OpenAgents command-line program (download.rs: Download Coder), not a Mac .dmg, so the answer says so."
   - "2026-10-09: v6: the install command's result is Coder and the `openagents` command; the engine Coder runs with is part of Coder, not a separate download."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-openagents.com/download has Coder, our coding agent for your terminal, with the `openagents` command-line program, for macOS, Linux, and Windows, each installed with one command. The iPhone, Android, and desktop apps aren't on the download page right now; you can build them from source at github.com/OpenAgentsInc/openagents. And you can chat with us right here on openagents.com.
+https://openagents.com/download has Coder, our coding agent for your terminal, with the `openagents` command-line program, for macOS, Linux, and Windows, each installed with one command. On macOS or Linux, run `curl -fsSL https://openagents.com/cli/install.sh | bash`. The iPhone, Android, and desktop apps aren't on the download page right now; you can build them from source at https://github.com/OpenAgentsInc/openagents. And you can chat with us right here on openagents.com.
 
 ## Details
 

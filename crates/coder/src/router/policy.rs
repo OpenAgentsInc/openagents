@@ -959,8 +959,13 @@ pub const WEB_NOTE: &str = "This chat is on the openagents.com website, which on
 questions about OpenAgents. The visitor asked for something the website cannot do (work on \
 code or a computer, a command, a screen, the wallet, or the Gym). Say in one or two sentences \
 that Coder, our coding agent, does work on code in their terminal on their own computer, and \
-that they can get it at openagents.com/download; for the wallet, the Gym, or a screen, say \
-our OpenAgents apps have it. Answer any question in the message about OpenAgents itself.";
+give the one command that installs it, in a code span: \
+`curl -fsSL https://openagents.com/cli/install.sh | bash` on macOS or Linux, or \
+`irm https://openagents.com/cli/install.ps1 | iex` in PowerShell on Windows (every download is \
+at https://openagents.com/download). When it helps, add that `coder login`, approving the code \
+at https://openagents.com/device, and `/sync on` in Coder connect that computer to their \
+account. For the wallet, the Gym, or a screen, say our OpenAgents apps have it. Answer any \
+question in the message about OpenAgents itself.";
 
 /// The bank entry the website answers `eval.run` with: which plugins there
 /// are, as cards (`docs/web/plugin-card.md`), since nothing on the website
@@ -1617,8 +1622,9 @@ mod tests {
     #[test]
     fn the_website_answers_and_never_offers() {
         assert_eq!(web().surface(), Surface::Web);
-        assert!(WEB_NOTE.contains("openagents.com/download;"));
-        assert!(!WEB_NOTE.contains("/install"));
+        assert!(WEB_NOTE.contains("https://openagents.com/download"));
+        assert!(WEB_NOTE.contains("https://openagents.com/cli/install.sh | bash"));
+        assert!(!WEB_NOTE.contains("openagents.com/install"));
         let work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
         assert!(matches!(
             router(&work),

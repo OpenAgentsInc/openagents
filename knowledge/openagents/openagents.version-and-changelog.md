@@ -1,12 +1,12 @@
 ---
 id: openagents.version-and-changelog
-version: 2
+version: 3
 kind: product
 title: "Finding the app's version and what changed"
 summary: >-
   Account > About this device shows the version and build; Account > Changelog
   lists each build's changes and a What to test line.
-tags: [version, build, changelog, account]
+tags: [version, build, changelog, account, in-app]
 applies_when: >-
   The user asks which version or build of the app they have, what changed in a
   build, or what to test.
@@ -24,6 +24,7 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: version 2 (#9941) adds build 21, Test tools in chat, from its changelog entry in crates/openagents-mobile/src/account.rs; the answer is unchanged."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

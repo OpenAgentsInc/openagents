@@ -10,7 +10,7 @@ to open your wallet says where to find it.
 
 ## Receive
 
-Tap **Receive**. You get a payment request with a QR code, **Copy**, and
+Tap **Receive** on the [Wallet tab](/docs/iphone). You get a payment request with a QR code, **Copy**, and
 **Share**, and you can set an amount. Under **Advanced → Other ways to
 receive** are a Lightning invoice, your Spark address, a Bitcoin deposit
 address, and your npub, with a switch that publishes your Spark address in
@@ -21,7 +21,7 @@ confirm. A receiving Lightning address of your own isn't available yet.
 
 ## Send
 
-Tap **Send**, then paste or scan what you're paying: a Lightning invoice, a
+Tap **Send** on the [Wallet tab](/docs/iphone), then paste or scan what you're paying: a Lightning invoice, a
 Lightning address, an LNURL code, an npub, or a Spark or Bitcoin address.
 Enter an amount if it needs one. A confirm screen shows the amount and the
 fee, and nothing is sent until you confirm. On-chain withdrawals offer

@@ -395,37 +395,10 @@
   margin-inline-start: auto;
 }
 
-/* The copy action; hidden until a script can copy. */
-.oa-code-block__copy {
-  display: inline-flex;
-  height: calc(var(--spacing) * 7);
-  align-items: center;
-  gap: calc(var(--spacing) * 1);
-  padding: 0 calc(var(--spacing) * 2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font: inherit;
-}
-
-.oa-code-block__copy[hidden] {
-  display: none;
-}
-
-.oa-code-block__copy:hover {
-  background-color: var(--color-background-primary-ghost-hover);
-  color: var(--color-text);
-}
-
-.oa-code-block__copy:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 1px;
-}
-
-.oa-code-block__copy[data-state="copied"] {
-  color: var(--color-text);
+/* An icon-only copy button right after an inline command in prose. */
+.oa-markdown .oa-inline-copy {
+  margin-inline-start: 2px;
+  vertical-align: middle;
 }
 
 /* ------------------------------------------------------------------ */

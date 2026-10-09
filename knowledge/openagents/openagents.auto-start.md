@@ -1,13 +1,13 @@
 ---
 id: openagents.auto-start
-version: 3
+version: 4
 kind: product
 title: "When a task from the phone starts on a computer"
 summary: >-
   A task from the phone runs at once only where the owner allowed it: in
   OpenAgents for Mac, a picked project and **Let my phone start Coder here**;
   otherwise it is recorded without running.
-tags: [coder, auto-start, host, permissions]
+tags: [coder, auto-start, host, permissions, in-app]
 applies_when: >-
   The user asks why a task they sent didn't start, how to let their phone
   start Coder on their computer, or how tasks from the phone get permission to
@@ -32,6 +32,7 @@ evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
   - "2026-10-01: version 3 (#10091): Grok Build is allowed by default beside Codex and Claude Code, on the Mac's own runs and its phone switch, so any of the three signed in there runs Coder; checked against INVARIANTS.md and docs/cli/settings.md."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

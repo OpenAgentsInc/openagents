@@ -1,12 +1,12 @@
 ---
 id: openagents.coder-chat-controls
-version: 1
+version: 2
 kind: product
 title: "Following up, queuing, steering, and stopping Coder"
 summary: >-
   In a Coder chat, messages continue or queue, a long press on send steers or
   stops, and questions and approvals are answered in the chat.
-tags: [coder, chat, queue, steer, stop, approve]
+tags: [coder, chat, queue, steer, stop, approve, in-app]
 applies_when: >-
   The user asks how to send a follow-up, queue or steer a message while Coder
   works, stop a run, edit the queue, or answer Coder's questions and approval
@@ -26,6 +26,7 @@ provenance:
     - bins/openagents-ios/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
 ## Answer

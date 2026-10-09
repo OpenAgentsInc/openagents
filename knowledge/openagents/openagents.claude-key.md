@@ -1,6 +1,6 @@
 ---
 id: openagents.claude-key
-version: 1
+version: 2
 kind: product
 title: "Your own Claude key"
 summary: >-
@@ -15,13 +15,12 @@ applies_when: >-
   chat's own model keys, and not OpenRouter, Vercel AI Gateway, or TypeSafe
   keys on a computer (openagents.pricing).
 answer: >-
-  Sign in on openagents.com, open Settings from the account menu at the
-  bottom left, and choose **Claude credential**. There you can add or
-  remove your own Anthropic API key, or a Bedrock, Vertex, or Foundry
-  credential. We keep it encrypted for your account and use it only for
-  Claude Code runs on your own environments, never in a chat, a saved
-  image, or a log; usage bills to your own Anthropic or cloud account.
-  Never paste a key into a chat.
+  Sign in on openagents.com, then open **Claude credential** in Settings:
+  https://openagents.com/settings/claude. There you can add or remove your own
+  Anthropic API key, or a Bedrock, Vertex, or Foundry credential. We keep it
+  encrypted for your account and use it only for Claude Code runs on your own
+  environments, never in a chat, a saved image, or a log; usage bills to your
+  own Anthropic or cloud account. Never paste a key into a chat.
 status: admitted
 author: openagents
 provenance:
@@ -33,11 +32,12 @@ provenance:
     - docs/cloud/claude-code-byo.md
 evidence:
   - "2026-10-09: written from the cited documents and code and checked against them (#11041, #11052, chat goldens); the answer text awaits the owner's copy review."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-Sign in on openagents.com, open Settings from the account menu at the bottom left, and choose **Claude credential**. There you can add or remove your own Anthropic API key, or a Bedrock, Vertex, or Foundry credential. We keep it encrypted for your account and use it only for Claude Code runs on your own environments, never in a chat, a saved image, or a log; usage bills to your own Anthropic or cloud account. Never paste a key into a chat.
+Sign in on openagents.com, then open **Claude credential** in Settings: https://openagents.com/settings/claude. There you can add or remove your own Anthropic API key, or a Bedrock, Vertex, or Foundry credential. We keep it encrypted for your account and use it only for Claude Code runs on your own environments, never in a chat, a saved image, or a log; usage bills to your own Anthropic or cloud account. Never paste a key into a chat.
 
 ## Details
 

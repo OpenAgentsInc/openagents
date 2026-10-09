@@ -88,8 +88,8 @@ Check the file in your editor or file browser. It should contain the second
 greeting. Follow the commands and results in the chat.
 
 If a delegated agent appears below the input bar, clear any draft and use
-Up/Down to select its conversation. Check its task, elapsed time, and token
-count. Press Up from the first agent to return to the main chat. Trackpad or
+`Up`/`Down` to select its conversation. Check its task, elapsed time, and
+token count. Press `Up` from the first agent to return to the main chat. Trackpad or
 mouse scrolling should scroll the chat without changing the selected agent.
 Some requests run entirely in the main chat and have no separate agent row.
 
@@ -100,7 +100,7 @@ off, and Enter opens its settings. Esc returns to the previous screen.
 
 Coder loop, Jev, OpenAgents CLI, and ACP Subagents ship enabled. OpenRouter
 BYOK starts off unless a key is already configured. Try turning Jev off and
-back on. Open **ACP Subagents** to see detected local agents and their
+back on. In `/plugins`, open **ACP Subagents** to see detected local agents and their
 checkboxes; an empty list is normal if none are installed.
 
 ### 6. Optional: connect OpenRouter and choose a model
@@ -108,8 +108,8 @@ checkboxes; an empty list is normal if none are installed.
 Skip this step if you do not have an OpenRouter API key.
 
 1. In `/plugins`, select **OpenRouter BYOK** and press Enter.
-2. Enter your key in **OpenRouter API key**. Use Tab to select **Save**, then
-   press Enter. Check that the key is verified.
+2. Enter your key in **OpenRouter API key**. Use `Tab` to select **Save**,
+   then press `Enter`. Check that the key is verified.
 3. Return to the plugin list and ensure OpenRouter is on.
 4. Enter `/models`. Type to search, then use Up/Down and Enter to choose
    `openrouter/free` for the default free router or another listed model.

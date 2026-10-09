@@ -2,6 +2,8 @@
 
 use maud::{Markup, Render, html};
 
+use crate::actions::{ButtonVariant, Color, ControlSize, CopyButton};
+
 /// A toolbar that sticks to the top of its scroll container while its
 /// block is in view: `div.oa-sticky-action-bar`. A code block uses one as
 /// its header (language on the left, copy on the right); other content can
@@ -71,11 +73,10 @@ impl Render for StickyActionBar {
 /// `pre > code`. Code is monospace and never wraps unless [`wrap`] is set;
 /// long lines scroll sideways inside the pane.
 ///
-/// The copy action is a `button[data-oa-copy]` rendered `hidden`, so it
-/// never shows without a script. A page script that supports it removes
-/// `hidden`, and on click copies the `textContent` of the
-/// `.oa-code-block__code` inside `closest(".oa-code-block")`, then sets
-/// `data-state="copied"` on the button briefly.
+/// The copy action is a [`CopyButton`] labelled "Copy" that carries the
+/// code in `data-oa-copy`; the CopyButton script hook
+/// ([`crate::actions::COPY_BUTTON_JS`], part of [`crate::script()`])
+/// copies it in one click, with no inline script.
 ///
 /// [`wrap`]: CodeBlock::wrap
 #[derive(Clone, Debug)]
@@ -147,12 +148,16 @@ impl CodeBlock {
     }
 
     fn copy_button(&self) -> Markup {
-        html! {
-            button.oa-code-block__copy type="button" data-oa-copy hidden aria-label="Copy code" {
-                @if let Some(icon) = &self.copy_icon { (icon) }
-                span { "Copy" }
-            }
+        let mut button = CopyButton::new(self.code.clone())
+            .label("Copy")
+            .aria_label("Copy code")
+            .size(ControlSize::Sm)
+            .variant(ButtonVariant::Ghost)
+            .color(Color::Secondary);
+        if let Some(icon) = &self.copy_icon {
+            button = button.copy_icon(icon.clone());
         }
+        button.render()
     }
 }
 
@@ -210,8 +215,13 @@ mod tests {
         );
         assert!(html.contains("class=\"oa-code-block__pane\" tabindex=\"0\""));
         assert!(html.contains("role=\"toolbar\" aria-label=\"Code actions\""));
-        // The copy action stays hidden until a script enables it.
-        assert!(html.contains("data-oa-copy hidden"), "{html}");
+        // The copy action is a CopyButton carrying the (unescaped) code.
+        assert!(
+            html.contains("data-oa-copy=\"fn main() { println!(&quot;&lt;hi&gt;&quot;); }\""),
+            "{html}"
+        );
+        assert!(html.contains("<span>Copy</span>"), "{html}");
+        assert!(html.contains("aria-label=\"Copy code\""), "{html}");
         assert!(!html.contains("data-wrap"), "{html}");
     }
 
@@ -234,8 +244,12 @@ mod tests {
             .render()
             .into_string();
         assert!(html.contains("<span class=\"token keyword\">fn</span>"));
-        assert!(!html.contains("ignored"));
-        assert!(html.contains("<svg></svg><span>Copy</span>"), "{html}");
+        assert!(!html.contains(">ignored<"));
+        assert!(
+            html.contains("data-copy-icon=\"copy\"><svg></svg></span>"),
+            "{html}"
+        );
+        assert!(html.contains("data-oa-copy=\"ignored\""), "{html}");
     }
 
     #[test]

@@ -28,7 +28,7 @@ use serde::Serialize;
 use tokio::runtime::Handle;
 
 /// Where the person gets the desktop app.
-pub const GET_APP: &str = "Get OpenAgents for Mac at openagents.com/desktop.";
+pub const GET_APP: &str = "OpenAgents for Mac shows the code to scan; build it from https://github.com/OpenAgentsInc/openagents.";
 
 /// A pairing in flight.
 pub type Pairing = Pin<Box<dyn Future<Output = Result<Paired, PairFailure>> + Send>>;

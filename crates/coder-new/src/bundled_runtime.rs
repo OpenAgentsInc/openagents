@@ -376,8 +376,10 @@ pub async fn cli(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     let program = cli_binary().ok_or_else(|| {
-        "The bundled OpenAgents CLI is missing. Install Coder with scripts/install-coder.sh."
-            .to_string()
+        format!(
+            "The bundled OpenAgents CLI is missing. Reinstall Coder with `{}`.",
+            crate::account::INSTALL_COMMAND
+        )
     })?;
     cli_at(&program, arguments, cwd, cancel, emit).await
 }

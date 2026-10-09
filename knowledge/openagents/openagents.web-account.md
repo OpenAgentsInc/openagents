@@ -1,6 +1,6 @@
 ---
 id: openagents.web-account
-version: 1
+version: 2
 kind: product
 title: "Signing in on openagents.com"
 summary: >-
@@ -17,12 +17,12 @@ applies_when: >-
   (openagents.coder-sync).
 answer: >-
   You don't need an account to chat: without one, your chats belong to this
-  browser. To keep them on an account, choose **Log in** or **Sign up** at
-  the top right of openagents.com and continue with GitHub; GitHub shares
-  only your profile and email addresses. Signed in, your chats show in any
-  browser where you sign in, chats you started signed out move to your
-  account, and you can add your GitHub repositories as projects, save your
-  own Claude key in Settings, and sign in to Coder.
+  browser. To keep them on an account, sign in with GitHub at
+  https://openagents.com/login (or **Sign up** at the top right). GitHub
+  shares only your profile and email addresses. Signed in, your chats show in
+  any browser where you sign in, chats you started signed out move to your
+  account, and you can add your GitHub repositories as projects, save your own
+  Claude key in Settings, and sign in to Coder.
 status: admitted
 author: openagents
 provenance:
@@ -34,11 +34,12 @@ provenance:
     - crates/openagents-web/src/auth.rs
 evidence:
   - "2026-10-09: written from the cited documents and code and checked against them (#11039, #11045, chat goldens); the answer text awaits the owner's copy review."
+  - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
 ---
 
 ## Answer
 
-You don't need an account to chat: without one, your chats belong to this browser. To keep them on an account, choose **Log in** or **Sign up** at the top right of openagents.com and continue with GitHub; GitHub shares only your profile and email addresses. Signed in, your chats show in any browser where you sign in, chats you started signed out move to your account, and you can add your GitHub repositories as projects, save your own Claude key in Settings, and sign in to Coder.
+You don't need an account to chat: without one, your chats belong to this browser. To keep them on an account, sign in with GitHub at https://openagents.com/login (or **Sign up** at the top right). GitHub shares only your profile and email addresses. Signed in, your chats show in any browser where you sign in, chats you started signed out move to your account, and you can add your GitHub repositories as projects, save your own Claude key in Settings, and sign in to Coder.
 
 ## Details
 

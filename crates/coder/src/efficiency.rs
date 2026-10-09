@@ -813,7 +813,7 @@ pub fn text(report: &Value, all: bool) -> String {
             sh["routed_passed"], sh["routed_checked"], sh["raw_passed"], sh["raw_checked"],
         ));
     } else {
-        out.push("Shadow baselines on this computer: none yet (openagents settings set coder.shadow 10).".into());
+        out.push("Shadow baselines on this computer: none yet (turn them on with `openagents settings set coder.shadow 10`).".into());
     }
     let runs = &report["runs"];
     out.push(format!(

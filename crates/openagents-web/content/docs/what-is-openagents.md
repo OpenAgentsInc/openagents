@@ -40,8 +40,8 @@ OpenAgents runs on open protocols: messages, results, and XP are signed
 records on Nostr, an open network of relays. The app, the chat service,
 Coder, and the protocols are open source at
 [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents),
-under the Apache License 2.0. There is no account or password: each device
-makes its own key the first time it runs.
+under the Apache License 2.0. The apps need no account or password: each
+device makes its own key the first time it runs.
 
 Why we built it this way is in two essays:
 [The Return of the General Agent](https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-10-01-the-return-of-the-general-agent.md)
