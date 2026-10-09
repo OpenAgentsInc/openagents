@@ -109,8 +109,11 @@ We implement the specification at version 2026-04-24
   `response.content_part.added`, deltas, `*.done`,
   `response.content_part.done`, and `response.output_item.done`, then a
   terminal `response.completed`, `response.incomplete`, or
-  `response.failed`. Every event has `sequence_number`. The stream ends with
-  `[DONE]`.
+  `response.failed`. Every event has `sequence_number`. The stream we serve
+  ends with `[DONE]`. Upstreams are read leniently: the Vercel AI Gateway's
+  streams never send `[DONE]` (the terminal event ends them), and its GLM
+  lane sends raw reasoning deltas with no `response.content_part.added`
+  first, so the codec and every adapter accept both.
 - **Tools.** Function tools and `tool_choice` (`auto`, `required`, `none`,
   a named function, and `allowed_tools`, enforced as a hard constraint).
   Hosted tools (web search and the like) are P2, each as its own prefixed
@@ -124,7 +127,10 @@ We implement the specification at version 2026-04-24
   `unauthorized` 401, `insufficient_balance` 402, `limit_reached` 403 (a
   limit the key's owner set, named in `param`), `upstream_failed` 502, and
   `no_route` 503 (no upstream meets the request's constraints). An error
-  after the first token arrives as `response.failed`.
+  after the first token arrives as `response.failed`. A failed response's
+  `error` object carries only `code` and `message` (the spec's
+  `ResponseResource.error`); `type` and `param` belong to the HTTP error
+  body.
 - **Compliance.** The acceptance suite (10 HTTP tests, 7 WebSocket tests)
   runs against staging before each release and against production in P1.
   The WebSocket tests wait for P2.
@@ -134,8 +140,10 @@ for any new item or event type.
 
 | Extension | Where | Contents |
 | --- | --- | --- |
-| `openagents` request object | request body | `route` (`order`, `only`, `ignore`, `sort`: `quality`, `price`, or `latency`), `privacy` (`strict` or `standard`), `pay` (`ours` or `mine`), `max_price` per million tokens, `fallbacks` (model ids). All optional. |
-| `openagents` response object | response body | `model` and `upstream` that answered, `attempts` (each upstream tried, outcome, milliseconds), `cost` (upstream cost, margin, price, in USD and sats). |
+| `openagents` request object | request body | `route` (`order`, `only`, `ignore`, `sort`: `quality`, `price`, or `latency`), `privacy` (`strict` or `standard`), `pay` (`ours` or `mine`), `max_price` as `{"input": "0.50", "output": "1.50"}`: decimal US dollar strings per million tokens, compared against our price including the margin, `fallbacks` (model ids). All optional. |
+| `openagents` response object | response body | `model` and `upstream` that answered, `attempts` (each upstream tried, outcome, milliseconds), `cost` (`upstream_usd`, `margin_usd`, `price_usd` as decimal dollar strings converted from the meter's integer micros, so no amount passes through a float; `price_sats` beside them). |
+| `text.format` `json_object` | request body | Accepted on `/v1/responses` as an extension (the spec names `text` and `json_schema`), so a Chat Completions `response_format: json_object` keeps its meaning on both APIs. |
+| `stop`, `seed`, `user` | request body | Carried as extension fields of the same names (they are not in Open Responses), so Chat Completions callers keep them; an upstream that does not support one ignores it. |
 | `openagents:route` event | stream | Which model and upstream took the request, sent before the first output item. |
 | `openagents:cost` event | stream | The cost object, sent before the terminal event. |
 | Headers | every response | `x-request-id`, `x-openagents-model`, `x-openagents-upstream`, `x-openagents-cost-usd`. |
@@ -158,13 +166,14 @@ differently because of which API a caller used.
 | --- | --- | --- |
 | `system` and `developer` messages | `instructions` and developer `message` items | 1:1 |
 | `user` text and `image_url` parts | `input_text` and `input_image` | 1:1 |
-| `assistant` content and `tool_calls` | `message` and `function_call` items | 1:1 |
+| `assistant` content and `tool_calls` | `message` and `function_call` items | 1:1, except that adjacent assistant messages merge into one in either direction, and a message's `name` and a part's `annotations` are dropped |
 | `tool` messages | `function_call_output` | 1:1 |
 | `tools` (function), `tool_choice`, `parallel_tool_calls` | the same | 1:1 |
-| `response_format` (`json_object`, `json_schema`) | `text.format` | 1:1 |
+| `response_format` (`json_object`, `json_schema`) | `text.format` (`json_object` is our extension there) | 1:1 |
 | `max_tokens`, `max_completion_tokens` | `max_output_tokens` | 1:1 |
 | `reasoning_effort` | `reasoning.effort` | 1:1 |
-| `temperature`, `top_p`, `stop`, `seed`, `user` | the same | 1:1 where the upstream supports them; otherwise ignored, as OpenRouter does |
+| `temperature`, `top_p` | the same | 1:1 where the upstream supports them; otherwise ignored, as OpenRouter does |
+| `stop`, `seed`, `user` | extension fields of the same names | 1:1 where the upstream supports them; otherwise ignored |
 | `stream`, `stream_options.include_usage` | SSE; usage in the final chunk before `[DONE]` | 1:1 |
 | `finish_reason` | from status: `completed` gives `stop` or `tool_calls`; `incomplete` gives `length` or `content_filter`; `failed` gives `error` | 1:1 |
 | `usage` (prompt, completion, cached, reasoning tokens) | `usage` | 1:1, plus the `openagents` cost object |
@@ -219,7 +228,9 @@ ordered list of (model, upstream) attempts.
    `jev::doors` does), or draws on an exhausted credit balance.
 3. **Quality floor.** Keep only candidates whose measured score for the
    task class meets that class's floor (section 6). With no score yet, the
-   class table's order stands.
+   class table's order stands, and it keeps standing until Gym scores for
+   the class exist; until then credit, price, and latency only order each
+   model's upstreams.
 4. **Rank.** Prepaid credit first (Google, Z.ai, the Pro door's free
    capacity), then price, then measured time to first token. A caller's
    `route.sort` or `route.order` replaces this ranking.
@@ -442,7 +453,7 @@ existing gateway service.
 
 | Piece | Home | Why |
 | --- | --- | --- |
-| Open Responses types, event codec, Chat Completions translation | `crates/inference` | Pure types and translation, testable without a server. Start from what `psionic-serve` already serves on `/v1/responses` and `/v1/chat/completions`, and move the shared types here. |
+| Open Responses types, event codec, Chat Completions translation | `crates/inference` | Pure types and translation, testable without a server. `psionic-serve` keeps its own types for now; moving it onto these is a later migration (P2, with Pylon and local Psionic as upstreams). |
 | Adapters, router, rate card, credit ledger, attempt records | `crates/inference` | One library the gateway and our tools share |
 | HTTP routes, keys, holds and settlement, balances, receipts | `crates/gateway` | Already the one admission path for decision calls, with keys and money; a new route keeps one place for both |
 | OpenRouter client | `crates/openrouter`, used by its adapter | Exists |
