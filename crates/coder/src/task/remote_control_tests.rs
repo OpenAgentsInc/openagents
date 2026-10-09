@@ -9,6 +9,12 @@ use std::time::Duration;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;
 
+/// One host call finishes in well under a second alone, but the full
+/// `cargo test -p coder --lib` run starves this two-worker runtime and the
+/// host's blocking book writes. The bound only catches a hung host, so it is
+/// generous; the link's own per-call deadline still applies underneath.
+const CALL_BOUND: Duration = Duration::from_secs(60);
+
 async fn enroll(
     authority: &coder_host::access::host::Host,
     relay: &str,
@@ -58,7 +64,7 @@ async fn connect(
         tokio::net::TcpStream::connect(address).await.unwrap(),
         address.to_string(),
         running.generation(),
-        Duration::from_secs(3),
+        Duration::from_secs(30),
     )
     .await
     .unwrap()
@@ -71,7 +77,7 @@ async fn queue(
     digest: Option<String>,
 ) -> (TaskQueue, String) {
     let outcome = tokio::time::timeout(
-        Duration::from_secs(5),
+        CALL_BOUND,
         link.call(Operation::QueueTaskAtRevision {
             task: task.into(),
             revision: 1,
@@ -152,7 +158,7 @@ async fn two_principal_queue_reorder_and_release_keep_current_admission() {
         };
         assert!(matches!(
             tokio::time::timeout(
-                Duration::from_secs(5),
+                CALL_BOUND,
                 link.call(Operation::CommandTaskAtRevision {
                     command,
                     revision: 1
