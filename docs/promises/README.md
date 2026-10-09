@@ -21,11 +21,12 @@ The code is [`crates/openagents-web/src/promises.rs`](../../crates/openagents-we
 | `id` | A stable name, never reused. |
 | `group` | The heading it sits under. |
 | `statement` | One short sentence a user understands. No internal names. |
-| `surfaces` | `web`, `terminal`, `iphone`, `android`, `desktop`, `api`, `verse`. |
+| `surfaces` | `web`, `terminal`, `mobile`, `iphone`, `android`, `desktop`, `api`, `network`, `verse`. |
 | `status` | `shipped` (works today), `launching` (new in today's release), `partial` (works in part), `next`, `later`, or `dropped` (on purpose). The Kitchen Sink ledger's `live` reads as `shipped` and `missing` as `later` (#11125). |
 | `link` or `command` | The one place to try it. Required when it works (`shipped`, `launching`, `partial`). |
 | `issues` | The GitHub issues behind it. |
-| `episodes` | The show episodes that promised it. `next`, `later`, and `dropped` need an issue or an episode. |
+| `episodes` | The show episodes that promised it. |
+| `posts` | Posts on X that promised it, for a promise no episode made. `next`, `later`, and `dropped` need an issue, an episode, or a post. |
 | `note` | One short line: what part works, or why it was dropped (required for `dropped`). |
 | `evidence` | What proves it. At least one when it works. |
 
@@ -62,7 +63,7 @@ rendered from the registry.
 
 Project Kitchen Sink (#11125, `docs/kitchen-sink/`) compresses every
 promise from the show's episodes into one OpenAgents 1.0. The registry was
-imported from its [ledger](../kitchen-sink/ledger.md) at `31640d9ef4`, and
+imported from its [ledger](../kitchen-sink/ledger.md) at `c46aee749a`, and
 keeps the ledger's ids (A1 to M7, X1 to X16; W1 to W5 are this registry's
 own additions). The import followed the ledger's own status table:
 
