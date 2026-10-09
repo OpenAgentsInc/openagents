@@ -25,9 +25,15 @@
 //! export CODER_WORKER_SECRET=<64 hex or nsec>
 //! export CODER_RELAY=wss://relay.openagents.com
 //! export CODER_DOOR_KEY=…            # the door the worker answers through
-//! export CODER_WORKER_MODEL=glm      # the lane this worker runs
+//! export CODER_WORKER_MODEL=gemini   # the gateway lane this worker runs
+//! export OPENROUTER_API_KEY=…         # the primary every turn asks first
 //! coder-worker --once
 //! ```
+//!
+//! That is the shipped chat worker's configuration
+//! (`deploy/coder-worker-chat.env.example`): every turn asks the OpenRouter
+//! primary (Space Bunny Alpha) first, and the gateway's `gemini` lane
+//! answers any turn the primary does not.
 //!
 //! The lane is the worker's own. [`coder::generate::WORKER_MODEL_VAR`]
 //! outranks `CODER_MODEL` because the model a service pays for is not

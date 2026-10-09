@@ -156,7 +156,10 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
     ([the chat router design](../coder/design/2026-09-28-chat-router.md#implemented-and-measured-2026-09-28));
     `openrouter:<model>` names another model. `gateway` (or
     `gateway:<lane>`) uses the door key and URL the worker already has and
-    the `glm` lane, about twice as slow. `off` or unset turns it off.
+    the `glm` lane, about twice as slow; that lane writes only the stem's
+    ending, not the chat's answer, which stays on Space Bunny Alpha then
+    Gemini. `off` or unset turns it off. The shipped chat environment sets
+    `openrouter`.
   - With `openrouter`, `OPENROUTER_API_KEY` is required in the chat
     environment file (`/etc/coder-worker/coder-worker-chat.env`), beside the
     gateway key: the owner's OpenRouter key, which the worker never logs.

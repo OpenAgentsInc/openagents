@@ -20,8 +20,10 @@
 //! - the prompt: [`INSTRUCTIONS`] and [`prompt_text`], which carries the
 //!   [`Ask`]'s route, stem, and message and nothing else;
 //! - two measured providers, streamed: an OpenRouter model
-//!   ([`OpenRouterLane`], the default) and the gateway door's `glm` lane
-//!   ([`GatewayLane`]), chosen by [`PROVIDER_VAR`];
+//!   ([`OpenRouterLane`], the default, which the shipped chat worker runs)
+//!   and the gateway door's `glm` lane ([`GatewayLane`]), chosen by
+//!   [`PROVIDER_VAR`]. Either is only the personalization model; the chat
+//!   itself answers on the worker's own primary and lane;
 //! - [`check`], which tidies what the model wrote (quotes, a repeated
 //!   stem, a missing period) and refuses what the instructions forbid and
 //!   the router's validator does not look for ("we", a button, a time,
