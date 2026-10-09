@@ -378,14 +378,13 @@ Two steps, which can run on one Mac or Linux computer:
    to `desktop/windows/<version>/`, then the manifest to
    `desktop/windows/manifest.json`.
 
-**Authenticode.** A release needs the OpenAgents code-signing certificate,
-which only the owner can obtain (workspace `NEEDS_OWNER.md`). Without it
-`package-windows.sh` builds unsigned packages and says so, and
-`sign-manifest-windows.sh` refuses to publish them to `desktop/windows`:
-an unsigned build goes only to a test prefix (`--prefix
-desktop/windows-test`), for checking the app before the certificate
-exists. Windows SmartScreen warns on an unsigned MSI ("Windows protected
-your PC"; **More info**, **Run anyway**).
+**Authenticode.** Optional (owner, 2026-10-09). With the OpenAgents
+code-signing certificate `package-windows.sh` signs the packages; without
+it the packages are unsigned and still go to `desktop/windows` as a
+release. Windows SmartScreen asks people to confirm an unsigned MSI the
+first time ("Windows protected your PC"; **More info**, **Run anyway**), so
+the download page says so. Updates stay verified either way: the manifest
+is signed with our own update key.
 
 **Updates on Windows.** An app installed from the MSI checks
 `desktop/windows/manifest.json` at start and every six hours, downloads
