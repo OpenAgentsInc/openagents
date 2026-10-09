@@ -16,7 +16,8 @@
 use super::custody::{self, CustodyError};
 use super::private::ProtectedFile;
 use super::session::{SessionError, Viewer, now};
-use super::{failure, protect, refused, service, ticket, workspace_shell};
+use super::ui;
+use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
 use crate::layout::escape;
 use axum::Router;
@@ -29,6 +30,8 @@ use coder::task::sales::remote::{
     self as owner, Actor, Code, Effect, Op, Settled, Standing, Summary, record_id,
 };
 use coder::task::sales::{self as pipeline, Lead, Receipt, Role, Stage};
+use maud::{Markup, Render, html};
+use openagents_ui::forms::{Field, Select};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -783,7 +786,7 @@ fn target(delegation: &Delegation, lead: &str, request: &str) -> String {
     format!("{}:{lead}:{request}", delegation.identity)
 }
 
-fn shell(context: &Context<'_>, headers: &HeaderMap, content: &str) -> Response {
+fn shell(context: &Context<'_>, headers: &HeaderMap, content: Markup) -> Response {
     workspace_shell(
         context.app,
         headers,
@@ -803,72 +806,84 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = String::from(
-        "<h2>Private sales</h2><p>The private pipeline stays with its sales owner. This page reaches it only through a delegation provisioned for this account, workspace, and membership; the owner rechecks its separate sales credential on every read and change. Account, host, Studio, world, and billing membership grant no pipeline access.</p>",
-    );
+    let mut cards = Vec::new();
     let delegations = context.sales.current(&context.viewer);
-    if delegations.is_empty() {
-        content.push_str("<p>Unavailable: no sales delegation is provisioned for this account, workspace, and membership.</p>");
-    }
-    for delegation in delegations {
-        let id = escape(delegation.id());
-        content.push_str(&format!(
-            "<section class=\"cloud-card\" id=\"sales-{id}\"><h3>Sales delegation {id}</h3>"
-        ));
-        match context
-            .sales
-            .standing(&context.viewer, delegation.id())
-            .await
-        {
-            Ok(standing) => {
-                content.push_str(&format!(
-                    "<p>Principal {} · {} · {}</p>",
-                    escape(&standing.principal),
-                    role_label(standing.role),
-                    effects_label(&standing.effects),
-                ));
-                content.push_str(&views::nav(delegation.id(), ""));
-                if standing.supervise {
-                    content.push_str(&floor::floor_link(delegation.id()));
-                }
-            }
+    for delegation in &delegations {
+        let id = delegation.id();
+        let standing = match context.sales.standing(&context.viewer, id).await {
+            Ok(standing) => standing,
             Err(Failure::Session(error)) => return refused(error),
             Err(error) => {
-                content.push_str(&format!(
-                    "<p>Sales owner: {}. No record or change is offered.</p></section>",
-                    unavailable_label(&error)
-                ));
+                cards.push(html! {
+                    section class="cloud-card" id=(format!("sales-{id}")) {
+                        h3 { "Sales delegation " (id) }
+                        p { "Sales owner: " (unavailable_label(&error)) ". No record or change is offered." }
+                    }
+                });
                 continue;
             }
-        }
-        match context.sales.list(&context.viewer, delegation.id()).await {
+        };
+        let records = match context.sales.list(&context.viewer, id).await {
             Ok(leads) if leads.is_empty() => {
-                content.push_str("<p>No records are visible to this principal.</p>")
+                html! { p { "No records are visible to this principal." } }
             }
             Ok(leads) => {
-                content.push_str("<table class=\"sales-pipeline\"><thead><tr><th>Record</th><th>Stage</th><th>Responsible human</th><th>Permission</th><th>Next due</th><th>Revision</th></tr></thead><tbody>");
+                let mut table = ui::table("Sales pipeline").header([
+                    "Record",
+                    "Stage",
+                    "Responsible human",
+                    "Permission",
+                    "Next due",
+                    "Revision",
+                ]);
                 for lead in leads {
-                    content.push_str(&format!(
-                        "<tr><td><a href=\"{PAGE}/{id}/leads/{}\">{}</a></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                        escape(&lead.id),
-                        escape(&lead.id[..lead.id.len().min(16)]),
-                        stage_label(lead.stage),
-                        escape(&lead.responsible_human),
-                        permission_label(lead.permission),
-                        lead.next_due_at.map_or_else(|| "None".into(), |d| d.to_string()),
-                        lead.revision,
-                    ));
+                    table = table.row([
+                        html! {
+                            a href=(format!("{PAGE}/{id}/leads/{}", lead.id)) {
+                                (&lead.id[..lead.id.len().min(16)])
+                            }
+                        },
+                        html! { (stage_label(lead.stage)) },
+                        html! { (lead.responsible_human) },
+                        html! { (permission_label(lead.permission)) },
+                        html! {
+                            @match lead.next_due_at {
+                                Some(due) => { (due) }
+                                None => { "None" }
+                            }
+                        },
+                        html! { (lead.revision) },
+                    ]);
                 }
-                content.push_str("</tbody></table>");
+                html! { div class="sales-pipeline" { (table) } }
             }
             Err(Failure::Session(error)) => return refused(error),
-            Err(error) => {
-                content.push_str(&format!("<p>Records: {}.</p>", unavailable_label(&error)))
+            Err(error) => html! { p { "Records: " (unavailable_label(&error)) "." } },
+        };
+        cards.push(html! {
+            section class="cloud-card" id=(format!("sales-{id}")) {
+                h3 { "Sales delegation " (id) }
+                p {
+                    "Principal " (standing.principal) " \u{b7} " (role_label(standing.role))
+                    " \u{b7} " (effects_label(&standing.effects))
+                }
+                (views::nav(id, ""))
+                @if standing.supervise {
+                    (floor::floor_link(id))
+                }
+                (records)
             }
-        }
-        content.push_str("</section>");
+        });
     }
-    shell(&context, &headers, &content)
+    let content = html! {
+        h2 { "Private sales" }
+        p { "The private pipeline stays with its sales owner. This page reaches it only through a delegation provisioned for this account, workspace, and membership; the owner rechecks its separate sales credential on every read and change. Account, host, Studio, world, and billing membership grant no pipeline access." }
+        @if delegations.is_empty() {
+            (ui::unavailable("No sales delegation", "Unavailable: no sales delegation is provisioned for this account, workspace, and membership."))
+        }
+        @for card in &cards { (card) }
+    };
+    shell(&context, &headers, content)
 }
 
 fn role_label(role: Role) -> &'static str {
@@ -933,47 +948,14 @@ async fn record(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let base = format!("{PAGE}/{}/leads/{}", escape(&id), escape(&found.id));
-    let mut content = format!(
-        "<p><a href=\"{PAGE}\">Private sales</a></p><h2>Record {}</h2><dl class=\"sales-record\"><dt>Contact</dt><dd>{}</dd><dt>Account</dt><dd>{}</dd><dt>Stage</dt><dd>{}</dd><dt>Responsible human</dt><dd>{}</dd><dt>Permission</dt><dd>{} · expires at {}</dd><dt>Next action</dt><dd>{}</dd><dt>Workflow</dt><dd>{}</dd><dt>Revision</dt><dd>{}</dd></dl>",
-        escape(&found.id[..found.id.len().min(16)]),
-        escape(&found.contact),
-        escape(&found.details.account),
-        stage_label(found.details.stage),
-        escape(&found.responsible_human),
-        permission_label(found.details.permission.state),
-        found.details.permission.expires_at,
-        found.details.next.as_ref().map_or_else(
-            || "None".into(),
-            |n| format!("{} · due {}", escape(&n.description), n.due_at)
-        ),
-        escape(&found.details.workflow),
-        found.revision,
-    );
-    content.push_str(&views::nav(&id, ""));
-    if !found.service_sales.is_empty() {
-        content.push_str("<h3>Service records</h3><ul>");
-        for sale in found.service_sales.keys() {
-            content.push_str(&format!(
-                "<li><a href=\"{base}/services/{}\">{}</a> · see Pilots and delivery and Invoices and fulfillment</li>",
-                escape(sale),
-                escape(sale),
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    if standing.role == Role::Owner {
-        content.push_str(&format!(
-            "<p><a href=\"{base}/audit\">Audit for this record</a></p>"
-        ));
-    }
+    let base = format!("{PAGE}/{id}/leads/{}", found.id);
     let writable = standing.effects.contains(&Effect::Update)
         && match standing.role {
             Role::Owner => true,
             Role::Writer => found.responsible_human == standing.principal,
             Role::Reader => false,
         };
-    if writable {
+    let change = if writable {
         let request = fresh_request();
         let csrf = match context.service.csrf(
             &headers,
@@ -984,40 +966,38 @@ async fn record(
             Ok(value) => value,
             Err(error) => return refused(error),
         };
-        let mut options = String::new();
+        let field = Field::new("sales-stage", "Stage");
+        let mut select = Select::new("stage").aria(field.aria());
         for (stage, label) in STAGES {
             if stage != found.details.stage {
-                options.push_str(&format!(
-                    "<option value=\"{}\">{label}</option>",
-                    stage_value(stage)
-                ));
+                select = select.option(stage_value(stage), label);
             }
         }
-        content.push_str(&format!(
-            "<h3>Change stage</h3><form method=\"post\" action=\"{base}/stage\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><input type=\"hidden\" name=\"revision\" value=\"{}\"><label>Stage <select name=\"stage\">{options}</select></label> <button type=\"submit\">Change stage at revision {}</button></form>",
-            ticket(&csrf),
-            found.revision,
-            found.revision,
-        ));
+        html! {
+            h3 { "Change stage" }
+            (ui::BoundForm::new(format!("{base}/stage"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .bind("revision", &found.revision.to_string())
+                .body(field.control(select))
+                .submit(&format!("Change stage at revision {}", found.revision)))
+        }
     } else {
-        content.push_str("<p>No change is admitted for this principal and record.</p>");
-    }
+        html! { p { "No change is admitted for this principal and record." } }
+    };
     let requests = match context.sales.requests(&context.viewer, &id, &found.id) {
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    if !requests.is_empty() {
-        content.push_str("<h3>Requests</h3><ul class=\"sales-requests\">");
-    }
+    let mut entries = Vec::with_capacity(requests.len());
     for (request, entry) in &requests {
-        match &entry.receipt {
-            Some(receipt) => content.push_str(&format!(
-                "<li>Stage {} · request {} · Recorded at revision {} ({})</li>",
-                stage_label(entry.stage),
-                escape(&request[..8]),
-                receipt.revision,
-                escape(&receipt.outcome),
-            )),
+        entries.push(match &entry.receipt {
+            Some(receipt) => html! {
+                li {
+                    "Stage " (stage_label(entry.stage)) " \u{b7} request " (&request[..8])
+                    " \u{b7} Recorded at revision " (receipt.revision) " (" (receipt.outcome) ")"
+                }
+            },
             None => {
                 let csrf = match context.service.csrf(
                     &headers,
@@ -1028,22 +1008,74 @@ async fn record(
                     Ok(value) => value,
                     Err(error) => return refused(error),
                 };
-                content.push_str(&format!(
-                    "<li>Stage {} · request {} · Outcome unknown<form method=\"post\" action=\"{base}/stage\">{}<input type=\"hidden\" name=\"request\" value=\"{}\"><input type=\"hidden\" name=\"revision\" value=\"{}\"><input type=\"hidden\" name=\"stage\" value=\"{}\"><button type=\"submit\">Retry the same request</button></form></li>",
-                    stage_label(entry.stage),
-                    escape(&request[..8]),
-                    ticket(&csrf),
-                    escape(request),
-                    entry.revision,
-                    stage_value(entry.stage),
-                ));
+                html! {
+                    li {
+                        "Stage " (stage_label(entry.stage)) " \u{b7} request " (&request[..8])
+                        (ui::outcome_unknown(
+                            "The sales owner did not answer. Retry the same request; it reconciles the original change and never applies a different one.",
+                            Some(
+                                ui::retry(format!("{base}/stage"), &csrf)
+                                    .bind("request", request)
+                                    .bind("revision", &entry.revision.to_string())
+                                    .bind("stage", &stage_value(entry.stage)),
+                            ),
+                        ))
+                    }
+                }
+            }
+        });
+    }
+    let content = html! {
+        p { a href=(PAGE) { "Private sales" } }
+        h2 { "Record " (&found.id[..found.id.len().min(16)]) }
+        div class="sales-record" {
+            (ui::Details::new()
+                .row("Contact", found.contact.as_str())
+                .row("Account", found.details.account.as_str())
+                .row("Stage", stage_label(found.details.stage))
+                .row("Responsible human", found.responsible_human.as_str())
+                .row(
+                    "Permission",
+                    format!(
+                        "{} \u{b7} expires at {}",
+                        permission_label(found.details.permission.state),
+                        found.details.permission.expires_at
+                    ),
+                )
+                .row(
+                    "Next action",
+                    found.details.next.as_ref().map_or_else(
+                        || "None".to_owned(),
+                        |n| format!("{} \u{b7} due {}", n.description, n.due_at),
+                    ),
+                )
+                .row("Workflow", found.details.workflow.as_str())
+                .row("Revision", found.revision))
+        }
+        (views::nav(&id, ""))
+        @if !found.service_sales.is_empty() {
+            h3 { "Service records" }
+            ul {
+                @for sale in found.service_sales.keys() {
+                    li {
+                        a href=(format!("{base}/services/{sale}")) { (sale) }
+                        " \u{b7} see Pilots and delivery and Invoices and fulfillment"
+                    }
+                }
             }
         }
-    }
-    if !requests.is_empty() {
-        content.push_str("</ul>");
-    }
-    shell(&context, &headers, &content)
+        @if standing.role == Role::Owner {
+            p { a href=(format!("{base}/audit")) { "Audit for this record" } }
+        }
+        (change)
+        @if !entries.is_empty() {
+            h3 { "Requests" }
+            ul class="sales-requests" {
+                @for entry in &entries { (entry) }
+            }
+        }
+    };
+    shell(&context, &headers, content)
 }
 
 #[derive(Deserialize)]

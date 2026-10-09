@@ -60,25 +60,27 @@ pub(super) fn routes() -> Router<App> {
 }
 
 /// Module navigation for one delegation.
-pub(super) fn nav(id: &str, current: &str) -> String {
-    let id = escape(id);
-    let mut out = String::from("<nav class=\"sales-modules\" aria-label=\"Sales modules\"><ul>");
-    for (suffix, title) in MODULES {
-        let href = if suffix.is_empty() {
-            format!("{PAGE}#sales-{id}")
-        } else {
-            format!("{PAGE}/{id}/{suffix}")
-        };
-        if suffix == current {
-            out.push_str(&format!(
-                "<li><a href=\"{href}\" aria-current=\"page\">{title}</a></li>"
-            ));
-        } else {
-            out.push_str(&format!("<li><a href=\"{href}\">{title}</a></li>"));
+pub(super) fn nav(id: &str, current: &str) -> Markup {
+    html! {
+        nav class="sales-modules" aria-label="Sales modules" {
+            ul {
+                @for (suffix, title) in MODULES {
+                    @let href = if suffix.is_empty() {
+                        format!("{PAGE}#sales-{id}")
+                    } else {
+                        format!("{PAGE}/{id}/{suffix}")
+                    };
+                    li {
+                        @if suffix == current {
+                            a href=(href) aria-current="page" { (title) }
+                        } @else {
+                            a href=(href) { (title) }
+                        }
+                    }
+                }
+            }
         }
     }
-    out.push_str("</ul></nav>");
-    out
 }
 
 impl Delegations {
@@ -159,15 +161,17 @@ async fn open<'a>(
     Ok((context, standing))
 }
 
-fn heading(id: &str, current: &str, title: &str, intro: &str) -> String {
-    format!(
-        "<p><a href=\"{PAGE}\">Private sales</a></p>{}<h2>{title}</h2><p>{intro}</p>",
-        nav(id, current)
-    )
+fn heading(id: &str, current: &str, title: &str, intro: &str) -> Markup {
+    html! {
+        p { a href=(PAGE) { "Private sales" } }
+        (nav(id, current))
+        h2 { (title) }
+        p { (intro) }
+    }
 }
 
 fn short(value: &str) -> String {
-    escape(&value[..value.len().min(16)])
+    value[..value.len().min(16)].to_owned()
 }
 
 fn reference(r: &Reference) -> String {
@@ -186,7 +190,7 @@ fn label<T: Serialize>(value: &T) -> String {
             .to_owned(),
         _ => "unknown".into(),
     };
-    escape(&raw.replace('_', " "))
+    raw.replace('_', " ")
 }
 
 fn when(at: Option<u64>) -> String {
@@ -199,40 +203,49 @@ fn amount(currency: &str, scale: u64, minor: u64) -> String {
     if scale > 1 && 10u64.checked_pow(digits as u32) == Some(scale) {
         format!(
             "{} {}.{:0width$}",
-            escape(currency),
+            currency,
             minor / scale,
             minor % scale,
             width = digits
         )
     } else {
-        format!("{} {minor} (scale {scale})", escape(currency))
+        format!("{currency} {minor} (scale {scale})")
     }
 }
 
-fn record_heading(id: &str, record: &RecordView) -> String {
+fn record_heading(id: &str, record: &RecordView) -> Markup {
     let lead = &record.summary.id;
-    format!(
-        "<h3><a href=\"{PAGE}/{}/leads/{}\">Record {}</a> · {} · responsible {}</h3>",
-        escape(id),
-        escape(lead),
-        short(lead),
-        stage_label(record.summary.stage),
-        escape(&record.summary.responsible_human),
-    )
+    html! {
+        h3 {
+            a href=(format!("{PAGE}/{id}/leads/{lead}")) { "Record " (short(lead)) }
+            " \u{b7} " (stage_label(record.summary.stage))
+            " \u{b7} responsible " (record.summary.responsible_human)
+        }
+    }
 }
 
-fn module_error(error: Failure) -> Result<String, Response> {
+fn module_error(error: Failure) -> Result<Markup, Response> {
     match error {
         Failure::Session(error) => Err(refused(error)),
-        Failure::Owner(Code::AccessDenied) => Ok(
-            "<p>Access refused for this binding's current credential or role. Nothing is shown.</p>"
-                .into(),
-        ),
-        Failure::Owner(Code::Stale) => Ok(
-            "<p>The sources changed or exceed current custody. Nothing stale is shown; rebuild them with the sales owner.</p>"
-                .into(),
-        ),
-        _ => Ok("<p>Sales owner: Unavailable. Nothing is shown.</p>".into()),
+        Failure::Owner(Code::AccessDenied) => Ok(ui::denied(
+            "Access refused",
+            "Access refused for this binding's current credential or role. Nothing is shown.",
+        )),
+        Failure::Owner(Code::Stale) => Ok(ui::unavailable(
+            "Sources changed",
+            "The sources changed or exceed current custody. Nothing stale is shown; rebuild them with the sales owner.",
+        )),
+        _ => Ok(ui::unavailable(
+            "Sales owner unavailable",
+            "Sales owner: Unavailable. Nothing is shown.",
+        )),
+    }
+}
+
+/// "None recorded." or the given body.
+fn none_or(empty: bool, body: Markup) -> Markup {
+    html! {
+        @if empty { p { "None recorded." } } @else { (body) }
     }
 }
 
@@ -243,112 +256,131 @@ async fn pilots(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = heading(
-        &id,
-        "pilots",
-        "Pilots and delivery",
-        "Each accepted pilot is shown from the sales owner's retained service record: workflow, exact source task and checks, the customer's decision maker, candidate, runbook, baseline comparison, and the separate agreement, review, handoff, customer acceptance, and support acceptance. This page records nothing; it signs, books, qualifies, accepts, and cleans up nothing.",
-    );
-    match context.sales.records(&context.viewer, &id).await {
+    let body = match context.sales.records(&context.viewer, &id).await {
         Ok(records) => {
-            let mut shown = 0;
-            for record in &records {
-                for sale in &record.services {
-                    shown += 1;
-                    content.push_str(&pilot(&id, record, sale));
-                }
-            }
+            let shown: usize = records.iter().map(|r| r.services.len()).sum();
             let open: Vec<&RecordView> = records
                 .iter()
                 .filter(|r| r.summary.stage == Stage::Pilot && r.services.is_empty())
                 .collect();
-            if !open.is_empty() {
-                content.push_str("<h3>Pilots without an accepted service record</h3><p>These records are at the Pilot stage. No accepted delivery or service record is retained for them yet; attempts, cost, and review stay with the owner until one is admitted.</p><ul>");
-                for record in open {
-                    content.push_str(&format!(
-                        "<li><a href=\"{PAGE}/{}/leads/{}\">Record {}</a> · responsible {} · workflow {}</li>",
-                        escape(&id),
-                        escape(&record.summary.id),
-                        short(&record.summary.id),
-                        escape(&record.summary.responsible_human),
-                        escape(&record.workflow),
-                    ));
+            html! {
+                @for record in &records {
+                    @for sale in &record.services { (pilot(&id, record, sale)) }
                 }
-                content.push_str("</ul>");
-            }
-            if shown == 0 {
-                content.push_str("<p>No accepted service record is visible to this principal.</p>");
+                @if !open.is_empty() {
+                    h3 { "Pilots without an accepted service record" }
+                    p { "These records are at the Pilot stage. No accepted delivery or service record is retained for them yet; attempts, cost, and review stay with the owner until one is admitted." }
+                    ul {
+                        @for record in &open {
+                            li {
+                                a href=(format!("{PAGE}/{id}/leads/{}", record.summary.id)) {
+                                    "Record " (short(&record.summary.id))
+                                }
+                                " \u{b7} responsible " (record.summary.responsible_human)
+                                " \u{b7} workflow " (record.workflow)
+                            }
+                        }
+                    }
+                }
+                @if shown == 0 {
+                    (ui::empty("No service record", "No accepted service record is visible to this principal."))
+                }
             }
         }
         Err(error) => match module_error(error) {
-            Ok(text) => content.push_str(&text),
+            Ok(markup) => markup,
             Err(response) => return response,
         },
-    }
-    content.push_str(&kits());
-    shell(&context, &headers, &content)
+    };
+    let content = html! {
+        (heading(
+            &id,
+            "pilots",
+            "Pilots and delivery",
+            "Each accepted pilot is shown from the sales owner's retained service record: workflow, exact source task and checks, the customer's decision maker, candidate, runbook, baseline comparison, and the separate agreement, review, handoff, customer acceptance, and support acceptance. This page records nothing; it signs, books, qualifies, accepts, and cleans up nothing.",
+        ))
+        (body)
+        (kits())
+    };
+    shell(&context, &headers, content)
 }
 
-fn pilot(id: &str, record: &RecordView, sale: &Sale) -> String {
+fn pilot(id: &str, record: &RecordView, sale: &Sale) -> Markup {
     let facts = &sale.facts;
     let sources = &sale.admission.sources;
     let list = |refs: &[Reference]| -> String {
         refs.iter().map(reference).collect::<Vec<_>>().join(", ")
     };
-    let mut out = format!(
-        "<section class=\"cloud-card sales-pilot\">{}<dl><dt>Service record</dt><dd>{}</dd><dt>Account</dt><dd>{}</dd><dt>Workflow</dt><dd>{}</dd><dt>Offer version</dt><dd>{}</dd><dt>Task digest</dt><dd>{}</dd><dt>Frozen checks</dt><dd>{}</dd><dt>Accepted candidate</dt><dd>sha256 {}</dd><dt>Runbook</dt><dd>{}</dd><dt>Baseline comparison</dt><dd>manifest {} · report {} · all failed, repair, and retry attempts included at review</dd><dt>Accepted checks</dt><dd>{}</dd><dt>Deliverables</dt><dd>{}</dd><dt>Customer decision maker</dt><dd>{}</dd><dt>Customer accepted at</dt><dd>{}</dd><dt>Support owner</dt><dd>{}</dd><dt>Admitted by</dt><dd>{} at {}</dd><dt>Data use</dt><dd>{} · recipients {} · retained until {}</dd><dt>Reuse and marketing</dt><dd>No separate reuse, training, public example, or marketing permission is part of this record.</dd></dl>",
-        record_heading(id, record),
-        escape(&sale.admission.id),
-        escape(&sale.account),
-        escape(&record.workflow),
-        escape(&sale.admission.offer_version),
-        short(&facts.task_digest),
-        list(&facts.frozen_checks),
-        short(&facts.candidate_sha256),
-        reference(&facts.runbook),
-        reference(&facts.comparison_manifest),
-        reference(&facts.comparison_report),
-        list(&facts.accepted_checks),
-        list(&facts.deliverables),
-        escape(&facts.customer_decision_maker),
-        facts.accepted_at,
-        escape(&facts.support_human),
-        escape(&sale.admitted_by),
-        sale.admitted_at,
-        escape(&record.data.permitted_use),
-        escape(&sale.admitted_recipients.join(", ")),
-        sale.retain_until,
-    );
-    out.push_str("<h4>Separate records</h4><ul class=\"sales-separate\">");
-    for (name, r) in [
-        ("Agreement", &sources.agreement),
-        ("Agreement acceptance", &sources.agreement_acceptance),
-        ("Pilot review", &sources.pilot_review),
-        ("Delivery handoff", &sources.handoff),
-        ("Customer acceptance", &sources.customer_acceptance),
-        ("Support acceptance", &sources.support_acceptance),
-        (
-            "Customer decision evidence",
-            &facts.customer_decision_evidence,
-        ),
-    ] {
-        out.push_str(&format!("<li>{name}: {}</li>", reference(r)));
+    let details = ui::Details::new()
+        .row("Service record", sale.admission.id.as_str())
+        .row("Account", sale.account.as_str())
+        .row("Workflow", record.workflow.as_str())
+        .row("Offer version", sale.admission.offer_version.as_str())
+        .row("Task digest", short(&facts.task_digest))
+        .row("Frozen checks", list(&facts.frozen_checks))
+        .row("Accepted candidate", format!("sha256 {}", short(&facts.candidate_sha256)))
+        .row("Runbook", reference(&facts.runbook))
+        .row(
+            "Baseline comparison",
+            format!(
+                "manifest {} \u{b7} report {} \u{b7} all failed, repair, and retry attempts included at review",
+                reference(&facts.comparison_manifest),
+                reference(&facts.comparison_report),
+            ),
+        )
+        .row("Accepted checks", list(&facts.accepted_checks))
+        .row("Deliverables", list(&facts.deliverables))
+        .row("Customer decision maker", facts.customer_decision_maker.as_str())
+        .row("Customer accepted at", facts.accepted_at)
+        .row("Support owner", facts.support_human.as_str())
+        .row(
+            "Admitted by",
+            format!("{} at {}", sale.admitted_by, sale.admitted_at),
+        )
+        .row(
+            "Data use",
+            format!(
+                "{} \u{b7} recipients {} \u{b7} retained until {}",
+                record.data.permitted_use,
+                sale.admitted_recipients.join(", "),
+                sale.retain_until,
+            ),
+        )
+        .row(
+            "Reuse and marketing",
+            "No separate reuse, training, public example, or marketing permission is part of this record.",
+        );
+    html! {
+        section class="cloud-card sales-pilot" {
+            (record_heading(id, record))
+            (details)
+            h4 { "Separate records" }
+            ul class="sales-separate" {
+                @for (name, r) in [
+                    ("Agreement", &sources.agreement),
+                    ("Agreement acceptance", &sources.agreement_acceptance),
+                    ("Pilot review", &sources.pilot_review),
+                    ("Delivery handoff", &sources.handoff),
+                    ("Customer acceptance", &sources.customer_acceptance),
+                    ("Support acceptance", &sources.support_acceptance),
+                    ("Customer decision evidence", &facts.customer_decision_evidence),
+                ] {
+                    li { (name) ": " (reference(r)) }
+                }
+            }
+            p {
+                a href=(format!("{PAGE}/{id}/leads/{}/services/{}", record.summary.id, sale.admission.id)) {
+                    "Delivery, support, and offboarding"
+                }
+            }
+        }
     }
-    out.push_str(&format!(
-        "</ul><p><a href=\"{PAGE}/{}/leads/{}/services/{}\">Delivery, support, and offboarding</a></p></section>",
-        escape(id),
-        escape(&record.summary.id),
-        escape(&sale.admission.id),
-    ));
-    out
 }
 
 /// The pinned requirement documents, by exact digest. A kit is a document
 /// requirement, never proof that a record satisfies it.
-fn kits() -> String {
-    let mut out = String::from(
-        "<h3>Pinned kits</h3><p>Records are compared against these exact documents. A kit is a requirement, not proof; filling one in records nothing.</p><ul class=\"sales-kits\">",
-    );
+fn kits() -> Markup {
+    let mut items = Vec::new();
     for (name, text) in KITS {
         let doc: Value = serde_json::from_str(text).unwrap_or(Value::Null);
         let digest = hex(&Sha256::digest(text.as_bytes()));
@@ -358,27 +390,34 @@ fn kits() -> String {
         ]
         .iter()
         .find_map(|f| doc[*f].as_array())
-        .map_or_else(String::new, |r| format!(" · {} required fields", r.len()));
+        .map_or_else(String::new, |r| {
+            format!(" \u{b7} {} required fields", r.len())
+        });
         let flags = match name {
             "Install qualification" => format!(
-                " · real customer qualified: {} · commercial activation: {}",
+                " \u{b7} real customer qualified: {} \u{b7} commercial activation: {}",
                 doc["scope"]["real_customer_qualified"], doc["scope"]["commercial_activation"]
             ),
             "Team qualification" => format!(
-                " · result {} · production qualification: {}",
-                escape(doc["result"].as_str().unwrap_or("unknown")),
+                " \u{b7} result {} \u{b7} production qualification: {}",
+                doc["result"].as_str().unwrap_or("unknown"),
                 doc["production_qualification"]
             ),
             _ => String::new(),
         };
-        out.push_str(&format!(
-            "<li>{name}: {} · sha256 {}{required}{flags}</li>",
-            escape(doc["schema"].as_str().unwrap_or("unknown")),
+        items.push(format!(
+            "{name}: {} \u{b7} sha256 {}{required}{flags}",
+            doc["schema"].as_str().unwrap_or("unknown"),
             &digest[..16],
         ));
     }
-    out.push_str("</ul>");
-    out
+    html! {
+        h3 { "Pinned kits" }
+        p { "Records are compared against these exact documents. A kit is a requirement, not proof; filling one in records nothing." }
+        ul class="sales-kits" {
+            @for item in &items { li { (item) } }
+        }
+    }
 }
 
 // ---- Delivery, support, and offboarding ------------------------------------
@@ -400,105 +439,107 @@ async fn delivery(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let mut content = heading(
-        &id,
-        "pilots",
-        &format!("Delivery for service record {}", escape(&found.sale)),
-        "Read from the retained delivery handoff by its exact digest. The handoff plans support and offboarding; acceptance and verified cleanup are separate records. This page performs no cleanup and accepts nothing.",
-    );
-    content.push_str(&format!(
-        "<p>Handoff sha256 {} · <a href=\"{PAGE}/{}/leads/{}\">Record {}</a></p>",
-        short(&found.handoff_sha256),
-        escape(&id),
-        escape(&lead),
-        short(&lead),
-    ));
-    let Some(handoff) = found.handoff else {
-        content.push_str(match found.unavailable.as_deref() {
-            Some("not_configured") => "<p>The sales owner has no readable delivery evidence configured for this binding. No handoff detail is shown.</p>",
-            _ => "<p>The retained handoff is missing or no longer matches its recorded digest. No handoff detail is shown.</p>",
-        });
-        return shell(&context, &headers, &content);
+    let top = html! {
+        (heading(
+            &id,
+            "pilots",
+            &format!("Delivery for service record {}", found.sale),
+            "Read from the retained delivery handoff by its exact digest. The handoff plans support and offboarding; acceptance and verified cleanup are separate records. This page performs no cleanup and accepts nothing.",
+        ))
+        p {
+            "Handoff sha256 " (short(&found.handoff_sha256)) " \u{b7} "
+            a href=(format!("{PAGE}/{id}/leads/{lead}")) { "Record " (short(&lead)) }
+        }
     };
-    content.push_str(&format!(
-        "<dl><dt>Handoff</dt><dd>{} {}</dd><dt>Delivered at</dt><dd>{}</dd><dt>Reuse default</dt><dd>{}</dd></dl>",
-        escape(&handoff.id),
-        escape(&handoff.version),
-        when(handoff.delivered_at),
-        escape(&handoff.reuse_default),
-    ));
-    content.push_str("<h3>Dependencies</h3>");
-    if handoff.dependencies.is_empty() {
-        content.push_str("<p>None recorded.</p>");
-    } else {
-        content.push_str("<table><thead><tr><th>Dependency</th><th>Version or digest</th><th>Scope</th><th>Readiness</th><th>Unavailable reason</th></tr></thead><tbody>");
-        for d in &handoff.dependencies {
-            content.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                escape(&d.id),
-                escape(&d.version_or_digest),
-                escape(&d.scope),
-                escape(&d.readiness),
-                escape(&d.unavailable_reason),
-            ));
-        }
-        content.push_str("</tbody></table>");
+    let Some(handoff) = found.handoff else {
+        let reason = match found.unavailable.as_deref() {
+            Some("not_configured") => {
+                "The sales owner has no readable delivery evidence configured for this binding. No handoff detail is shown."
+            }
+            _ => {
+                "The retained handoff is missing or no longer matches its recorded digest. No handoff detail is shown."
+            }
+        };
+        let content = html! {
+            (top)
+            (ui::unavailable("No handoff detail", reason))
+        };
+        return shell(&context, &headers, content);
+    };
+    let mut dependencies = ui::table("Dependencies").header([
+        "Dependency",
+        "Version or digest",
+        "Scope",
+        "Readiness",
+        "Unavailable reason",
+    ]);
+    for d in &handoff.dependencies {
+        dependencies = dependencies.row([
+            d.id.as_str(),
+            d.version_or_digest.as_str(),
+            d.scope.as_str(),
+            d.readiness.as_str(),
+            d.unavailable_reason.as_str(),
+        ]);
     }
-    content.push_str("<h3>Known limits</h3>");
-    if handoff.known_limits.is_empty() {
-        content.push_str("<p>None recorded.</p>");
-    } else {
-        content.push_str("<ul>");
-        for limit in &handoff.known_limits {
-            content.push_str(&format!("<li>{}</li>", escape(limit)));
-        }
-        content.push_str("</ul>");
-    }
-    content.push_str("<h3>Retained artifacts</h3>");
-    if handoff.retained_artifacts.is_empty() {
-        content.push_str("<p>None recorded.</p>");
-    } else {
-        content.push_str("<ul>");
-        for a in &handoff.retained_artifacts {
-            content.push_str(&format!(
-                "<li>{} · controller {} · retained until {} · {}</li>",
-                escape(&a.id),
-                escape(&a.controller),
-                when(a.retain_until),
-                escape(&a.purpose),
-            ));
-        }
-        content.push_str("</ul>");
+    let mut cleanup = ui::table("Offboarding").header([
+        "Item",
+        "Class",
+        "Responsible human",
+        "Due",
+        "Verification",
+    ]);
+    for item in &handoff.cleanup_plan {
+        cleanup = cleanup.row([
+            item.id.clone(),
+            item.class.replace('_', " "),
+            item.responsible_human.clone(),
+            when(item.due_at),
+            "Unverified".to_owned(),
+        ]);
     }
     let support = &handoff.support;
-    content.push_str(&format!(
-        "<h3>Support</h3><dl><dt>Responsible human</dt><dd>{}</dd><dt>Business hours</dt><dd>{}</dd><dt>Response boundary</dt><dd>{}</dd><dt>Included work</dt><dd>{}</dd><dt>Out of scope</dt><dd>{}</dd><dt>Ends at</dt><dd>{}</dd></dl><p>Support acceptance is the separate support-owner record listed with the pilot.</p>",
-        escape(&support.responsible_human),
-        escape(&support.business_hours),
-        escape(&support.response_boundary),
-        escape(&support.included_work),
-        escape(&support.out_of_scope_route),
-        when(support.ends_at),
-    ));
-    content.push_str("<h3>Offboarding</h3>");
-    if handoff.cleanup_plan.is_empty() {
-        content.push_str(
-            "<p>No cleanup plan is recorded in this handoff. Offboarding is unverified.</p>",
-        );
-    } else {
-        content.push_str("<p>Planned items. None is shown as done: no verified cleanup report is recorded with the sales owner, so each item remains open.</p><table><thead><tr><th>Item</th><th>Class</th><th>Responsible human</th><th>Due</th><th>Verification</th></tr></thead><tbody>");
-        for item in &handoff.cleanup_plan {
-            content.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>Unverified</td></tr>",
-                escape(&item.id),
-                escape(&item.class.replace('_', " ")),
-                escape(&item.responsible_human),
-                when(item.due_at),
-            ));
+    let content = html! {
+        (top)
+        (ui::Details::new()
+            .row("Handoff", format!("{} {}", handoff.id, handoff.version))
+            .row("Delivered at", when(handoff.delivered_at))
+            .row("Reuse default", handoff.reuse_default.as_str()))
+        h3 { "Dependencies" }
+        (none_or(handoff.dependencies.is_empty(), dependencies.render()))
+        h3 { "Known limits" }
+        (none_or(handoff.known_limits.is_empty(), html! {
+            ul { @for limit in &handoff.known_limits { li { (limit) } } }
+        }))
+        h3 { "Retained artifacts" }
+        (none_or(handoff.retained_artifacts.is_empty(), html! {
+            ul {
+                @for a in &handoff.retained_artifacts {
+                    li {
+                        (a.id) " \u{b7} controller " (a.controller)
+                        " \u{b7} retained until " (when(a.retain_until)) " \u{b7} " (a.purpose)
+                    }
+                }
+            }
+        }))
+        h3 { "Support" }
+        (ui::Details::new()
+            .row("Responsible human", support.responsible_human.as_str())
+            .row("Business hours", support.business_hours.as_str())
+            .row("Response boundary", support.response_boundary.as_str())
+            .row("Included work", support.included_work.as_str())
+            .row("Out of scope", support.out_of_scope_route.as_str())
+            .row("Ends at", when(support.ends_at)))
+        p { "Support acceptance is the separate support-owner record listed with the pilot." }
+        h3 { "Offboarding" }
+        @if handoff.cleanup_plan.is_empty() {
+            p { "No cleanup plan is recorded in this handoff. Offboarding is unverified." }
+        } @else {
+            p { "Planned items. None is shown as done: no verified cleanup report is recorded with the sales owner, so each item remains open." }
+            (cleanup)
         }
-        content.push_str("</tbody></table>");
-    }
-    shell(&context, &headers, &content)
+    };
+    shell(&context, &headers, content)
 }
 
 // ---- Invoices and fulfillment ----------------------------------------------
@@ -508,123 +549,134 @@ async fn invoices(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = heading(
-        &id,
-        "invoices",
-        "Invoices and fulfillment",
-        "Invoices, verified payments, and separately priced fulfillment as the sales owner retains them. An invoice is not a payment, a payment funds no product usage, and only the owner's verification against receiver or processor evidence records one. Unknown, disputed, and reversed outcomes stay listed. This page records nothing.",
-    );
-    match context.sales.records(&context.viewer, &id).await {
+    let body = match context.sales.records(&context.viewer, &id).await {
         Ok(records) => {
-            let mut shown = 0;
-            for record in &records {
-                for sale in &record.services {
-                    shown += 1;
-                    content.push_str(&invoice(&id, record, sale));
+            let shown: usize = records.iter().map(|r| r.services.len()).sum();
+            html! {
+                @for record in &records {
+                    @for sale in &record.services { (invoice(&id, record, sale)) }
                 }
-            }
-            if shown == 0 {
-                content.push_str("<p>No invoice is visible to this principal.</p>");
+                @if shown == 0 {
+                    (ui::empty("No invoice", "No invoice is visible to this principal."))
+                }
             }
         }
         Err(error) => match module_error(error) {
-            Ok(text) => content.push_str(&text),
+            Ok(markup) => markup,
             Err(response) => return response,
         },
-    }
-    shell(&context, &headers, &content)
+    };
+    let content = html! {
+        (heading(
+            &id,
+            "invoices",
+            "Invoices and fulfillment",
+            "Invoices, verified payments, and separately priced fulfillment as the sales owner retains them. An invoice is not a payment, a payment funds no product usage, and only the owner's verification against receiver or processor evidence records one. Unknown, disputed, and reversed outcomes stay listed. This page records nothing.",
+        ))
+        (body)
+    };
+    shell(&context, &headers, content)
 }
 
-fn invoice(id: &str, record: &RecordView, sale: &Sale) -> String {
+fn invoice(id: &str, record: &RecordView, sale: &Sale) -> Markup {
     let i = &sale.admission.invoice;
-    let mut out = format!(
-        "<section class=\"cloud-card sales-invoice\">{}<dl><dt>Invoice</dt><dd>{} · external {}</dd><dt>Amount</dt><dd>{}</dd><dt>Issued</dt><dd>{}</dd><dt>Due</dt><dd>{}</dd><dt>Payment route</dt><dd>{}</dd><dt>Invoice evidence</dt><dd>{}</dd><dt>Invoice retention</dt><dd>{}</dd></dl>",
-        record_heading(id, record),
-        escape(&i.id),
-        escape(&i.external_reference),
-        amount(&i.currency, i.currency_scale, i.amount_minor),
-        i.issued_at,
-        i.due_at,
-        escape(&i.payment_route_reference),
-        reference(&i.evidence),
-        escape(&sale.facts.invoice_retention_reference),
-    );
-    match sale.summary() {
-        Ok(summary) => out.push_str(&format!(
-            "<p>Verified collection: paid {} · refunded {} · refund reversals {} · {}</p>",
-            amount(&i.currency, i.currency_scale, summary.paid_minor),
-            amount(&i.currency, i.currency_scale, summary.refunded_minor),
-            amount(&i.currency, i.currency_scale, summary.refund_reversals_minor),
-            if summary.unresolved {
-                "Unresolved: the latest outcome is pending, unknown, or disputed"
-            } else {
-                "Resolved"
-            },
-        )),
-        Err(_) => out.push_str("<p>Verified collection: the payment history does not reconcile. Treat it as unknown.</p>"),
+    let money = |minor: u64| amount(&i.currency, i.currency_scale, minor);
+    let collection = match sale.summary() {
+        Ok(summary) => html! {
+            p {
+                "Verified collection: paid " (money(summary.paid_minor))
+                " \u{b7} refunded " (money(summary.refunded_minor))
+                " \u{b7} refund reversals " (money(summary.refund_reversals_minor)) " \u{b7} "
+                @if summary.unresolved {
+                    "Unresolved: the latest outcome is pending, unknown, or disputed"
+                } @else {
+                    "Resolved"
+                }
+            }
+        },
+        Err(_) => html! {
+            p { "Verified collection: the payment history does not reconcile. Treat it as unknown." }
+        },
+    };
+    let mut payments = ui::table("Payment verifications").header([
+        "Outcome",
+        "Paid",
+        "Reversed",
+        "External reference",
+        "Evidence",
+        "Verified by",
+        "At",
+    ]);
+    for v in &sale.payments {
+        let outcome = match v.input.disposition {
+            Disposition::Pending => "Pending",
+            Disposition::Unknown => "Unknown",
+            Disposition::Paid => "Paid",
+            Disposition::Reversed => "Reversed",
+            Disposition::Disputed => "Disputed",
+        };
+        payments = payments.row([
+            outcome.to_owned(),
+            v.input.paid_minor.map_or_else(|| "None".into(), money),
+            v.input.reversed_minor.map_or_else(|| "None".into(), money),
+            v.input
+                .external_reference
+                .clone()
+                .unwrap_or_else(|| "None".into()),
+            reference(&v.input.evidence),
+            v.verified_by.clone(),
+            v.verified_at.to_string(),
+        ]);
     }
-    out.push_str("<h4>Payment verifications</h4>");
-    if sale.payments.is_empty() {
-        out.push_str("<p>No payment is verified. The invoice remains unpaid until the owner records receiver or processor evidence.</p>");
-    } else {
-        out.push_str("<table><thead><tr><th>Outcome</th><th>Paid</th><th>Reversed</th><th>External reference</th><th>Evidence</th><th>Verified by</th><th>At</th></tr></thead><tbody>");
-        for v in &sale.payments {
-            let outcome = match v.input.disposition {
-                Disposition::Pending => "Pending",
-                Disposition::Unknown => "Unknown",
-                Disposition::Paid => "Paid",
-                Disposition::Reversed => "Reversed",
-                Disposition::Disputed => "Disputed",
-            };
-            out.push_str(&format!(
-                "<tr><td>{outcome}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                v.input.paid_minor.map_or_else(|| "None".into(), |m| amount(&i.currency, i.currency_scale, m)),
-                v.input.reversed_minor.map_or_else(|| "None".into(), |m| amount(&i.currency, i.currency_scale, m)),
-                v.input.external_reference.as_deref().map_or_else(|| "None".into(), escape),
-                reference(&v.input.evidence),
-                escape(&v.verified_by),
-                v.verified_at,
-            ));
-        }
-        out.push_str("</tbody></table>");
-    }
-    out.push_str("<h4>Fulfillment</h4>");
-    match sale.effective_fulfillment() {
-        Ok(None) => out.push_str("<p>No separately priced fulfillment obligation is admitted.</p>"),
-        Ok(Some(f)) => {
-            out.push_str(&format!(
-                "<dl><dt>Obligation</dt><dd>{}</dd><dt>Responsible human</dt><dd>{}</dd><dt>Amount</dt><dd>{}</dd><dt>Trigger</dt><dd>{}</dd><dt>Agreement</dt><dd>{}</dd><dt>Acceptance</dt><dd>{}</dd><dt>Bill</dt><dd>{}</dd><dt>Payment</dt><dd>{}</dd></dl>",
-                escape(&f.id),
-                escape(&f.responsible_human),
-                amount(&f.currency, f.currency_scale, f.amount_minor),
-                match f.trigger {
+    let fulfillment = match sale.effective_fulfillment() {
+        Ok(None) => html! { p { "No separately priced fulfillment obligation is admitted." } },
+        Ok(Some(f)) => html! {
+            (ui::Details::new()
+                .row("Obligation", f.id.as_str())
+                .row("Responsible human", f.responsible_human.as_str())
+                .row("Amount", amount(&f.currency, f.currency_scale, f.amount_minor))
+                .row("Trigger", match f.trigger {
                     FulfillmentTrigger::AcceptedDelivery => "Accepted delivery",
                     FulfillmentTrigger::VerifiedServicePayment => "Verified service payment",
-                },
-                reference(&f.agreement),
-                reference(&f.acceptance),
-                f.bill.as_ref().map_or_else(|| "Not billed".into(), reference),
-                f.payment.as_ref().map_or_else(|| "Not paid".into(), reference),
-            ));
-            for r in &sale.fulfillment_reconciliations {
-                out.push_str(&format!(
-                    "<p>Reconciled by {} at {}: bill {}{}</p>",
-                    escape(&r.verified_by),
-                    r.verified_at,
-                    reference(&r.input.bill),
-                    r.input
-                        .payment
-                        .as_ref()
-                        .map_or_else(String::new, |p| format!(" · payment {}", reference(p))),
-                ));
+                })
+                .row("Agreement", reference(&f.agreement))
+                .row("Acceptance", reference(&f.acceptance))
+                .row("Bill", f.bill.as_ref().map_or_else(|| "Not billed".into(), reference))
+                .row("Payment", f.payment.as_ref().map_or_else(|| "Not paid".into(), reference)))
+            @for r in &sale.fulfillment_reconciliations {
+                p {
+                    "Reconciled by " (r.verified_by) " at " (r.verified_at)
+                    ": bill " (reference(&r.input.bill))
+                    @if let Some(p) = &r.input.payment { " \u{b7} payment " (reference(p)) }
+                }
             }
-        }
+        },
         Err(_) => {
-            out.push_str("<p>The fulfillment history does not reconcile. Treat it as unknown.</p>")
+            html! { p { "The fulfillment history does not reconcile. Treat it as unknown." } }
+        }
+    };
+    html! {
+        section class="cloud-card sales-invoice" {
+            (record_heading(id, record))
+            (ui::Details::new()
+                .row("Invoice", format!("{} \u{b7} external {}", i.id, i.external_reference))
+                .row("Amount", money(i.amount_minor))
+                .row("Issued", i.issued_at)
+                .row("Due", i.due_at)
+                .row("Payment route", i.payment_route_reference.as_str())
+                .row("Invoice evidence", reference(&i.evidence))
+                .row("Invoice retention", sale.facts.invoice_retention_reference.as_str()))
+            (collection)
+            h4 { "Payment verifications" }
+            @if sale.payments.is_empty() {
+                p { "No payment is verified. The invoice remains unpaid until the owner records receiver or processor evidence." }
+            } @else {
+                (payments)
+            }
+            h4 { "Fulfillment" }
+            (fulfillment)
         }
     }
-    out.push_str("</section>");
-    out
 }
 
 // ---- Journeys and weekly review --------------------------------------------
@@ -634,101 +686,100 @@ async fn journeys(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = heading(
-        &id,
-        "journeys",
-        "Journeys and weekly review",
-        "Consented journey measurement, separate from the assisted pipeline. Every recorded event and failure stays listed, resolved or not. Measurement grants no outreach or tracking authority.",
-    );
-    match context.sales.records(&context.viewer, &id).await {
+    let body = match context.sales.records(&context.viewer, &id).await {
         Ok(records) => {
-            let mut shown = 0;
-            for record in &records {
-                for j in &record.journeys {
-                    shown += 1;
-                    content.push_str(&journey(&id, record, j));
+            let shown: usize = records.iter().map(|r| r.journeys.len()).sum();
+            html! {
+                @for record in &records {
+                    @for j in &record.journeys { (journey(&id, record, j)) }
                 }
-            }
-            if shown == 0 {
-                content.push_str("<p>No consented journey is visible to this principal.</p>");
+                @if shown == 0 {
+                    (ui::empty("No journey", "No consented journey is visible to this principal."))
+                }
             }
         }
         Err(error) => match module_error(error) {
-            Ok(text) => content.push_str(&text),
+            Ok(markup) => markup,
             Err(response) => return response,
         },
-    }
-    content.push_str("<h3>Weekly review</h3>");
-    if standing.role != Role::Owner {
-        content
-            .push_str("<p>The weekly review is owner-only and is not shown to this principal.</p>");
+    };
+    let weekly = if standing.role != Role::Owner {
+        html! { p { "The weekly review is owner-only and is not shown to this principal." } }
     } else {
         match context.sales.weekly(&context.viewer, &id).await {
-            Ok(None) => content
-                .push_str("<p>No weekly review sources are configured with the sales owner.</p>"),
-            Ok(Some(weekly)) => content.push_str(&review(&weekly)),
+            Ok(None) => {
+                html! { p { "No weekly review sources are configured with the sales owner." } }
+            }
+            Ok(Some(weekly)) => review(&weekly),
             Err(error) => match module_error(error) {
-                Ok(text) => content.push_str(&text),
+                Ok(markup) => markup,
                 Err(response) => return response,
             },
         }
-    }
-    shell(&context, &headers, &content)
+    };
+    let content = html! {
+        (heading(
+            &id,
+            "journeys",
+            "Journeys and weekly review",
+            "Consented journey measurement, separate from the assisted pipeline. Every recorded event and failure stays listed, resolved or not. Measurement grants no outreach or tracking authority.",
+        ))
+        (body)
+        h3 { "Weekly review" }
+        (weekly)
+    };
+    shell(&context, &headers, content)
 }
 
-fn journey(id: &str, record: &RecordView, j: &Journey) -> String {
+fn journey(id: &str, record: &RecordView, j: &Journey) -> Markup {
     let a = &j.admission;
-    let mut out = format!(
-        "<section class=\"cloud-card sales-journey\">{}<dl><dt>Journey</dt><dd>{}</dd><dt>Offer and cohort</dt><dd>{} · {}</dd><dt>Lane</dt><dd>{} · {}</dd><dt>Consent</dt><dd>at {} · expires {} · aggregate counts {} · {}</dd><dt>Retained until</dt><dd>{}</dd></dl>",
-        record_heading(id, record),
-        escape(&a.id),
-        escape(&a.offer_version),
-        escape(&a.cohort),
-        label(&a.lane),
-        label(&a.classification),
-        a.consent.at,
-        a.consent.expires_at,
-        if a.consent.aggregate_counts {
-            "permitted"
-        } else {
-            "not permitted"
-        },
-        reference(&a.consent.evidence),
-        j.retain_until,
-    );
-    if j.events.is_empty() {
-        out.push_str("<p>No event is recorded.</p>");
-    } else {
-        out.push_str("<h4>Events</h4><ul>");
-        for e in &j.events {
-            out.push_str(&format!(
-                "<li>{} · {} at {} · recorded by {}</li>",
-                escape(&e.input.id),
-                label(&e.input.kind),
-                e.input.at,
-                escape(&e.recorded_by),
-            ));
+    html! {
+        section class="cloud-card sales-journey" {
+            (record_heading(id, record))
+            (ui::Details::new()
+                .row("Journey", a.id.as_str())
+                .row("Offer and cohort", format!("{} \u{b7} {}", a.offer_version, a.cohort))
+                .row("Lane", format!("{} \u{b7} {}", label(&a.lane), label(&a.classification)))
+                .row(
+                    "Consent",
+                    format!(
+                        "at {} \u{b7} expires {} \u{b7} aggregate counts {} \u{b7} {}",
+                        a.consent.at,
+                        a.consent.expires_at,
+                        if a.consent.aggregate_counts { "permitted" } else { "not permitted" },
+                        reference(&a.consent.evidence),
+                    ),
+                )
+                .row("Retained until", j.retain_until))
+            @if j.events.is_empty() {
+                p { "No event is recorded." }
+            } @else {
+                h4 { "Events" }
+                ul {
+                    @for e in &j.events {
+                        li {
+                            (e.input.id) " \u{b7} " (label(&e.input.kind)) " at " (e.input.at)
+                            " \u{b7} recorded by " (e.recorded_by)
+                        }
+                    }
+                }
+            }
+            @if !j.failures.is_empty() {
+                h4 { "Failures and repairs" }
+                ul {
+                    @for f in &j.failures {
+                        li {
+                            (f.input.event) " \u{b7} " (label(&f.input.reason)) " \u{b7} "
+                            (if f.input.resolved { "Resolved" } else { "Open" })
+                            " \u{b7} responsible " (f.input.responsible_human)
+                            " \u{b7} next " (f.input.next_action) " due " (f.input.due_at)
+                            " \u{b7} " (reference(&f.input.evidence))
+                        }
+                    }
+                }
+            }
         }
-        out.push_str("</ul>");
     }
-    if !j.failures.is_empty() {
-        out.push_str("<h4>Failures and repairs</h4><ul>");
-        for f in &j.failures {
-            out.push_str(&format!(
-                "<li>{} · {} · {} · responsible {} · next {} due {} · {}</li>",
-                escape(&f.input.event),
-                label(&f.input.reason),
-                if f.input.resolved { "Resolved" } else { "Open" },
-                escape(&f.input.responsible_human),
-                escape(&f.input.next_action),
-                f.input.due_at,
-                reference(&f.input.evidence),
-            ));
-        }
-        out.push_str("</ul>");
-    }
-    out.push_str("</section>");
-    out
 }
 
 fn counts(value: &Value) -> String {
@@ -736,63 +787,49 @@ fn counts(value: &Value) -> String {
         .as_object()
         .map(|map| {
             map.iter()
-                .map(|(k, v)| format!("{} {}", escape(&k.replace('_', " ")), v))
+                .map(|(k, v)| format!("{} {}", k.replace('_', " "), v))
                 .collect::<Vec<_>>()
-                .join(" · ")
+                .join(" \u{b7} ")
         })
         .unwrap_or_default()
 }
 
-fn review(weekly: &Weekly) -> String {
-    let mut out = format!(
-        "<dl><dt>Period</dt><dd>{} to {}</dd><dt>Generated</dt><dd>{}</dd><dt>Manifest</dt><dd>{}</dd><dt>Finance</dt><dd>{}</dd><dt>Commercial activation attested</dt><dd>{}</dd><dt>Contribution scope</dt><dd>{}</dd></dl>",
-        weekly.period_start,
-        weekly.period_end,
-        weekly.generated_at,
-        short(&weekly.manifest_digest),
-        if weekly.finance_included {
-            "Included"
-        } else {
-            "Not included"
-        },
-        if weekly.commercial_activation_attested {
-            "Yes"
-        } else {
-            "No"
-        },
-        escape(&weekly.contribution_scope),
-    );
-    for (title, items) in [("Gaps", &weekly.gaps), ("Limitations", &weekly.limitations)] {
-        if !items.is_empty() {
-            out.push_str(&format!("<h4>{title}</h4><ul>"));
-            for item in items {
-                out.push_str(&format!("<li>{}</li>", escape(item)));
+fn review(weekly: &Weekly) -> Markup {
+    html! {
+        (ui::Details::new()
+            .row("Period", format!("{} to {}", weekly.period_start, weekly.period_end))
+            .row("Generated", weekly.generated_at)
+            .row("Manifest", short(&weekly.manifest_digest))
+            .row("Finance", if weekly.finance_included { "Included" } else { "Not included" })
+            .row(
+                "Commercial activation attested",
+                if weekly.commercial_activation_attested { "Yes" } else { "No" },
+            )
+            .row("Contribution scope", weekly.contribution_scope.as_str()))
+        @for (title, items) in [("Gaps", &weekly.gaps), ("Limitations", &weekly.limitations)] {
+            @if !items.is_empty() {
+                h4 { (title) }
+                ul { @for item in items.iter() { li { (item) } } }
             }
-            out.push_str("</ul>");
         }
-    }
-    if weekly.cohorts.is_empty() {
-        out.push_str("<p>No cohort is in this period.</p>");
-    } else {
-        out.push_str("<h4>Cohorts</h4><ul>");
-        for c in &weekly.cohorts {
-            out.push_str(&format!(
-                "<li>{} · {} · {} · {}: period {} ; cumulative {}</li>",
-                escape(c["lane"].as_str().unwrap_or("unknown")),
-                escape(c["classification"].as_str().unwrap_or("unknown")),
-                escape(c["offer_version"].as_str().unwrap_or("")),
-                escape(c["cohort"].as_str().unwrap_or("")),
-                counts(&c["period"]),
-                counts(&c["cumulative"]),
-            ));
+        @if weekly.cohorts.is_empty() {
+            p { "No cohort is in this period." }
+        } @else {
+            h4 { "Cohorts" }
+            ul {
+                @for c in &weekly.cohorts {
+                    li {
+                        (c["lane"].as_str().unwrap_or("unknown")) " \u{b7} "
+                        (c["classification"].as_str().unwrap_or("unknown")) " \u{b7} "
+                        (c["offer_version"].as_str().unwrap_or("")) " \u{b7} "
+                        (c["cohort"].as_str().unwrap_or(""))
+                        ": period " (counts(&c["period"])) " ; cumulative " (counts(&c["cumulative"]))
+                    }
+                }
+            }
         }
-        out.push_str("</ul>");
+        p { (weekly.journeys.len()) " journeys in this review, failed and unknown history included." }
     }
-    out.push_str(&format!(
-        "<p>{} journeys in this review, failed and unknown history included.</p>",
-        weekly.journeys.len()
-    ));
-    out
 }
 
 // ---- Evidence and claims ---------------------------------------------------
@@ -802,119 +839,123 @@ async fn evidence(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = heading(
+    let top = heading(
         &id,
         "evidence",
         "Evidence and claims",
         "Reviewed claims and price references with their review pins, expiry, withdrawal, and history. A verdict is the one recorded at review; a later read against current sources can still invalidate it. No claim of savings stands on an unverified demonstration. This page publishes and approves nothing.",
     );
-    if standing.role != Role::Owner {
-        content.push_str(
-            "<p>The claim register and its history are owner-only and are not shown to this principal.</p>",
-        );
-        return shell(&context, &headers, &content);
-    }
-    match context.sales.claims(&context.viewer, &id).await {
-        Ok(claims) => content.push_str(&register(&claims)),
-        Err(error) => match module_error(error) {
-            Ok(text) => content.push_str(&text),
-            Err(response) => return response,
-        },
-    }
-    shell(&context, &headers, &content)
+    let body = if standing.role != Role::Owner {
+        html! { p { "The claim register and its history are owner-only and are not shown to this principal." } }
+    } else {
+        match context.sales.claims(&context.viewer, &id).await {
+            Ok(claims) => register(&claims),
+            Err(error) => match module_error(error) {
+                Ok(markup) => markup,
+                Err(response) => return response,
+            },
+        }
+    };
+    let content = html! { (top) (body) };
+    shell(&context, &headers, content)
 }
 
-fn register(claims: &Claims) -> String {
-    let mut out = String::new();
-    if claims.register.is_empty() {
-        out.push_str("<p>No claim is reviewed.</p>");
-    } else {
-        out.push_str("<table class=\"sales-claims\"><thead><tr><th>Claim</th><th>Purpose</th><th>Source</th><th>Verdict</th><th>Price reference</th><th>Reviewed</th><th>Expires</th><th>State</th></tr></thead><tbody>");
-        for c in &claims.register {
-            let (verdict, price) = match &c.verdict {
-                Verdict::Allowed { claim } => (
-                    format!("Allowed: {}", escape(&claim.wording)),
-                    claim.price.as_ref(),
-                ),
-                Verdict::Unavailable {
-                    reason,
-                    proposed_price,
-                } => (
-                    format!("Unavailable: {}", label(reason)),
-                    proposed_price.as_ref(),
-                ),
-                Verdict::Rejected { reason } => (format!("Rejected: {}", label(reason)), None),
-            };
-            let price = match price {
-                None => "None".to_owned(),
-                Some(PriceTerms::Service { terms }) => format!(
-                    "Service {} · {}",
-                    escape(&terms.offer_version),
-                    amount(
-                        &terms.currency,
-                        terms.currency_scale,
-                        terms.service_fee_minor_units
-                    )
-                ),
-                Some(PriceTerms::Retail { .. }) => "Retail price-book quote".to_owned(),
-            };
-            let mut state = Vec::new();
-            if c.head {
-                state.push("Current revision");
-            } else {
-                state.push("Superseded");
+fn register(claims: &Claims) -> Markup {
+    let mut table = ui::table("Claim register").header([
+        "Claim",
+        "Purpose",
+        "Source",
+        "Verdict",
+        "Price reference",
+        "Reviewed",
+        "Expires",
+        "State",
+    ]);
+    for c in &claims.register {
+        let (verdict, price) = match &c.verdict {
+            Verdict::Allowed { claim } => {
+                (format!("Allowed: {}", claim.wording), claim.price.as_ref())
             }
-            if c.withdrawn {
-                state.push("Withdrawn");
+            Verdict::Unavailable {
+                reason,
+                proposed_price,
+            } => (
+                format!("Unavailable: {}", label(reason)),
+                proposed_price.as_ref(),
+            ),
+            Verdict::Rejected { reason } => (format!("Rejected: {}", label(reason)), None),
+        };
+        let price = match price {
+            None => "None".to_owned(),
+            Some(PriceTerms::Service { terms }) => format!(
+                "Service {} \u{b7} {}",
+                terms.offer_version,
+                amount(
+                    &terms.currency,
+                    terms.currency_scale,
+                    terms.service_fee_minor_units
+                )
+            ),
+            Some(PriceTerms::Retail { .. }) => "Retail price-book quote".to_owned(),
+        };
+        let mut state = Vec::new();
+        if c.head {
+            state.push("Current revision");
+        } else {
+            state.push("Superseded");
+        }
+        if c.withdrawn {
+            state.push("Withdrawn");
+        }
+        if c.source_withdrawn {
+            state.push("Source withdrawn");
+        }
+        if c.expired {
+            state.push("Expired");
+        }
+        table = table.row([
+            format!("{} r{}", c.pin.id, c.pin.revision),
+            match c.purpose {
+                Purpose::Capability => "Capability",
+                Purpose::Price => "Price",
+                Purpose::Comparison => "Comparison",
+                Purpose::Launch => "Launch",
             }
-            if c.source_withdrawn {
-                state.push("Source withdrawn");
-            }
-            if c.expired {
-                state.push("Expired");
-            }
-            out.push_str(&format!(
-                "<tr><td>{} r{}</td><td>{}</td><td>{} r{}</td><td>{verdict}</td><td>{price}</td><td>{} at {} · review sha256 {}</td><td>{}</td><td>{}</td></tr>",
-                escape(&c.pin.id),
-                c.pin.revision,
-                match c.purpose {
-                    Purpose::Capability => "Capability",
-                    Purpose::Price => "Price",
-                    Purpose::Comparison => "Comparison",
-                    Purpose::Launch => "Launch",
-                },
-                escape(&c.source.id),
-                c.source.revision,
-                escape(&c.reviewer),
+            .to_owned(),
+            format!("{} r{}", c.source.id, c.source.revision),
+            verdict,
+            price,
+            format!(
+                "{} at {} \u{b7} review sha256 {}",
+                c.reviewer,
                 c.reviewed_at,
-                short(&c.review_sha256),
-                c.expires_at,
-                state.join(" · "),
-            ));
-        }
-        out.push_str("</tbody></table>");
+                short(&c.review_sha256)
+            ),
+            c.expires_at.to_string(),
+            state.join(" \u{b7} "),
+        ]);
     }
-    out.push_str("<h3>Review history</h3>");
-    if claims.history.is_empty() {
-        out.push_str("<p>No review decision is recorded.</p>");
-    } else {
-        out.push_str("<ol class=\"sales-claim-history\">");
-        for d in &claims.history {
-            out.push_str(&format!(
-                "<li>#{} at {} · {} · {} {}{}</li>",
-                d.sequence,
-                d.at,
-                escape(&d.actor),
-                escape(&d.operation.replace('_', " ")),
-                escape(&d.subject),
-                d.reason
-                    .as_ref()
-                    .map_or_else(String::new, |r| format!(" · {}", label(r))),
-            ));
+    html! {
+        @if claims.register.is_empty() {
+            p { "No claim is reviewed." }
+        } @else {
+            div class="sales-claims" { (table) }
         }
-        out.push_str("</ol>");
+        h3 { "Review history" }
+        @if claims.history.is_empty() {
+            p { "No review decision is recorded." }
+        } @else {
+            ol class="sales-claim-history" {
+                @for d in &claims.history {
+                    li {
+                        "#" (d.sequence) " at " (d.at) " \u{b7} " (d.actor) " \u{b7} "
+                        (d.operation.replace('_', " ")) " " (d.subject)
+                        @if let Some(r) = &d.reason { " \u{b7} " (label(r)) }
+                    }
+                }
+            }
+        }
     }
-    out
 }
 
 // ---- Scoped audit ----------------------------------------------------------
@@ -928,33 +969,42 @@ async fn audit(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = heading(
+    let top = heading(
         &id,
         "",
         &format!("Audit for record {}", short(&lead)),
         "Owner audit entries for this one record only. Entries for other customers, teams, and contacts are excluded by the sales owner before they leave it.",
     );
     if standing.role != Role::Owner {
-        content.push_str("<p>The audit is owner-only and is not shown to this principal.</p>");
-        return shell(&context, &headers, &content);
+        let content = html! {
+            (top)
+            p { "The audit is owner-only and is not shown to this principal." }
+        };
+        return shell(&context, &headers, content);
     }
-    match context.sales.audit(&context.viewer, &id, &lead).await {
-        Ok(entries) if entries.is_empty() => content.push_str("<p>No audit entry is recorded.</p>"),
+    let body = match context.sales.audit(&context.viewer, &id, &lead).await {
+        Ok(entries) if entries.is_empty() => html! { p { "No audit entry is recorded." } },
         Ok(entries) => {
-            content.push_str("<table class=\"sales-audit\"><thead><tr><th>Sequence</th><th>At</th><th>Actor</th><th>Operation</th><th>Reference</th></tr></thead><tbody>");
+            let mut table = ui::table("Audit entries").header([
+                "Sequence",
+                "At",
+                "Actor",
+                "Operation",
+                "Reference",
+            ]);
             for e in entries {
-                content.push_str(&format!(
-                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                    e.sequence,
-                    e.at,
-                    escape(&e.actor),
-                    escape(&e.operation.replace('_', " ")),
+                table = table.row([
+                    e.sequence.to_string(),
+                    e.at.to_string(),
+                    e.actor.clone(),
+                    e.operation.replace('_', " "),
                     short(&e.reference_digest),
-                ));
+                ]);
             }
-            content.push_str("</tbody></table>");
+            html! { div class="sales-audit" { (table) } }
         }
         Err(error) => return answer(error),
-    }
-    shell(&context, &headers, &content)
+    };
+    let content = html! { (top) (body) };
+    shell(&context, &headers, content)
 }

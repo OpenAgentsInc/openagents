@@ -17,8 +17,11 @@
 //! bell event, record, or person-linked amount.
 
 use super::*;
+use crate::cloud::ui;
+use crate::layout::escape;
 use coder::task::sales::remote::{BOARD_TTL_SECONDS, Board, Floor, Proposal};
 use coder::task::sales::{agents, expenses, floor as report, meetings, outbox, replies, town};
+use maud::{Markup, html};
 
 const OUTBOX_JOURNAL_SCHEMA: &str = "openagents.cloud.sales-web-outbox-requests.v1";
 
@@ -417,7 +420,7 @@ fn word<T: Serialize>(value: &T) -> String {
 }
 
 fn short(value: &str) -> String {
-    escape(&value[..value.len().min(16)])
+    value[..value.len().min(16)].to_owned()
 }
 
 fn phase_label(phase: outbox::Phase) -> &'static str {
@@ -459,14 +462,21 @@ fn reservation_label(status: expenses::Status) -> &'static str {
 
 /// The private board fragment. It always answers 200 so a refresh replaces
 /// it; anything but a current observation clears it.
-fn board_html(board: Result<&Board, &'static str>) -> String {
+fn board_html(board: Result<&Board, &'static str>) -> Markup {
     let board = match board {
         Ok(board) if now().saturating_sub(board.observed_at) < BOARD_TTL_SECONDS => board,
-        Ok(_) => return "<p class=\"dim\">Private board cleared: the observation is older than three seconds.</p>".into(),
+        Ok(_) => {
+            return html! {
+                p class="dim" { "Private board cleared: the observation is older than three seconds." }
+            };
+        }
         Err(reason) => {
-            return format!(
-                "<p class=\"dim\">Private board cleared: {reason}. Nothing is shown until a current observation arrives.</p>"
-            );
+            return html! {
+                p class="dim" {
+                    "Private board cleared: " (reason)
+                    ". Nothing is shown until a current observation arrives."
+                }
+            };
         }
     };
     let shared = board.shared.map_or_else(
@@ -475,32 +485,57 @@ fn board_html(board: Result<&Board, &'static str>) -> String {
             format!("Reviewed shared aggregate: {sales} earned sales, net at least USD {net}.")
         },
     );
-    format!(
-        "<div class=\"sales-board-live\" data-observed-at=\"{}\"><dl class=\"sales-board\"><dt>Pipeline</dt><dd>New {} · Qualified {} · Pilot {} · Active {} · Closed {}</dd><dt>Drafts awaiting review</dt><dd>{}</dd><dt>Certification</dt><dd>Qualified {} · In training or marked {} · Suspended {}</dd><dt>Practice runs</dt><dd>{}</dd><dt>Meeting proposals awaiting the owner</dt><dd>{}</dd><dt>Outbox proposals</dt><dd>Live {} · Fixture {} · Delivery unknown {}</dd><dt>Paul</dt><dd>{} · model {}</dd></dl><p>{}</p><p class=\"dim\">Observed at {}; expires three seconds later.</p></div>",
-        board.observed_at,
-        board.pipeline[0],
-        board.pipeline[1],
-        board.pipeline[2],
-        board.pipeline[3],
-        board.pipeline[4],
-        board.pending_drafts,
-        board.certifications[0],
-        board.certifications[1],
-        board.certifications[2],
-        board.practice_runs,
-        board.meeting_proposals,
-        board.outbox_live_proposals,
-        board.outbox_fixture_proposals,
-        board.outbox_unknown,
-        if board.idle { "Idle" } else { "Working" },
-        if board.model_available {
-            "available"
-        } else {
-            "unavailable"
-        },
-        shared,
-        board.observed_at,
-    )
+    let details = ui::Details::new()
+        .row(
+            "Pipeline",
+            format!(
+                "New {} · Qualified {} · Pilot {} · Active {} · Closed {}",
+                board.pipeline[0],
+                board.pipeline[1],
+                board.pipeline[2],
+                board.pipeline[3],
+                board.pipeline[4],
+            ),
+        )
+        .row("Drafts awaiting review", board.pending_drafts)
+        .row(
+            "Certification",
+            format!(
+                "Qualified {} · In training or marked {} · Suspended {}",
+                board.certifications[0], board.certifications[1], board.certifications[2],
+            ),
+        )
+        .row("Practice runs", board.practice_runs)
+        .row(
+            "Meeting proposals awaiting the owner",
+            board.meeting_proposals,
+        )
+        .row(
+            "Outbox proposals",
+            format!(
+                "Live {} · Fixture {} · Delivery unknown {}",
+                board.outbox_live_proposals, board.outbox_fixture_proposals, board.outbox_unknown,
+            ),
+        )
+        .row(
+            "Paul",
+            format!(
+                "{} · model {}",
+                if board.idle { "Idle" } else { "Working" },
+                if board.model_available {
+                    "available"
+                } else {
+                    "unavailable"
+                },
+            ),
+        );
+    html! {
+        div class="sales-board-live" data-observed-at=(board.observed_at) {
+            (details)
+            p { (shared) }
+            p class="dim" { "Observed at " (board.observed_at) "; expires three seconds later." }
+        }
+    }
 }
 
 async fn board_fragment(
@@ -508,12 +543,12 @@ async fn board_fragment(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let fragment = |body: String| {
+    let fragment = |body: Markup| {
         protect(
             (
                 StatusCode::OK,
                 [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                body,
+                body.into_string(),
             )
                 .into_response(),
         )
@@ -553,264 +588,220 @@ async fn floor_page(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let base = format!("{PAGE}/{}", escape(&id));
-    let mut content = format!(
-        "<p><a href=\"{PAGE}\">Private sales</a></p><h2>Sales floor</h2><p>Supervised through delegation {} as {}. Every figure is recomputed by the sales owner from its canonical books; nothing on this page authorizes an outbound effect. Budgets and caps count America/Chicago business day {} against the fixed floor-wide ceiling of {} per day; unknown expense keeps its hold.</p>",
-        escape(delegation.id()),
-        escape(&standing.principal),
-        floor.business_day,
-        usd(floor.ceiling_usd_millionths),
-    );
+    let base = format!("{PAGE}/{id}");
 
     // Paul and the crew.
-    content.push_str("<section class=\"cloud-card\" id=\"sales-paul\"><h3>Paul</h3>");
-    match &floor.paul {
-        None => content.push_str(
-            "<p>Unavailable: Paul is not configured for this sales owner. No queue is inferred.</p>",
-        ),
-        Some(paul) => {
-            content.push_str(&format!(
-                "<p>{} · model {} · qualification inferred: {} · external effects: {}</p>",
-                if paul.idle { "Idle" } else { "Working" },
-                if paul.model_available {
-                    "available"
-                } else {
-                    "unavailable"
-                },
-                if paul.qualification_inferred {
-                    "yes"
-                } else {
-                    "no"
-                },
-                if paul.external_effects { "yes" } else { "none" },
-            ));
-            if paul.rows.is_empty() {
-                content.push_str("<p>No assigned records.</p>");
-            } else {
-                content.push_str("<table><thead><tr><th>Record</th><th>Stage</th><th>Drafts awaiting review</th><th>Meetings awaiting the owner</th></tr></thead><tbody>");
-                for row in &paul.rows {
-                    content.push_str(&format!(
-                        "<tr><td><a href=\"{base}/leads/{}\">{}</a> · revision {}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                        escape(&row.lead),
-                        short(&row.lead),
-                        row.revision,
-                        stage_label(row.stage),
-                        row.pending_drafts,
-                        row.meetings_awaiting_owner,
-                    ));
+    let paul = html! {
+        section class="cloud-card" id="sales-paul" {
+            h3 { "Paul" }
+            @match &floor.paul {
+                None => {
+                    p { "Unavailable: Paul is not configured for this sales owner. No queue is inferred." }
                 }
-                content.push_str("</tbody></table>");
+                Some(paul) => {
+                    p {
+                        (if paul.idle { "Idle" } else { "Working" })
+                        " · model " (if paul.model_available { "available" } else { "unavailable" })
+                        " · qualification inferred: " (if paul.qualification_inferred { "yes" } else { "no" })
+                        " · external effects: " (if paul.external_effects { "yes" } else { "none" })
+                    }
+                    @if paul.rows.is_empty() {
+                        p { "No assigned records." }
+                    } @else {
+                        (paul.rows.iter().fold(
+                            ui::table("Paul's records").header([
+                                "Record",
+                                "Stage",
+                                "Drafts awaiting review",
+                                "Meetings awaiting the owner",
+                            ]),
+                            |table, row| {
+                                table.row([
+                                    html! {
+                                        a href=(format!("{base}/leads/{}", row.lead)) { (short(&row.lead)) }
+                                        " · revision " (row.revision)
+                                    },
+                                    html! { (stage_label(row.stage)) },
+                                    html! { (row.pending_drafts) },
+                                    html! { (row.meetings_awaiting_owner) },
+                                ])
+                            },
+                        ))
+                    }
+                }
             }
         }
-    }
-    content.push_str("</section><section class=\"cloud-card\" id=\"sales-crew\"><h3>Crew</h3><p>Paul plus at most three active hires. A hire joins only through an exact confirmed proposal and trains before real drafting.</p><table><thead><tr><th>Member</th><th>Role</th><th>Lifecycle</th><th>Station</th><th>Activity</th><th>Queued</th></tr></thead><tbody>");
-    for member in &floor.crew {
-        content.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-            escape(&member.name),
-            match member.role {
-                town::Role::Leader => "Leader",
-                town::Role::Hire => "Hire",
-            },
-            word(&member.lifecycle),
-            member
-                .station
-                .as_deref()
-                .map_or_else(|| "Unplaced".into(), escape),
-            match (&member.activity, &member.source_kind) {
-                (Some(activity), Some(kind)) => format!("{} ({})", escape(activity), escape(kind)),
-                (Some(activity), None) => escape(activity),
-                _ => "Idle".into(),
-            },
-            member.queued,
-        ));
-    }
-    content.push_str(&format!(
-        "</tbody></table><p>Hire proposals awaiting the owner: {}.</p></section>",
-        floor.pending_hires
-    ));
-
-    // Certification and practice.
-    content.push_str(
-        "<section class=\"cloud-card\" id=\"sales-certification\"><h3>Certification</h3>",
-    );
-    if floor.certifications.is_empty() {
-        content.push_str("<p>No certification is recorded.</p>");
-    } else {
-        content.push_str("<ul>");
-        for cert in &floor.certifications {
-            content.push_str(&format!(
-                "<li>{} · version {} · {} · expires {} · outbound authority: {}</li>",
-                escape(&cert.agent),
-                cert.version,
-                cert_label(cert.state, cert.measured_qualified),
-                cert.expires_at,
-                if cert.outbound_authority {
-                    "yes"
-                } else {
-                    "none"
+    };
+    let crew = floor.crew.iter().fold(
+        ui::table("Crew").header([
+            "Member",
+            "Role",
+            "Lifecycle",
+            "Station",
+            "Activity",
+            "Queued",
+        ]),
+        |table, member| {
+            table.row([
+                html! { (member.name) },
+                html! {
+                    (match member.role {
+                        town::Role::Leader => "Leader",
+                        town::Role::Hire => "Hire",
+                    })
                 },
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    content.push_str("</section>");
+                html! { (word(&member.lifecycle)) },
+                html! { (member.station.as_deref().unwrap_or("Unplaced")) },
+                html! {
+                    @match (&member.activity, &member.source_kind) {
+                        (Some(activity), Some(kind)) => { (activity) " (" (kind) ")" }
+                        (Some(activity), None) => { (activity) }
+                        _ => { "Idle" }
+                    }
+                },
+                html! { (member.queued) },
+            ])
+        },
+    );
 
     // Expense holds.
-    content
-        .push_str("<section class=\"cloud-card\" id=\"sales-expense\"><h3>Model reservations</h3>");
-    if floor.reservations.is_empty() {
-        content.push_str("<p>No current reservation.</p>");
-    } else {
-        content.push_str("<table><thead><tr><th>Reservation</th><th>Agent</th><th>Chicago day</th><th>State</th><th>Maximum</th><th>Estimate</th><th>Billed</th></tr></thead><tbody>");
-        for r in &floor.reservations {
+    let reservations = floor.reservations.iter().fold(
+        ui::table("Model reservations").header([
+            "Reservation",
+            "Agent",
+            "Chicago day",
+            "State",
+            "Maximum",
+            "Estimate",
+            "Billed",
+        ]),
+        |table, r| {
             let unknown = || "Unknown".to_string();
-            content.push_str(&format!(
-                "<tr><td>{}{}</td><td>{}</td><td>{}</td><td>{}{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                short(&r.id),
-                if r.training { " · training" } else { "" },
-                escape(&r.agent),
-                r.day,
-                reservation_label(r.status),
-                if r.execution_unknown {
-                    " · execution unknown"
-                } else {
-                    ""
+            table.row([
+                html! { (short(&r.id)) @if r.training { " · training" } },
+                html! { (r.agent) },
+                html! { (r.day) },
+                html! {
+                    (reservation_label(r.status))
+                    @if r.execution_unknown { " · execution unknown" }
                 },
-                usd(r.maximum_usd_millionths),
-                r.estimated_usd_millionths.map_or_else(unknown, usd),
-                r.billed_usd_millionths.map_or_else(unknown, usd),
-            ));
-        }
-        content.push_str("</tbody></table>");
-    }
-    content.push_str("</section>");
+                html! { (usd(r.maximum_usd_millionths)) },
+                html! { (r.estimated_usd_millionths.map_or_else(unknown, usd)) },
+                html! { (r.billed_usd_millionths.map_or_else(unknown, usd)) },
+            ])
+        },
+    );
 
     // Floor report and escalations.
     let r = &floor.report;
     let measure = |m: &report::Measure| match m {
         report::Measure::Known { value } => usd(*value),
-        report::Measure::Unknown { reason } => format!("Unknown ({})", escape(reason)),
+        report::Measure::Unknown { reason } => format!("Unknown ({reason})"),
     };
-    let stages: Vec<String> = r
-        .stages
-        .iter()
-        .map(|(k, v)| format!("{} {v}", escape(k)))
-        .collect();
-    content.push_str(&format!(
-        "<section class=\"cloud-card\" id=\"sales-report\"><h3>Floor report</h3><dl><dt>Records</dt><dd>{} · {}</dd><dt>Next actions</dt><dd>{} due · {} overdue</dd><dt>Messages</dt><dd>drafted {} · owner reviewed {} · rejected {} · proposed {} · approved {} · sent {} · replied {}</dd><dt>Delivery</dt><dd>delivered {} · hard bounce {} · failed {} · unknown {} · opt-out {} · complaint {}{}</dd><dt>Expense</dt><dd>reserved estimate {} · billed {} · unknown reservations {} · breaches {} · per qualified record {}</dd><dt>Open</dt><dd>{} incidents · {} replies awaiting review · outbox {}</dd></dl>",
-        r.leads,
-        if stages.is_empty() { "no stages".into() } else { stages.join(" · ") },
-        r.next_actions_due,
-        r.next_actions_overdue,
-        r.messages.drafted,
-        r.messages.owner_reviewed,
-        r.messages.rejected,
-        r.messages.proposed,
-        r.messages.approved,
-        r.messages.sent,
-        r.messages.replied,
-        r.delivery.delivered,
-        r.delivery.hard_bounce,
-        r.delivery.failed,
-        r.delivery.unknown,
-        r.delivery.opt_out,
-        r.delivery.complaint,
-        if r.delivery.telemetry_absent {
-            " · provider delivery telemetry absent"
-        } else {
-            ""
-        },
-        usd(r.costs.reserved_estimate_usd_millionths),
-        measure(&r.costs.billed_usd_millionths),
-        r.costs.reservations_unknown,
-        r.costs.reservations_breached,
-        measure(&r.costs.per_qualified_lead_usd_millionths),
-        r.unresolved_incidents,
-        r.unresolved_replies,
-        if r.outbox_paused { "stopped" } else { "running" },
-    ));
-    if !r.gaps.is_empty() {
-        content.push_str("<p>Gaps:</p><ul>");
-        for gap in &r.gaps {
-            content.push_str(&format!("<li>{}</li>", escape(gap)));
-        }
-        content.push_str("</ul>");
-    }
-    if !floor.escalations.is_empty() {
-        content.push_str("<h4>Escalations</h4><ul>");
-        for e in &floor.escalations {
-            content.push_str(&format!(
-                "<li>{} · {} · at {}</li>",
-                match e.severity {
-                    report::Severity::Immediate => "Immediate",
-                    report::Severity::Review => "Review",
+    let stages: Vec<String> = r.stages.iter().map(|(k, v)| format!("{k} {v}")).collect();
+    let report_details = ui::Details::new()
+        .row(
+            "Records",
+            format!(
+                "{} · {}",
+                r.leads,
+                if stages.is_empty() {
+                    "no stages".into()
+                } else {
+                    stages.join(" · ")
+                }
+            ),
+        )
+        .row(
+            "Next actions",
+            format!(
+                "{} due · {} overdue",
+                r.next_actions_due, r.next_actions_overdue
+            ),
+        )
+        .row(
+            "Messages",
+            format!(
+                "drafted {} · owner reviewed {} · rejected {} · proposed {} · approved {} · sent {} · replied {}",
+                r.messages.drafted,
+                r.messages.owner_reviewed,
+                r.messages.rejected,
+                r.messages.proposed,
+                r.messages.approved,
+                r.messages.sent,
+                r.messages.replied,
+            ),
+        )
+        .row(
+            "Delivery",
+            format!(
+                "delivered {} · hard bounce {} · failed {} · unknown {} · opt-out {} · complaint {}{}",
+                r.delivery.delivered,
+                r.delivery.hard_bounce,
+                r.delivery.failed,
+                r.delivery.unknown,
+                r.delivery.opt_out,
+                r.delivery.complaint,
+                if r.delivery.telemetry_absent {
+                    " · provider delivery telemetry absent"
+                } else {
+                    ""
                 },
-                escape(&e.kind.replace('_', " ")),
-                e.at,
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    content.push_str("</section>");
+            ),
+        )
+        .row(
+            "Expense",
+            format!(
+                "reserved estimate {} · billed {} · unknown reservations {} · breaches {} · per qualified record {}",
+                usd(r.costs.reserved_estimate_usd_millionths),
+                measure(&r.costs.billed_usd_millionths),
+                r.costs.reservations_unknown,
+                r.costs.reservations_breached,
+                measure(&r.costs.per_qualified_lead_usd_millionths),
+            ),
+        )
+        .row(
+            "Open",
+            format!(
+                "{} incidents · {} replies awaiting review · outbox {}",
+                r.unresolved_incidents,
+                r.unresolved_replies,
+                if r.outbox_paused { "stopped" } else { "running" },
+            ),
+        );
 
     // Outbox.
     let o = &floor.outbox;
-    content.push_str(&format!(
-        "<section class=\"cloud-card\" id=\"sales-outbox\"><h3>Outbox</h3><p>Revision {} · controller epoch {} · {} · daily cap {} · today live {} and fixture {} messages and reservations. Level 0: each message needs the owner's approval of its exact proposal at its original revision before any handoff. Approval is not dispatch; handoff stays on the sales host.</p>",
-        o.revision,
-        o.controller_epoch,
-        if o.paused {
-            "dispatch stopped"
-        } else {
-            "dispatch running"
+    let outbox_rows = o.rows.iter().fold(
+        ui::table("Outbox proposals").header([
+            "Proposal",
+            "Record",
+            "Kind",
+            "Mode",
+            "State",
+            "Chicago day",
+            "Subject",
+        ]),
+        |table, row| {
+            table.row([
+                html! {
+                    @if row.reviewable {
+                        a href=(format!("{base}/outbox/{}", row.id)) { (short(&row.id)) }
+                    } @else {
+                        (short(&row.id)) " · minimized"
+                    }
+                },
+                html! { (short(&row.lead)) },
+                html! { (word(&row.kind)) },
+                html! { (word(&row.mode)) },
+                html! { (phase_label(row.phase)) },
+                html! { (row.business_day) },
+                html! { code { (short(&row.subject_sha256)) } },
+            ])
         },
-        o.cap,
-        o.live_messages_and_reservations,
-        o.fixture_messages_and_reservations,
-    ));
-    if o.rows.is_empty() {
-        content.push_str("<p>No outbox proposal.</p>");
-    } else {
-        content.push_str("<table class=\"sales-outbox\"><thead><tr><th>Proposal</th><th>Record</th><th>Kind</th><th>Mode</th><th>State</th><th>Chicago day</th><th>Subject</th></tr></thead><tbody>");
-        for row in &o.rows {
-            let name = if row.reviewable {
-                format!(
-                    "<a href=\"{base}/outbox/{}\">{}</a>",
-                    escape(&row.id),
-                    short(&row.id)
-                )
-            } else {
-                format!("{} · minimized", short(&row.id))
-            };
-            content.push_str(&format!(
-                "<tr><td>{name}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td><code>{}</code></td></tr>",
-                short(&row.lead),
-                word(&row.kind),
-                word(&row.mode),
-                phase_label(row.phase),
-                row.business_day,
-                short(&row.subject_sha256),
-            ));
-        }
-        content.push_str("</tbody></table>");
-    }
+    );
     let unresolved: Vec<_> = o.incidents.iter().filter(|i| !i.resolved).collect();
-    if !unresolved.is_empty() {
-        content.push_str("<p>Unresolved incidents:</p><ul>");
-        for incident in unresolved {
-            content.push_str(&format!(
-                "<li>{} · {} · at {}</li>",
-                short(&incident.id),
-                word(&incident.kind),
-                incident.at
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    if o.paused {
-        content.push_str("<p>Dispatch is stopped. Pending handoffs are fenced and unknown deliveries stay unknown. Restart needs the owner's correction of every incident on the sales host.</p>");
-    } else if standing.effects.contains(&Effect::OutboxStop) {
+    let stop_form = if !o.paused && standing.effects.contains(&Effect::OutboxStop) {
         let request = fresh_request();
         let csrf = match context.service.csrf(
             &headers,
@@ -821,90 +812,188 @@ async fn floor_page(
             Ok(value) => value,
             Err(error) => return refused(error),
         };
-        content.push_str(&format!(
-            "<form method=\"post\" action=\"{base}/floor/stop\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><input type=\"hidden\" name=\"revision\" value=\"{}\"><button type=\"submit\">Stop dispatch at outbox revision {}</button></form><p class=\"dim\">Stop pauses the outbox controller: approved messages are not handed off and unknown deliveries keep their state.</p>",
-            ticket(&csrf),
-            o.revision,
-            o.revision,
-        ));
-    }
+        Some(
+            ui::BoundForm::new(format!("{base}/floor/stop"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .bind("revision", &o.revision.to_string())
+                .submit(&format!("Stop dispatch at outbox revision {}", o.revision)),
+        )
+    } else {
+        None
+    };
     let requests = match context.sales.outbox_requests(&context.viewer, &id, None) {
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    match request_list(&context, &headers, &delegation, &base, &requests) {
-        Ok(list) => content.push_str(&list),
+    let request_list = match request_list(&context, &headers, &delegation, &base, &requests) {
+        Ok(list) => list,
         Err(response) => return response,
-    }
-    content.push_str("</section>");
-
-    // Replies and meetings.
-    content.push_str("<section class=\"cloud-card\" id=\"sales-replies\"><h3>Replies</h3><p>Replies are untrusted. They cannot authorize work, payments, disclosure, or follow-ups; the owner reviews them on the sales host. Their text stays there.</p>");
-    if floor.replies.is_empty() {
-        content.push_str("<p>No reply is recorded.</p>");
-    } else {
-        content.push_str("<ul>");
-        for reply in &floor.replies {
-            content.push_str(&format!(
-                "<li>{} · record {} · received {} · {} · {}{}</li>",
-                short(&reply.id),
-                reply
-                    .lead
-                    .as_deref()
-                    .map_or_else(|| "unmatched".into(), short),
-                reply.received_at,
-                match reply.safety {
-                    replies::Safety::Ordinary => "ordinary".to_string(),
-                    other => format!("held: {}", word(&other)),
-                },
-                reply.owner_label.map_or_else(
-                    || "awaiting owner review".into(),
-                    |l| format!("owner label {}", word(&l))
-                ),
-                if reply.minimized { " · minimized" } else { "" },
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    content.push_str("</section><section class=\"cloud-card\" id=\"sales-meetings\"><h3>Meetings</h3><p>Suggestions book nothing; a human confirms and closes.</p>");
-    if floor.meetings.is_empty() {
-        content.push_str("<p>No meeting proposal.</p>");
-    } else {
-        content.push_str("<ul>");
-        for m in &floor.meetings {
-            content.push_str(&format!(
-                "<li>{} · record {} · {} · {} to {}{}</li>",
-                short(&m.id),
-                short(&m.lead),
-                match m.phase {
-                    meetings::Phase::Pending => "Pending",
-                    meetings::Phase::OwnerConfirmed => "Owner confirmed",
-                    meetings::Phase::Accepted => "Accepted",
-                    meetings::Phase::Declined => "Declined",
-                    meetings::Phase::Retired => "Retired",
-                },
-                m.start_at,
-                m.end_at,
-                if m.owner_confirmation_needed {
-                    " · awaiting owner confirmation"
-                } else {
-                    ""
-                },
-            ));
-        }
-        content.push_str("</ul>");
-    }
-    content.push_str("</section>");
+    };
 
     // The private Agora board.
     let board = match context.sales.board(&context.viewer, &id).await {
         Ok(board) => board_html(Ok(&board)),
         Err(_) => board_html(Err("the observation is unavailable")),
     };
-    content.push_str(&format!(
-        "<section class=\"cloud-card\" id=\"sales-board\"><h3>Private Agora board</h3><p>Counts from the sales owner, current for three seconds. A failed refresh or an inactive view clears them; no bell event, record, or person-linked amount appears here.</p><div hx-get=\"{base}/floor/board\" hx-trigger=\"every 1s\" hx-swap=\"innerHTML\" hx-sync=\"this:drop\" aria-live=\"off\">{board}</div></section>"
-    ));
-    shell(&context, &headers, &content)
+
+    let content = html! {
+        (ui::links([(PAGE, "Private sales")]))
+        h2 { "Sales floor" }
+        p {
+            "Supervised through delegation " (delegation.id()) " as " (standing.principal)
+            ". Every figure is recomputed by the sales owner from its canonical books; nothing on this page authorizes an outbound effect. Budgets and caps count America/Chicago business day "
+            (floor.business_day) " against the fixed floor-wide ceiling of "
+            (usd(floor.ceiling_usd_millionths))
+            " per day; unknown expense keeps its hold."
+        }
+        (paul)
+        section class="cloud-card" id="sales-crew" {
+            h3 { "Crew" }
+            p { "Paul plus at most three active hires. A hire joins only through an exact confirmed proposal and trains before real drafting." }
+            (crew)
+            p { "Hire proposals awaiting the owner: " (floor.pending_hires) "." }
+        }
+        // Certification and practice.
+        section class="cloud-card" id="sales-certification" {
+            h3 { "Certification" }
+            @if floor.certifications.is_empty() {
+                p { "No certification is recorded." }
+            } @else {
+                ul {
+                    @for cert in &floor.certifications {
+                        li {
+                            (cert.agent) " · version " (cert.version) " · "
+                            (cert_label(cert.state, cert.measured_qualified))
+                            " · expires " (cert.expires_at) " · outbound authority: "
+                            (if cert.outbound_authority { "yes" } else { "none" })
+                        }
+                    }
+                }
+            }
+        }
+        section class="cloud-card" id="sales-expense" {
+            h3 { "Model reservations" }
+            @if floor.reservations.is_empty() {
+                p { "No current reservation." }
+            } @else {
+                (reservations)
+            }
+        }
+        section class="cloud-card" id="sales-report" {
+            h3 { "Floor report" }
+            (report_details)
+            @if !r.gaps.is_empty() {
+                p { "Gaps:" }
+                ul { @for gap in &r.gaps { li { (gap) } } }
+            }
+            @if !floor.escalations.is_empty() {
+                h4 { "Escalations" }
+                ul {
+                    @for e in &floor.escalations {
+                        li {
+                            (match e.severity {
+                                report::Severity::Immediate => "Immediate",
+                                report::Severity::Review => "Review",
+                            })
+                            " · " (e.kind.replace('_', " ")) " · at " (e.at)
+                        }
+                    }
+                }
+            }
+        }
+        section class="cloud-card" id="sales-outbox" {
+            h3 { "Outbox" }
+            p {
+                "Revision " (o.revision) " · controller epoch " (o.controller_epoch) " · "
+                (if o.paused { "dispatch stopped" } else { "dispatch running" })
+                " · daily cap " (o.cap) " · today live " (o.live_messages_and_reservations)
+                " and fixture " (o.fixture_messages_and_reservations)
+                " messages and reservations. Level 0: each message needs the owner's approval of its exact proposal at its original revision before any handoff. Approval is not dispatch; handoff stays on the sales host."
+            }
+            @if o.rows.is_empty() {
+                p { "No outbox proposal." }
+            } @else {
+                div class="sales-outbox" { (outbox_rows) }
+            }
+            @if !unresolved.is_empty() {
+                p { "Unresolved incidents:" }
+                ul {
+                    @for incident in &unresolved {
+                        li { (short(&incident.id)) " · " (word(&incident.kind)) " · at " (incident.at) }
+                    }
+                }
+            }
+            @if o.paused {
+                p { "Dispatch is stopped. Pending handoffs are fenced and unknown deliveries stay unknown. Restart needs the owner's correction of every incident on the sales host." }
+            } @else if let Some(form) = &stop_form {
+                (form)
+                p class="dim" { "Stop pauses the outbox controller: approved messages are not handed off and unknown deliveries keep their state." }
+            }
+            (request_list)
+        }
+        // Replies and meetings.
+        section class="cloud-card" id="sales-replies" {
+            h3 { "Replies" }
+            p { "Replies are untrusted. They cannot authorize work, payments, disclosure, or follow-ups; the owner reviews them on the sales host. Their text stays there." }
+            @if floor.replies.is_empty() {
+                p { "No reply is recorded." }
+            } @else {
+                ul {
+                    @for reply in &floor.replies {
+                        li {
+                            (short(&reply.id)) " · record "
+                            (reply.lead.as_deref().map_or_else(|| "unmatched".into(), short))
+                            " · received " (reply.received_at) " · "
+                            (match reply.safety {
+                                replies::Safety::Ordinary => "ordinary".to_string(),
+                                other => format!("held: {}", word(&other)),
+                            })
+                            " · "
+                            (reply.owner_label.map_or_else(
+                                || "awaiting owner review".into(),
+                                |l| format!("owner label {}", word(&l)),
+                            ))
+                            @if reply.minimized { " · minimized" }
+                        }
+                    }
+                }
+            }
+        }
+        section class="cloud-card" id="sales-meetings" {
+            h3 { "Meetings" }
+            p { "Suggestions book nothing; a human confirms and closes." }
+            @if floor.meetings.is_empty() {
+                p { "No meeting proposal." }
+            } @else {
+                ul {
+                    @for m in &floor.meetings {
+                        li {
+                            (short(&m.id)) " · record " (short(&m.lead)) " · "
+                            (match m.phase {
+                                meetings::Phase::Pending => "Pending",
+                                meetings::Phase::OwnerConfirmed => "Owner confirmed",
+                                meetings::Phase::Accepted => "Accepted",
+                                meetings::Phase::Declined => "Declined",
+                                meetings::Phase::Retired => "Retired",
+                            })
+                            " · " (m.start_at) " to " (m.end_at)
+                            @if m.owner_confirmation_needed { " · awaiting owner confirmation" }
+                        }
+                    }
+                }
+            }
+        }
+        section class="cloud-card" id="sales-board" {
+            h3 { "Private Agora board" }
+            p { "Counts from the sales owner, current for three seconds. A failed refresh or an inactive view clears them; no bell event, record, or person-linked amount appears here." }
+            div hx-get=(format!("{base}/floor/board")) hx-trigger="every 1s" hx-swap="innerHTML"
+                hx-sync="this:drop" aria-live="off" {
+                (board)
+            }
+        }
+    };
+    shell(&context, &headers, content)
 }
 
 fn request_list(
@@ -913,45 +1002,46 @@ fn request_list(
     delegation: &Delegation,
     base: &str,
     requests: &[(String, Entry)],
-) -> Result<String, Response> {
+) -> Result<Markup, Response> {
     if requests.is_empty() {
-        return Ok(String::new());
+        return Ok(html! {});
     }
-    let mut out = String::from("<h4>Requests</h4><ul class=\"sales-requests\">");
+    let mut items = Vec::with_capacity(requests.len());
     for (request, entry) in requests {
-        let (label, action, subject, extra) = match &entry.intent {
-            Intent::Decide {
-                proposal,
-                subject_sha256,
-                approve,
-            } => (
-                format!(
-                    "{} {} at outbox revision {}",
-                    if *approve { "Approve" } else { "Reject" },
-                    short(proposal),
-                    entry.revision
+        let (label, action, subject, extra): (String, String, String, Vec<(&str, String)>) =
+            match &entry.intent {
+                Intent::Decide {
+                    proposal,
+                    subject_sha256,
+                    approve,
+                } => (
+                    format!(
+                        "{} {} at outbox revision {}",
+                        if *approve { "Approve" } else { "Reject" },
+                        short(proposal),
+                        entry.revision
+                    ),
+                    format!("{base}/outbox/{proposal}/decide"),
+                    subject_sha256.clone(),
+                    vec![
+                        ("subject", subject_sha256.clone()),
+                        ("approve", approve.to_string()),
+                    ],
                 ),
-                format!("{base}/outbox/{}/decide", escape(proposal)),
-                subject_sha256.clone(),
-                format!(
-                    "<input type=\"hidden\" name=\"subject\" value=\"{}\"><input type=\"hidden\" name=\"approve\" value=\"{approve}\">",
-                    escape(subject_sha256)
+                Intent::Stop => (
+                    format!("Stop dispatch at outbox revision {}", entry.revision),
+                    format!("{base}/floor/stop"),
+                    "stop".to_string(),
+                    Vec::new(),
                 ),
-            ),
-            Intent::Stop => (
-                format!("Stop dispatch at outbox revision {}", entry.revision),
-                format!("{base}/floor/stop"),
-                "stop".to_string(),
-                String::new(),
-            ),
-        };
-        match &entry.receipt {
-            Some(receipt) => out.push_str(&format!(
-                "<li>{label} · request {} · Recorded at outbox revision {} ({})</li>",
-                escape(&request[..8]),
-                receipt.revision,
-                escape(&receipt.outcome.replace('_', " ")),
-            )),
+            };
+        let item = match &entry.receipt {
+            Some(receipt) => html! {
+                li {
+                    (label) " · request " (&request[..8]) " · Recorded at outbox revision "
+                    (receipt.revision) " (" (receipt.outcome.replace('_', " ")) ")"
+                }
+            },
             None => {
                 let csrf = context
                     .service
@@ -962,18 +1052,31 @@ fn request_list(
                         &outbox_target(delegation, &subject, request),
                     )
                     .map_err(refused)?;
-                out.push_str(&format!(
-                    "<li>{label} · request {} · Outcome unknown<form method=\"post\" action=\"{action}\">{}<input type=\"hidden\" name=\"request\" value=\"{}\"><input type=\"hidden\" name=\"revision\" value=\"{}\">{extra}<button type=\"submit\">Retry the same request</button></form></li>",
-                    escape(&request[..8]),
-                    ticket(&csrf),
-                    escape(request),
-                    entry.revision,
-                ));
+                let retry = extra.iter().fold(
+                    ui::retry(action, &csrf)
+                        .bind("request", request)
+                        .bind("revision", &entry.revision.to_string()),
+                    |form, (name, value)| form.bind(name, value),
+                );
+                html! {
+                    li {
+                        (label) " · request " (&request[..8])
+                        (ui::outcome_unknown(
+                            html! {
+                                "This request may or may not have been recorded. Retry the same request to recover it; it never creates a new one."
+                            },
+                            Some(retry),
+                        ))
+                    }
+                }
             }
-        }
+        };
+        items.push(item);
     }
-    out.push_str("</ul>");
-    Ok(out)
+    Ok(html! {
+        h4 { "Requests" }
+        ul class="sales-requests" { @for item in &items { (item) } }
+    })
 }
 
 async fn proposal_page(
@@ -997,50 +1100,53 @@ async fn proposal_page(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let base = format!("{PAGE}/{}", escape(&id));
-    let mut attachments = String::new();
-    for a in &found.attachments {
-        attachments.push_str(&format!(
-            "<li>{} · {} bytes · <code>{}</code></li>",
-            escape(&a.filename),
-            a.bytes,
-            escape(&a.sha256)
-        ));
-    }
-    let mut content = format!(
-        "<p><a href=\"{base}/floor\">Sales floor</a></p><h2>Outbox proposal {}</h2><p>This is the exact subject the sales owner would hand off. It cannot be edited here: a changed draft needs a new proposal and its own grading. A decision binds this subject digest and outbox revision; the owner rechecks both, the controller, the reserved Chicago day, suppression, and current authority before recording it.</p><dl class=\"sales-proposal\"><dt>Kind</dt><dd>{}</dd><dt>Mode</dt><dd>{}</dd><dt>State</dt><dd>{}</dd><dt>Record</dt><dd><a href=\"{base}/leads/{}\">{}</a></dd><dt>Chicago business day</dt><dd>{}</dd><dt>Expires</dt><dd>{}</dd><dt>Sender</dt><dd>{}</dd><dt>Recipient</dt><dd>{}</dd><dt>Subject line</dt><dd>{}</dd><dt>Body</dt><dd><pre>{}</pre></dd><dt>Attachments</dt><dd>{}</dd><dt>Certification</dt><dd>{}</dd><dt>Graded draft</dt><dd>{}</dd><dt>Maximum cost</dt><dd>{} micro-USD</dd><dt>Subject digest</dt><dd><code>{}</code></dd><dt>Outbox revision</dt><dd>{}</dd></dl>",
-        escape(&found.id),
-        word(&found.kind),
-        word(&found.mode),
-        phase_label(found.phase),
-        escape(&found.lead),
-        short(&found.lead),
-        found.business_day,
-        found.expires_at,
-        escape(&found.sender),
-        escape(&found.recipient),
-        escape(&found.subject),
-        escape(&found.body),
-        if attachments.is_empty() {
-            "None".into()
-        } else {
-            format!("<ul>{attachments}</ul>")
-        },
-        found
-            .certification_reference
-            .as_deref()
-            .map_or_else(|| "None".into(), escape),
-        found
-            .draft_reference
-            .as_deref()
-            .map_or_else(|| "None".into(), escape),
-        found.maximum_cost_microusd,
-        escape(&found.subject_sha256),
-        found.outbox_revision,
-    );
+    let base = format!("{PAGE}/{id}");
+    let details = ui::Details::new()
+        .row("Kind", word(&found.kind))
+        .row("Mode", word(&found.mode))
+        .row("State", phase_label(found.phase))
+        .row(
+            "Record",
+            html! { a href=(format!("{base}/leads/{}", found.lead)) { (short(&found.lead)) } },
+        )
+        .row("Chicago business day", found.business_day)
+        .row("Expires", found.expires_at)
+        .row("Sender", &found.sender)
+        .row("Recipient", &found.recipient)
+        .row("Subject line", &found.subject)
+        .row("Body", html! { pre { (found.body) } })
+        .row(
+            "Attachments",
+            html! {
+                @if found.attachments.is_empty() {
+                    "None"
+                } @else {
+                    ul {
+                        @for a in &found.attachments {
+                            li { (a.filename) " · " (a.bytes) " bytes · " code { (a.sha256) } }
+                        }
+                    }
+                }
+            },
+        )
+        .row(
+            "Certification",
+            found.certification_reference.as_deref().unwrap_or("None"),
+        )
+        .row(
+            "Graded draft",
+            found.draft_reference.as_deref().unwrap_or("None"),
+        )
+        .row(
+            "Maximum cost",
+            format!("{} micro-USD", found.maximum_cost_microusd),
+        )
+        .row("Subject digest", html! { code { (found.subject_sha256) } })
+        .row("Outbox revision", found.outbox_revision);
     let decidable = found.phase == outbox::Phase::Proposed
         && !found.paused
         && standing.effects.contains(&Effect::OutboxDecide);
+    let mut forms = Vec::new();
     if decidable {
         for (approve, label) in [(true, "Approve this exact message"), (false, "Reject")] {
             let request = fresh_request();
@@ -1053,21 +1159,19 @@ async fn proposal_page(
                 Ok(value) => value,
                 Err(error) => return refused(error),
             };
-            content.push_str(&format!(
-                "<form method=\"post\" action=\"{base}/outbox/{}/decide\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><input type=\"hidden\" name=\"revision\" value=\"{}\"><input type=\"hidden\" name=\"subject\" value=\"{}\"><input type=\"hidden\" name=\"approve\" value=\"{approve}\"><button type=\"submit\">{label} at outbox revision {}</button></form>",
-                escape(&found.id),
-                ticket(&csrf),
-                found.outbox_revision,
-                escape(&found.subject_sha256),
-                found.outbox_revision,
-            ));
+            forms.push(
+                ui::BoundForm::new(format!("{base}/outbox/{}/decide", found.id))
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .bind("revision", &found.outbox_revision.to_string())
+                    .bind("subject", &found.subject_sha256)
+                    .bind("approve", &approve.to_string())
+                    .submit_with(ui::submit(
+                        &format!("{label} at outbox revision {}", found.outbox_revision),
+                        approve,
+                    )),
+            );
         }
-    } else if found.paused {
-        content.push_str("<p>Dispatch is stopped; no decision is offered until the owner restarts it on the sales host.</p>");
-    } else if found.phase == outbox::Phase::Proposed {
-        content.push_str("<p>This delegation has no outbox decision grant.</p>");
-    } else {
-        content.push_str("<p>This proposal is no longer awaiting a decision.</p>");
     }
     let requests = match context
         .sales
@@ -1076,11 +1180,27 @@ async fn proposal_page(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    match request_list(&context, &headers, &delegation, &base, &requests) {
-        Ok(list) => content.push_str(&list),
+    let request_list = match request_list(&context, &headers, &delegation, &base, &requests) {
+        Ok(list) => list,
         Err(response) => return response,
-    }
-    shell(&context, &headers, &content)
+    };
+    let content = html! {
+        (ui::links([(format!("{base}/floor").as_str(), "Sales floor")]))
+        h2 { "Outbox proposal " (found.id) }
+        p { "This is the exact subject the sales owner would hand off. It cannot be edited here: a changed draft needs a new proposal and its own grading. A decision binds this subject digest and outbox revision; the owner rechecks both, the controller, the reserved Chicago day, suppression, and current authority before recording it." }
+        div class="sales-proposal" { (details) }
+        @if decidable {
+            @for form in &forms { (form) }
+        } @else if found.paused {
+            p { "Dispatch is stopped; no decision is offered until the owner restarts it on the sales host." }
+        } @else if found.phase == outbox::Phase::Proposed {
+            p { "This delegation has no outbox decision grant." }
+        } @else {
+            p { "This proposal is no longer awaiting a decision." }
+        }
+        (request_list)
+    };
+    shell(&context, &headers, content)
 }
 
 #[derive(Deserialize)]
@@ -1192,9 +1312,11 @@ async fn stop(
 }
 
 /// The index page's link for a supervised delegation.
-pub(super) fn floor_link(id: &str) -> String {
-    format!(
-        "<p><a href=\"{PAGE}/{}/floor\">Supervise the sales floor</a>: Paul, crew, certification, expense holds, outbox decisions, replies, meetings, and the private Agora board.</p>",
-        escape(id)
-    )
+pub(super) fn floor_link(id: &str) -> Markup {
+    html! {
+        p {
+            a href=(format!("{PAGE}/{id}/floor")) { "Supervise the sales floor" }
+            ": Paul, crew, certification, expense holds, outbox decisions, replies, meetings, and the private Agora board."
+        }
+    }
 }
