@@ -119,8 +119,13 @@ pub(crate) async fn connect(headers: HeaderMap) -> Response {
         }
         (MarkdownRoot::new(html! {
             p.oa-page-meta {
-                "On a computer? OpenAgents for Mac shows the code to scan; build it from "
-                a href="https://github.com/OpenAgentsInc/openagents" { "source" } "."
+                "On a computer? Install Coder with "
+                code { (super::download::CODER_SH) }
+                ", start its host with "
+                code { "openagents host serve --iroh --control" }
+                ", then run "
+                code { "openagents connect invite" }
+                " in a second terminal to show a code to scan."
             }
         }))
     });

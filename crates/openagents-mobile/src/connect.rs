@@ -27,8 +27,11 @@ use coder_computers::connect::{MAX_CODE_BYTES, PairFailure, Paired, classify, cl
 use serde::Serialize;
 use tokio::runtime::Handle;
 
-/// Where the person gets the desktop app.
-pub const GET_APP: &str = "OpenAgents for Mac shows the code to scan; build it from https://github.com/OpenAgentsInc/openagents.";
+/// How the person gets a code on their computer: OpenAgents for Mac is not
+/// out at 1.0, so the line names the commands that draw one
+/// (`openagents connect invite`, which needs the host running) and the
+/// account path for seeing the computer's Coder chats on openagents.com.
+pub const GET_APP: &str = "On your computer, install Coder: curl -fsSL https://openagents.com/cli/install.sh | bash. Start its host with openagents host serve --iroh --control, then run openagents connect invite in a second terminal and scan the code it shows. To see that computer's Coder chats on openagents.com instead, run coder login and type /sync on in Coder.";
 
 /// A pairing in flight.
 pub type Pairing = Pin<Box<dyn Future<Output = Result<Paired, PairFailure>> + Send>>;
@@ -60,7 +63,7 @@ pub struct View {
     pub prompt: Option<&'static str>,
     /// The paste control's label, while it scans.
     pub paste: Option<&'static str>,
-    /// Where to get the desktop app, while it scans.
+    /// How to get a code on a computer, while it scans.
     pub get_app: Option<&'static str>,
     /// What the last code came to, such as an expired code.
     pub notice: Option<String>,

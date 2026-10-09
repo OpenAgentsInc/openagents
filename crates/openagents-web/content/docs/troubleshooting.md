@@ -25,17 +25,13 @@ See [Connect a computer](/docs/connect-a-computer).
 
 ## My phone won't connect
 
-- Make sure [OpenAgents for Mac](/docs/mac) is open, on an unlocked screen,
-  and showing its QR code. The code only shows while the window is open.
-- Scan again in [OpenAgents for iPhone](/docs/iphone). Each code works once
-  and changes every minute.
-- Try **Can't scan? Copy a code instead** on the Mac, and paste the code in
-  [OpenAgents for iPhone](/docs/iphone) under **Account → Computers → Add
-  another way**.
-- On the same Wi-Fi, try **Nearby** in the app and check that both screens
-  show the same six-digit number.
-- On a computer without the Mac app, check that its host is running:
-  `openagents connect status`.
+- Check that the computer's host is running: `openagents connect status`.
+  If nothing answers, start it with `openagents host serve --iroh --control`
+  and leave it running.
+- Run `openagents connect invite` again and scan the new code in
+  [OpenAgents for iPhone](/docs/iphone). Each code works once.
+- Can't scan? Run `openagents connect invite --text` and paste the code it
+  prints in the phone's **Paste a code**.
 
 ## A coding agent says it isn't signed in
 

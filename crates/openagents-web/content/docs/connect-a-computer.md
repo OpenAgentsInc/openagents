@@ -23,49 +23,35 @@ signed-in computers, each with **Remove**.
 
 ## Connect your phone
 
-The phone and Mac apps aren't published yet; build them from
-[source](https://github.com/OpenAgentsInc/openagents). With both built,
-connect your phone to your Mac once, and the phone can reach it from
+Get [OpenAgents for iPhone](/docs/iphone) on TestFlight at
+[testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B).
+Connect your phone to a computer once, and the phone can reach it from
 anywhere: chat with it, run Coder in your projects, and open a terminal
 on it.
 
-1. Open [OpenAgents for Mac](/docs/mac). It shows a QR code. (Later, open
-   **Phones and computers** and click **Connect another phone**.)
-2. In [OpenAgents for iPhone](/docs/iphone), open **Account**, then
-   **Computers**, then **Connect a computer**, and scan the code.
-3. Both screens say the computer is connected.
+1. Install Coder on the computer (above). It adds the `openagents`
+   command.
+2. Start the computer's host and leave it running:
+   `openagents host serve --iroh --control`
+3. In a second terminal, run `openagents connect invite`. It draws a QR
+   code.
+4. On your phone, open **Account**, then **Computers**, then **Connect a
+   computer**, and scan the code.
+5. Both the terminal and the phone say the computer is connected.
 
-There is no key to copy, and you don't need Tailscale.
-
-The code changes every minute, works once, for one phone, and shows only
-while the window is open on an unlocked screen.
+There is no key to copy, and you don't need Tailscale. The code works
+once, for one phone, and stops working when the command ends.
 
 ## Can't scan?
 
-Click **Can't scan? Copy a code instead** in
-[OpenAgents for Mac](/docs/mac), and paste the code in
-[OpenAgents for iPhone](/docs/iphone) (**Account → Computers → Add
-another way**).
+Run `openagents connect invite --text` instead. It prints a code under
+the QR code; paste it in the phone's **Paste a code**.
 
-## Near each other
+## A computer you reach over SSH
 
-When your phone and Mac are on the same Wi-Fi, the Mac can also show up
-under **Nearby** in [OpenAgents for iPhone](/docs/iphone). Tap it, check
-that both screens show the same six-digit number, and click **Connect** on
-the Mac.
-
-## A computer without the Mac app
-
-On Linux, or a computer without a screen, use the `openagents` command
-that the [Coder installer](/download) puts on your computer:
-
-- In OpenAgents Terminal, type `/connect` to draw the QR code as text.
-- Or run `openagents connect invite` in a shell.
-- For a computer you reach over SSH, run `openagents connect --ssh
-  me@box` from a computer that has `openagents`. It installs and starts
-  everything there and pairs the two.
-
-See [The openagents command](/docs/cli).
+From a computer that has `openagents`, run `openagents connect --ssh
+me@box`. It installs and starts everything there and pairs the two. See
+[The openagents command](/docs/cli).
 
 ## How the phone reaches the computer
 
@@ -78,8 +64,8 @@ never required. See [Manage computers](/docs/manage-computers).
 
 A connected phone has full access to that computer: it can chat through
 it, run Coder in your projects, open a terminal, and see the phones
-connected to it. To take a phone's access away, click **Remove** next to it
-in [OpenAgents for Mac](/docs/mac)'s **Phones and computers**, or run
-`openagents connect remove DEVICE`.
+connected to it. To take a phone's access away, run
+`openagents connect remove DEVICE` on the computer
+(`openagents connect devices` lists them).
 
 Next: [Manage computers](/docs/manage-computers).
