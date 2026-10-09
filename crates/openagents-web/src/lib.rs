@@ -27,6 +27,8 @@ pub mod pilot;
 mod purchases;
 pub mod sales_remote;
 mod tasks;
+pub mod theme;
+pub mod ui_page;
 pub mod upstream;
 mod wellknown;
 
@@ -171,6 +173,10 @@ pub fn router(config: Config) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
         .route("/static/tailwind.css", get(tailwind))
+        .route(theme::STYLESHEET_PATH, get(theme::stylesheet))
+        .route(theme::SCRIPT_PATH, get(theme::script))
+        .route(theme::ALPINE_PATH, get(theme::alpine))
+        .route(theme::TOGGLE_PATH, axum::routing::post(theme::toggle))
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
         .route("/static/chat.js", get(chat_script))

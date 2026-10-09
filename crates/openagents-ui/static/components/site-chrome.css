@@ -1,0 +1,28 @@
+/* Site chrome used by openagents-web's UiPage: the wordmark in the left
+   panel and the legal footer on scrolling pages. */
+.oa-wordmark {
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.oa-wordmark:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.oa-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 6) 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-sm-size);
+}
+.oa-legal a {
+  color: inherit;
+}
+.oa-legal a:hover {
+  color: var(--color-text-secondary);
+}

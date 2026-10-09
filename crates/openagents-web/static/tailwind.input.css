@@ -27,6 +27,32 @@
   --color-noir-accent-solid: var(--noir-accent-solid);
   --color-noir-on-accent-solid: var(--noir-accent-on-solid);
   --font-mono: var(--font-mono);
+  /* Apps SDK UI semantic roles from openagents-ui (Coder Light / Coder Noir,
+     switched by data-theme). Prefixed oa- so a utility's theme variable can
+     never shadow the token it reads. Pages moving to the new design language
+     use these; the noir-* names above stay until every page has moved. */
+  --color-oa-surface: var(--color-surface);
+  --color-oa-surface-secondary: var(--color-surface-secondary);
+  --color-oa-surface-tertiary: var(--color-surface-tertiary);
+  --color-oa-surface-elevated: var(--color-surface-elevated);
+  --color-oa-text: var(--color-text);
+  --color-oa-text-secondary: var(--color-text-secondary);
+  --color-oa-text-tertiary: var(--color-text-tertiary);
+  --color-oa-text-inverse: var(--color-text-inverse);
+  --color-oa-border: var(--color-border);
+  --color-oa-border-subtle: var(--color-border-subtle);
+  --color-oa-border-strong: var(--color-border-strong);
+  --color-oa-primary-solid: var(--color-background-primary-solid);
+  --color-oa-primary-soft: var(--color-background-primary-soft);
+  --color-oa-secondary-soft: var(--color-background-secondary-soft);
+  --color-oa-danger-soft: var(--color-background-danger-soft);
+  --color-oa-success-soft: var(--color-background-success-soft);
+  --color-oa-ring: var(--color-ring);
+  --radius-oa-sm: var(--radius-sm);
+  --radius-oa-md: var(--radius-md);
+  --radius-oa-lg: var(--radius-lg);
+  --radius-oa-xl: var(--radius-xl);
+  --radius-oa-full: var(--radius-full);
   --font-sans: var(--font-body);
   /* site.css sets the root size to 14px; keep utilities in exact pixels. */
   --spacing: 4px;

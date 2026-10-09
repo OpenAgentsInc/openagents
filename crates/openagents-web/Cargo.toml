@@ -8,6 +8,7 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+openagents-ui = { path = "../openagents-ui" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }

@@ -81,6 +81,10 @@ pub fn app_document(title: &str, section: Option<&str>, body: &str) -> String {
 }
 
 /// The head and the header, then `rest`.
+///
+/// Pages built this way predate the Coder Light / Coder Noir design language,
+/// so they pin `data-theme="dark"` until they move to `openagents_ui::shell`,
+/// whose document follows the theme cookie and the system setting.
 fn shell(title: &str, section: Option<&str>, rest: &str) -> String {
     let title = if title == "OpenAgents" {
         "OpenAgents".to_owned()
@@ -97,15 +101,16 @@ fn shell(title: &str, section: Option<&str>, rest: &str) -> String {
         nav.push_str(&format!("<li><a href=\"{href}\"{current}>{name}</a></li>"));
     }
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+        "<!doctype html><html lang=\"en\" data-theme=\"dark\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"color-scheme\" content=\"dark\"><title>{title}</title>\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\
-<link rel=\"stylesheet\" href=\"/static/site.css\">\
+{ui}<link rel=\"stylesheet\" href=\"/static/site.css\">\
 <link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head><body>\
 <a class=\"skip\" href=\"#content\">Skip to content</a>\
 <header class=\"site-header\"><nav aria-label=\"Main\"><a class=\"wordmark\" href=\"/\">OpenAgents</a>\
-<ul class=\"navlinks\">{nav}</ul></nav></header>{rest}</body></html>"
+<ul class=\"navlinks\">{nav}</ul></nav></header>{rest}</body></html>",
+        ui = crate::theme::style_tag(),
     )
 }
 

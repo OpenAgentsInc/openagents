@@ -10469,6 +10469,7 @@ dependencies = [
  "maud",
  "nostr",
  "openagents-chat",
+ "openagents-ui",
  "openagents-wallet",
  "pay-ledger",
  "pulldown-cmark",
