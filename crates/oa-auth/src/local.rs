@@ -44,6 +44,13 @@ impl LocalService {
     ) -> Result<Self, String> {
         Accounts::install(dir).map_err(|e| e.to_string())?;
         Sessions::install(dir, SessionBook::new(session_ttl, 3600)).map_err(|e| e.to_string())?;
+        Self::open(dir, github, tenant)
+    }
+
+    /// The service over stores [`Self::install`] made earlier, so a local
+    /// fixture restarts with its accounts, sessions, and links intact.
+    pub fn open(dir: &Path, github: Github, tenant: &str) -> Result<Self, String> {
+        Accounts::open(dir).map_err(|e| e.to_string())?;
         Ok(Self(Arc::new(Inner {
             dir: dir.to_path_buf(),
             github,
