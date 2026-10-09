@@ -57,6 +57,14 @@ pub(crate) struct Conversation {
     /// web. Web chats have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<Terminal>,
+    /// The saved environment the chat's tasks run in (#11037), set when a
+    /// task starts from the chat. Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<ChatEnvironment>,
+    /// The tasks started from the chat, oldest first (at most
+    /// [`MAX_TASKS`]). Older records have none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tasks: Vec<ChatTask>,
 }
 
 /// Where a synced Coder chat came from, and what Coder last said about it
@@ -102,6 +110,88 @@ impl Conversation {
         self.terminal
             .as_ref()
             .is_some_and(|terminal| terminal.deleted_unix.is_some())
+    }
+}
+
+/// The most tasks a chat keeps; the oldest go first.
+pub(crate) const MAX_TASKS: usize = 64;
+
+/// A saved environment (`/environments/{id}`) a chat runs tasks in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ChatEnvironment {
+    pub id: String,
+    /// `owner/name`: the repository the environment sets up.
+    pub repository: String,
+    /// The saved version the newest task ran on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u64>,
+    /// The environment no longer exists; the chat still opens.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed: bool,
+}
+
+/// One task started from a chat: today a Claude Code run on the chat's
+/// environment (`/environments/{environment}/runs/{id}`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ChatTask {
+    pub id: String,
+    pub kind: TaskKind,
+    pub environment: String,
+    /// What the person asked, cut to one short line.
+    pub title: String,
+    pub state: TaskState,
+    pub started_unix: u64,
+    /// How many messages the chat had when the task started; the task row
+    /// shows after them.
+    pub after_message: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum TaskKind {
+    Claude,
+}
+
+/// A task's last known state, as the run reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum TaskState {
+    Working,
+    /// Stopped for a usage limit; continues by itself.
+    Paused,
+    Done,
+    Failed,
+    Stopped,
+}
+
+impl TaskState {
+    pub(crate) fn finished(self) -> bool {
+        matches!(self, Self::Done | Self::Failed | Self::Stopped)
+    }
+}
+
+impl ChatTask {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if !coder_environment::valid_id(&self.id)
+            || !coder_environment::valid_id(&self.environment)
+            || !bounded_text(&self.title, 512)
+        {
+            return Err(Error::Invalid("The chat's task is invalid."));
+        }
+        Ok(())
+    }
+}
+
+impl ChatEnvironment {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if !coder_environment::valid_id(&self.id) || !bounded_text(&self.repository, 256) {
+            return Err(Error::Invalid("The chat's environment is invalid."));
+        }
+        Ok(())
     }
 }
 
@@ -1280,6 +1370,15 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
     {
         return Err(Error::Invalid("This chat could not be opened or saved."));
     }
+    if let Some(environment) = &conversation.environment {
+        environment.validate()?;
+    }
+    if conversation.tasks.len() > MAX_TASKS {
+        return Err(Error::Invalid("The chat has too many tasks."));
+    }
+    for task in &conversation.tasks {
+        task.validate()?;
+    }
     let mut identities = HashSet::new();
     for request in &conversation.requests {
         if !valid_id(&request.id)
@@ -1880,6 +1979,8 @@ mod tests {
             archived_unix: None,
             project: None,
             terminal: None,
+            environment: None,
+            tasks: Vec::new(),
         }
     }
 
@@ -1926,6 +2027,45 @@ mod tests {
         let retained = decode(&encode(&record).unwrap(), OWNER, ID).unwrap();
         assert_eq!(retained.pinned_unix, Some(7));
         assert_eq!(retained.archived_unix, Some(9));
+    }
+
+    #[test]
+    fn environments_and_tasks_round_trip_and_validate() {
+        let mut record = conversation();
+        let plain = String::from_utf8(encode(&record).unwrap()).unwrap();
+        assert!(!plain.contains("\"environment\"") && !plain.contains("\"tasks\""));
+        record.environment = Some(ChatEnvironment {
+            id: "env-1".into(),
+            repository: "acme/app".into(),
+            version: Some(3),
+            removed: false,
+        });
+        record.tasks = vec![ChatTask {
+            id: "claude-env-1-1".into(),
+            kind: TaskKind::Claude,
+            environment: "env-1".into(),
+            title: "Fix the login".into(),
+            state: TaskState::Working,
+            started_unix: 5,
+            after_message: 2,
+            version: Some(3),
+        }];
+        let bytes = encode(&record).unwrap();
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(text.contains(r#""state":"working""#) && !text.contains("removed"));
+        let retained = decode(&bytes, OWNER, ID).unwrap();
+        assert_eq!(retained.environment, record.environment);
+        assert_eq!(retained.tasks, record.tasks);
+        assert!(TaskState::Stopped.finished() && !TaskState::Paused.finished());
+        let mut bad = record.clone();
+        bad.tasks[0].environment = "../x".into();
+        assert!(validate_conversation(&bad).is_err());
+        let mut bad = record.clone();
+        bad.environment.as_mut().unwrap().repository = String::new();
+        assert!(validate_conversation(&bad).is_err());
+        let mut many = record;
+        many.tasks = vec![many.tasks[0].clone(); MAX_TASKS + 1];
+        assert!(validate_conversation(&many).is_err());
     }
 
     #[test]

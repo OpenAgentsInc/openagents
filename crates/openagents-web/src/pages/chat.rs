@@ -55,6 +55,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(sidebar::routes())
         .merge(delete_all::routes())
         .merge(live::routes())
+        .merge(work::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -330,6 +331,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         archived_unix: None,
         project,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -426,7 +429,8 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
             return Err(refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE));
         }
     }
-    Ok(loaded)
+    // A running task's new state is written before anything shows the chat.
+    Ok(work::sync(app, loaded).await)
 }
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -445,15 +449,18 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
+    let offer = work::offer(&app, &headers, chat).await;
+    let links = work::links(&app, &headers);
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
-        .breadcrumb(Breadcrumb::new(chat.title.clone()))
+        .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
+        .actions(work::actions(chat, offer.as_ref(), false))
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips)) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
         })
         .composer(composer(
             &format!("/chat/{id}"),
@@ -482,7 +489,7 @@ async fn show_terminal(
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
         .content(html! {
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {})) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, false)) }
         })
         .composer(terminal_note(computer));
     crate::chat_html::protect(page.respond(headers))
@@ -521,7 +528,9 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     )
     .await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let offer = work::offer(&app, &headers, chat).await;
+    let links = work::links(&app, &headers);
+    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -1054,18 +1063,26 @@ pub(crate) async fn chat_list(
 }
 
 /// A chat row's second line: the repository and branch it was started
-/// with. The list is the owner's own, so the names never reach anyone else.
-fn row_detail(chat: &Conversation) -> Option<String> {
+/// with, then its environment and version ("Environment v3"). Inside a
+/// project's group (`repository` false) the repository is left out: the
+/// group's heading names it. The list is the owner's own, so the names
+/// never reach anyone else.
+fn line_two(chat: &Conversation, repository: bool) -> Option<String> {
     // A Coder chat says so, and on which computer (#11047).
     if let Some(terminal) = &chat.terminal {
         return Some(format!("Terminal · {}", terminal.computer));
     }
-    let source = chat.selection.as_ref()?.repository.as_ref()?;
-    Some(if source.branch.is_empty() {
-        source.repository.clone()
-    } else {
-        format!("{} · {}", source.repository, source.branch)
-    })
+    let mut parts = Vec::new();
+    if let Some(source) = chat.selection.as_ref().and_then(|s| s.repository.as_ref()) {
+        if repository {
+            parts.push(source.repository.clone());
+        }
+        if !source.branch.is_empty() {
+            parts.push(source.branch.clone());
+        }
+    }
+    parts.extend(work::detail(chat));
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 /// A chat row's status: "Working" while an answer runs, "Failed" when the
@@ -1081,9 +1098,14 @@ pub(crate) fn row_status_slot(chat: &Conversation, oob: bool) -> Markup {
     }
 }
 
+/// Working also while a task started from the chat runs, and Failed when
+/// the newest task failed and nothing was sent since ([`work`]).
 fn row_status(chat: &Conversation) -> Option<ChatStatus> {
-    if chat.working() {
+    if chat.working() || work::running(chat) {
         return Some(ChatStatus::Working);
+    }
+    if work::failed(chat) {
+        return Some(ChatStatus::Failed);
     }
     match chat.requests.last()?.outcome {
         Outcome::Failed => Some(ChatStatus::Failed),
@@ -1106,11 +1128,12 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool)
 
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
 /// it. The title is the header row's breadcrumb, not part of the thread.
-fn content(chat: &Conversation, before: Option<usize>, chips: Markup) -> Markup {
+/// `links` links task rows to their runs ([`work::links`]).
+fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: bool) -> Markup {
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
-                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) (chips) }
+                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before,links)) (chips) }
             }
         }
         (ScrollToBottom::new("#chat-thread"))
@@ -1134,7 +1157,9 @@ fn turn(message: &Message, index: usize, plugins: &[String]) -> ThreadMessage {
     .id(format!("chat-message-{index}"))
 }
 
-fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
+/// The messages in the window, each followed by the tasks started after it
+/// ([`work::rows`]).
+fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
     let end = before
         .unwrap_or(chat.messages.len())
         .min(chat.messages.len());
@@ -1148,8 +1173,10 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
             // button follows this link to them.
             a hidden href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" data-oa-scroll-tail {}
         }
+        @if start == 0 { (work::rows(chat, 0, links)) }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
             (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
+            (work::rows(chat, index + start + 1, links))
         }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.working() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
@@ -1173,7 +1200,7 @@ async fn transcript(
                 Some(_) => html! {},
             };
             crate::chat_html::protect(
-                html! { (messages(&v.conversation, window.before)) (chips) }.into_response(),
+                html! { (messages(&v.conversation, window.before, work::links(&app, &headers))) (chips) }.into_response(),
             )
         }
         Err(r) => r,
@@ -1267,9 +1294,10 @@ async fn events(
     if cursor > loaded.conversation.revision {
         return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
+    let links = work::links(&app, &headers);
     let stream = futures_util::stream::unfold(
         (app, owner, id, cursor, 0u16),
-        |(app, owner, id, mut cursor, mut ticks)| async move {
+        move |(app, owner, id, mut cursor, mut ticks)| async move {
             if ticks >= 300 {
                 return None;
             }
@@ -1280,7 +1308,7 @@ async fn events(
                     let missed = revision.saturating_sub(cursor + 1);
                     let _ = missed; // A resume re-renders the full transcript; nothing to announce.
                     let chips = crate::suggestions::reply_chips(&app, &v.conversation).await;
-                    let body = html! { (messages(&v.conversation,None)) (chips) (row_status_slot(&v.conversation, true)) }.into_string();
+                    let body = html! { (messages(&v.conversation,None,links)) (chips) (row_status_slot(&v.conversation, true)) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))
@@ -1475,6 +1503,8 @@ mod sidebar;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_work.rs"]
+mod work;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

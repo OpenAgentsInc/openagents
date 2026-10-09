@@ -244,6 +244,8 @@ fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversati
         archived_unix: None,
         project: project.map(str::to_string),
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
     }
 }
 

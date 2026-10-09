@@ -92,6 +92,8 @@ impl Fixture {
                 archived_unix: None,
                 project: None,
                 terminal: None,
+                environment: None,
+                tasks: Vec::new(),
             })
             .await
             .unwrap()
@@ -500,8 +502,10 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         archived_unix: None,
         project: None,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
     };
-    assert_eq!(row_detail(&chat), None);
+    assert_eq!(line_two(&chat, true), None);
     assert_eq!(row_status(&chat), None);
     chat.selection = Some(Selection {
         revision: 1,
@@ -512,7 +516,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         }),
         runtime: None,
     });
-    assert_eq!(row_detail(&chat).as_deref(), Some("acme/app · main"));
+    assert_eq!(line_two(&chat, true).as_deref(), Some("acme/app · main"));
     chat.requests.push(Request {
         id: CHAT.into(),
         digest: String::new(),
@@ -715,6 +719,8 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         archived_unix: None,
         project: None,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1079,8 +1085,10 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             working_unix: None,
             deleted_unix: None,
         }),
+        environment: None,
+        tasks: Vec::new(),
     };
-    assert_eq!(row_detail(&chat).as_deref(), Some("Terminal · Studio"));
+    assert_eq!(line_two(&chat, true).as_deref(), Some("Terminal · Studio"));
     assert_eq!(row_status(&chat), None);
     chat.terminal.as_mut().unwrap().working_unix = Some(now());
     assert_eq!(row_status(&chat), Some(ChatStatus::Working));

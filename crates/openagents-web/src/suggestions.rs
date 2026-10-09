@@ -264,6 +264,8 @@ mod tests {
             archived_unix: None,
             project: None,
             terminal: None,
+            environment: None,
+            tasks: Vec::new(),
         }
     }
 

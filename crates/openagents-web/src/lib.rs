@@ -226,6 +226,15 @@ pub fn router(config: Config) -> Router {
         .with_state(app)
 }
 
+/// Set on a request that came to the local address (see [`guard`]); a
+/// copy the browser sends is removed first.
+pub(crate) const LOCAL_HEADER: &str = "x-openagents-local";
+
+/// Whether the request came to the local address.
+pub(crate) fn local_request(headers: &axum::http::HeaderMap) -> bool {
+    headers.contains_key(LOCAL_HEADER)
+}
+
 /// The Host headers the server answers.
 #[derive(Clone)]
 struct Hosts {
@@ -243,7 +252,7 @@ impl Hosts {
 /// Answers only the configured hosts, keeps the task browser local, sends
 /// what the site doesn't own to the upstream, and sets the security headers
 /// every response of its own carries.
-async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
+async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
     let host = request
         .headers()
         .get(header::HOST)
@@ -257,7 +266,9 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     let browser = path == "/app"
         || path.starts_with("/app/")
         || path == "/environments"
-        || path.starts_with("/environments/");
+        || path.starts_with("/environments/")
+        // Running Claude Code in an environment from a chat (#11037).
+        || (path.starts_with("/chat/") && path.ends_with("/claude"));
     // Intake requests can carry contact content. An unconfigured host must
     // refuse them locally rather than forwarding them to another service.
     let intake = path == "/pilot" || path.starts_with("/pilot/");
@@ -322,6 +333,14 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     }
     if !(local || (!browser && public)) {
         return (StatusCode::FORBIDDEN, "Use the local OpenAgents address").into_response();
+    }
+    // Pages that link the local-only pages (a chat's environment and tasks)
+    // ask [`LOCAL_HEADER`]; only this guard sets it.
+    request.headers_mut().remove(LOCAL_HEADER);
+    if local {
+        request
+            .headers_mut()
+            .insert(LOCAL_HEADER, HeaderValue::from_static("1"));
     }
     let mut response = next.run(request).await;
     let headers = response.headers_mut();

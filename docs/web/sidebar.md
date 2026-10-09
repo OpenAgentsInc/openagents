@@ -1,6 +1,7 @@
 # Web sidebar: chats, projects, and live status
 
-Status: design, 2026-10-08. Phases 1, 2, and 4 are built; 3 and 5 are design.
+Status: design, 2026-10-08. Phases 1, 2, and 4 are built; 3 is built for
+answers and Claude Code runs; 5 is built for Claude Code runs.
 
 The web app's left panel today has **New chat** (⌃N), the recent chats list
 (`openagents_ui::shell::ChatList`, filled by `pages::chat::chat_list`),
@@ -193,17 +194,37 @@ menu need no hover: the `…` is always visible on touch.
 3. **Live status**: the sidebar event stream; Cloud job and Coder task
    statuses (Waiting for you, Paused until, Done) on rows. The stream is
    built for answers (#11035, `pages/chat_live.rs`): Working and Failed
-   change on their own. Task statuses wait for chats to record the tasks
-   they start (phase 5): today no chat names a Cloud job or a Coder task
-   (`Pending::job_id` is always empty and running a chat on a computer is
-   gone), so there is nothing real to show yet, and Done waits for a
-   last-opened time per chat.
+   change on their own. Claude Code runs started from a chat (phase 5)
+   make its row Working and Failed too. Other task statuses still have no
+   source: no chat names a Coder task (`Pending::job_id` is always empty
+   and running a chat on a computer is gone), runs ask nothing (Waiting for
+   you), and Done waits for a last-opened time per chat.
 4. **Organize** (built, #11036): pin, rename, archive, search, keyboard.
    `chat_store` keeps `pinned_unix` and `archived_unix`; the routes are
    `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the
    field), `GET /chat/list?q=` (search), and `GET /chat/archived`
    (`pages/chat_sidebar.rs`). The parts are `openagents_ui::shell`'s
    `RowMenu`, `RowRename`, and `ChatSearch`.
-5. **Environment and task links**: a chat records the environment and the
-   tasks it started; line 2 shows the environment and version; a long task
-   shows its steps.
+5. **Environment and task links** (built for Claude Code runs, #11037,
+   `pages/chat_work.rs`): a chat about a repository with a saved
+   environment (its project's repository, else the composer's) offers
+   **Run Claude Code** in the header, on the local address only (like
+   `/environments`; the site guard keeps `/chat/{id}/claude` local and
+   sets `x-openagents-local` for pages that link it). Starting a run
+   records `environment` (id, repository, version) and a `tasks` entry
+   (run id, title, state, the message count it followed) on the chat.
+   The header's breadcrumb names the environment and version and links
+   it; the thread shows each task as a compact `openagents_ui::shell::TaskRow`
+   after the message it followed, with Working / Paused / Done / Failed /
+   Stopped and a link to the run; line 2 ends with "Environment v3"; the
+   row is Working while a task runs and Failed when the newest task failed
+   until a new message. The run's own record holds its state; a watcher
+   while it runs, every chat load, and the sidebar stream's Working checks
+   write a change into the chat (`work::sync`), and the chat store's change
+   announcement carries it to open pages. An environment that no longer
+   exists is marked removed when the chat opens ("Environment removed";
+   the chat stays readable). Not built, for lack of a source: Coder tasks
+   on connected computers (nothing starts them from a chat), steps ("3 of
+   7"; runs report none), Waiting for you (runs ask nothing), Done (needs a
+   last-opened time), and an environment's setup conversation as a chat
+   (it lives in the environments studio, not the chat store).

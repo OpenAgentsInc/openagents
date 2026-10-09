@@ -79,3 +79,142 @@ impl Render for ChatStatus {
         }
     }
 }
+
+/// Where a task started from a chat stands, in the words its row shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskStatus {
+    /// Running now: a spinner and "Working".
+    Working,
+    /// The task needs the person.
+    WaitingForYou,
+    /// Stopped for a usage limit; it continues by itself.
+    Paused,
+    Done,
+    Failed,
+    /// The person stopped it, or it ended without saying how.
+    Stopped,
+}
+
+impl TaskStatus {
+    /// The `data-status` value (colored like [`ChatStatus`]).
+    #[must_use]
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Working => "working",
+            Self::WaitingForYou => "waiting",
+            Self::Paused => "paused",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    /// The words shown.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Working => "Working",
+            Self::WaitingForYou => "Waiting for you",
+            Self::Paused => "Paused",
+            Self::Done => "Done",
+            Self::Failed => "Failed",
+            Self::Stopped => "Stopped",
+        }
+    }
+}
+
+/// One task in a chat's thread as a compact row: an icon, what it is
+/// ("Claude Code"), what it was asked, and its status at the end. With an
+/// address the whole row links to the task's page.
+/// Styles: the `oa-task-row` rules in `static/components/thread.css`.
+///
+/// ```
+/// use maud::Render;
+/// use openagents_ui::shell::{TaskRow, TaskStatus};
+/// let html = TaskRow::new("Claude Code", TaskStatus::Working)
+///     .detail("Fix the login redirect")
+///     .href("/environments/e/runs/r")
+///     .render()
+///     .into_string();
+/// assert!(html.starts_with(r#"<a class="oa-task-row""#));
+/// assert!(html.contains("Working"));
+/// ```
+#[derive(Clone, Debug)]
+pub struct TaskRow {
+    title: String,
+    detail: Option<String>,
+    href: Option<String>,
+    status: TaskStatus,
+    id: Option<String>,
+}
+
+impl TaskRow {
+    #[must_use]
+    pub fn new(title: impl Into<String>, status: TaskStatus) -> Self {
+        Self {
+            title: title.into(),
+            detail: None,
+            href: None,
+            status,
+            id: None,
+        }
+    }
+
+    /// What the task was asked, cut with an ellipsis.
+    #[must_use]
+    pub fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// Where the task's own page is.
+    #[must_use]
+    pub fn href(mut self, href: impl Into<String>) -> Self {
+        self.href = Some(href.into());
+        self
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    fn inner(&self) -> Markup {
+        let status = self.status;
+        html! {
+            span class="oa-task-row-icon" aria-hidden="true" {
+                (crate::icons::Icon::Terminal.size(crate::icons::IconSize::Sm))
+            }
+            span class="oa-task-row-title" { (self.title) }
+            @if let Some(detail) = &self.detail {
+                span class="oa-task-row-detail" title=(detail) { (detail) }
+            }
+            span class="oa-chat-status oa-task-row-status" data-status=(status.key()) {
+                @if status == TaskStatus::Working {
+                    (crate::actions::LoadingIndicator::new().decorative())
+                } @else {
+                    span class="oa-chat-status-dot" aria-hidden="true" {}
+                }
+                span class="oa-chat-status-label" { (status.label()) }
+            }
+        }
+    }
+}
+
+impl Render for TaskRow {
+    fn render(&self) -> Markup {
+        match &self.href {
+            Some(href) => html! {
+                a class="oa-task-row" href=(href) id=[self.id.as_deref()] data-status=(self.status.key()) {
+                    (self.inner())
+                }
+            },
+            None => html! {
+                div class="oa-task-row" id=[self.id.as_deref()] data-status=(self.status.key()) {
+                    (self.inner())
+                }
+            },
+        }
+    }
+}
