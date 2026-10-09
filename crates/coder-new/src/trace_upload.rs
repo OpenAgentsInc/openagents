@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::sessions;
 
 /// How to use it.
-pub const USAGE: &str = "Usage: coder trace upload [SESSION_ID | --last | --file PATH] [--share]\n       coder trace list\n\nupload  Send a saved chat (or an ATIF file) to your openagents.com account.\n        Passwords, keys, home folder names, and email addresses are taken out first.\n        It's private unless you add --share, which gives it a public link.\nlist    Show the traces on your account.\n\nSign in first with coder login.";
+pub const USAGE: &str = "Usage: coder trace upload [SESSION_ID | --last | --file PATH] [--share]\n       coder trace list\n\nupload  Send a saved chat, an ATIF file, or a Claude Code session (.jsonl) to your openagents.com account.\n        Passwords, keys, home folder names, and email addresses are taken out first.\n        It's private unless you add --share, which gives it a public link.\nlist    Show the traces on your account.\n\nSign in first with coder login.";
 
 /// What a command did, for the terminal or as JSON.
 #[derive(Debug)]
@@ -133,8 +133,15 @@ fn source(args: &[String], dir: &Path, cwd: &Path) -> Result<(Value, bool), Stri
                 choose(&mut chosen, store.read(&last.id)?)?;
             }
             "--file" => {
-                let path = args.next().ok_or("--file needs a path.")?;
-                choose(&mut chosen, sessions::read_document(&cwd.join(path))?)?;
+                let path = cwd.join(args.next().ok_or("--file needs a path.")?);
+                // A Claude Code session (`~/.claude/projects/…/ID.jsonl`)
+                // is converted to ATIF here, long output cut to fit.
+                let document = if crate::claude_trace::is_session(&path) {
+                    crate::claude_trace::read(&path)?
+                } else {
+                    sessions::read_document(&path)?
+                };
+                choose(&mut chosen, document)?;
             }
             id if !id.starts_with('-') => {
                 let store = sessions::Store::under(dir);

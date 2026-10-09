@@ -9,6 +9,7 @@ pub mod approval;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
+pub mod claude_trace;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
