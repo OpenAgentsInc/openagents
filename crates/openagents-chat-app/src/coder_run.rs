@@ -39,6 +39,8 @@ use std::time::{Duration, Instant};
 pub const LOCAL: &str = "local";
 /// The most lines one chat keeps; the oldest go first.
 pub const MAX_LINES: usize = 4_000;
+/// The empty composer's words, the web's exactly (`openagents-web` `pages/chat.rs`).
+pub const PLACEHOLDER: &str = "Ask OpenAgents anything";
 /// The most messages a run holds for its next turn.
 pub const MAX_QUEUED: usize = 8;
 /// The most bytes of one message to Coder.
@@ -407,7 +409,7 @@ impl Run {
     #[must_use]
     pub fn placeholder(&self) -> &'static str {
         match self.mode() {
-            Mode::Send => "Message OpenAgents…",
+            Mode::Send => PLACEHOLDER,
             Mode::Queue => "Queue a message for Coder's next turn…",
             Mode::Answer => "Answer Coder…",
         }

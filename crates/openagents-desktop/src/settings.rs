@@ -592,7 +592,7 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
         CoderChoices::Unknown => {
             rows.push(text(
                 "settings-coder-unknown",
-                "Coder's settings show here when OpenAgents runs on your computer.",
+                "Coder's settings show here once Coder starts on this computer.",
                 TextRole::Status,
             ));
             return rows;

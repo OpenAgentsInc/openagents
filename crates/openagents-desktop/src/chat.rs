@@ -54,6 +54,8 @@ pub struct Panel {
     saved_project: Option<String>,
     command_query: Field,
     command_token: String,
+    /// The account menu's heading (`chrome::account_name`).
+    account_name: String,
     menu_point: Option<(f32, f32)>,
     menu_navigation: bool,
     search: Field,
@@ -199,6 +201,7 @@ impl Panel {
             saved_project: None,
             command_query: chat_field("Search commands and chats…"),
             command_token: String::new(),
+            account_name: "This computer".into(),
             menu_point: None,
             menu_navigation: false,
             search: search_field(),
@@ -770,6 +773,11 @@ impl Panel {
     }
     /// This computer's project folders, the shown one first: where a new
     /// Coder run starts unless the chat has its own.
+    /// The name the account menu shows: the signed-in person's, or this
+    /// computer's.
+    pub fn set_account_name(&mut self, name: String) {
+        self.account_name = name;
+    }
     pub fn set_coder_projects(&mut self, folders: Vec<String>) {
         self.coder_projects = folders;
     }
@@ -1268,7 +1276,7 @@ impl Panel {
             let field = self
                 .fields
                 .entry(id.clone())
-                .or_insert_with(|| chat_field("Message OpenAgents…"));
+                .or_insert_with(|| chat_field(openagents_chat_app::coder_run::PLACEHOLDER));
             field.focused = true;
             if let Some(waker) = &self.waker {
                 field.start(waker.clone());
@@ -3577,6 +3585,7 @@ impl Panel {
                 offset: self.command_offset,
                 results_height: self.palette_results_height(),
                 history: &history,
+                identity: &self.account_name,
             },
             |key| Intent::Chat {
                 action: Action::Command { key: key.into() },
@@ -3780,22 +3789,25 @@ impl Panel {
         body
     }
     /// Empty conversations keep the composer in the reading pane's center.
-    /// The open chat's composer placeholder: "Message OpenAgents…" unless
+    /// The open chat's composer placeholder: "Ask OpenAgents anything" unless
     /// Coder works, or asks, in it (#10094).
     #[must_use]
     pub fn composer_placeholder(&self) -> &'static str {
         self.session
             .selected
             .as_deref()
-            .map_or("Message OpenAgents…", |id| self.placeholder_of(id))
+            .map_or(openagents_chat_app::coder_run::PLACEHOLDER, |id| {
+                self.placeholder_of(id)
+            })
     }
 
     fn placeholder_of(&self, id: &str) -> &'static str {
         self.tasks.get(id).map_or_else(
             || {
-                self.runs
-                    .get(id)
-                    .map_or("Message OpenAgents…", Run::placeholder)
+                self.runs.get(id).map_or(
+                    openagents_chat_app::coder_run::PLACEHOLDER,
+                    Run::placeholder,
+                )
             },
             task_chat::Session::placeholder,
         )
@@ -3844,7 +3856,7 @@ impl Panel {
         // (#10072). Every path that selects a chat should have made it.
         let waker = &self.waker;
         let field = self.fields.entry(id.clone()).or_insert_with(|| {
-            let mut field = chat_field("Message OpenAgents…");
+            let mut field = chat_field(openagents_chat_app::coder_run::PLACEHOLDER);
             if let Some(waker) = waker {
                 field.start(waker.clone());
             }
@@ -4628,7 +4640,7 @@ mod start_setting_tests {
                 now,
             );
             panel.runs.insert(chat.clone(), run);
-            assert_eq!(panel.composer_placeholder(), "Message OpenAgents…");
+            assert_eq!(panel.composer_placeholder(), "Ask OpenAgents anything");
             // The follow-up and the router's reply to it.
             let snapshot = panel.session.states.get_mut(&chat).unwrap();
             let mut asked = Turn::user("now add a test");

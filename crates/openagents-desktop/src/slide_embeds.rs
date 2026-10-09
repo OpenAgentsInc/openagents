@@ -352,10 +352,7 @@ impl Embeds {
     /// first tick only the slide's background shows, so the cards come in
     /// from nothing (at once under Reduce motion).
     pub fn paint(&mut self, frame: &mut Frame, slide: PxRect, scene: &'static str) {
-        let background = openagents_chat_app::visual::pick(
-            Theme::openagents().background,
-            openagents_chat_app::visual::current().canvas,
-        );
+        let background = openagents_chat_app::visual::current().canvas;
         frame.fill(slide, 0.0, background);
         if self.scene != Some(scene) && !self.reduce_motion {
             return;

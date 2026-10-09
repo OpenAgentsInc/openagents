@@ -264,7 +264,7 @@ mod tests {
                 .set_metrics(metrics)
                 .expect("valid metrics");
         }
-        assert_eq!(TextSize::Largest.transcript().body_size, 18);
+        assert_eq!(TextSize::Largest.transcript().body_size, 21);
         assert_eq!(TextSize::Smaller.scale(14.0), 13.0);
     }
 }

@@ -144,14 +144,14 @@ conversation run in the owner's order.
 
 | Scenario | Checks | Guards |
 | --- | --- | --- |
-| `ui-placeholder` | An empty chat's centered composer paints **Message OpenAgents…** (faint-ink pixels in the composer field of a 2x capture). | #10072 |
+| `ui-placeholder` | An empty chat's centered composer paints **Ask OpenAgents anything** (faint-ink pixels in the composer field of a 2x capture). | #10072 |
 | `ui-starter-chips` | A new chat's starters (the phone's shared list: Who are you?, What can you do?, What's new in the Gym?, What tools do you have?) are small chips in the follow-ups' row directly above the centered composer, inside the column at 1200x840 and 760x540; tapping Who are you? sends it, and after the reply the starters are gone and the composer docks. Runs in its own chat. | #10097 |
 | `who-are-you` | "who are you" gets an answer with suggestions, and Coder does not start. | #10073 |
 | `ui-chips` | The reply's suggestions are small chips in a row directly above the composer, none in the transcript. | #10075 |
 | `ui-engines-sidebar` | Each engine from the host's report is one condensed row in the sidebar, above the footer (its routes, then an engine beside them such as Grok Build when installed), and the transcript shows no engine block. | #10072, #10091 |
 | `delegate-who` | "who can you delegate to", in the same chat, gets an answer, and Coder does not start. | #10073 |
 | `delegate-now` | "do a test delegation now", in the same chat: Coder starts, runs, and finishes in the linked-worktree project; the prompt Coder received is that message; the reply carries no Gym card; and no decision-call row shows in the transcript. | #10073, #10078 |
-| `followup-chat` | After `delegate-now`'s run finished, in the same chat: the composer says "Message OpenAgents…", and "summarize what happened" goes to the router, which answers it in chat from the run's result (the request's `context.coder_run`); the reply hands nothing to Coder, and Coder takes no new turn. | #10094 |
+| `followup-chat` | After `delegate-now`'s run finished, in the same chat: the composer says "Ask OpenAgents anything", and "summarize what happened" goes to the router, which answers it in chat from the run's result (the request's `context.coder_run`); the reply hands nothing to Coder, and Coder takes no new turn. | #10094 |
 | `followup-coder` | Then "now also list the top-level files in a note": the router hands it to Coder, which continues the same task as its next turn, in the same worktree, and finishes; the person's message shows above the "Coder continued … (turn N)" card. | #10094 |
 | `working-directory` | "What's the working directory right now?" names the project folder, never says to connect a computer, and starts no Coder. | #10077, #10079 |
 | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |

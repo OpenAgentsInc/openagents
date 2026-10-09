@@ -69,9 +69,10 @@ pub enum ControlError {
 impl std::fmt::Display for ControlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unreachable => f.write_str("the host does not answer its control socket"),
-            Self::Refused { code, message } => write!(f, "the host refused ({code}): {message}"),
-            Self::Malformed => f.write_str("the host's answer is malformed"),
+            // Shown in the window as said here: plain words (#11120).
+            Self::Unreachable => f.write_str("Coder isn't answering on this computer yet."),
+            Self::Refused { message, .. } => f.write_str(message),
+            Self::Malformed => f.write_str("Coder sent an answer this app can't read."),
         }
     }
 }

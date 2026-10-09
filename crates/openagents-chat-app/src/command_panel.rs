@@ -11,6 +11,7 @@
 
 use crate::commands::{Action, Entry, Kind};
 use crate::visual;
+use oa_tokens::typography::menu::{DETAIL, HINT, ROW};
 use rust_native::layout::display::{Font, FontFamily, Weight};
 use rust_native::style::{ButtonDetail, Color, Space, Style, TextAlign, TextWeight, Viewport};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
@@ -22,8 +23,8 @@ pub const HISTORY_LIMIT: usize = 30;
 pub const PAD: f32 = 8.0;
 pub const GAP: f32 = 2.0;
 pub const SEPARATOR: f32 = 15.0;
-pub const ACTION_ROW: f32 = 30.0;
-pub const HISTORY_ROW: f32 = 45.0;
+pub const ACTION_ROW: f32 = 32.0;
+pub const HISTORY_ROW: f32 = 50.0;
 pub const FADE: u16 = 18;
 
 /// The palette's search glyph surface.
@@ -275,6 +276,8 @@ pub struct Panel<'a> {
     pub results_height: f32,
     /// The conversation a history row switches to.
     pub history: &'a dyn Fn(&Entry) -> Option<History>,
+    /// The account menu's heading: the signed-in name, or this computer's.
+    pub identity: &'a str,
 }
 
 /// The overlay view and the row index of each enabled entry, keyed by entry
@@ -295,8 +298,8 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
             "Archive this conversation?",
             TextRole::Body,
         );
-        heading.style.text_size = Some(13);
-        heading.style.line_height = Some(20);
+        heading.style.text_size = Some(ROW.size as u16);
+        heading.style.line_height = Some(ROW.line_height as u16);
         heading.style.padding_points = Some([12, 12, 12, 12]);
         rows.push(heading);
     }
@@ -337,9 +340,9 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
         ));
     }
     if kind == Kind::Profile {
-        let mut identity = text("profile-identity", "Local", TextRole::Status);
-        identity.style.text_size = Some(11);
-        identity.style.line_height = Some(17);
+        let mut identity = text("profile-identity", panel.identity, TextRole::Status);
+        identity.style.text_size = Some(DETAIL.size as u16);
+        identity.style.line_height = Some(DETAIL.line_height as u16);
         identity.style.padding_points = Some([10, 12, 2, 12]);
         rows.push(identity);
     }
@@ -401,8 +404,8 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
         };
         if history.is_some() {
             row.style.button_detail = Some(ButtonDetail {
-                text_size: 11,
-                line_height: 16,
+                text_size: DETAIL.size as u16,
+                line_height: DETAIL.line_height as u16,
                 color: visual::current().muted,
                 leading: true,
             });
@@ -412,8 +415,8 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
         row.style.glyph_size = Some(16);
         row.style.glyph_gap = Some(10);
         row.style.align = Some(TextAlign::Start);
-        row.style.text_size = Some(13);
-        row.style.line_height = Some(if history.is_some() { 17 } else { 18 });
+        row.style.text_size = Some(ROW.size as u16);
+        row.style.line_height = Some(ROW.line_height as u16);
         row.style.button_padding = Some([8, if palette && history.is_none() { 4 } else { 6 }]);
         row.style.min_height = Some(if kind == Kind::Profile {
             32
@@ -505,12 +508,12 @@ fn surface<I>(key: &str, label: &str, resource: &str) -> Node<I> {
 
 fn key_hint<I>(key: &str, keys: &str, label: &str) -> Node<I> {
     let mut caption = text(&format!("command-{key}-label"), label, TextRole::Status);
-    caption.style.text_size = Some(10);
-    caption.style.line_height = Some(14);
+    caption.style.text_size = Some(HINT.size as u16);
+    caption.style.line_height = Some(HINT.line_height as u16);
     caption.style.intrinsic_width = Some(true);
     let mut keys = text(&format!("command-{key}-keys"), keys, TextRole::Code);
-    keys.style.text_size = Some(10);
-    keys.style.line_height = Some(14);
+    keys.style.text_size = Some(HINT.size as u16);
+    keys.style.line_height = Some(HINT.line_height as u16);
     keys.style.foreground = Some(visual::current().muted);
     let mut cap = stack(&format!("command-{key}-cap"), Axis::Vertical, vec![keys]);
     cap.style.padding_points = Some([1, 5, 1, 5]);
@@ -602,6 +605,35 @@ mod tests {
     }
 
     #[test]
+    fn the_account_menu_is_headed_by_its_name_on_the_menu_scale() {
+        let none = |_: &Entry| -> Option<History> { None };
+        let (node, _) = view(
+            Panel {
+                kind: Kind::Profile,
+                entries: vec![entry("computers", Action::Computers)],
+                selected: 0,
+                navigating: false,
+                token: "t",
+                query: "",
+                offset: 0.0,
+                results_height: 200.0,
+                history: &none,
+                identity: "Studio Mac",
+            },
+            str::to_owned,
+        );
+        let Element::Stack { children, .. } = &node.element else {
+            panic!("a stack");
+        };
+        let heading = &children[0];
+        assert!(
+            matches!(&heading.element, Element::Text { value, .. } if value == "Studio Mac"),
+            "{heading:?}"
+        );
+        assert_eq!(heading.style.text_size, Some(DETAIL.size as u16));
+    }
+
+    #[test]
     fn the_menu_hides_a_disabled_restore_and_maps_rows_to_entries() {
         let mut restore = entry("restore", Action::Restore);
         restore.enabled = false;
@@ -618,6 +650,7 @@ mod tests {
                 offset: 0.0,
                 results_height: 200.0,
                 history: &none,
+                identity: "Studio Mac",
             },
             str::to_owned,
         );

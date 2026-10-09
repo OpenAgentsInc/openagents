@@ -871,12 +871,9 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
     let mut body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
     body.style.gap_points = Some(16);
     // The account row: this computer, whose menu holds its other places.
-    let name = model
-        .host
-        .as_ref()
-        .map(|host| host.status.label.trim().to_string())
-        .filter(|label| !label.is_empty())
-        .unwrap_or_else(|| "This computer".to_string());
+    // One line beside the theme toggle: a long name ends in an ellipsis.
+    let most = ((state.sidebar_width - 120.0) / 9.0).clamp(8.0, 32.0) as usize;
+    let name = shortened(&account_name(model), most);
     let initial = name
         .chars()
         .next()
@@ -1478,6 +1475,53 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             ),
         ],
     )
+}
+
+/// The account row's and the account menu's name: the person signed in
+/// to OpenAgents when the window knows one, else this computer's name (the
+/// host's, or the system's before the host answers). Never "Local".
+#[must_use]
+pub fn account_name(model: &Model) -> String {
+    model
+        .host
+        .as_ref()
+        .map(|host| host.status.label.trim().to_string())
+        .filter(|label| !label.is_empty())
+        .or_else(|| system_name().clone())
+        .unwrap_or_else(|| "This computer".to_string())
+}
+
+/// `name` cut to at most `most` characters, with an ellipsis when cut.
+fn shortened(name: &str, most: usize) -> String {
+    if name.chars().count() <= most {
+        return name.to_string();
+    }
+    let cut: String = name.chars().take(most - 1).collect();
+    format!("{}…", cut.trim_end())
+}
+
+/// The system's name for this computer, without a `.local` suffix.
+fn system_name() -> &'static Option<String> {
+    static NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        #[cfg(unix)]
+        let name = {
+            let mut buffer = [0_u8; 256];
+            // SAFETY: gethostname writes at most `buffer.len()` bytes.
+            let code = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
+            (code == 0).then(|| {
+                let end = buffer
+                    .iter()
+                    .position(|byte| *byte == 0)
+                    .unwrap_or(buffer.len());
+                String::from_utf8_lossy(&buffer[..end]).into_owned()
+            })
+        };
+        #[cfg(not(unix))]
+        let name = std::env::var("COMPUTERNAME").ok();
+        name.map(|name| name.trim().trim_end_matches(".local").to_string())
+            .filter(|name| !name.is_empty())
+    })
 }
 
 #[cfg(test)]

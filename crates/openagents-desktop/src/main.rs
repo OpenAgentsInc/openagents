@@ -523,9 +523,11 @@ fn capture_kept(directory: &std::path::Path) -> Result<usize, String> {
         };
         let (mut app, _) = DesktopApp::performance_fixture(0, 6, now);
         app.activate(theme.clone(), now);
+        app.answer_as("Studio Mac");
         write(&mut app, "chat-new")?;
         let (mut app, _) = DesktopApp::performance_fixture(6, 6, now);
         app.activate(theme.clone(), now);
+        app.answer_as("Studio Mac");
         write(&mut app, "chat-conversation")?;
         app.activate(
             Intent::Chat {

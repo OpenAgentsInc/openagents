@@ -53,6 +53,7 @@ pub const HEADING: [Step; 9] = [
 /// The text sizes, by name.
 pub mod text {
     use super::{Step, TEXT};
+    pub const XXS: Step = TEXT[1];
     pub const XS: Step = TEXT[2];
     pub const SM: Step = TEXT[3];
     pub const MD: Step = TEXT[4];
@@ -67,6 +68,35 @@ pub mod heading {
     pub const MD: Step = HEADING[2];
     pub const LG: Step = HEADING[3];
     pub const XL: Step = HEADING[4];
+}
+
+/// A chat conversation, as the web's chat page draws it (`thread.css`
+/// and `.oa-markdown` in `content.css`), on the scale: the phone and the
+/// desktop read their transcript metrics from here.
+pub mod conversation {
+    use super::{Step, heading, text};
+    /// Message text: `--font-text-md` (`.oa-message-bubble`, and
+    /// `--markdown-font-size` in a reply).
+    pub const BODY: Step = text::MD;
+    /// A reply's headings, `h1` to `h4`, one step apart.
+    pub const HEADINGS: [Step; 4] = [heading::LG, heading::MD, heading::SM, heading::XS];
+    /// Code, inline and in a block: `--markdown-code-font-size`, 0.875em of
+    /// the body, which is text-sm.
+    pub const CODE: Step = text::SM;
+    /// A code block's language label.
+    pub const CODE_LABEL: Step = text::XS;
+}
+
+/// Menu rows, the command palette's among them: `--menu-font-size` and
+/// `--menu-line-height`, with a second line and key hints below it.
+pub mod menu {
+    use super::{Step, text};
+    /// A row's label.
+    pub const ROW: Step = text::SM;
+    /// A row's second line, and a menu's heading.
+    pub const DETAIL: Step = text::XS;
+    /// A key hint.
+    pub const HINT: Step = text::XXS;
 }
 
 /// The weights, `--font-weight-*`.
@@ -124,6 +154,7 @@ mod tests {
     fn token(name: &str) -> String {
         apps_sdk::SEMANTIC
             .iter()
+            .chain(apps_sdk::COMPONENTS.iter())
             .flat_map(|section| section.tokens.iter())
             .find(|(token, _)| *token == name)
             .map(|(_, value)| (*value).to_string())
@@ -163,6 +194,36 @@ mod tests {
             ("bold", weight::BOLD),
         ] {
             assert_eq!(token(&format!("--font-weight-{name}")), value.to_string());
+        }
+    }
+
+    #[test]
+    fn the_conversation_and_menus_are_the_webs() {
+        assert_eq!(
+            points(&token("--font-text-md-size")),
+            conversation::BODY.size
+        );
+        assert_eq!(conversation::CODE.size, conversation::BODY.size * 0.875);
+        assert_eq!(token("--menu-font-size"), "var(--font-text-sm-size)");
+        assert_eq!(menu::ROW, text::SM);
+        let mut last = f32::MAX;
+        for step in conversation::HEADINGS {
+            assert!(step.size < last && step.size >= conversation::BODY.size);
+            last = step.size;
+        }
+        for step in conversation::HEADINGS
+            .iter()
+            .chain(
+                [
+                    conversation::BODY,
+                    conversation::CODE,
+                    conversation::CODE_LABEL,
+                ]
+                .iter(),
+            )
+            .chain([menu::ROW, menu::DETAIL, menu::HINT].iter())
+        {
+            assert!(on_scale(step.size), "{step:?}");
         }
     }
 

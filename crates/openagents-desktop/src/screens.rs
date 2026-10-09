@@ -15,19 +15,15 @@ mod nearby;
 /// The drawing surface the code is painted on.
 pub const CODE_SURFACE: &str = "pairing-code";
 
-/// A card's fill.
+/// A card's fill: the chat's card, from the shared token table.
 fn card_fill() -> Color {
-    openagents_chat_app::visual::pick(
-        Color::rgb(24, 24, 24),
-        openagents_chat_app::visual::current().selected,
-    )
+    openagents_chat_app::visual::inks().card
 }
-/// A quiet button's fill.
+/// A quiet button's fill: the table's subtle stroke, which shows on a card
+/// in both looks.
 fn quiet_fill() -> Color {
-    openagents_chat_app::visual::pick(
-        Color::rgb(44, 44, 44),
-        openagents_chat_app::visual::current().selected,
-    )
+    let palette = openagents_chat_app::visual::palette();
+    openagents_chat_app::visual::role(palette.stroke_subtle)
 }
 
 fn node(key: &str, style: Style, element: Element<Intent>) -> Node<Intent> {
@@ -77,10 +73,7 @@ fn button(key: &str, label: &str, intent: Intent, enabled: bool) -> Node<Intent>
 fn quiet(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     let mut node = button(key, label, intent, true);
     node.style.background = Some(quiet_fill());
-    node.style.foreground = Some(openagents_chat_app::visual::pick(
-        Color::rgb(245, 245, 245),
-        openagents_chat_app::visual::current().text,
-    ));
+    node.style.foreground = Some(openagents_chat_app::visual::current().text);
     node
 }
 
@@ -374,10 +367,7 @@ fn signed_in(key: &str, name: &str, on: bool) -> Node<Intent> {
     let state = if on { "signed in" } else { "not signed in" };
     let mut line = text(key, format!("{mark}  {name} · {state}"), TextRole::Body);
     if !on {
-        line.style.foreground = Some(openagents_chat_app::visual::pick(
-            Color::rgb(150, 150, 150),
-            openagents_chat_app::visual::current().muted,
-        ));
+        line.style.foreground = Some(openagents_chat_app::visual::current().muted);
     }
     line
 }
@@ -458,12 +448,7 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
         Space::Md,
         vec![
             bold("phones-title", "Phones"),
-            button(
-                "another",
-                "Connect another phone",
-                Intent::ConnectAnother,
-                true,
-            ),
+            quiet("another", "Connect another phone", Intent::ConnectAnother),
         ],
     )];
     let list = model.phones();

@@ -869,8 +869,17 @@ impl Slides {
             },
         );
         if !self.fullscreen {
-            frame.fill(px(layout.card), 14.0 * unit * scale, tone(14));
-            frame.stroke(px(layout.card), 14.0 * unit * scale, unit, tone(46));
+            frame.fill(
+                px(layout.card),
+                14.0 * unit * scale,
+                tone(|p| p.surface_raised),
+            );
+            frame.stroke(
+                px(layout.card),
+                14.0 * unit * scale,
+                unit,
+                tone(|p| p.stroke_subtle),
+            );
         }
         self.slide_at = Some(PxRect {
             x: rect.x / unit + layout.slide.x,
@@ -943,12 +952,22 @@ impl Slides {
                 w: width,
                 h: 30.0 * scale,
             };
-            frame.fill(px(button), 8.0 * unit * scale, tone(28));
-            frame.stroke(px(button), 8.0 * unit * scale, unit, tone(56));
-            self.text(frame, px(button), label, size * unit, tone(236));
+            frame.fill(
+                px(button),
+                8.0 * unit * scale,
+                tone(|p| p.control_on_overlay),
+            );
+            frame.stroke(px(button), 8.0 * unit * scale, unit, tone(|p| p.stroke));
+            self.text(frame, px(button), label, size * unit, tone(|p| p.content));
             self.controls.push((control, button));
         }
-        self.text(frame, px(bar), &counter, size * unit, tone(170));
+        self.text(
+            frame,
+            px(bar),
+            &counter,
+            size * unit,
+            tone(|p| p.content_secondary),
+        );
     }
 
     fn text(&mut self, frame: &mut Frame, rect: PxRect, value: &str, size: f32, color: Color) {
@@ -971,15 +990,12 @@ impl Slides {
     }
 }
 
-/// A gray: the viewer's chrome is gradations of white on black in the
-/// dark look, and the same steps of black on white in Coder Light (#11028).
-/// The slides themselves and the scrim stay as the deck paints them.
-fn tone(level: u8) -> Color {
-    let level = match openagents_chat_app::visual::scheme() {
-        openagents_chat_app::visual::Scheme::Dark => level,
-        openagents_chat_app::visual::Scheme::Light => 255 - level,
-    };
-    Color::rgb(level, level, level)
+/// A role of the shared token table in the look the app paints with: the
+/// viewer's chrome (its card, buttons, and counter) is Coder Noir or Coder
+/// Light, as the web's (#11120). The slides themselves and the scrim stay
+/// as the deck paints them.
+fn tone(role: impl Fn(&oa_tokens::Palette) -> oa_tokens::Rgba8) -> Color {
+    openagents_chat_app::visual::role(role(openagents_chat_app::visual::palette()))
 }
 
 fn contains(rect: PxRect, x: f32, y: f32) -> bool {

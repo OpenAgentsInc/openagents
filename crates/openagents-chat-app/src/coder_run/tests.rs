@@ -578,7 +578,7 @@ fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
 
     let mut done = fed(whole, State::Ended);
     assert!(done.routes_followups());
-    assert_eq!(done.placeholder(), "Message OpenAgents…");
+    assert_eq!(done.placeholder(), "Ask OpenAgents anything");
     let result = done.result().unwrap();
     assert_eq!(result.ending, openagents_chat::router::RunEnding::Finished);
     assert_eq!(result.turn, 2);

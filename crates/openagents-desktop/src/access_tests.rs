@@ -139,7 +139,7 @@ fn a_screen_reader_navigates_chats_reads_replies_and_sends_a_message() {
     );
     // The composer is a text field named by its placeholder, and the send
     // control a button.
-    let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    let composer = find(&lines, "MultilineTextInput \"Ask OpenAgents anything");
     assert!(
         lines[composer].contains("= \"\" <click> <set value>"),
         "{dump}"
@@ -192,7 +192,7 @@ fn a_screen_reader_writes_and_sends_a_message() {
     let typed = tree(&mut app, None);
     let lines = outline(&typed);
     let dump = lines.join("\n");
-    let field = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    let field = find(&lines, "MultilineTextInput \"Ask OpenAgents anything");
     assert!(
         lines[field].contains("= \"Is the build green?\""),
         "the value reads back: {dump}"
@@ -340,7 +340,7 @@ fn a_screen_reader_reaches_and_presses_a_followup_chip() {
     let dump = lines.join("\n");
     let chip = find(&lines, "Button \"What can you do?\"");
     assert!(lines[chip].contains("<click>"), "{dump}");
-    let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    let composer = find(&lines, "MultilineTextInput \"Ask OpenAgents anything");
     assert!(
         chip < composer,
         "the chips read before the composer: {dump}"
@@ -378,7 +378,7 @@ fn a_screen_reader_reaches_and_presses_a_starter_chip() {
     let dump = lines.join("\n");
     let chip = find(&lines, "Button \"What is OpenAgents?\"");
     assert!(lines[chip].contains("<click>"), "{dump}");
-    let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
+    let composer = find(&lines, "MultilineTextInput \"Ask OpenAgents anything");
     assert!(
         chip < composer,
         "the starters read before the composer: {dump}"

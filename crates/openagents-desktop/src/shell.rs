@@ -126,6 +126,25 @@ impl DesktopApp {
         app
     }
 
+    /// For a capture: the host named `name` has answered, as a running
+    /// app's first answer would, without sending the window's requests.
+    pub fn answer_as(&mut self, name: &str) {
+        use openagents_desktop::control::HostControl;
+        let mut host = openagents_desktop::fake::FakeHost::new(name, unix_now());
+        self.model.host = Some(openagents_desktop::model::Refreshed {
+            status: host.status().expect("a status"),
+            devices: host.devices().expect("devices"),
+            projects: host.projects().expect("projects"),
+            autostart: host.autostart().expect("autostart"),
+            nearby: None,
+            watchers: Vec::new(),
+            background: None,
+        });
+        if let Some(chat) = &mut self.chat {
+            chat.set_account_name(chrome::account_name(&self.model));
+        }
+    }
+
     /// Synthetic long content for repeatable measurements; no host or home access.
     pub fn performance_fixture(
         rows: usize,
@@ -1119,6 +1138,9 @@ impl App for DesktopApp {
         }
         let requests = self.model.tick(now);
         self.send(requests, now);
+        if let Some(chat) = &mut self.chat {
+            chat.set_account_name(openagents_desktop::chrome::account_name(&self.model));
+        }
         if let Some(chat) = &mut self.chat {
             // A coding request runs in this computer's projects, the one
             // Phones and computers shows first; none is needed.
@@ -4269,7 +4291,7 @@ mod chat_management {
                     let empty = placeholder_ink(&frame, field, scale);
                     assert!(
                         empty > (40.0 * scale * scale) as usize,
-                        "Message OpenAgents… shows with {rows} rows at {width}x{height} {scale}x: {empty}"
+                        "Ask OpenAgents anything shows with {rows} rows at {width}x{height} {scale}x: {empty}"
                     );
                     if let Some(path) = std::env::var_os("OPENAGENTS_POLISH_EVIDENCE") {
                         let path = std::path::PathBuf::from(path);
@@ -4978,8 +5000,11 @@ mod command_fixtures {
                 // The web's 36-point account row, with the theme toggle in
                 // its corner (#11120).
                 assert_eq!(profile.h, 36.0);
-                assert!(profile.w < 200.0);
-                assert!((theme.x + theme.w - footer.x - footer.w).abs() < 0.5);
+                assert!(profile.x + profile.w < theme.x);
+                assert!(
+                    (theme.x + theme.w - footer.x - footer.w).abs() < 0.5,
+                    "{footer:?} {profile:?} {theme:?}"
+                );
                 assert!(
                     closed
                         .ops
@@ -5103,7 +5128,7 @@ mod command_fixtures {
             let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
             let key = format!("command-switch-{id}");
             let row = scene.bounds[&key];
-            assert_eq!(row.h, 45.0);
+            assert_eq!(row.h, 50.0);
             assert!(scene.bounds.contains_key("command-history-separator"));
             let runs: Vec<_> = scene
                 .ops
@@ -5125,10 +5150,10 @@ mod command_fixtures {
                 .collect();
             // A starter chip under the palette can share the row's band;
             // the row itself is its detail line and its title.
-            let detail = runs.iter().position(|run| run.font.size == 11.0);
+            let detail = runs.iter().position(|run| run.font.size == 12.0);
             let named = runs.iter().position(|run| run.text == title);
             assert!(detail.is_some() && named.is_some() && detail < named);
-            assert_eq!(runs[named.unwrap()].font.size, 13.0);
+            assert_eq!(runs[named.unwrap()].font.size, 14.0);
             let view = app.view().view();
             let intent = app
                 .view()
@@ -5184,13 +5209,13 @@ mod command_fixtures {
                     .filter(|(key, _)| key.starts_with("command-switch-"))
                     .collect();
                 assert_eq!(history.len(), 30);
-                assert!(history.iter().all(|(_, rect)| rect.h == 45.0));
-                // Content height: 8-point insets, 2-point gaps, 30-point
-                // actions, 45-point conversations, and the 15-point section rule.
+                assert!(history.iter().all(|(_, rect)| rect.h == 50.0));
+                // Content height: 8-point insets, 2-point gaps, 32-point
+                // actions, 50-point conversations, and the 15-point section rule.
                 let actions = initial_rows.len() - history.len();
                 let full = 8.0
-                    + actions as f32 * 30.0
-                    + 30.0 * 45.0
+                    + actions as f32 * 32.0
+                    + 30.0 * 50.0
                     + (initial_rows.len() - 1) as f32 * 2.0
                     + 15.0
                     + 2.0
@@ -5198,7 +5223,7 @@ mod command_fixtures {
                 assert_eq!(viewport.limit + viewport.rect.h, full);
                 let first_history = history[0].1;
                 let last_action = initial_rows[actions - 1].1;
-                assert_eq!(last_action.h, 30.0);
+                assert_eq!(last_action.h, 32.0);
                 assert_eq!(
                     first_history.y - (last_action.y + last_action.h),
                     2.0 + 15.0 + 2.0
@@ -5591,7 +5616,7 @@ mod command_fixtures {
             key(&mut app, now, "k", true, false);
             let (_, palette) = rust_native_desktop::capture(&mut app, width, height, 1.0);
             assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Surface {resource,..} if resource == "glyph:command-search")));
-            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "New chat" && paragraph.font.size == 13.0 && paragraph.font.weight == rust_native::layout::display::Weight::Regular)));
+            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "New chat" && paragraph.font.size == 14.0 && paragraph.font.weight == rust_native::layout::display::Weight::Regular)));
             let shortcut = if cfg!(target_os = "macos") {
                 "⌘N"
             } else {

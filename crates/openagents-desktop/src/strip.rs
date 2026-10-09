@@ -59,10 +59,7 @@ pub fn node() -> Node<Intent> {
         },
     };
     button.style.background = Some(openagents_chat_app::visual::current().text);
-    button.style.foreground = Some(openagents_chat_app::visual::pick(
-        Color::rgb(20, 20, 20),
-        openagents_chat_app::visual::current().on_text,
-    ));
+    button.style.foreground = Some(openagents_chat_app::visual::current().on_text);
     button.style.weight = Some(TextWeight::Normal);
     button.style.text_size = Some(13);
     button.style.line_height = Some(18);

@@ -742,7 +742,7 @@ fn first_prompt(trajectory: &Path) -> Option<String> {
 
 // The scenarios.
 
-/// An empty chat's centered composer paints "Message OpenAgents…" (#10072).
+/// An empty chat's centered composer paints "Ask OpenAgents anything" (#10072).
 fn ui_placeholder(gate: &mut Gate) -> Outcome {
     let chat = new_chat(gate, "who-are-you")?;
     let _ = chat;
@@ -1256,7 +1256,7 @@ fn last_turn(gate: &Gate, chat: &str) -> usize {
 }
 
 /// After delegate-now's run finished, "summarize what happened" is the
-/// router's: the composer says "Message OpenAgents…", the chat answers from
+/// router's: the composer says "Ask OpenAgents anything", the chat answers from
 /// the run's result, and Coder takes no new turn (#10094).
 fn followup_chat(gate: &mut Gate) -> Outcome {
     if let Some(skip) = gate.need(true, false) {
@@ -1265,7 +1265,7 @@ fn followup_chat(gate: &mut Gate) -> Outcome {
     let (chat, _) = finished_chat(gate)?;
     let mut problems = Vec::new();
     let placeholder = gate.panel().composer_placeholder();
-    if placeholder != "Message OpenAgents…" {
+    if placeholder != "Ask OpenAgents anything" {
         problems.push(format!(
             "the composer says {placeholder:?} after the run finished"
         ));

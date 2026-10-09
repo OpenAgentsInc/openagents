@@ -85,26 +85,41 @@ pub const SYNTAX: rust_native::syntax::Palette =
         )
         .with(rust_native::syntax::Kind::Invalid, [233, 121, 124, 255])
         .with(rust_native::syntax::Kind::Comment, [128, 128, 128, 255]);
+use oa_tokens::typography::conversation as type_scale;
+
+const fn points(value: f32) -> u16 {
+    value as u16
+}
+
+const fn heading(index: usize) -> [u16; 2] {
+    let step = type_scale::HEADINGS[index];
+    [points(step.size), points(step.line_height)]
+}
+
+/// The conversation's metrics: its text sizes are the web's chat page's,
+/// from the shared type scale (`oa_tokens::typography::conversation`), on
+/// the phone and the desktop alike (#11120).
 pub const TRANSCRIPT: Metrics = Metrics {
     reading_width: 736,
-    body_size: 14,
-    body_line_height: 22,
+    body_size: points(type_scale::BODY.size),
+    body_line_height: points(type_scale::BODY.line_height),
     row_gap: 16,
     bubble_padding: 16,
     bubble_max_percent: 80,
     bubble_radius: 16,
     bubble_tail_radius: 16,
     markdown: Some(MarkdownMetrics {
-        headings: [[19, 27], [16, 24], [15, 22], [14, 22]],
-        code_size_half_points: 25,
-        code_line_height: 18,
+        headings: [heading(0), heading(1), heading(2), heading(3)],
+        code_size_half_points: points(type_scale::CODE.size * 2.0),
+        code_line_height: points(type_scale::CODE.line_height),
         code_header_height: 28,
-        code_label_size: 11,
+        code_label_size: points(type_scale::CODE_LABEL.size),
         code_padding_y: 10,
         copy_icon: true,
         strong_weight: Some(rust_native::layout::display::Weight::Semibold),
         inline_code: Some(InlineCodeMetrics {
-            size_percent: 100,
+            // `--markdown-code-font-size`: 0.875em of the body.
+            size_percent: 88,
             inset_y: 2,
             radius_half_points: 9,
             color: [ACCENT.red, ACCENT.green, ACCENT.blue, ACCENT.alpha],
@@ -532,6 +547,23 @@ impl Inks {
         risk_high: token(LIGHT_TOKENS.danger_container),
     };
 
+    /// Coder Noir, the desktop's dark look ([`use_noir`]): the web's dark
+    /// roles from the token table.
+    pub const NOIR: Inks = Inks {
+        text: token(NOIR_TOKENS.content),
+        quiet: token(NOIR_TOKENS.content_secondary),
+        card: token(NOIR_TOKENS.surface_raised),
+        warning: token(NOIR_TOKENS.warning),
+        added: token(NOIR_TOKENS.success),
+        removed: token(NOIR_TOKENS.danger),
+        done: token(NOIR_TOKENS.success),
+        open: token(NOIR_TOKENS.warning),
+        attention: token(NOIR_TOKENS.danger),
+        risk_low: token(NOIR_TOKENS.success_container),
+        risk_medium: token(NOIR_TOKENS.warning_container),
+        risk_high: token(NOIR_TOKENS.danger_container),
+    };
+
     /// The inks for `scheme`.
     #[must_use]
     pub const fn of(scheme: Scheme) -> &'static Inks {
@@ -545,7 +577,24 @@ impl Inks {
 /// The inks for the scheme the app paints with.
 #[must_use]
 pub fn inks() -> &'static Inks {
-    Inks::of(scheme())
+    match scheme() {
+        Scheme::Dark if NOIR_ACTIVE.load(Ordering::Relaxed) => &Inks::NOIR,
+        scheme => Inks::of(scheme),
+    }
+}
+
+/// The shared token table's roles for the scheme the app paints with:
+/// Coder Light, or Coder Noir in the dark. A surface with no role in
+/// [`Visual`] paints from here ([`role`]) instead of its own colors.
+#[must_use]
+pub fn palette() -> &'static oa_tokens::Palette {
+    oa_tokens::Palette::of(scheme())
+}
+
+/// A token table color as a paint color.
+#[must_use]
+pub const fn role(value: oa_tokens::Rgba8) -> Color {
+    token(value)
 }
 
 #[cfg(test)]
@@ -692,14 +741,14 @@ mod tests {
                 .unwrap();
             let style = row.styles[run.style as usize];
             assert!(style.font.mono);
-            assert_eq!(style.font.size, 14.0 * scale);
+            assert!((style.font.size - 16.0 * scale * 0.88).abs() < 0.01);
             assert_eq!(style.ink, Ink::Rgba([124, 134, 255, 255]));
             let wash = row
                 .rects
                 .iter()
                 .find(|rect| rect.fill == Some(Ink::Role(ColorRole::InlineCode)))
                 .unwrap();
-            assert_eq!(wash.h, 18.0 * scale);
+            assert_eq!(wash.h, 20.0 * scale);
             assert_eq!(wash.radii, [4.5 * scale; 4]);
             assert_eq!(row.links[0].destination, "https://example.com");
             let strong = row
@@ -774,7 +823,7 @@ mod tests {
             .unwrap();
         let frame = layout.frame();
         let row = frame.display(0).unwrap();
-        for size in [19.0, 16.0, 15.0, 14.0] {
+        for size in [24.0, 20.0, 18.0, 16.0] {
             assert!(
                 row.styles
                     .iter()
@@ -784,14 +833,14 @@ mod tests {
         assert!(
             row.styles
                 .iter()
-                .any(|s| s.font.size == 12.5 && s.font.mono)
+                .any(|s| s.font.size == 14.0 && s.font.mono)
         );
         let code = row
             .rects
             .iter()
             .find(|r| r.fill == Some(Ink::Role(ColorRole::Surface)))
             .unwrap();
-        assert_eq!(code.h, 68.0);
+        assert_eq!(code.h, 70.0);
         let copy=row.widgets.iter().find(|w| matches!(&w.kind, WidgetKind::Copy {text,icon:true} if text == "let answer = 42;\n")).unwrap();
         assert_eq!((copy.w, copy.h), (24.0, 22.0));
         assert_eq!(copy.y - code.y, 3.0);
@@ -838,11 +887,11 @@ mod tests {
         assert_eq!(bubble.radii, [16.0; 4]);
         assert!((bubble.x + bubble.w - 752.0).abs() < 0.01);
         assert!((bubble.w - 736.0 * 0.8).abs() < 0.01);
-        assert!(((bubble.h - 20.0) % 22.0).abs() < 0.01);
+        assert!(((bubble.h - 20.0) % 24.0).abs() < 0.01);
         assert!(
             row.styles
                 .iter()
-                .all(|style| style.font.size == 14.0 && style.font.family == FontFamily::PaperMono)
+                .all(|style| style.font.size == 16.0 && style.font.family == FontFamily::PaperMono)
         );
         assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 0);
         let mut invalid = TRANSCRIPT;
