@@ -427,13 +427,21 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
-    // Download is a pill link in the header's top-right actions.
-    let download = home
-        .find("href=\"/download\"")
-        .expect("the header links /download");
-    assert_eq!(home.matches("href=\"/download\"").count(), 1);
-    assert!(home.find("class=\"oa-main-header-actions\"").unwrap() < download);
-    assert!(home[home[..download].rfind('<').unwrap()..download].contains("class=\"oa-button\""));
+    // Download is a pill link in the header's top-right actions (and, at
+    // phone width only, a row in the drawer instead).
+    let actions = home.find("class=\"oa-main-header-actions\"").unwrap();
+    let download = actions
+        + home[actions..]
+            .find("href=\"/download\"")
+            .expect("the header links /download");
+    assert_eq!(home.matches("href=\"/download\"").count(), 2);
+    assert!(home.contains(
+        "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/download\">"
+    ));
+    assert!(
+        home[home[..download].rfind('<').unwrap()..download]
+            .contains("class=\"oa-button oa-wide-only\"")
+    );
     // The theme toggle sits in the sidebar's bottom-right corner.
     let toggle = home.find("data-oa-theme-toggle").unwrap();
     assert!(home.find("class=\"oa-sidebar-corner\"").unwrap() < toggle);
@@ -691,9 +699,11 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     assert!(html.contains("class=\"oa-layout\" data-mode=\"app\""));
     assert!(!html.contains("<footer"), "the chat page has no footer");
     assert!(
-        !html.contains("class=\"oa-sidebar-legal\""),
-        "legal links only on home"
+        !html.contains("oa-home-legal"),
+        "legal links under the composer only on home"
     );
+    // At phone width they sit in the drawer's fine print on every page.
+    assert!(html.contains("class=\"oa-sidebar-fine-print oa-phone-only\""));
     // The chat's title is the header row's breadcrumb, left of the actions;
     // the thread has no title row and no Beginning/Latest words.
     let crumb = html

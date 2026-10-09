@@ -333,6 +333,16 @@ impl UiPage {
                 .bottom(NavItem::new("Log in", &log_in).icon(Icon::EnterLogin.size(IconSize::Md))),
             Account::Unknown => sidebar.bottom(docs).bottom(roadmap).bottom(promises),
         };
+        // At phone width the panel is a drawer and the header keeps one
+        // action, so Download and the legal links move into the drawer.
+        let sidebar = sidebar
+            .bottom(
+                NavItem::new("Download", DOWNLOAD)
+                    .icon(Icon::Download.size(IconSize::Md))
+                    .current(current == Some(DOWNLOAD))
+                    .phone_only(true),
+            )
+            .fine_print(legal());
         // The theme toggle sits in the sidebar's bottom-right corner.
         let sidebar = match toggle {
             Some(toggle) => sidebar.corner(toggle),
@@ -345,7 +355,8 @@ impl UiPage {
             .size(ControlSize::Sm)
             .pill(true)
             .icon_start(Icon::Download)
-            .selected(on_download);
+            .selected(on_download)
+            .class("oa-wide-only");
         if on_download {
             download = download.attr("aria-current", "page");
         }
@@ -360,7 +371,8 @@ impl UiPage {
                     .color(Color::Secondary)
                     .variant(ButtonVariant::Outline)
                     .size(ControlSize::Sm)
-                    .pill(true))
+                    .pill(true)
+                    .class("oa-wide-only"))
             }
         };
         let mut shell = AppShell::new()
@@ -416,18 +428,23 @@ impl UiPage {
 }
 
 /// The quiet legal and project links the home page centers under its
-/// docked composer (no other page shows them).
+/// docked composer (no other page shows them there; at phone width they
+/// sit in the drawer instead, on every page).
 pub fn legal_links() -> Markup {
     html! {
-        div.oa-home-legal {
-            (LegalLinks::new()
-                .link("Terms", "/terms")
-                .link("Privacy", "/privacy")
-                .link("GitHub", GITHUB)
-                .link("X", X)
-                .note(COPYRIGHT))
-        }
+        div.oa-home-legal { (legal()) }
     }
+}
+
+/// Terms, Privacy, the project's links, and the copyright: under the home
+/// composer on wider screens, at the foot of the drawer at phone width.
+fn legal() -> LegalLinks {
+    LegalLinks::new()
+        .link("Terms", "/terms")
+        .link("Privacy", "/privacy")
+        .link("GitHub", GITHUB)
+        .link("X", X)
+        .note(COPYRIGHT)
 }
 
 /// Trusted, already-escaped markup (such as `markdown::render` output or a
@@ -560,8 +577,14 @@ mod tests {
             .content(html! { p { "x" } })
             .render(&HeaderMap::new())
             .into_string();
-        // Legal links are only on the home page.
-        assert!(!html.contains("href=\"/terms\"") && !html.contains(COPYRIGHT));
+        // Legal links sit only in the drawer's phone-width fine print here
+        // (the home page also shows them under its composer).
+        assert_eq!(html.matches("href=\"/terms\"").count(), 1);
+        let fine_print = html
+            .find("class=\"oa-sidebar-fine-print oa-phone-only\"")
+            .unwrap();
+        assert!(fine_print < html.find("href=\"/terms\"").unwrap());
+        assert!(!html.contains("oa-home-legal"));
         assert!(!html.contains("<footer") && !html.contains("oa-legal\""));
         // Docs lives in the left panel's footer.
         let aside_end = html.find("</aside>").unwrap();
@@ -575,7 +598,19 @@ mod tests {
         // Download is a pill link in the header actions; the theme toggle
         // sits in the sidebar's bottom-right corner, not the header.
         let actions = html.find("class=\"oa-main-header-actions\"").unwrap();
-        let download = html.find("href=\"/download\"").unwrap();
+        let download = actions + html[actions..].find("href=\"/download\"").unwrap();
+        // At phone width the header keeps one action: the pill is hidden
+        // there and Download is a drawer row instead.
+        assert!(html[download.saturating_sub(300)..download].contains("oa-wide-only"));
+        assert!(html.contains(
+            "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/download\" aria-current=\"page\">"
+        ));
+        // A header menu button opens the same drawer at phone width.
+        assert!(
+            html.contains(
+                "class=\"oa-sidebar-toggle oa-main-menu\" popovertarget=\"oa-left-panel\""
+            )
+        );
         let toggle = html.find("data-oa-theme-toggle").unwrap();
         assert!(actions < download);
         assert!(sidebar_footer < toggle && toggle < aside_end);

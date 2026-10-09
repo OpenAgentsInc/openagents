@@ -11,6 +11,13 @@
 // - <html data-oa-sidebar-ready> tells the stylesheet the toggle works on
 //   wide screens; without this script it is hidden there.
 //
+// Phone keyboard: below 48rem, --oa-viewport-height on <html> follows the
+// visual viewport's height (set through the CSSOM, which the style policy
+// allows), so when the on-screen keyboard opens the shell shrinks to the
+// space above it and the docked composer stays in view (iOS Safari resizes
+// neither dvh nor the layout viewport for the keyboard). Without this
+// script the shell keeps 100dvh.
+//
 // Shortcuts: Control+<letter> (Ctrl only; Cmd+N belongs to the browser on
 // macOS) follows the link that declares it in aria-keyshortcuts, such as
 // "New chat" (Control+N). Not during IME composition. Chrome on Windows and
@@ -78,6 +85,21 @@
     document.addEventListener("DOMContentLoaded", syncAll);
   } else {
     syncAll();
+  }
+
+  var viewport = window.visualViewport;
+  if (viewport) {
+    var fitViewport = function () {
+      if (wide()) {
+        root.style.removeProperty("--oa-viewport-height");
+        return;
+      }
+      root.style.setProperty("--oa-viewport-height", Math.round(viewport.height) + "px");
+      // The keyboard can leave the page scrolled; the shell never scrolls.
+      if (window.scrollY) window.scrollTo(0, 0);
+    };
+    viewport.addEventListener("resize", fitViewport);
+    fitViewport();
   }
 
   document.addEventListener("keydown", function (event) {

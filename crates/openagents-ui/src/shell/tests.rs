@@ -586,12 +586,16 @@ fn root_layout_is_one_fixed_height_screen_that_never_bounces() {
     let css = SHELL_CSS;
     let root = &css[css.find("html:has(> body.oa-body) {").expect("root rule")..];
     let root = &root[..root.find('}').unwrap()];
-    assert!(root.contains("height: 100dvh;") && root.contains("overflow: hidden;"));
+    assert!(
+        root.contains("height: var(--oa-viewport-height, 100dvh);")
+            && root.contains("overflow: hidden;")
+    );
     assert!(root.contains("overscroll-behavior: none;"));
     let body = &css[css.find(".oa-body {").unwrap()..];
     let body = &body[..body.find('}').unwrap()];
     assert!(
-        body.contains("height: 100vh;\n  height: 100dvh;") && body.contains("overflow: hidden;")
+        body.contains("height: 100vh;\n  height: var(--oa-viewport-height, 100dvh);")
+            && body.contains("overflow: hidden;")
     );
     for region in ["\n.oa-conversation-sidebar {", "\n.oa-main-viewport {"] {
         let rule = &css[css.find(region).unwrap()..];

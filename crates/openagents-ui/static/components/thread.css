@@ -97,7 +97,7 @@
 .oa-home-stage {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
   min-height: 100%;
 }
 /* The same 16px gutters as the docked composer, phone width included. */
@@ -118,6 +118,10 @@
   }
   .oa-main-composer .oa-suggestion-chip {
     flex: none;
+  }
+  /* In the drawer's fine print instead. */
+  .oa-home-legal {
+    display: none;
   }
 }
 .oa-home-legal {

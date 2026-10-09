@@ -103,6 +103,7 @@ pub struct NavItem {
     hx: Option<HxGet>,
     row_id: Option<String>,
     menu: Option<Markup>,
+    phone_only: bool,
 }
 
 impl NavItem {
@@ -120,7 +121,16 @@ impl NavItem {
             hx: None,
             row_id: None,
             menu: None,
+            phone_only: false,
         }
+    }
+
+    /// Shows the row only at phone width, where the panel is a drawer (a
+    /// link the wider header already shows, such as Download).
+    #[must_use]
+    pub fn phone_only(mut self, phone_only: bool) -> Self {
+        self.phone_only = phone_only;
+        self
     }
 
     /// The row's `id` (on its `<li>`), so a response can replace the row,
@@ -192,7 +202,7 @@ impl Render for NavItem {
     fn render(&self) -> Markup {
         let hx = self.hx.as_ref();
         html! {
-            li class=(if self.menu.is_some() { "oa-nav-row oa-nav-row--menu" } else { "oa-nav-row" })
+            li.oa-nav-row.oa-nav-row--menu[self.menu.is_some()].oa-phone-only[self.phone_only]
                 id=[self.row_id.as_deref()] {
                 a class="oa-nav-item" href=(self.href)
                     hx-get=[hx.map(|hx| hx.url.as_str())]
@@ -714,6 +724,7 @@ pub struct Sidebar {
     bottom: Vec<NavItem>,
     footer: Option<Markup>,
     corner: Option<Markup>,
+    fine_print: Option<Markup>,
 }
 
 impl Sidebar {
@@ -777,6 +788,14 @@ impl Sidebar {
         self.corner = Some(corner.render());
         self
     }
+
+    /// Quiet links under the footer, such as [`LegalLinks`], shown only at
+    /// phone width (in the drawer), where the page has no room for them.
+    #[must_use]
+    pub fn fine_print(mut self, fine_print: impl Render) -> Self {
+        self.fine_print = Some(fine_print.render());
+        self
+    }
 }
 
 /// How the main viewport behaves.
@@ -814,8 +833,11 @@ pub fn sidebar_collapsed_from_cookie(value: &str) -> bool {
 /// way ([`AppShell::sidebar_collapsed`]). On narrow screens the panel rests
 /// as that rail and the same toggle opens it as a native popover drawer
 /// (`popovertarget`), which works without JavaScript, closes on Escape and
-/// light-dismiss, and keeps focus order. Without the script, wide screens
-/// hide the toggle rather than show a button that does nothing.
+/// light-dismiss, and keeps focus order. At phone width (40rem and under)
+/// the panel rests hidden instead of as a rail, and a second button at the
+/// start of the header (`oa-main-menu`, with the brand beside it on a page
+/// without a breadcrumb) opens the same drawer. Without the script, wide
+/// screens hide the toggle rather than show a button that does nothing.
 #[derive(Clone, Debug, Default)]
 pub struct AppShell {
     sidebar: Option<Sidebar>,
@@ -932,7 +954,19 @@ impl Render for AppShell {
                 }
                 div class="oa-main-surface" {
                     header class="oa-main-header" {
+                        @if self.sidebar.is_some() {
+                            button type="button" class="oa-sidebar-toggle oa-main-menu"
+                                popovertarget=(LEFT_PANEL_ID) aria-controls=(LEFT_PANEL_ID)
+                                aria-label="Open menu" title="Open menu" {
+                                (Icon::Sidebar.size(IconSize::Lg))
+                            }
+                        }
                         div class="oa-main-header-content" {
+                            @if self.breadcrumb.is_none() {
+                                @if let Some(brand) = self.sidebar.as_ref().and_then(|s| s.brand.as_ref()) {
+                                    div class="oa-main-brand" { (brand) }
+                                }
+                            }
                             @if let Some(breadcrumb) = &self.breadcrumb { (breadcrumb) }
                             @if let Some(header) = &self.header { (header) }
                         }
@@ -999,6 +1033,9 @@ fn render_sidebar(sidebar: &Sidebar) -> Markup {
                         div class="oa-sidebar-corner" { (corner) }
                     }
                 }
+            }
+            @if let Some(fine_print) = &sidebar.fine_print {
+                div class="oa-sidebar-fine-print oa-phone-only" { (fine_print) }
             }
         }
     }

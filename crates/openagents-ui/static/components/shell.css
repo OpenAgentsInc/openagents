@@ -18,17 +18,18 @@
    rubber-bands; only inner regions (the left panel's list, the main
    viewport, a thread) scroll, and they contain their overscroll. Scoped to
    shell documents (body.oa-body), so full-screen canvas pages are
-   unaffected. 100vh is the fallback where dvh is missing. */
+   unaffected. 100vh is the fallback where dvh is missing; on a phone
+   shell.js sets --oa-viewport-height (the keyboard). */
 html:has(> body.oa-body) {
   height: 100vh;
-  height: 100dvh;
+  height: var(--oa-viewport-height, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
 }
 .oa-body {
   margin: 0;
   height: 100vh;
-  height: 100dvh;
+  height: var(--oa-viewport-height, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--color-surface);
@@ -71,7 +72,7 @@ html:has(> body.oa-body) {
   position: relative;
   display: flex;
   height: 100vh;
-  height: 100dvh;
+  height: var(--oa-viewport-height, 100dvh);
   min-height: 0;
   background: var(--app-color-background-shell);
   overflow: hidden;
@@ -137,7 +138,8 @@ html:has(> body.oa-body) {
     padding-inline: 0;
   }
 }
-@media (max-width: 47.999rem) {
+/* Tablet: a rail. Phone (40rem): hidden; .oa-main-menu opens it. */
+@media (min-width: 40.001rem) and (max-width: 47.999rem) {
   .oa-left-panel[popover]:not(:popover-open) {
     position: relative;
     inset: auto;
@@ -169,11 +171,18 @@ html:has(> body.oa-body) {
     justify-content: center;
     padding-inline: 0;
   }
+}
+@media (max-width: 40rem) {
+  .oa-left-panel[popover]:not(:popover-open) {
+    display: none;
+  }
+}
+@media (max-width: 47.999rem) {
   .oa-left-panel[popover]:popover-open {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(var(--app-shell-left-panel-width), 85vw);
-    height: 100dvh;
+    height: var(--oa-viewport-height, 100dvh);
     box-shadow: var(--shadow-300);
   }
   .oa-left-panel[popover]::backdrop {
@@ -688,7 +697,7 @@ html:has(> body.oa-body) {
 .oa-layout[data-sidebar="collapsed"] .oa-left-panel .oa-sidebar-corner {
   justify-content: center;
 }
-@media (max-width: 47.999rem) {
+@media (min-width: 40.001rem) and (max-width: 47.999rem) {
   .oa-left-panel[popover]:not(:popover-open) .oa-sidebar-footer {
     flex-direction: column;
     align-items: stretch;
@@ -915,6 +924,46 @@ html:has(> body.oa-body) {
   min-width: 0;
   font-size: var(--font-text-sm-size);
 }
+/* Phone: the drawer's menu button and the wordmark. */
+.oa-main-menu,
+.oa-main-brand {
+  display: none;
+}
+.oa-main-brand {
+  align-items: center;
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+}
+.oa-main-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+@media (max-width: 40rem) {
+  .oa-main-menu {
+    display: inline-flex;
+    margin-inline-start: calc(var(--spacing) * -1.5);
+  }
+  .oa-main-brand {
+    display: flex;
+  }
+}
+
+@media (min-width: 40.001rem) {
+  .oa-layout .oa-phone-only {
+    display: none;
+  }
+}
+@media (max-width: 40rem) {
+  .oa-layout .oa-wide-only {
+    display: none;
+  }
+}
+
+.oa-sidebar-fine-print {
+  flex: none;
+  padding: 0 calc(var(--spacing) * 2) calc(var(--spacing) * 3 + env(safe-area-inset-bottom, 0px));
+}
+
 .oa-main-header-actions {
   display: flex;
   align-items: center;

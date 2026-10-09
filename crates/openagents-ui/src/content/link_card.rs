@@ -7,8 +7,9 @@
 //! goes nowhere. Links that leave the site open in a new tab with
 //! `noopener`.
 //!
-//! [`LinkCards`] lays cards out one wide at phone width, two at tablet
-//! width, and three where the column allows (a container query, so the
+//! [`LinkCards`] lays cards out two small ones a row at phone width (the
+//! icon inline with the title, the description cut to one line), two
+//! roomier ones at tablet width, and three where the column allows (a container query, so the
 //! grid follows the space it is given, not the window).
 //!
 //! Every string is escaped. Styles live in `static/components/link-card.css`.

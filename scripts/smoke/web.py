@@ -450,6 +450,25 @@ def run(base, only, install, production=False, restart=None, invite_only=False):
         corner = home.text.find('class="oa-sidebar-corner"')
         record("home: theme toggle in the sidebar corner",
                corner >= 0 and "data-oa-theme-toggle" in home.text[corner:corner + 1500])
+        # Phone width (40rem and under): no rail, a header menu button opens
+        # the drawer, Download and the legal links live in the drawer, and
+        # the cards are two small ones a row (no browser here, so the served
+        # markup and stylesheet carry the layout).
+        sheet = re.search(r'<link rel="stylesheet" href="(/static/ui\.css[^"]*)"', home.text)
+        css = site.get(unescape(sheet.group(1)), cookies=False).text if sheet else ""
+        compact = re.sub(r"\s+", " ", css)
+        record("home: phone menu button opens the drawer",
+               re.search(r'class="oa-sidebar-toggle oa-main-menu" popovertarget="', home.text) is not None)
+        record("home: phone hides the rail",
+               "@media (max-width: 40rem) { .oa-left-panel[popover]:not(:popover-open) { display: none; }"
+               in compact)
+        record("home: Download and legal links in the phone drawer",
+               re.search(r'class="oa-nav-row oa-phone-only"><a class="oa-nav-item" href="/download"', home.text)
+               is not None and 'class="oa-sidebar-fine-print oa-phone-only"' in home.text
+               and ".oa-home-legal { display: none; }" in compact)
+        record("home: phone cards two small ones a row",
+               ".oa-link-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));" in compact
+               and "white-space: nowrap;" in compact[compact.find(".oa-link-card__description {"):][:400])
         if want("home-chat") or not only:
             with concurrent.futures.ThreadPoolExecutor(4) as pool:
                 asked = questions[:1] if production else questions[:4]
