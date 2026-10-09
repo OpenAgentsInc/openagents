@@ -11,6 +11,17 @@
 //! | `POST /api/traces/{id}/share` `{shared}` | Share or stop sharing. `200 {trace}`, `404 unknown` |
 //! | `GET /settings/traces`, `/settings/traces/{id}` | The list and the viewer, with Share and Delete |
 //! | `GET /trace/{id}` | A shared trace, for anyone with the link; `404` otherwise |
+//! | `POST /api/traces/{id}/agents[?parent=AGENT]` (body: ATIF JSON) | Save an agent under the trace (#11178), below `parent` or the trace's own conversation. `201 {agent}` when new, `200` when already saved; `404 unknown` (no such trace or parent), `413 full` past [`MAX_AGENTS`] or [`MAX_TREE_BYTES`], and the trace's refusals |
+//! | `GET /api/traces/{id}/agents` | `{agents: [agent]}`, parents before children, each with its times, tokens and cost |
+//! | `GET /api/traces/{id}/agents/{agent}` | The agent's ATIF document |
+//! | `GET /settings/traces/{id}/agents/{agent}`, `/trace/{id}/agents/{agent}` | An agent's page; public while its trace is shared |
+//!
+//! A trace with agents is a whole orchestration: a main conversation and
+//! every agent it (or its agents) started. Each agent is its own document
+//! (at most [`MAX_BODY`]) under the trace, listed in one small record per
+//! trace (`traces/{id}/tree.json`), so the account's trace list stays one
+//! entry per trace. The trace's page draws the tree with a timeline; sharing
+//! or deleting the trace shares or deletes its agents.
 //!
 //! The API takes the account's browser session or an app token
 //! (`Authorization: Bearer sess_…`, from `coder login`), the same as the
@@ -27,6 +38,8 @@
 //! [`MAX_TRACES`]: the documents and one list per account live beside the
 //! account's chats ([`Store::owner_key`]), and a shared trace has one more
 //! small record naming its owner, so `/trace/{id}` can find it.
+
+use std::collections::HashMap;
 
 use axum::Router;
 use axum::body::Bytes;
@@ -75,9 +88,22 @@ pub(crate) fn routes() -> Router<App> {
         .route(API, get(api_list).post(api_upload))
         .route(&format!("{API}/{{id}}"), get(api_read).delete(api_delete))
         .route(&format!("{API}/{{id}}/share"), post(api_share))
+        .route(
+            &format!("{API}/{{id}}/agents"),
+            get(api_agents).post(api_upload_agent),
+        )
+        .route(
+            &format!("{API}/{{id}}/agents/{{agent}}"),
+            get(api_read_agent),
+        )
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .route(PAGE, get(list_page))
         .route(&format!("{PAGE}/{{id}}"), get(trace_page))
+        .route(&format!("{PAGE}/{{id}}/agents/{{agent}}"), get(agent_page))
+        .route(
+            &format!("{PUBLIC}/{{id}}/agents/{{agent}}"),
+            get(public_agent_page),
+        )
         .route(&format!("{PAGE}/{{id}}/share"), post(share_form))
         .route(&format!("{PAGE}/{{id}}/delete"), post(delete_form))
         .route(&format!("{PUBLIC}/{{id}}"), get(public_page))
@@ -96,6 +122,14 @@ pub(crate) struct Summary {
     pub digest: String,
     pub uploaded_unix: u64,
     pub shared: bool,
+    /// How many agents are saved under it (#11178).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub agents: usize,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -267,6 +301,7 @@ pub(crate) fn check(body: &[u8]) -> Result<(Value, Summary), Uploaded> {
         digest: atif::digest(&document),
         uploaded_unix: 0,
         shared: false,
+        agents: 0,
     };
     Ok((document, summary))
 }
@@ -497,6 +532,7 @@ pub(crate) async fn delete(store: &Store, owner: &str, id: &str) -> Result<bool,
     })
     .await?;
     remove_share(store, owner, id).await?;
+    delete_tree(store, owner, id).await?;
     let key = document_key(owner, id)?;
     if let Some((_, generation)) = store.read_key(&key).await? {
         store.delete_key(&key, &generation).await?;
@@ -515,6 +551,356 @@ pub(crate) async fn public(store: &Store, id: &str) -> Result<Option<(Summary, V
     Ok(load(store, &owner, id)
         .await?
         .filter(|(summary, _)| summary.shared))
+}
+
+// ---------------------------------------------------------------------
+// Trees: a trace's agents (#11178)
+
+/// An agent's numbers, read from its trajectory: when it ran, what it
+/// spent, how much it did.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Stats {
+    #[serde(default)]
+    pub started_ms: Option<u64>,
+    #[serde(default)]
+    pub ended_ms: Option<u64>,
+    #[serde(default)]
+    pub prompt_tokens: u64,
+    #[serde(default)]
+    pub completion_tokens: u64,
+    #[serde(default)]
+    pub cost_usd: f64,
+    #[serde(default)]
+    pub tool_calls: usize,
+}
+
+impl Stats {
+    /// From a trajectory: its steps' times, and its totals (or the sum of
+    /// its steps' metrics when it has none).
+    pub(crate) fn of(document: &Value) -> Self {
+        let steps = steps(document);
+        let times: Vec<u64> = steps
+            .iter()
+            .filter_map(|step| step.get("timestamp").and_then(Value::as_str))
+            .filter_map(atif::parse_iso)
+            .collect();
+        let total = |field: &str, metric: &str| {
+            document
+                .pointer(&format!("/final_metrics/{field}"))
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| {
+                    steps
+                        .iter()
+                        .filter_map(|step| step.pointer(&format!("/metrics/{metric}")))
+                        .filter_map(Value::as_u64)
+                        .sum()
+                })
+        };
+        let cost = document
+            .pointer("/final_metrics/total_cost_usd")
+            .and_then(Value::as_f64)
+            .unwrap_or_else(|| {
+                steps
+                    .iter()
+                    .filter_map(|step| step.pointer("/metrics/cost_usd"))
+                    .filter_map(Value::as_f64)
+                    .sum()
+            });
+        Self {
+            started_ms: times.iter().min().copied(),
+            ended_ms: times.iter().max().copied(),
+            prompt_tokens: total("total_prompt_tokens", "prompt_tokens"),
+            completion_tokens: total("total_completion_tokens", "completion_tokens"),
+            cost_usd: if cost.is_finite() { cost.max(0.0) } else { 0.0 },
+            tool_calls: steps
+                .iter()
+                .filter_map(|step| step.get("tool_calls").and_then(Value::as_array))
+                .map(Vec::len)
+                .sum(),
+        }
+    }
+
+    fn duration_ms(&self) -> Option<u64> {
+        Some(self.ended_ms?.saturating_sub(self.started_ms?))
+    }
+}
+
+/// One agent in a trace's tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Agent {
+    pub id: String,
+    /// The agent that started it; `None` for the trace's own conversation.
+    #[serde(default)]
+    pub parent: Option<String>,
+    pub title: String,
+    pub agent: String,
+    pub model: String,
+    pub steps: usize,
+    pub bytes: usize,
+    pub digest: String,
+    pub uploaded_unix: u64,
+    /// The tool call in the parent that started it, when known.
+    #[serde(default)]
+    pub call: Option<String>,
+    #[serde(default)]
+    pub stats: Stats,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Tree {
+    schema: String,
+    /// In upload order: every parent before its children.
+    agents: Vec<Agent>,
+}
+
+const TREE_SCHEMA: &str = "openagents.web.trace-tree.v1";
+/// The most agents one trace keeps.
+pub(crate) const MAX_AGENTS: usize = 1000;
+/// The most one trace and its agents may hold in all.
+pub(crate) const MAX_TREE_BYTES: usize = 512 * 1024 * 1024;
+
+fn tree_key(owner: &str, root: &str) -> Result<String, Error> {
+    Store::owner_key(owner, &format!("traces/{root}/tree.json"))
+}
+
+fn agent_key(owner: &str, root: &str, id: &str) -> Result<String, Error> {
+    Store::owner_key(owner, &format!("traces/{root}/agents/{id}.json"))
+}
+
+/// An agent's id: from the owner, the trace, and the agent's digest, so the
+/// same agent under the same trace saves once.
+pub(crate) fn agent_id(owner: &str, root: &str, digest: &str) -> String {
+    trace_id(owner, &format!("agent\0{root}\0{digest}"))
+}
+
+async fn read_tree(
+    store: &Store,
+    owner: &str,
+    root: &str,
+) -> Result<(Tree, Option<String>), Error> {
+    match store.read_key(&tree_key(owner, root)?).await? {
+        Some((bytes, generation)) => {
+            let tree: Tree = serde_json::from_slice(&bytes)
+                .map_err(|_| Error::Corrupt("The trace's agents are invalid."))?;
+            if tree.schema != TREE_SCHEMA {
+                return Err(Error::Corrupt("The trace's agents are invalid."));
+            }
+            Ok((tree, Some(generation)))
+        }
+        None => Ok((
+            Tree {
+                schema: TREE_SCHEMA.into(),
+                agents: Vec::new(),
+            },
+            None,
+        )),
+    }
+}
+
+/// A trace's agents, parents before children; empty when it has none.
+pub(crate) async fn agents(store: &Store, owner: &str, root: &str) -> Result<Vec<Agent>, Error> {
+    if !valid_id(root) {
+        return Ok(Vec::new());
+    }
+    Ok(read_tree(store, owner, root).await?.0.agents)
+}
+
+/// What became of an agent's upload.
+#[derive(Debug, PartialEq)]
+pub(crate) enum AgentUploaded {
+    Saved {
+        agent: Box<Agent>,
+        existing: bool,
+    },
+    /// No such trace, or no such parent agent under it.
+    Unknown(&'static str),
+    /// The trace has [`MAX_AGENTS`] or [`MAX_TREE_BYTES`].
+    Full,
+    Refused(Uploaded),
+}
+
+/// Save an agent's trajectory under `root`, below `parent` (another of
+/// its agents) or below the trace's own conversation.
+pub(crate) async fn upload_agent(
+    store: &Store,
+    owner: &str,
+    root: &str,
+    parent: Option<&str>,
+    body: &[u8],
+) -> Result<AgentUploaded, Error> {
+    if !valid_id(root) || parent.is_some_and(|parent| !valid_id(parent)) {
+        return Ok(AgentUploaded::Unknown("No such trace."));
+    }
+    let (document, summary) = match check(body) {
+        Ok(checked) => checked,
+        Err(refused) => return Ok(AgentUploaded::Refused(refused)),
+    };
+    let (index, _) = read_index(store, owner).await?;
+    let Some(trace) = index.traces.iter().find(|trace| trace.id == root) else {
+        return Ok(AgentUploaded::Unknown("No such trace."));
+    };
+    let root_bytes = trace.bytes;
+    let id = agent_id(owner, root, &summary.digest);
+    let agent = Agent {
+        id: id.clone(),
+        parent: parent.map(str::to_owned),
+        title: summary.title,
+        agent: summary.agent,
+        model: summary.model,
+        steps: summary.steps,
+        bytes: summary.bytes,
+        digest: summary.digest,
+        uploaded_unix: now_unix(),
+        call: document
+            .pointer("/extra/parent_tool_call_id")
+            .and_then(Value::as_str)
+            .map(|call| line(call, 120)),
+        stats: Stats::of(&document),
+    };
+    let (tree, _) = read_tree(store, owner, root).await?;
+    if let Some(existing) = tree.agents.iter().find(|agent| agent.id == id) {
+        return Ok(AgentUploaded::Saved {
+            agent: Box::new(existing.clone()),
+            existing: true,
+        });
+    }
+    if let Some(parent) = parent
+        && !tree.agents.iter().any(|agent| agent.id == parent)
+    {
+        return Ok(AgentUploaded::Unknown("No such agent under this trace."));
+    }
+    let used = |tree: &Tree| root_bytes + tree.agents.iter().map(|a| a.bytes).sum::<usize>();
+    if tree.agents.len() >= MAX_AGENTS || used(&tree) + agent.bytes > MAX_TREE_BYTES {
+        return Ok(AgentUploaded::Full);
+    }
+    let bytes =
+        serde_json::to_vec(&document).map_err(|_| Error::Invalid("The trace is invalid."))?;
+    match store
+        .write_key(&agent_key(owner, root, &id)?, bytes, None)
+        .await
+    {
+        Ok(_) | Err(Error::Conflict) => {}
+        Err(error) => return Err(error),
+    }
+    let key = tree_key(owner, root)?;
+    for _ in 0..6 {
+        let (mut tree, generation) = read_tree(store, owner, root).await?;
+        if let Some(existing) = tree.agents.iter().find(|a| a.id == id) {
+            return Ok(AgentUploaded::Saved {
+                agent: Box::new(existing.clone()),
+                existing: true,
+            });
+        }
+        if tree.agents.len() >= MAX_AGENTS || used(&tree) + agent.bytes > MAX_TREE_BYTES {
+            return Ok(AgentUploaded::Full);
+        }
+        tree.agents.push(agent.clone());
+        let count = tree.agents.len();
+        let bytes =
+            serde_json::to_vec(&tree).map_err(|_| Error::Invalid("The trace is invalid."))?;
+        match store.write_key(&key, bytes, generation.as_deref()).await {
+            Ok(_) => {
+                let root = root.to_owned();
+                update_index(store, owner, move |index| {
+                    match index.traces.iter_mut().find(|trace| trace.id == root) {
+                        Some(trace) if trace.agents != count => {
+                            trace.agents = count;
+                            (true, ())
+                        }
+                        _ => (false, ()),
+                    }
+                })
+                .await?;
+                return Ok(AgentUploaded::Saved {
+                    agent: Box::new(agent),
+                    existing: false,
+                });
+            }
+            Err(Error::Conflict) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Conflict)
+}
+
+/// One agent of the owner's trace and its trajectory.
+pub(crate) async fn load_agent(
+    store: &Store,
+    owner: &str,
+    root: &str,
+    id: &str,
+) -> Result<Option<(Agent, Value)>, Error> {
+    if !valid_id(root) || !valid_id(id) {
+        return Ok(None);
+    }
+    let Some(agent) = agents(store, owner, root)
+        .await?
+        .into_iter()
+        .find(|agent| agent.id == id)
+    else {
+        return Ok(None);
+    };
+    let Some((bytes, _)) = store.read_key(&agent_key(owner, root, id)?).await? else {
+        return Ok(None);
+    };
+    let document =
+        serde_json::from_slice(&bytes).map_err(|_| Error::Corrupt("The trace is invalid."))?;
+    Ok(Some((agent, document)))
+}
+
+/// Delete a trace's agents and their list.
+async fn delete_tree(store: &Store, owner: &str, root: &str) -> Result<(), Error> {
+    let (tree, generation) = read_tree(store, owner, root).await?;
+    for agent in &tree.agents {
+        let key = agent_key(owner, root, &agent.id)?;
+        if let Some((_, generation)) = store.read_key(&key).await? {
+            match store.delete_key(&key, &generation).await {
+                Ok(_) | Err(Error::Conflict) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    if let Some(generation) = generation {
+        match store.delete_key(&tree_key(owner, root)?, &generation).await {
+            Ok(_) | Err(Error::Conflict) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// A shared trace's agent, for anyone with the trace's link.
+pub(crate) async fn public_agent(
+    store: &Store,
+    root: &str,
+    id: &str,
+) -> Result<Option<(Summary, Agent, Value)>, Error> {
+    if !valid_id(root) || !valid_id(id) {
+        return Ok(None);
+    }
+    let Some(owner) = shared_owner(store, root).await? else {
+        return Ok(None);
+    };
+    let Some((summary, _)) = load(store, &owner, root)
+        .await?
+        .filter(|(summary, _)| summary.shared)
+    else {
+        return Ok(None);
+    };
+    Ok(load_agent(store, &owner, root, id)
+        .await?
+        .map(|(agent, document)| (summary, agent, document)))
+}
+
+/// The owner of a shared trace, for its public agent pages.
+async fn public_agents(store: &Store, root: &str) -> Result<Vec<Agent>, Error> {
+    match shared_owner(store, root).await? {
+        Some(owner) => agents(store, &owner, root).await,
+        None => Ok(Vec::new()),
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -569,6 +955,7 @@ fn wire(trace: &Summary, origin: &str) -> Value {
         "bytes": trace.bytes,
         "uploaded_unix": trace.uploaded_unix,
         "shared": trace.shared,
+        "agents": trace.agents,
         "url": format!("{origin}{PAGE}/{}", trace.id),
         "share_url": trace.shared.then(|| format!("{origin}{PUBLIC}/{}", trace.id)),
     })
@@ -721,6 +1108,134 @@ async fn api_delete(
     }
 }
 
+fn wire_agent(root: &str, agent: &Agent, origin: &str) -> Value {
+    json!({
+        "id": agent.id,
+        "parent": agent.parent,
+        "title": agent.title,
+        "agent": agent.agent,
+        "model": agent.model,
+        "steps": agent.steps,
+        "bytes": agent.bytes,
+        "uploaded_unix": agent.uploaded_unix,
+        "started_ms": agent.stats.started_ms,
+        "ended_ms": agent.stats.ended_ms,
+        "duration_ms": agent.stats.duration_ms(),
+        "prompt_tokens": agent.stats.prompt_tokens,
+        "completion_tokens": agent.stats.completion_tokens,
+        "cost_usd": agent.stats.cost_usd,
+        "tool_calls": agent.stats.tool_calls,
+        "url": format!("{origin}{PAGE}/{root}/agents/{}", agent.id),
+    })
+}
+
+fn query_value<'a>(query: Option<&'a str>, name: &str) -> Option<&'a str> {
+    query?.split('&').find_map(|part| {
+        part.split_once('=')
+            .filter(|(key, _)| *key == name)
+            .map(|(_, value)| value)
+    })
+}
+
+async fn api_upload_agent(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    if !json_request(&headers) {
+        return refused(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "invalid",
+            "Send the agent's trace as application/json.",
+        );
+    }
+    let owner = match api_owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let origin = origin(&app, &headers);
+    let parent = query_value(query.as_deref(), "parent").filter(|parent| !parent.is_empty());
+    match upload_agent(&app.config.chat_store, &owner, &id, parent, &body).await {
+        Ok(AgentUploaded::Saved { agent, existing }) => answer(
+            if existing {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            },
+            json!({"agent": wire_agent(&id, &agent, &origin), "existing": existing}),
+        ),
+        Ok(AgentUploaded::Unknown(message)) => refused(StatusCode::NOT_FOUND, "unknown", message),
+        Ok(AgentUploaded::Full) => refused(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "full",
+            "This trace has no room for more agents.",
+        ),
+        Ok(AgentUploaded::Refused(Uploaded::Secret(_))) => refused(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "secret",
+            "Part of this agent's trace looks like a password or key, so it wasn't saved. coder trace upload takes those out for you.",
+        ),
+        Ok(AgentUploaded::Refused(Uploaded::Invalid(message))) if message == "too_large" => {
+            refused(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "too_large",
+                "This agent's trace is larger than 8 MB.",
+            )
+        }
+        Ok(AgentUploaded::Refused(Uploaded::Invalid(message))) => {
+            refused(StatusCode::BAD_REQUEST, "invalid", &message)
+        }
+        Ok(AgentUploaded::Refused(_)) => refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "That trace can't be read.",
+        ),
+        Err(error) => stored(&error),
+    }
+}
+
+async fn api_agents(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = match api_owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let origin = origin(&app, &headers);
+    match load(&app.config.chat_store, &owner, &id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return refused(StatusCode::NOT_FOUND, "unknown", "No such trace."),
+        Err(error) => return stored(&error),
+    }
+    match agents(&app.config.chat_store, &owner, &id).await {
+        Ok(agents) => answer(
+            StatusCode::OK,
+            json!({"agents": agents.iter().map(|a| wire_agent(&id, a, &origin)).collect::<Vec<_>>()}),
+        ),
+        Err(error) => stored(&error),
+    }
+}
+
+async fn api_read_agent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, agent)): Path<(String, String)>,
+) -> Response {
+    let owner = match api_owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    match load_agent(&app.config.chat_store, &owner, &id, &agent).await {
+        Ok(Some((_, document))) => answer(StatusCode::OK, document),
+        Ok(None) => refused(StatusCode::NOT_FOUND, "unknown", "No such agent."),
+        Err(error) => stored(&error),
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ShareBody {
@@ -794,7 +1309,10 @@ fn list_content(traces: &[Summary]) -> Markup {
                         div class="oa-settings-text" {
                             span class="oa-settings-label" { (trace.title) }
                             span class="oa-settings-hint" {
-                                (steps_label(trace.steps)) " · uploaded " (day(trace.uploaded_unix))
+                                (steps_label(trace.steps))
+                                @if trace.agents == 1 { " · 1 agent" }
+                                @else if trace.agents > 1 { " · " (trace.agents) " agents" }
+                                " · uploaded " (day(trace.uploaded_unix))
                                 @if trace.shared { " · Shared" } @else { " · Private" }
                             }
                         }
@@ -808,8 +1326,24 @@ fn list_content(traces: &[Summary]) -> Markup {
     }
 }
 
+/// The agents a trace's steps started, by the tool call that started
+/// each: where its page is and its title.
+type AgentLinks = HashMap<String, (String, String)>;
+
+fn agent_links(agents: &[Agent], base: &str) -> AgentLinks {
+    agents
+        .iter()
+        .filter_map(|agent| {
+            Some((
+                agent.call.clone()?,
+                (format!("{base}/agents/{}", agent.id), agent.title.clone()),
+            ))
+        })
+        .collect()
+}
+
 /// The trace's steps, drawn plainly.
-fn steps_content(document: &Value) -> Markup {
+fn steps_content(document: &Value, links: &AgentLinks) -> Markup {
     let all = steps(document);
     let shown = &all[..all.len().min(MAX_SHOWN_STEPS)];
     html! {
@@ -837,9 +1371,13 @@ fn steps_content(document: &Value) -> Markup {
                 @for call in calls {
                     @let name = call.get("function_name").and_then(Value::as_str).unwrap_or("tool");
                     @let arguments = call.get("arguments").map(|a| a.as_str().map_or_else(|| a.to_string(), str::to_owned)).unwrap_or_default();
+                    @let started = call.get("tool_call_id").and_then(Value::as_str).and_then(|id| links.get(id));
                     p { strong { (line(name, 80)) } }
                     @if !arguments.is_empty() && arguments != "null" && arguments != "{}" {
                         pre { code { (secret_screen::head_and_tail(&arguments, MAX_SHOWN_RESULT)) } }
+                    }
+                    @if let Some((href, title)) = started {
+                        p { "Started " a href=(href) { (title) } }
                     }
                 }
                 @for result in results {
@@ -873,10 +1411,213 @@ fn about(trace: &Summary) -> String {
     parts.join(" · ")
 }
 
-/// A trace's page for its owner: what it is, Share and Delete, the steps.
+/// "45s", "19m", "3h 12m", "2d 4h".
+pub(crate) fn duration_words(ms: u64) -> String {
+    let seconds = ms / 1000;
+    match seconds {
+        0..60 => format!("{seconds}s"),
+        60..3600 => format!("{}m", seconds / 60),
+        3600..86_400 => format!("{}h {}m", seconds / 3600, seconds % 3600 / 60),
+        _ => format!("{}d {}h", seconds / 86_400, seconds % 86_400 / 3600),
+    }
+}
+
+/// "950", "219K", "43.8M".
+pub(crate) fn tokens_words(n: u64) -> String {
+    #[allow(clippy::cast_precision_loss)]
+    let x = n as f64;
+    match n {
+        0..1000 => n.to_string(),
+        1000..1_000_000 => format!("{:.0}K", x / 1e3),
+        1_000_000..100_000_000 => format!("{:.1}M", x / 1e6),
+        _ => format!("{:.0}M", x / 1e6),
+    }
+}
+
+/// "$0.04", "under $0.01", "$12.40".
+pub(crate) fn dollars(x: f64) -> String {
+    if x > 0.0 && x < 0.005 {
+        "under $0.01".into()
+    } else {
+        format!("${x:.2}")
+    }
+}
+
+/// An agent's numbers in a line: model, time, tokens, cost, tools.
+fn stats_words(model: &str, steps: usize, stats: &Stats) -> String {
+    let mut parts = Vec::new();
+    if !model.is_empty() {
+        parts.push(line(model, 60));
+    }
+    if let Some(ms) = stats.duration_ms() {
+        parts.push(duration_words(ms));
+    }
+    parts.push(steps_label(steps));
+    let tokens = stats.prompt_tokens + stats.completion_tokens;
+    if tokens > 0 {
+        parts.push(format!("{} tokens", tokens_words(tokens)));
+    }
+    if stats.cost_usd > 0.0 {
+        parts.push(dollars(stats.cost_usd));
+    }
+    if stats.tool_calls > 0 {
+        parts.push(if stats.tool_calls == 1 {
+            "1 tool call".into()
+        } else {
+            format!("{} tool calls", stats.tool_calls)
+        });
+    }
+    parts.join(" · ")
+}
+
+/// One row of the tree: the trace's own conversation or an agent.
+struct TreeNode<'a> {
+    title: &'a str,
+    model: &'a str,
+    steps: usize,
+    stats: &'a Stats,
+    href: String,
+    current: bool,
+    /// Open: the conversation, and every agent above the current one.
+    open: bool,
+    parent: usize,
+    children: Vec<usize>,
+}
+
+/// The trace's agents as a tree with a timeline: the conversation, then
+/// every agent under the one that started it, each with when it ran and
+/// what it spent. `base` is the trace's page (signed in or public);
+/// `current` marks the agent whose page this is.
+fn tree_content(
+    trace: &Summary,
+    root_stats: &Stats,
+    agents: &[Agent],
+    base: &str,
+    current: Option<&str>,
+) -> Markup {
+    let mut nodes = vec![TreeNode {
+        title: &trace.title,
+        model: &trace.model,
+        steps: trace.steps,
+        stats: root_stats,
+        href: base.to_owned(),
+        current: current.is_none(),
+        open: true,
+        parent: 0,
+        children: Vec::new(),
+    }];
+    let mut at: HashMap<&str, usize> = HashMap::new();
+    for agent in agents {
+        let index = nodes.len();
+        let parent = agent
+            .parent
+            .as_deref()
+            .and_then(|parent| at.get(parent).copied())
+            .unwrap_or(0);
+        nodes.push(TreeNode {
+            title: &agent.title,
+            model: &agent.model,
+            steps: agent.steps,
+            stats: &agent.stats,
+            href: format!("{base}/agents/{}", agent.id),
+            current: current == Some(agent.id.as_str()),
+            open: false,
+            parent,
+            children: Vec::new(),
+        });
+        nodes[parent].children.push(index);
+        at.insert(&agent.id, index);
+    }
+    if let Some(mut index) = nodes.iter().position(|node| node.current) {
+        while index != 0 {
+            nodes[index].open = true;
+            index = nodes[index].parent;
+        }
+    }
+    let start = nodes.iter().filter_map(|n| n.stats.started_ms).min();
+    let end = nodes.iter().filter_map(|n| n.stats.ended_ms).max();
+    let span = start.zip(end).filter(|(s, e)| e > s);
+    let tokens: u64 = nodes
+        .iter()
+        .map(|n| n.stats.prompt_tokens + n.stats.completion_tokens)
+        .sum();
+    let cost: f64 = nodes.iter().map(|n| n.stats.cost_usd).sum();
+    let mut totals = vec![if agents.len() == 1 {
+        "1 agent".to_owned()
+    } else {
+        format!("{} agents", agents.len())
+    }];
+    if let Some((s, e)) = span {
+        totals.push(format!("{} from start to finish", duration_words(e - s)));
+    }
+    if tokens > 0 {
+        totals.push(format!("{} tokens", tokens_words(tokens)));
+    }
+    if cost > 0.0 {
+        totals.push(format!("about {} in all", dollars(cost)));
+    }
+    html! {
+        section class="oa-trace-tree" aria-labelledby="trace-agents" {
+            h2 #trace-agents { "Agents" }
+            p class="oa-trace-totals" { (totals.join(" · ")) }
+            (tree_node(&nodes, 0, span))
+        }
+    }
+}
+
+fn tree_row(node: &TreeNode<'_>, span: Option<(u64, u64)>) -> Markup {
+    let bar = span.zip(node.stats.started_ms).map(|((s, e), started)| {
+        let whole = (e - s) as f64;
+        let ended = node.stats.ended_ms.unwrap_or(started).max(started);
+        #[allow(clippy::cast_precision_loss)]
+        let x = (started.saturating_sub(s)) as f64 / whole * 1000.0;
+        #[allow(clippy::cast_precision_loss)]
+        let width = ((ended - started) as f64 / whole * 1000.0).max(4.0);
+        (x.min(996.0), width.min(1000.0 - x.min(996.0)))
+    });
+    html! {
+        span class="oa-trace-row" {
+            span class="oa-trace-row-text" {
+                @if node.current {
+                    strong class="oa-trace-row-title" aria-current="page" { (node.title) }
+                } @else {
+                    a class="oa-trace-row-title" href=(node.href) { (node.title) }
+                }
+                span class="oa-trace-row-meta" { (stats_words(node.model, node.steps, node.stats)) }
+            }
+            @if let Some((x, width)) = bar {
+                svg class="oa-trace-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden="true" {
+                    rect x=(format!("{x:.1}")) y="0" width=(format!("{width:.1}")) height="8" rx="2" {}
+                }
+            }
+        }
+    }
+}
+
+fn tree_node(nodes: &[TreeNode<'_>], index: usize, span: Option<(u64, u64)>) -> Markup {
+    let node = &nodes[index];
+    html! {
+        @if node.children.is_empty() {
+            div class="oa-trace-node" { (tree_row(node, span)) }
+        } @else {
+            details class="oa-trace-node" open[node.open] {
+                summary { (tree_row(node, span)) }
+                div class="oa-trace-children" {
+                    @for &child in &node.children {
+                        (tree_node(nodes, child, span))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A trace's page for its owner: what it is, Share and Delete, its agents,
+/// the steps.
 fn trace_content(
     trace: &Summary,
     document: &Value,
+    agents: &[Agent],
     share_url: &str,
     share: (&str, &str),
     delete: (&str, &str),
@@ -888,7 +1629,13 @@ fn trace_content(
             h1 { (trace.title) }
             p { (about(trace)) }
             @if trace.shared {
-                p { "Shared: anyone with this link can see it." }
+                p {
+                    @if agents.is_empty() {
+                        "Shared: anyone with this link can see it."
+                    } @else {
+                        "Shared: anyone with this link can see it and its agents."
+                    }
+                }
                 p { a href=(share_url) { (share_url) } }
             } @else {
                 p { "Private: only you can see it." }
@@ -915,18 +1662,55 @@ fn trace_content(
                 }
             }
         }
-        (MarkdownRoot::new(steps_content(document)))
+        @if !agents.is_empty() {
+            (tree_content(trace, &Stats::of(document), agents, &base, None))
+        }
+        (MarkdownRoot::new(steps_content(document, &agent_links(agents, &base))))
     }
 }
 
 /// A shared trace's public page.
-fn public_content(trace: &Summary, document: &Value) -> Markup {
+fn public_content(trace: &Summary, document: &Value, agents: &[Agent]) -> Markup {
+    let base = format!("{PUBLIC}/{}", trace.id);
     html! {
         (MarkdownRoot::new(html! {
             h1 { (trace.title) }
             p { (about(trace)) }
         }))
-        (MarkdownRoot::new(steps_content(document)))
+        @if !agents.is_empty() {
+            (tree_content(trace, &Stats::of(document), agents, &base, None))
+        }
+        (MarkdownRoot::new(steps_content(document, &agent_links(agents, &base))))
+    }
+}
+
+/// An agent's page: where it sits in the tree, then its steps. `base` is
+/// its trace's page, signed in or public.
+fn agent_content(
+    trace: &Summary,
+    root_stats: &Stats,
+    agents: &[Agent],
+    agent: &Agent,
+    document: &Value,
+    base: &str,
+) -> Markup {
+    let parent = agent
+        .parent
+        .as_deref()
+        .and_then(|parent| agents.iter().find(|a| a.id == parent));
+    html! {
+        p class="oa-trace-crumbs" {
+            a href=(base) { (trace.title) }
+            @if let Some(parent) = parent {
+                " › " a href=(format!("{base}/agents/{}", parent.id)) { (parent.title) }
+            }
+        }
+        (MarkdownRoot::new(html! {
+            h1 { (agent.title) }
+            p { (stats_words(&agent.model, agent.steps, &agent.stats)) }
+        }))
+        (tree_content(trace, root_stats, agents, base, Some(&agent.id)))
+        (MarkdownRoot::new(steps_content(document, &agent_links(agents, base))))
     }
 }
 
@@ -986,6 +1770,10 @@ async fn trace_page(
         Ok(None) => return problem(StatusCode::NOT_FOUND, "You have no trace at that address."),
         Err(error) => return unavailable_page(&error),
     };
+    let agents = match agents(&app.config.chat_store, &owner, &id).await {
+        Ok(agents) => agents,
+        Err(error) => return unavailable_page(&error),
+    };
     let mut tickets = Vec::new();
     for scope in [SHARE_SCOPE, DELETE_SCOPE] {
         let request = fresh_request();
@@ -998,11 +1786,122 @@ async fn trace_page(
     let body = trace_content(
         &trace,
         &document,
+        &agents,
         &share_url,
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
     page(&headers, service, &viewer, &trace.title, &back, body)
+}
+
+async fn agent_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, agent_id)): Path<(String, String)>,
+) -> Response {
+    let base = format!("{PAGE}/{id}");
+    let back = format!("{base}/agents/{agent_id}");
+    let (service, viewer) = match viewer(&app, &headers, &back).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let owner = account_owner(&viewer.account_id);
+    let store = &app.config.chat_store;
+    let found = async {
+        let Some((trace, root)) = load(store, &owner, &id).await? else {
+            return Ok(None);
+        };
+        let Some((agent, document)) = load_agent(store, &owner, &id, &agent_id).await? else {
+            return Ok(None);
+        };
+        Ok::<_, Error>(Some((
+            trace,
+            root,
+            agent,
+            document,
+            agents(store, &owner, &id).await?,
+        )))
+    };
+    let (trace, root, agent, document, agents) = match found.await {
+        Ok(Some(found)) => found,
+        Ok(None) => return problem(StatusCode::NOT_FOUND, "You have no trace at that address."),
+        Err(error) => return unavailable_page(&error),
+    };
+    let body = agent_content(&trace, &Stats::of(&root), &agents, &agent, &document, &base);
+    page(&headers, service, &viewer, &agent.title, &back, body)
+}
+
+fn public_response(headers: &HeaderMap, title: &str, path: &str, body: Markup) -> Response {
+    let mut response = UiPage::new(title.to_owned())
+        .path(path)
+        .scriptless()
+        .content(PageColumn::new(body))
+        .respond(headers);
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        axum::http::HeaderValue::from_static("no-referrer"),
+    );
+    response
+}
+
+fn public_missing() -> Response {
+    crate::layout::problem(
+        StatusCode::NOT_FOUND,
+        "Not found",
+        "Nothing on this site has that address.",
+        ("/", "Home"),
+    )
+}
+
+fn public_unavailable(error: &Error) -> Response {
+    eprintln!("openagents-web: traces: {error}");
+    crate::layout::problem(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Trace",
+        "This trace can't be read right now. Try again in a minute.",
+        ("/", "Home"),
+    )
+}
+
+async fn public_agent_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, agent_id)): Path<(String, String)>,
+) -> Response {
+    let store = &app.config.chat_store;
+    let found = async {
+        let Some((trace, agent, document)) = public_agent(store, &id, &agent_id).await? else {
+            return Ok(None);
+        };
+        let Some((_, root)) = public(store, &id).await? else {
+            return Ok(None);
+        };
+        Ok::<_, Error>(Some((
+            trace,
+            root,
+            agent,
+            document,
+            public_agents(store, &id).await?,
+        )))
+    };
+    match found.await {
+        Ok(Some((trace, root, agent, document, agents))) => {
+            let base = format!("{PUBLIC}/{id}");
+            let body = agent_content(&trace, &Stats::of(&root), &agents, &agent, &document, &base);
+            public_response(
+                &headers,
+                &agent.title,
+                &format!("{base}/agents/{agent_id}"),
+                body,
+            )
+        }
+        Ok(None) => public_missing(),
+        Err(error) => public_unavailable(&error),
+    }
 }
 
 #[derive(Deserialize)]
@@ -1086,38 +1985,22 @@ async fn public_page(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    match public(&app.config.chat_store, &id).await {
-        Ok(Some((trace, document))) => {
-            let mut response = UiPage::new(trace.title.clone())
-                .path(&format!("{PUBLIC}/{id}"))
-                .scriptless()
-                .content(PageColumn::new(public_content(&trace, &document)))
-                .respond(&headers);
-            response.headers_mut().insert(
-                header::CACHE_CONTROL,
-                axum::http::HeaderValue::from_static("no-store"),
-            );
-            response.headers_mut().insert(
-                header::REFERRER_POLICY,
-                axum::http::HeaderValue::from_static("no-referrer"),
-            );
-            response
-        }
-        Ok(None) => crate::layout::problem(
-            StatusCode::NOT_FOUND,
-            "Not found",
-            "Nothing on this site has that address.",
-            ("/", "Home"),
+    let store = &app.config.chat_store;
+    let found = async {
+        let Some((trace, document)) = public(store, &id).await? else {
+            return Ok(None);
+        };
+        Ok::<_, Error>(Some((trace, document, public_agents(store, &id).await?)))
+    };
+    match found.await {
+        Ok(Some((trace, document, agents))) => public_response(
+            &headers,
+            &trace.title,
+            &format!("{PUBLIC}/{id}"),
+            public_content(&trace, &document, &agents),
         ),
-        Err(error) => {
-            eprintln!("openagents-web: traces: {error}");
-            crate::layout::problem(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Trace",
-                "This trace can't be read right now. Try again in a minute.",
-                ("/", "Home"),
-            )
-        }
+        Ok(None) => public_missing(),
+        Err(error) => public_unavailable(&error),
     }
 }
 
@@ -1296,6 +2179,7 @@ mod tests {
         let page = trace_content(
             &summary,
             &document,
+            &[],
             "https://openagents.com/trace/x",
             ("a", "b"),
             ("c", "d"),
@@ -1310,6 +2194,7 @@ mod tests {
         let shared = trace_content(
             &summary,
             &document,
+            &[],
             "https://openagents.com/trace/x",
             ("a", "b"),
             ("c", "d"),
@@ -1318,8 +2203,232 @@ mod tests {
         assert!(
             shared.contains(">Stop sharing<") && shared.contains("https://openagents.com/trace/x")
         );
-        let public = public_content(&summary, &document).into_string();
+        let public = public_content(&summary, &document, &[]).into_string();
         crate::copy_guard::assert_plain("/trace/x", &public);
         assert!(!public.contains("Delete"));
+    }
+
+    fn agent_trace(title: &str, call: &str, start: &str, end: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "schema_version": "ATIF-v1.8",
+            "session_id": title,
+            "agent": {"name": "claude-code", "version": "2", "model_name": "claude-sonnet-5-5"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": format!("Do {title}"), "timestamp": start},
+                {"step_id": 2, "source": "agent", "message": "Done.", "timestamp": end,
+                 "metrics": {"prompt_tokens": 1000, "completion_tokens": 50, "cost_usd": 0.25},
+                 "tool_calls": [{"tool_call_id": format!("{title}-c"), "function_name": "Bash", "arguments": {}}]}
+            ],
+            "extra": {"title": title, "parent_tool_call_id": call},
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_trace_keeps_a_tree_of_agents() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let me = owner();
+        let Uploaded::Saved { trace: root, .. } =
+            upload(&store, &me, &trace("Fan out"), false).await.unwrap()
+        else {
+            panic!("not saved");
+        };
+        // Unknown trace, unknown parent, another account.
+        let a = agent_trace("a", "c1", "2026-10-09T10:00:00Z", "2026-10-09T10:10:00Z");
+        let unknown = trace_id(&me, "nope");
+        assert!(matches!(
+            upload_agent(&store, &me, &unknown, None, &a).await.unwrap(),
+            AgentUploaded::Unknown(_)
+        ));
+        assert!(matches!(
+            upload_agent(&store, &me, &root.id, Some(&unknown), &a)
+                .await
+                .unwrap(),
+            AgentUploaded::Unknown(_)
+        ));
+        assert!(matches!(
+            upload_agent(&store, &account_owner("acct_two"), &root.id, None, &a)
+                .await
+                .unwrap(),
+            AgentUploaded::Unknown(_)
+        ));
+        let github = format!("ghp_{}", "Z9".repeat(18));
+        assert!(matches!(
+            upload_agent(&store, &me, &root.id, None, &trace(&github))
+                .await
+                .unwrap(),
+            AgentUploaded::Refused(Uploaded::Secret(_))
+        ));
+        let mut ids = Vec::new();
+        for (title, call) in [("a", "c1"), ("b", "c2"), ("c", "c3")] {
+            let AgentUploaded::Saved { agent, existing } = upload_agent(
+                &store,
+                &me,
+                &root.id,
+                None,
+                &agent_trace(title, call, "2026-10-09T10:00:00Z", "2026-10-09T10:10:00Z"),
+            )
+            .await
+            .unwrap() else {
+                panic!("not saved");
+            };
+            assert!(!existing);
+            assert_eq!(agent.stats.duration_ms(), Some(600_000));
+            assert_eq!(agent.stats.prompt_tokens, 1000);
+            ids.push(agent.id);
+        }
+        // Again: saved once.
+        let AgentUploaded::Saved { agent, existing } =
+            upload_agent(&store, &me, &root.id, None, &a).await.unwrap()
+        else {
+            panic!("not saved");
+        };
+        assert!(existing && agent.id == ids[0]);
+        // A nested agent under the first.
+        let AgentUploaded::Saved { agent: deep, .. } = upload_agent(
+            &store,
+            &me,
+            &root.id,
+            Some(&ids[0]),
+            &agent_trace(
+                "deep",
+                "a-c",
+                "2026-10-09T10:02:00Z",
+                "2026-10-09T10:03:00Z",
+            ),
+        )
+        .await
+        .unwrap() else {
+            panic!("not saved");
+        };
+        let tree = agents(&store, &me, &root.id).await.unwrap();
+        assert_eq!(tree.len(), 4);
+        assert_eq!(tree[3].parent.as_deref(), Some(ids[0].as_str()));
+        assert_eq!(list(&store, &me).await.unwrap()[0].agents, 4);
+        assert!(
+            load_agent(&store, &me, &root.id, &deep.id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        // Private until the trace is shared; then each agent is too.
+        assert!(
+            public_agent(&store, &root.id, &deep.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        set_shared(&store, &me, &root.id, true).await.unwrap();
+        assert!(
+            public_agent(&store, &root.id, &deep.id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(public_agents(&store, &root.id).await.unwrap().len(), 4);
+        // Deleting the trace takes its agents with it.
+        assert!(delete(&store, &me, &root.id).await.unwrap());
+        assert!(agents(&store, &me, &root.id).await.unwrap().is_empty());
+        assert!(
+            public_agent(&store, &root.id, &deep.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .read_key(&agent_key(&me, &root.id, &deep.id).unwrap())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_tree_shows_each_agent_with_its_time_and_cost() {
+        let (document, mut summary) = check(&trace("Fan out")).unwrap();
+        summary.id = trace_id(&owner(), &summary.digest);
+        let agent = |id: &str, parent: Option<&str>, call: &str, start: u64, end: u64| Agent {
+            id: trace_id(&owner(), id),
+            parent: parent.map(|p| trace_id(&owner(), p)),
+            title: format!("Agent {id}"),
+            agent: "claude-code".into(),
+            model: "claude-sonnet-5-5".into(),
+            steps: 4,
+            bytes: 10,
+            digest: id.into(),
+            uploaded_unix: 1,
+            call: Some(call.into()),
+            stats: Stats {
+                started_ms: Some(start),
+                ended_ms: Some(end),
+                prompt_tokens: 219_000,
+                completion_tokens: 523,
+                cost_usd: 1.2,
+                tool_calls: 85,
+            },
+        };
+        let agents = vec![
+            agent("a", None, "c1", 0, 1_140_000),
+            agent("b", None, "c2", 60_000, 600_000),
+            agent("c", None, "c3", 120_000, 3_600_000),
+            agent("d", Some("a"), "x", 300_000, 400_000),
+        ];
+        let base = format!("{PAGE}/{}", summary.id);
+        let page = trace_content(
+            &summary,
+            &document,
+            &agents,
+            "https://openagents.com/trace/x",
+            ("a", "b"),
+            ("c", "d"),
+        )
+        .into_string();
+        crate::copy_guard::assert_plain(&base, &page);
+        assert!(
+            page.contains("4 agents · 1h 0m from start to finish"),
+            "{page}"
+        );
+        for agent in &agents {
+            assert!(page.contains(&format!("{base}/agents/{}", agent.id)));
+        }
+        assert!(
+            page.contains(
+                "claude-sonnet-5-5 · 19m · 4 steps · 220K tokens · $1.20 · 85 tool calls"
+            )
+        );
+        assert_eq!(page.matches("<rect").count(), 4, "one bar per timed agent");
+        // The conversation's three agents sit directly under it, the fourth under the first.
+        assert_eq!(page.matches("<details class=\"oa-trace-node\"").count(), 2);
+        // The call that started an agent links to it.
+        assert!(page.contains(&format!(
+            "Started <a href=\"{base}/agents/{}\">Agent a</a>",
+            agents[0].id
+        )));
+        let page = agent_content(
+            &summary,
+            &Stats::default(),
+            &agents,
+            &agents[3],
+            &document,
+            &format!("{PUBLIC}/{}", summary.id),
+        )
+        .into_string();
+        crate::copy_guard::assert_plain("/trace/x/agents/y", &page);
+        assert!(page.contains("aria-current=\"page\">Agent d<"));
+        assert!(page.contains(">Agent a<"), "the parent is linked");
+        assert_eq!(
+            page.matches("<details class=\"oa-trace-node\" open")
+                .count(),
+            2
+        );
+        let public = public_content(&summary, &document, &agents).into_string();
+        assert!(public.contains(&format!("{PUBLIC}/{}/agents/", summary.id)));
+        assert!(!public.contains(PAGE));
+        assert_eq!(duration_words(45_000), "45s");
+        assert_eq!(duration_words(90_000_000), "1d 1h");
+        assert_eq!(tokens_words(43_800_000), "43.8M");
+        assert_eq!(dollars(0.001), "under $0.01");
     }
 }

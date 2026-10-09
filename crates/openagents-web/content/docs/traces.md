@@ -39,6 +39,28 @@ Coder prints the trace's address when it's done. Uploading the same trace
 twice keeps one copy. A trace can be up to 8 MB, and your account keeps up
 to 100.
 
+## Upload a session with its agents
+
+A session that started other agents uploads as one trace with every agent
+under the one that started it. To upload a Claude Code session, give its id,
+its `.jsonl` file, or its folder:
+
+```sh
+coder trace upload --claude-session 3ba359c8-4ac9-42a6-a8e7-2e08994e591e
+```
+
+Coder reads the session and its agents from `~/.claude/projects`, takes out
+keys and personal details the same way, and shortens very long tool output
+so each agent fits in 8 MB. A trace keeps up to 1,000 agents. If some
+agents don't upload, run the same command again: what's already there is
+kept, and only the rest is sent. A Coder chat that ran agents uploads the
+same way with `--last`.
+
+The trace's page shows its agents as a tree under **Agents**: each one with
+how long it ran, the tokens it used, and about what it cost at list prices,
+on a shared timeline. Open an agent to read its own steps. Sharing the trace
+shares its agents too.
+
 ## See and share your traces
 
 ```sh

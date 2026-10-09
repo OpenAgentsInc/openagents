@@ -330,10 +330,50 @@ def traces(base, session):
     settings = page.follow("/settings/traces")
     record("traces: Settings > Traces lists it", settings.status == 200 and tid in settings.text,
            f"{settings.status}")
+    agents_tree(base, site, page, auth, tid, doc)
     deleted = site.request(f"/api/traces/{tid}", method="DELETE", headers=auth)
     after = site.get(f"/api/traces/{tid}", headers=auth)
     record("traces: DELETE removes it", deleted.status == 200 and after.status == 404,
            f"{deleted.status}/{after.status}")
+
+
+def agents_tree(base, site, page, auth, tid, doc):
+    """A trace's agents (#11178): one agent under the trace, one under it,
+    shown on the trace's page and public while the trace is shared."""
+    child = dict(doc, session_id=doc["session_id"] + "-a",
+                 extra={"title": "Smoke agent", "parent_tool_call_id": "c1"})
+    added = site.request(f"/api/traces/{tid}/agents", method="POST", body=child, headers=auth)
+    try:
+        aid = added.json()["agent"]["id"]
+    except (ValueError, KeyError, TypeError):
+        if added.status in (404, 405) and "unknown" not in added.text:
+            record("traces: agents under a trace", None, "not on this build (#11178)")
+        else:
+            record("traces: POST /api/traces/{id}/agents saves an agent", False,
+                   f"{added.status} {added.text[:120]}")
+        return
+    deep = dict(doc, session_id=doc["session_id"] + "-b", extra={"title": "Smoke nested agent"})
+    nested = site.request(f"/api/traces/{tid}/agents?parent={aid}", method="POST", body=deep, headers=auth)
+    record("traces: agents save under the trace and under each other",
+           added.status == 201 and nested.status == 201, f"{added.status}/{nested.status}")
+    listed = site.get(f"/api/traces/{tid}/agents", headers=auth)
+    try:
+        tree = listed.json()["agents"]
+    except (ValueError, KeyError, TypeError):
+        tree = []
+    record("traces: GET /api/traces/{id}/agents lists the tree",
+           len(tree) == 2 and tree[1].get("parent") == aid, f"{listed.status} {len(tree)}")
+    shown = page.follow(f"/settings/traces/{tid}")
+    record("traces: the trace's page shows its agents",
+           shown.status == 200 and "Smoke agent" in shown.text and f"/agents/{aid}" in shown.text,
+           f"{shown.status}")
+    private = Site(base).get(f"/trace/{tid}/agents/{aid}")
+    site.request(f"/api/traces/{tid}/share", method="POST", body={"shared": True}, headers=auth)
+    public = Site(base).get(f"/trace/{tid}/agents/{aid}")
+    site.request(f"/api/traces/{tid}/share", method="POST", body={"shared": False}, headers=auth)
+    record("traces: an agent is public only while its trace is shared",
+           private.status == 404 and public.status == 200 and "Smoke agent" in public.text,
+           f"{private.status}/{public.status}")
 
 
 # ---------------------------------------------------------------------------

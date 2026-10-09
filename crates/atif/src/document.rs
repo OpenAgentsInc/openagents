@@ -968,6 +968,46 @@ pub fn iso(at: u64) -> String {
     )
 }
 
+/// Milliseconds since the epoch of an RFC 3339 UTC timestamp such as
+/// `2026-10-08T22:10:20.217Z` (what [`iso`] writes, with any number of
+/// fraction digits); `None` when it isn't one.
+#[must_use]
+pub fn parse_iso(at: &str) -> Option<u64> {
+    let bytes = at.as_bytes();
+    if bytes.len() < 19 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| at.get(range)?.parse::<u64>().ok();
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+        return None;
+    }
+    let fraction = at
+        .get(19..)
+        .and_then(|rest| rest.strip_prefix('.'))
+        .map_or(0, |rest| {
+            let digits: String = rest
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .take(3)
+                .collect();
+            format!("{digits:0<3}").parse::<u64>().unwrap_or(0)
+        });
+    // Days from the civil date, by Howard Hinnant's days-from-civil.
+    let (y, m) = if month <= 2 {
+        (year.checked_sub(1)?, month + 9)
+    } else {
+        (year, month - 3)
+    };
+    let era = y / 400;
+    let year_of_era = y - era * 400;
+    let day_of_year = (153 * m + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = (era * 146_097 + day_of_era).checked_sub(719_468)?;
+    Some((((days * 24 + hour) * 60 + minute) * 60 + second) * 1000 + fraction)
+}
+
 /// A compact UTC stamp — `20260919T142233Z` — for a file name, where a
 /// colon is not welcome.
 #[must_use]
@@ -1312,6 +1352,17 @@ mod tests {
         assert_eq!(iso(0), "1970-01-01T00:00:00.000Z");
         assert_eq!(iso(1_758_290_553_123), "2025-09-19T14:02:33.123Z");
         assert_eq!(stamp(1_758_290_553_123), "20250919T140233Z");
+        for at in [0, 1_758_290_553_123, 951_782_400_000, 4_102_444_799_999] {
+            assert_eq!(parse_iso(&iso(at)), Some(at), "{}", iso(at));
+        }
+        assert_eq!(parse_iso("1970-01-01T00:00:01.5Z"), Some(1500));
+        assert_eq!(
+            parse_iso("2026-10-09T10:07:00Z"),
+            parse_iso("2026-10-09T10:07:00.000Z")
+        );
+        for bad in ["", "nope", "2026-13-01T00:00:00Z", "2026/10/09T10:07:00Z"] {
+            assert_eq!(parse_iso(bad), None, "{bad}");
+        }
     }
 
     /// Usage lands on the step that spent it and totals across the session.

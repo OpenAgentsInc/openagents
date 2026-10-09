@@ -32,6 +32,7 @@
 //! [`Settings`] lives in `sync.json` (0600) beside the account file.
 
 pub mod activity;
+pub mod claude_session;
 pub mod traces;
 
 use std::collections::{BTreeMap, BTreeSet};

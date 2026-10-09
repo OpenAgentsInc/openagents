@@ -47,6 +47,7 @@ Sign Coder in with `coder login`, then run `coder trace upload --last` for your 
 - The website checks again and refuses a trace that still looks like it holds a key.
 - A shared trace's link is `openagents.com/trace/` and its id; Stop sharing turns the link off.
 - `openagents coder trace upload` and `openagents coder trace list` run the same commands.
+- `coder trace upload --claude-session ID` uploads a Claude Code session with every agent it started, as one trace whose page shows the agents as a tree with each one's time, tokens, and estimated cost; a trace keeps up to 1,000 agents, and sharing it shares them too.
 
 ## Sources
 

@@ -202,6 +202,134 @@ pub fn upload(saved: &Saved, prepared: &Prepared, share: bool) -> Result<Uploade
     })
 }
 
+/// A tree ready to send: each node's parent (an index into the list, the
+/// main conversation first) and its prepared trajectory.
+#[derive(Debug)]
+pub struct PreparedTree {
+    pub nodes: Vec<(Option<usize>, Prepared)>,
+    /// What redaction took out across the tree, by rule.
+    pub left_out: Counts,
+}
+
+/// Redact every node of `nodes` with `screen`, shortening any that is too
+/// large to send. `left_out` is what an earlier pass (the converter's)
+/// already took out, added to the total.
+///
+/// # Errors
+/// When a node isn't a trace, or there are none.
+pub fn prepare_tree(
+    nodes: Vec<crate::claude_session::Node>,
+    screen: &Screen,
+    mut left_out: Counts,
+) -> Result<PreparedTree, String> {
+    let mut prepared = Vec::with_capacity(nodes.len());
+    for mut node in nodes {
+        crate::claude_session::fit(&mut node.document, crate::claude_session::NODE_BYTES);
+        let one = prepare(node.document, screen)?;
+        for (rule, count) in &one.left_out {
+            *left_out.entry(rule.clone()).or_default() += count;
+        }
+        prepared.push((node.parent, one));
+    }
+    if prepared.is_empty() {
+        return Err("There's nothing to upload.".into());
+    }
+    Ok(PreparedTree {
+        nodes: prepared,
+        left_out,
+    })
+}
+
+/// What a tree upload did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TreeUploaded {
+    /// The main conversation's trace; its page shows the whole tree.
+    pub trace: Trace,
+    pub existing: bool,
+    /// Agents saved under it (new or already there).
+    pub agents: usize,
+    /// Agents the website refused, with its words.
+    pub failed: Vec<String>,
+}
+
+/// Upload a tree: the main conversation as a trace, then every agent under
+/// its parent. Sending the same tree again saves nothing twice, so an
+/// interrupted upload can simply be run again. `progress` hears (done,
+/// total) after each node.
+///
+/// # Errors
+/// When the main conversation can't be saved. An agent that can't be is
+/// counted in [`TreeUploaded::failed`], and its own agents go under the
+/// nearest saved one.
+pub fn upload_tree(
+    saved: &Saved,
+    tree: &PreparedTree,
+    share: bool,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<TreeUploaded, String> {
+    let total = tree.nodes.len();
+    runtime()?.block_on(async {
+        let (_, root) = &tree.nodes[0];
+        let path = if share {
+            "/api/traces?share=true"
+        } else {
+            "/api/traces"
+        };
+        let body = send(saved, reqwest::Method::POST, path, Some(root.bytes.clone())).await?;
+        let trace = trace_of(&body["trace"])?;
+        let existing = body["existing"].as_bool().unwrap_or(false);
+        progress(1, total);
+        // Each node's id on the website; None for the main conversation
+        // or a node that wasn't saved.
+        let mut ids: Vec<Option<String>> = vec![None; total];
+        let mut agents = 0;
+        let mut failed = Vec::new();
+        for index in 1..total {
+            let (parent, node) = &tree.nodes[index];
+            let mut at = *parent;
+            let parent_id = loop {
+                match at {
+                    Some(0) | None => break None,
+                    Some(i) => match &ids[i] {
+                        Some(id) => break Some(id.clone()),
+                        None => at = tree.nodes[i].0,
+                    },
+                }
+            };
+            let path = match &parent_id {
+                Some(parent) => format!("/api/traces/{}/agents?parent={parent}", trace.id),
+                None => format!("/api/traces/{}/agents", trace.id),
+            };
+            match send(
+                saved,
+                reqwest::Method::POST,
+                &path,
+                Some(node.bytes.clone()),
+            )
+            .await
+            {
+                Ok(body) => {
+                    ids[index] = body["agent"]["id"].as_str().map(str::to_owned);
+                    agents += 1;
+                }
+                Err(error) => {
+                    let title = node.document["extra"]["title"]
+                        .as_str()
+                        .unwrap_or("An agent");
+                    failed.push(format!("{title}: {error}"));
+                }
+            }
+            progress(index + 1, total);
+        }
+        Ok(TreeUploaded {
+            trace,
+            existing,
+            agents,
+            failed,
+        })
+    })
+}
+
 /// The account's traces, newest first.
 ///
 /// # Errors
@@ -325,5 +453,87 @@ mod tests {
         assert_eq!(query, "share=true");
         assert_eq!(document["steps"][0]["message"], "Fix");
         assert!(list(&account).unwrap_err().contains("coder login"));
+    }
+
+    /// A Claude Code session with three agents (one with its own agent)
+    /// goes up as a trace and four agents, each under its parent, and an
+    /// agent the website refuses doesn't stop the rest.
+    #[test]
+    fn a_session_tree_goes_up_parent_first() {
+        let seen: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
+        let kept = seen.clone();
+        let router = Router::new().fallback(move |uri: axum::http::Uri, body: Bytes| {
+            let kept = kept.clone();
+            async move {
+                let document: Value = serde_json::from_slice(&body).unwrap();
+                let path = uri.to_string();
+                let mut kept = kept.lock().unwrap();
+                kept.push((path.clone(), document.clone()));
+                let n = kept.len();
+                if path == "/api/traces" {
+                    return (
+                        StatusCode::CREATED,
+                        axum::Json(json!({"trace": {
+                                "id": "root", "title": "Fan out demo", "steps": 6,
+                                "url": "http://x/settings/traces/root"}, "existing": false})),
+                    );
+                }
+                if document["extra"]["title"] == "Agent b2" {
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        axum::Json(json!({"error": {"code": "secret", "message": "No."}})),
+                    );
+                }
+                (
+                    StatusCode::CREATED,
+                    axum::Json(json!({"agent": {"id": format!("agent{n}")}, "existing": false})),
+                )
+            }
+        });
+        let (send, address) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(async move {
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    send.send(format!("http://{}", listener.local_addr().unwrap()))
+                        .unwrap();
+                    axum::serve(listener, router).await.unwrap();
+                });
+        });
+        let account = saved(&address.recv().unwrap());
+        let temp = tempfile::tempdir().unwrap();
+        let main = crate::claude_session::tests::fixture(temp.path());
+        let (nodes, counts) = crate::claude_session::convert(&main, &Screen::shapes()).unwrap();
+        let tree = prepare_tree(nodes, &Screen::shapes(), counts).unwrap();
+        assert!(
+            left_out_text(&tree.left_out)
+                .unwrap()
+                .contains("1 password or key")
+        );
+        let mut heard = Vec::new();
+        let uploaded = upload_tree(&account, &tree, false, &mut |done, total| {
+            heard.push((done, total));
+        })
+        .unwrap();
+        assert_eq!(heard.last(), Some(&(5, 5)));
+        assert_eq!(uploaded.trace.id, "root");
+        assert_eq!(uploaded.agents, 3);
+        assert_eq!(uploaded.failed, ["Agent b2: No."]);
+        let seen = seen.lock().unwrap();
+        let paths: Vec<&str> = seen.iter().map(|(path, _)| path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "/api/traces",
+                "/api/traces/root/agents",
+                "/api/traces/root/agents",
+                "/api/traces/root/agents",
+                // d4 under a1, which the website called agent2.
+                "/api/traces/root/agents?parent=agent2",
+            ]
+        );
+        let all = serde_json::to_string(&*seen).unwrap();
+        assert!(!all.contains("ghp_") && !all.contains("/Users/octo"));
     }
 }

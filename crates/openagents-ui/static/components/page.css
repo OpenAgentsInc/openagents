@@ -355,3 +355,87 @@
   flex: none;
   align-items: center;
 }
+
+/* A trace's agents: a tree with one timeline bar per agent (#11178). */
+.oa-trace-tree {
+  margin: calc(var(--spacing) * 6) 0;
+}
+
+.oa-trace-crumbs {
+  margin: 0 0 calc(var(--spacing) * 4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  overflow-wrap: anywhere;
+}
+
+.oa-trace-crumbs a {
+  color: inherit;
+}
+
+.oa-trace-tree > h2 {
+  margin: 0 0 calc(var(--spacing) * 1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-trace-totals {
+  margin: 0 0 calc(var(--spacing) * 3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-trace-node > summary {
+  cursor: pointer;
+  list-style-position: outside;
+}
+
+.oa-trace-children {
+  margin-left: calc(var(--spacing) * 4);
+  padding-left: calc(var(--spacing) * 3);
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.oa-trace-row {
+  display: inline-flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  width: calc(100% - var(--spacing) * 6);
+  padding: calc(var(--spacing) * 2) 0;
+  vertical-align: top;
+}
+
+.oa-trace-row-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+  min-width: 0;
+}
+
+.oa-trace-row-title {
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.oa-trace-row-meta {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-trace-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-background-secondary-soft);
+}
+
+.oa-trace-bar rect {
+  fill: var(--color-background-info-solid);
+}
+
+[aria-current="page"].oa-trace-row-title {
+  font-weight: var(--font-weight-semibold);
+}
