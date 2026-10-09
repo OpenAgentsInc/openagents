@@ -303,8 +303,11 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCreate<'loc
                             config.gym()?,
                         )
                     }?;
-                    // The owner's private characters in Everglade.
-                    crate::verse_private::mount(&mut handle, world);
+                    // The owner's private characters in Everglade, which
+                    // only a preview build's Grid leads to.
+                    if crate::preview::ON {
+                        crate::verse_private::mount(&mut handle, world);
+                    }
                     let id = next_handle()?;
                     verses.insert(
                         id,

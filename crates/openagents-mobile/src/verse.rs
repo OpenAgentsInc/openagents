@@ -64,6 +64,13 @@ pub(crate) fn zone_cache(cache_directory: Option<&str>) -> Option<String> {
         .then(|| directory.join("VerseZones").to_string_lossy().into_owned())
 }
 
+/// The zone pack cache the Grid gets: [`zone_cache`] in a preview build,
+/// none otherwise, so a normal build's Grid has no portal to Everglade
+/// (`docs/mobile/1.0-audit.md`).
+pub(crate) fn grid_zone_cache(cache_directory: Option<&str>) -> Option<String> {
+    zone_cache(cache_directory).filter(|_| crate::preview::ON)
+}
+
 /// The host's mount: the layer's drawable size in pixels, its scale, whether
 /// the layer is set up for extended dynamic range, and the world identity.
 #[derive(Deserialize)]
@@ -203,9 +210,10 @@ unsafe fn openagents_verse_create_inner(
         evals_panel: true,
         notes: config.gym_notes,
         check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
-        zone_cache_directory: zone_cache(config.results_cache_directory.as_deref()),
+        zone_cache_directory: grid_zone_cache(config.results_cache_directory.as_deref()),
         // The block list lives beside the zone packs.
         blocklist_directory: None,
+        without_gym: !crate::preview::ON,
     };
     let world = presence.is_some();
     let mut handle = unsafe {
@@ -221,7 +229,9 @@ unsafe fn openagents_verse_create_inner(
     }?;
     // The owner's private characters in Everglade, from the app's
     // private Verse directory (`crate::verse_private`).
-    crate::verse_private::mount(&mut handle, world);
+    if crate::preview::ON {
+        crate::verse_private::mount(&mut handle, world);
+    }
     Ok(handle)
 }
 

@@ -218,9 +218,13 @@ impl SurfaceConfig {
             evals_panel: true,
             notes: self.gym_notes,
             check_relay: None,
-            zone_cache_directory: crate::verse::zone_cache(self.results_cache_directory.as_deref()),
+            zone_cache_directory: crate::verse::grid_zone_cache(
+                self.results_cache_directory.as_deref(),
+            ),
             // The block list lives beside the zone packs.
             blocklist_directory: None,
+            // A normal build's Grid is plain: no Gym (the release gate).
+            without_gym: !crate::preview::ON,
         })
     }
 }

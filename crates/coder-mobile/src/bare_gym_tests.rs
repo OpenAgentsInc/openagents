@@ -189,3 +189,35 @@ fn the_native_json_path_carries_the_grids_board() {
     let closed = call(&mut handle, r#"{"action":"close_gym"}"#);
     assert_eq!(closed["gym_open"], false);
 }
+
+#[test]
+fn the_plain_grid_has_no_gym_boards_or_walls() {
+    let mut scene = Scene::new(bare_config_with_gym(
+        800,
+        1200,
+        2.0,
+        false,
+        None,
+        BareGym {
+            code: Some("gym-connect:not-a-grant".into()),
+            panel: true,
+            results_panel: true,
+            evals_panel: true,
+            without_gym: true,
+            ..BareGym::default()
+        },
+    ))
+    .unwrap();
+    scene.remove_gym();
+    scene.activate(true).unwrap();
+    scene.update(1.0).unwrap();
+    assert!(scene.world.gym_site().is_none());
+    assert!(!scene.world.has_gym());
+    assert!(scene.world.world.blockers.is_empty());
+    let gym = scene.gym();
+    assert!(!gym.visible && !gym.inside, "{gym:?}");
+    assert!(scene.gym_configuration_error.is_none());
+    assert!(scene.action(Request::InteractGym).is_err());
+    assert!(scene.action(Request::InteractResults).is_err());
+    assert!(scene.action(Request::InteractEvals).is_err());
+}

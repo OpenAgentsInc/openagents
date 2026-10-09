@@ -231,6 +231,23 @@ mod tests {
     }
 
     #[test]
+    fn the_plain_grid_has_no_gym_site_walls_or_arches() {
+        let mut runtime = WorldRuntime::bare();
+        assert!(runtime.gym_site().is_some());
+        assert!(!runtime.world.blockers.is_empty());
+        runtime.remove_gym();
+        assert!(!runtime.has_gym());
+        assert!(runtime.gym_site().is_none());
+        assert!(runtime.world.blockers.is_empty());
+        // No zone storage: no portal to Everglade, and Lagrange 1 is shut.
+        assert!(grid_pack::gates(&runtime).is_empty());
+        // Coder's plaza keeps its Gym.
+        let mut plaza = WorldRuntime::new();
+        plaza.remove_gym();
+        assert!(plaza.has_gym() && plaza.gym_site().is_some());
+    }
+
+    #[test]
     fn the_bare_grid_frame_has_one_figure_per_player_and_its_arches() {
         let runtime = WorldRuntime::bare();
         let pack = grid_pack::load_pinned().unwrap();

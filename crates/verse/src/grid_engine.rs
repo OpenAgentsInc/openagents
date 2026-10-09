@@ -61,6 +61,19 @@ impl Content {
         })
     }
 
+    /// The built-in Grid pack without the Gym's hall and boards
+    /// ([`crate::runtime::WorldRuntime::remove_gym`]).
+    ///
+    /// # Errors
+    /// The embedded pack cannot be admitted.
+    pub fn grid_without_gym() -> Result<Self, String> {
+        let mut content = Self::grid()?;
+        content
+            .statics
+            .retain(|i| ![grid_pack::GYM, grid_pack::BOARDS].contains(&i.model.as_str()));
+        Ok(content)
+    }
+
     /// A chamber's pack read from `dir`, with its scene's static placements
     /// around `origin`.
     ///

@@ -65,6 +65,17 @@ pub fn bare() -> World {
     world
 }
 
+/// The bare world without its Gym: the plaza's ground grid alone, in the
+/// neutral palette, with nothing that blocks walking.
+#[must_use]
+#[inline(never)]
+pub fn bare_ground() -> World {
+    let mut world = World::default();
+    ground(&mut world.mesh);
+    world.mesh.neutralize();
+    world
+}
+
 fn computer(world: &mut World) {
     let c = COMPUTER;
     let mesh = &mut world.mesh;

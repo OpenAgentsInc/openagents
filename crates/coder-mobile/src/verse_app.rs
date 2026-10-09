@@ -966,6 +966,15 @@ enum ChamberHit {
 }
 
 impl Scene {
+    /// The plain Grid ([`crate::BareGym::without_gym`]): no Gym stands, so
+    /// none of its boards draws a tap cue, opens, or loads.
+    pub(crate) fn remove_gym(&mut self) {
+        self.world.remove_gym();
+        self.gym_panel = false;
+        self.results_panel = false;
+        self.evals_panel = false;
+    }
+
     /// `#[inline(never)]` keeps this frame out of its callers'; the creation
     /// path's frames must stay small (#10928).
     #[inline(never)]

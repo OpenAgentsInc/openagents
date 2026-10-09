@@ -61,6 +61,7 @@ impl GridSurface {
         let restore = presence.is_some() && !gym.preview && !gym.xp_preview;
         let check_relay = gym.check_relay.clone();
         let notes = gym.notes;
+        let without_gym = gym.without_gym;
         let mut scene = Scene::new(bare_config_with_gym(
             viewport.width(),
             viewport.height(),
@@ -72,6 +73,9 @@ impl GridSurface {
         scene.gym_panel = panels.0;
         scene.results_panel = panels.1;
         scene.evals_panel = panels.2;
+        if without_gym {
+            scene.remove_gym();
+        }
         scene.restore_spawn = restore;
         // Explicit loopback fixtures are also usable by release acceptance runs.
         // This path admits only loopback; ordinary relay validation remains shared.

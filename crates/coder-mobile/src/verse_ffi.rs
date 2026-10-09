@@ -98,6 +98,10 @@ pub struct BareGym {
     /// ([`verse::blocklist`]); the zone cache directory when absent, and
     /// this mount only when both are.
     pub blocklist_directory: Option<String>,
+    /// The plain Grid: no Gym hall, boards, or walls stand on it, so no
+    /// board opens, loads, or connects, whatever the fields above say
+    /// ([`verse::runtime::WorldRuntime::remove_gym`]).
+    pub without_gym: bool,
 }
 
 #[cfg(test)]
@@ -145,7 +149,7 @@ pub(crate) fn bare_config_with_gym(
         height,
         scale,
         synthetic: gym.preview,
-        gym_code: gym.code,
+        gym_code: gym.code.filter(|_| !gym.without_gym),
         synthetic_gym: gym.preview,
         world_relay,
         display_name,
@@ -220,7 +224,11 @@ fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> 
             verse_engine::source_position(content.scene.origin),
         );
     }
-    verse::grid_engine::Content::grid()
+    if scene.world.has_gym() {
+        verse::grid_engine::Content::grid()
+    } else {
+        verse::grid_engine::Content::grid_without_gym()
+    }
 }
 
 /// The chamber content revision the engine was opened with; 0 is the Grid.
@@ -540,6 +548,7 @@ impl VerseHandle {
             return Err("No native layer to draw in".into());
         }
         let (panel, results_panel, evals_panel) = (gym.panel, gym.results_panel, gym.evals_panel);
+        let without_gym = gym.without_gym;
         let check_relay = match gym.check_relay.clone().filter(|_| cfg!(debug_assertions)) {
             Some(relay) if presence.is_some() => {
                 coder_connect::RelayPolicy::LoopbackTest
@@ -563,6 +572,9 @@ impl VerseHandle {
             scene.gym_panel = panel;
             scene.results_panel = results_panel;
             scene.evals_panel = evals_panel;
+            if without_gym {
+                scene.remove_gym();
+            }
             if let Some(relay) = check_relay {
                 scene.relay = Some(relay);
             }

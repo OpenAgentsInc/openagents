@@ -137,6 +137,9 @@ pub struct WorldRuntime {
     /// A director's camera in place of the follow camera, for a capture:
     /// its eye and the point it looks at ([`Self::set_shot`]).
     shot: Option<(Vec3, Vec3)>,
+    /// The bare world's Gym stands on the Grid; [`Self::remove_gym`] takes
+    /// it, its boards, and its walls away.
+    gym: bool,
 }
 
 impl Default for WorldRuntime {
@@ -174,7 +177,27 @@ impl WorldRuntime {
             trace_ghost: None,
             robot_clock: 0.0,
             shot: None,
+            gym: true,
         }
+    }
+
+    /// Takes the Gym off the bare world's Grid: its hall, boards, and
+    /// walls are gone, and the world has no Gym site, so no board opens or
+    /// loads. The plain Grid of the OpenAgents app's normal builds.
+    pub fn remove_gym(&mut self) {
+        if !self.bare {
+            return;
+        }
+        self.gym = false;
+        if self.is_plaza() {
+            self.world = world::bare_ground();
+        }
+    }
+
+    /// Whether this world has its Gym ([`Self::remove_gym`]).
+    #[must_use]
+    pub fn has_gym(&self) -> bool {
+        self.gym
     }
 
     #[must_use]
@@ -963,7 +986,7 @@ impl WorldRuntime {
     /// plaza, the Grid straight ahead of the spawn, and a zone has none.
     #[must_use]
     pub fn gym_site(&self) -> Option<world::GymSite> {
-        if !self.is_plaza() {
+        if !self.is_plaza() || !self.gym {
             None
         } else if self.bare {
             Some(world::GymSite::GRID)

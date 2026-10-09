@@ -970,7 +970,11 @@ impl WorldRuntime {
                     // left by, facing away, with the ball and blocks where
                     // they were left. With that portal hidden, back where the
                     // player left the Grid.
-                    self.world = crate::world::bare();
+                    self.world = if self.has_gym() {
+                        crate::world::bare()
+                    } else {
+                        crate::world::bare_ground()
+                    };
                     let pose = self.zone_state.plaza_pose.take();
                     let gate = if left == ZoneId::Everglade {
                         self.everglade_gate()
