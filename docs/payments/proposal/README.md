@@ -39,7 +39,11 @@ UX are your main concern.
 
 ## Status
 
-All four are **drafts for discussion**. Nothing here is implemented; NIP-X402 itself
+All four are **drafts for discussion**, merged as a proposal (PR #11088).
+The governing decision below is made: **coexistence**. The BuyerAttestation
+fixtures are the starting test vectors for the verifier.
+OpenAgents supports every agent payment protocol; this rail is how third-party
+merchants get paid directly. See [Agent payments: pay any way](../agent-payments.md). Nothing here is implemented; NIP-X402 itself
 is "Designed, not implemented." The single decision that gates everything is in
 proposal #1, §11.1: whether this external, non-custodial rail is a *separate* product
 alongside the existing custodial plugin-payout ledger, or a replacement. The

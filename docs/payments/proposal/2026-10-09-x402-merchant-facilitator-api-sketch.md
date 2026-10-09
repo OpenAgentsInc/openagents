@@ -1,5 +1,7 @@
 # `crates/x402` merchant-facilitator — API sketch (draft, 2026-10-09)
 
+**Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
+
 **Status:** Design sketch for discussion. Not implemented. Rust below is
 illustrative, not compiled.
 **Purpose:** Show how a third-party merchant runs its own X402 receiver + facilitator

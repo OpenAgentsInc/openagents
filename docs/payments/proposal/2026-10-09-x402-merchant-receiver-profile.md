@@ -1,5 +1,7 @@
 # X402 Merchant-Hosted Receiver — deployment profile (draft, 2026-10-09)
 
+**Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
+
 **Status:** Draft deployment profile for discussion. No protocol change; no new
 event kind. Not implemented.
 **Defines:** How a third-party merchant runs its *own* X402 receiver and
@@ -265,7 +267,9 @@ association and its operational assurance").
   profile — see companion proposal §9.
 - **Cashu / nutzaps (NIP-60/61)** and **L402/LSAT** — NIP-X402 explicitly excludes
   them as implicit fallbacks. Not usable in this profile without a separate reviewed
-  profile.
+  profile. *2026-10-09:* OpenAgents now accepts both as their own adapters on the
+  payment router (L402 on the same invoice and replay key; Cashu with an accepted-mint
+  list); see [agent payments](../agent-payments.md). A merchant may add them the same way.
 - **Shared custodial receiver key for untrusted tenants** — non-compliant by §1; the
   whole reason this profile exists.
 - **MKT/LAB post-acceptance labor payment** — unchanged; this profile is for a single

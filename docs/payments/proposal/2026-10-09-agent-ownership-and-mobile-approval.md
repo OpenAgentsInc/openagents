@@ -1,5 +1,7 @@
 # Agent ownership & mobile purchase approval — design (draft, 2026-10-09)
 
+**Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
+
 **Status:** Design for discussion. The identity/approval *primitives* exist in the
 NIPs; the *buyer-facing experience* described here is largely to-build.
 **Answers two buyer questions:** (1) how is an agent provably *mine*? (2) how do I

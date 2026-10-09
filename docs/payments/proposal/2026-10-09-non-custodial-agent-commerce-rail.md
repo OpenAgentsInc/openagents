@@ -1,5 +1,7 @@
 # Non-Custodial Agent Commerce — a direct-settlement rail for businesses and agents (proposal, 2026-10-09)
 
+**Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
+
 **Status:** Proposal / Draft for discussion. Not implemented.
 **Scope:** A payment rail where third-party businesses integrate to sell goods and
 services, and OpenAgents agents pay for them autonomously — settled **directly
@@ -232,7 +234,9 @@ BOLT11 pays exactly one node. Honest options, worst-to-best for a first cut:
   profile X402 defines today. A future profile, not v1.
 - **(D) Cashu/ecash budgets.** Would be elegant for agent budgets, but NIP-X402
   **explicitly excludes** NIP-60/61 Cashu ("different proofs with mint trust … not
-  an implicit fallback"). Off the table unless that decision is revisited.
+  an implicit fallback"). *Revisited 2026-10-09:* Cashu is accepted as its own
+  adapter and challenge (NUT-24 `X-Cashu`), never as an x402 fallback; see
+  [agent payments §7](../agent-payments.md#7-how-each-protocol-fits-nip-x402).
 
 **Recommendation:** v1 handles the common case — **agent → one merchant, single
 payee** — natively and perfectly. For the author-fee / platform-fee case, use **(B)
@@ -376,7 +380,8 @@ MKT dispute/refund for cooperative cases; escrow explicitly deferred.
 
 ## 11. Open decisions (read first)
 
-1. **Custodial vs. non-custodial — the governing conflict.** The documented owner
+1. **Custodial vs. non-custodial — the governing conflict.** *Decided
+   2026-10-09: coexistence (separate product alongside the custodial ledger).* The documented owner
    direction is custodial ("receive it all through our setup"). This proposal is the
    opposite. Decide explicitly: is the external merchant rail a *separate*
    non-custodial product alongside the internal custodial plugin-payout ledger, or a
