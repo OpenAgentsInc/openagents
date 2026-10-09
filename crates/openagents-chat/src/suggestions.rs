@@ -150,6 +150,7 @@ pub fn screen_label(screen: Screen, connecting: bool) -> &'static str {
         Screen::GymPublish => "Add to the Gym",
         Screen::GymTestSet => "See the tests",
         Screen::RoutesMap => "Open the map",
+        Screen::Verse => "Enter the Grid",
     }
 }
 

@@ -31,9 +31,8 @@ struct OpenAgentsApp: App {
                     // for a simulator that cannot verify openagents.com.
                     if let link = AppTabLaunch.wallet("--connect-link") { bridge.connectLink(link) }
                     // Screenshots: `--appearance light|dark|system` picks the
-                    // theme (saved), and `--shell-mode code` opens Code mode.
+                    // theme (saved).
                     if let theme = AppTabLaunch.wallet("--appearance") { bridge.chooseTheme(theme) }
-                    if AppTabLaunch.wallet("--shell-mode") == "code" { bridge.shell("mode", ["code": true]) }
                     #endif
                 }
                 // The desktop app's QR code is a universal link,
@@ -52,7 +51,8 @@ struct HomeScreen: View {
             // Rust resolves the theme; the scheme sets the status bar and
             // system chrome, and the palette the host's own chrome.
             .tint(bridge.colors.primary)
-            .preferredColorScheme(bridge.colors.scheme)
+            // The Verse is dark only for now (#11028): its status bar too.
+            .preferredColorScheme(bridge.packet?.shell?.place == "verse" ? .dark : bridge.colors.scheme)
             .environment(\.appColors, bridge.colors)
             .background(SystemAppearanceWatcher { bridge.reportSystemAppearance() })
             .fullScreenCover(isPresented: Binding(
@@ -340,9 +340,15 @@ struct CoderTab: View {
                                    followChanged: nil,
                                    surface: { resource, label in
                                        if resource == "home-cards" {
-                                           return AnyView(HomeCardsSurface(cards: bridge.packet?.shell?.cards ?? []) {
+                                           return AnyView(HomeCardsSurface(cards: bridge.packet?.shell?.cards ?? [],
+                                                                           carousel: bridge.packet?.shell?.carousel) {
                                                bridge.shell("try_card", ["id": $0])
                                            })
+                                       }
+                                       if resource == "verse-portal" {
+                                           return AnyView(VersePortalSurface(label: label) {
+                                               bridge.shell("switch", ["verse": true])
+                                           }.environment(\.appColors, appColors))
                                        }
                                        if resource.hasPrefix("image:") {
                                            return AnyView(ChatImageSurface(resource: resource, label: label,

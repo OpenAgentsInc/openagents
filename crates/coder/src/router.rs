@@ -1382,11 +1382,13 @@ pub enum Screen {
     VerseGym,
     /// The desktop app's Map page (#10085).
     RoutesMap,
+    /// The Verse: the Grid world (**Enter the Grid**).
+    Verse,
 }
 
 impl Screen {
     /// Every screen, in order.
-    pub const ALL: [Screen; 10] = [
+    pub const ALL: [Screen; 11] = [
         Screen::AccountComputers,
         Screen::AccountKeys,
         Screen::AccountPlaytest,
@@ -1397,6 +1399,7 @@ impl Screen {
         Screen::GymTestSet,
         Screen::VerseGym,
         Screen::RoutesMap,
+        Screen::Verse,
     ];
 
     /// The word the wire and the bank carry.
@@ -1413,6 +1416,7 @@ impl Screen {
             Screen::GymTestSet => "gym.test_set",
             Screen::VerseGym => "verse.gym",
             Screen::RoutesMap => "routes.map",
+            Screen::Verse => "verse",
         }
     }
 

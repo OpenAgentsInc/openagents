@@ -44,15 +44,15 @@ enum AccountRoute: String, Hashable {
     }
 }
 
-/// The release gate (docs/mobile/1.0-audit.md): the Verse tab, the Gym
-/// (Train Coder, Profile), Trainer, Playtest, Tailnet, and the display name
-/// show only when the Rust library was built with
+/// The release gate (docs/mobile/1.0-audit.md): the Gym (its boards in the
+/// Grid, Train Coder, Profile), Everglade, Trainer, Playtest, Tailnet, and
+/// the display name show only when the Rust library was built with
 /// `OPENAGENTS_MOBILE_PREVIEW=on`. Release and normal simulator builds hide
-/// them; their code stays.
+/// them; their code stays. The plain Grid (the Verse) shows in every build.
 enum Preview {
     static let on = openagents_mobile_preview()
 
-    static func shows(_ tab: AppTab) -> Bool { on || tab != .verse }
+    static func shows(_ tab: AppTab) -> Bool { true }
     static func shows(_ route: AccountRoute) -> Bool { on || !route.previewOnly }
 }
 
@@ -131,6 +131,11 @@ struct AppTabs: View {
     @State private var linkScreen = "account"
     @State private var linkChat: String?
     @ObservedObject private var notifier = LinkNotifier.shared
+    /// The Grid was opened once: it stays mounted (paused) behind the chat
+    /// so going back is instant.
+    @State private var verseMounted = false
+    /// The shell's switch is on Verse.
+    private var inVerse: Bool { tab == .coder && bridge.packet?.shell?.place == "verse" }
     @Environment(\.appColors) private var appColors
 
     var body: some View {
@@ -143,7 +148,10 @@ struct AppTabs: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
                 current
-                    .clipShape(RoundedRectangle(cornerRadius: drawer ? 32 : 0, style: .continuous))
+                    // Closed, the clip reaches past the safe areas, where
+                    // the Verse's world draws.
+                    .clipShape(RoundedRectangle(cornerRadius: drawer ? 32 : 0, style: .continuous)
+                        .inset(by: drawer ? 0 : -200))
                     .overlay {
                         if drawer {
                             RoundedRectangle(cornerRadius: 32, style: .continuous)
@@ -196,11 +204,26 @@ struct AppTabs: View {
             // EVALS board.
             case "verse_gym" where Preview.on:
                 VerseWorldView.pendingGoEvals = true
-                tab = .verse
+                bridge.shell("switch", ["verse": true])
+                tab = .coder
+            case "verse":
+                bridge.shell("switch", ["verse": true])
+                tab = .coder
             default: break
             }
         }
+        .onChange(of: inVerse, initial: true) { _, verse in
+            guard verse else { return }
+            verseMounted = true
+            // The chat's keyboard goes away with the chat.
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
         .onAppear {
+            // `--tab verse` opens on the Grid.
+            if AppTabLaunch.tab == .verse {
+                tab = .coder
+                bridge.shell("switch", ["verse": true])
+            }
             NativeRowView.giveFeedback = { text, row in
                 reporter.feedback = FeedbackRequest(text: text, row: row)
             }
@@ -251,17 +274,34 @@ extension AppTabs {
     /// The place on view, each with the menu button that opens the drawer.
     @ViewBuilder var current: some View {
         switch tab {
-        case .coder:
-            CoderTab(bridge: bridge, openDrawer: openDrawer,
-                     report: { reporter.start(bridge: bridge, place: place) })
-        case .verse where Preview.on:
-            // The Verse and the Wallet are dark only for now (#11028). The
-            // Verse is a preview feature.
-            VerseTab(app: bridge, selected: true, studioComputer: bridge.studioComputer,
-                     connectStudio: bridge.studioConnect) { bridge.gymTrain() }
-                .environment(\.colorScheme, .dark)
-                .overlay(alignment: .topLeading) { menuButton.padding(.leading, 16).padding(.top, 4) }
-        case .wallet, .verse:
+        case .coder, .verse:
+            ZStack {
+                // Out of the Verse's way, keyboard and all; Rust keeps the
+                // chat's state.
+                if !inVerse {
+                    CoderTab(bridge: bridge, openDrawer: openDrawer,
+                             report: { reporter.start(bridge: bridge, place: place) })
+                }
+                // The Verse: the Grid world under the shell's top bar, its
+                // switch back to Coder and the menu. The world is dark only
+                // for now (#11028); it pauses while the chat shows.
+                if verseMounted {
+                    VerseTab(app: bridge, selected: inVerse, studioComputer: bridge.studioComputer,
+                             connectStudio: bridge.studioConnect) { bridge.gymTrain() }
+                        .ignoresSafeArea(.keyboard)
+                        .environment(\.colorScheme, .dark)
+                        .overlay(alignment: .top) {
+                            ShellTopBar(state: bridge.packet?.shell, bridge: bridge, openDrawer: openDrawer,
+                                        report: { reporter.start(bridge: bridge, place: place) })
+                                .environment(\.colorScheme, .dark)
+                                .environment(\.appColors, AppColors.dark)
+                        }
+                        .opacity(inVerse ? 1 : 0)
+                        .allowsHitTesting(inVerse)
+                        .accessibilityHidden(!inVerse)
+                }
+            }
+        case .wallet:
             WalletTab(bridge: bridge)
                 .environment(\.colorScheme, .dark)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -285,18 +325,20 @@ extension AppTabs {
     private func openDrawer() { drawer = true }
     private func closeDrawer() { drawer = false }
 
-    /// Open a place from the drawer.
+    /// Open a place from the drawer. Any place but the Verse leaves it.
     func go(_ id: String) {
+        if id != "verse", inVerse { bridge.shell("switch", ["verse": false]) }
         switch id {
         case "code":
-            bridge.shell("mode", ["code": true])
-            bridge.shell("new_chat")
+            bridge.shell("switch", ["verse": false])
             tab = .coder
         case "computers":
             tab = .account
             bridge.showNativeComputers()
         case "wallet": tab = .wallet
-        case "verse" where Preview.on: tab = .verse
+        case "verse":
+            bridge.shell("switch", ["verse": true])
+            tab = .coder
         case "settings":
             settingsHome += 1
             tab = .account

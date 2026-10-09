@@ -1275,7 +1275,7 @@ impl App for DesktopApp {
                 let action = match screen {
                     Screen::Computers => Some(chrome::Action::Computers),
                     Screen::Keys => Some(chrome::Action::Settings),
-                    Screen::VerseGym => Some(chrome::Action::Grid),
+                    Screen::VerseGym | Screen::Verse => Some(chrome::Action::Grid),
                     // The route map's typed `open_screen` offer (#10085).
                     Screen::RoutesMap => Some(chrome::Action::Map),
                     _ => None,

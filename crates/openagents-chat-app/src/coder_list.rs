@@ -111,6 +111,11 @@ impl Row {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct List {
     pub rows: Vec<Row>,
+    /// The feature card the new chat's carousel last opened on, so the
+    /// next open, after a relaunch too, starts on another
+    /// ([`crate::carousel::pick_start`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_card: Option<usize>,
     /// The first line of each chat this device started, by task ID.
     #[serde(default)]
     pub titles: BTreeMap<String, String>,

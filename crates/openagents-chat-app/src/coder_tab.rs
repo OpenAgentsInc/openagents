@@ -206,12 +206,6 @@ pub enum Intent {
     RefreshChanges,
     /// Publish the reviewed change on the computer (`task.publish`).
     PublishChanges,
-    /// Code mode (#11126): new Coder work goes to this project on this
-    /// computer.
-    CodeProject {
-        host: String,
-        workspace: String,
-    },
 }
 
 /// The chat card menu's choices the phone carries out. Rename needs a text
@@ -246,6 +240,8 @@ pub enum Go {
     /// The Verse tab, walked into the Gym before its EVALS board: the host
     /// sends the world `go_evals`.
     VerseGym,
+    /// The Verse: the Grid world, from a reply's **Enter the Grid**.
+    Verse,
     /// The Chat tab, after **Train Coder** from another tab.
     Chat,
     /// The chat tab's own screens changed (menu, chat, or the Gym intro):
@@ -270,6 +266,7 @@ impl Go {
             // The route map is the desktop app's; the worker offers it
             // only to a desktop turn, and the phone stays in the chat.
             Screen::RoutesMap => Go::Chat,
+            Screen::Verse => Go::Verse,
         }
     }
 }
@@ -1675,6 +1672,10 @@ impl CoderTab {
                         {
                             self.go = Some(Go::Connect);
                         }
+                        // Under the shell, the switch goes to the Verse.
+                        Screen::Verse if self.shell.on => {
+                            self.shell.verse = true;
+                        }
                         _ => self.go = Some(Go::of(screen)),
                     }
                 }
@@ -1727,7 +1728,6 @@ impl CoderTab {
                 self.run_offer(id, argv, runs_on, computers.as_deref());
             }
             Intent::Hub => self.hub(),
-            Intent::CodeProject { host, workspace } => self.choose_project(host, &workspace),
             Intent::Starter { id } => {
                 let Some(suggestion) = crate::first_run::SUGGESTIONS
                     .iter()
@@ -2372,7 +2372,7 @@ impl CoderTab {
         token: &str,
         value: &str,
         computers: Option<&mut Computers>,
-        chats: &mut Chats,
+        _chats: &mut Chats,
     ) {
         let Some(view) = self.current.as_ref() else {
             return;
@@ -2387,17 +2387,6 @@ impl CoderTab {
         // Text only while attachments are off: a draft that still holds
         // images sends its words alone.
         self.text_only();
-        // Code mode's new chat: Coder work on a computer (#11126).
-        if self.shell.on
-            && self.shell.code
-            && self.open.is_none()
-            && self.talk.is_none()
-            && self.threads.opened().is_none()
-            && !self.drawer
-        {
-            self.start_code(prompt, computers, chats);
-            return;
-        }
         // A Coder chat whose turn has ended, started from a conversation
         // here: the follow-up goes to that conversation, whose router
         // answers it from the run's result or hands it back to Coder
@@ -2943,7 +2932,7 @@ impl CoderTab {
                     let id = id.clone();
                     self.talk_view(&id, computers)
                 }
-                (None, None) => self.landing(computers),
+                (None, None) => self.landing(),
             };
             if self.shell.on && !self.drawer {
                 shell::strip_header(&mut root);
@@ -3241,9 +3230,9 @@ impl CoderTab {
     /// sit only suggested questions (see [`CoderTab::candidates`]); previous
     /// chats stay behind the menu, and Coder on a computer comes only from
     /// an offer under a reply.
-    fn landing(&self, computers: Option<&Computers>) -> Node<Intent> {
+    fn landing(&self) -> Node<Intent> {
         if self.shell.on {
-            return self.shell_landing(computers);
+            return self.shell_landing();
         }
         let mut top = vec![];
         top.extend(self.back_button());
@@ -3558,6 +3547,22 @@ impl CoderTab {
         if self.gym.hidden() {
             crate::cards::drop_preview_chips(&mut actions.chips, meta.as_ref());
         }
+        // Under the shell, a reply offering the Verse shows **Enter the
+        // Grid** as a card in the conversation rather than a chip.
+        if self.shell.on {
+            let portal = |chip: &crate::cards::Chip| {
+                matches!(
+                    chip.action,
+                    crate::cards::Action::OpenScreen {
+                        screen: Screen::Verse
+                    }
+                )
+            };
+            if actions.chips.iter().any(portal) {
+                actions.chips.retain(|chip| !portal(chip));
+                children.push(shell::verse_portal());
+            }
+        }
         // The reply that started Coder, at once or from a tap, shows the
         // start with Stop instead of offering it again (#10101).
         let newest = self.basic.turns(id).len().checked_sub(1);
@@ -3627,7 +3632,7 @@ impl CoderTab {
     /// computer when this device may operate it.
     fn thread_view(&mut self, computers: Option<&Computers>) -> Node<Intent> {
         let Some(shown) = self.threads.shown() else {
-            return self.landing(computers);
+            return self.landing();
         };
         let label = computers
             .and_then(|c| c.snapshot().host(&shown.host))

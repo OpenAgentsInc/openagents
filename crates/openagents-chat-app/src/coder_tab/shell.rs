@@ -1,14 +1,16 @@
-//! The phone's shell (#11126): a top bar with the menu, a **Chat** /
-//! **Code** switch, and a new-chat button; a new chat with feature cards
-//! (Chat) or Coder suggestions from the person's computers (Code); and a
-//! drawer with the main places and recent chats. A host that draws the
-//! shell turns it on ([`CoderTab::set_shell`]); the tab then leaves out its
-//! own header rows, and the host draws the top bar, the drawer, and the
-//! cards from [`CoderTab::shell_view`], sending [`ShellAction`]s back.
+//! The phone's shell (#11126): a top bar with the menu, a **Coder** /
+//! **Verse** switch, and a new-chat button; a new chat with the feature
+//! cards; and a drawer with the main places and recent chats. A host that
+//! draws the shell turns it on ([`CoderTab::set_shell`]); the tab then
+//! leaves out its own header rows, and the host draws the top bar, the
+//! drawer, and the cards from [`CoderTab::shell_view`], sending
+//! [`ShellAction`]s back.
 //!
-//! Chat mode's new chat sends to OpenAgents as before. Code mode's new chat
-//! starts Coder on the person's ready computer, in the project they picked
-//! (or the one used last), the same task start as **Run Coder**.
+//! **Coder** is the one conversation: one composer that asks OpenAgents,
+//! whose network decides when a message needs Coder on a computer and
+//! offers it under the reply. **Verse** is the Grid world, which the host
+//! draws over the chat. The **Explore the Verse** card's **Try it** and a
+//! reply's **Enter the Grid** card switch to the Verse.
 
 use super::*;
 use openagents_chat::home_cards::{self, HOME_CARDS};
@@ -17,31 +19,38 @@ use openagents_chat::home_cards::{self, HOME_CARDS};
 const DRAWER_ROWS: usize = 8;
 /// The most matches a drawer search lists.
 const SEARCH_ROWS: usize = 50;
-/// The most suggestions above Code mode's composer.
-const CODE_ROWS: usize = 5;
 /// The longest drawer search, in bytes.
 const MAX_QUERY: usize = 200;
+/// The surface resource of a reply's **Enter the Grid** card.
+pub const VERSE_PORTAL: &str = "verse-portal";
+/// The height the transcript keeps for that card, in points.
+pub const VERSE_PORTAL_HEIGHT: u16 = 120;
 
 /// The shell's state in the tab.
 #[derive(Default)]
 pub(super) struct Shell {
     /// The host draws the shell.
     pub(super) on: bool,
-    /// Code mode: a new chat starts Coder on a computer.
-    pub(super) code: bool,
+    /// The switch is on **Verse**: the host shows the Grid world.
+    pub(super) verse: bool,
     /// The host's drawer is open: the packet carries its rows.
     drawer: bool,
     query: String,
     /// What each drawer row opens, by its index in the last view.
     intents: Vec<Intent>,
+    /// The feature cards were on view at the last view.
+    cards_shown: bool,
+    /// The card the carousel opens on this time; the list keeps it for
+    /// the next time (`List::last_card`).
+    start: usize,
 }
 
 /// What the host's shell asks of the tab.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum ShellAction {
-    /// The **Chat** / **Code** switch.
-    Mode { code: bool },
+    /// The **Coder** / **Verse** switch, or a portal into the Verse.
+    Switch { verse: bool },
     /// The new-chat button or the drawer's **Chat** pill.
     NewChat,
     /// The drawer opened or closed.
@@ -59,13 +68,15 @@ pub enum ShellAction {
 /// The shell as the host draws it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ShellView {
-    /// `chat` or `code`.
-    pub mode: &'static str,
-    /// `new` (a new chat: the switch shows), `chat` (a conversation), or
-    /// `list` (every chat, which draws its own header).
+    /// `coder` (the conversation) or `verse` (the Grid world).
+    pub place: &'static str,
+    /// `new` (a new chat), `chat` (a conversation), or `list` (every chat,
+    /// which draws its own header).
     pub screen: &'static str,
-    /// The feature cards a new chat in Chat mode shows.
+    /// The feature cards a new chat shows.
     pub cards: Vec<Card>,
+    /// The card the carousel opens on and how it moves by itself.
+    pub carousel: crate::carousel::Timing,
     /// The drawer's rows, while it is open.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drawer: Option<Drawer>,
@@ -140,8 +151,20 @@ impl CoderTab {
             .shell
             .drawer
             .then(|| self.drawer_rows(computers, chats));
+        // Each time the cards come on view they open on another card.
+        let shown = screen == "new" && !self.shell.verse;
+        if shown && !self.shell.cards_shown {
+            self.shell.start = crate::carousel::pick_start(
+                HOME_CARDS.len(),
+                self.list.list.last_card,
+                crate::carousel::roll(),
+            );
+            self.list.list.last_card = Some(self.shell.start);
+            self.list.save();
+        }
+        self.shell.cards_shown = shown;
         Some(ShellView {
-            mode: if self.shell.code { "code" } else { "chat" },
+            place: if self.shell.verse { "verse" } else { "coder" },
             screen,
             cards: HOME_CARDS
                 .iter()
@@ -151,6 +174,11 @@ impl CoderTab {
                     line: card.line,
                 })
                 .collect(),
+            carousel: crate::carousel::Timing {
+                start: self.shell.start,
+                dwell_ms: crate::carousel::DWELL_MS,
+                resume_ms: crate::carousel::RESUME_MS,
+            },
             drawer,
         })
     }
@@ -163,12 +191,14 @@ impl CoderTab {
         chats: &mut Chats,
     ) {
         match action {
-            ShellAction::Mode { code } => {
-                self.shell.code = code;
+            ShellAction::Switch { verse } => {
+                self.shell.verse = verse;
+                self.shell.drawer = false;
                 self.notice = None;
             }
             ShellAction::NewChat => {
                 self.shell.drawer = false;
+                self.shell.verse = false;
                 self.run_intent(Intent::NewChat, computers, chats);
             }
             ShellAction::Drawer { open } => {
@@ -188,11 +218,13 @@ impl CoderTab {
                     return;
                 };
                 self.shell.drawer = false;
+                self.shell.verse = false;
                 self.shell.query.clear();
                 self.run_intent(intent, computers, chats);
             }
             ShellAction::SeeAll => {
                 self.shell.drawer = false;
+                self.shell.verse = false;
                 self.shell.query.clear();
                 self.run_intent(Intent::Menu, computers, chats);
             }
@@ -200,10 +232,20 @@ impl CoderTab {
                 let Some(card) = home_cards::find(&id) else {
                     return;
                 };
-                self.shell.code = false;
-                self.start_talk(card.message, computers.as_deref());
+                if card.opens_verse {
+                    self.shell.verse = true;
+                } else {
+                    self.shell.verse = false;
+                    self.start_talk(card.message, computers.as_deref());
+                }
             }
         }
+    }
+
+    /// Whether the switch is on **Verse**.
+    #[must_use]
+    pub fn in_verse(&self) -> bool {
+        self.shell.on && self.shell.verse
     }
 
     /// The drawer's recent chats, newest first, as the full list orders
@@ -249,229 +291,48 @@ impl CoderTab {
         }
     }
 
-    /// A new chat under the shell: the feature cards (Chat), or what Coder
-    /// could work on (Code), over a composer ready to type.
-    pub(super) fn shell_landing(&self, computers: Option<&Computers>) -> Node<Intent> {
+    /// A new chat under the shell: the feature cards over a composer ready
+    /// to type.
+    pub(super) fn shell_landing(&self) -> Node<Intent> {
         let mut children = vec![];
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
-        let placeholder = if self.shell.code {
-            children.push(node(
-                "coder-new-transcript",
-                Element::Transcript {
-                    label: "New chat".into(),
-                    children: vec![],
-                    earlier: None,
-                    source: None,
-                },
-            ));
-            let (rows, target) = self.code_rows(computers);
-            children.push(Node {
-                key: "shell-code-rows".into(),
-                style: Style {
-                    gap: Some(Space::Md),
-                    padding_start: Some(Space::Md),
-                    padding_end: Some(Space::Sm),
-                    ..Style::default()
-                },
-                element: Element::Stack {
-                    axis: Axis::Vertical,
-                    children: rows,
-                },
-            });
-            if let Some(target) = target {
-                let mut line = status("shell-code-target", &target);
-                line.style.padding_start = Some(Space::Md);
-                children.push(line);
-            }
-            "Work with Coder"
-        } else {
-            // The host draws the cards and fills the screen with them.
-            let mut cards = node(
-                "shell-cards",
-                Element::Surface {
-                    resource: "home-cards".into(),
-                    label: "What's new".into(),
-                },
-            );
-            cards.style.fill_height = Some(true);
-            children.push(cards);
-            self.ask_words()
-        };
+        // The host draws the cards and fills the screen with them.
+        let mut cards = node(
+            "shell-cards",
+            Element::Surface {
+                resource: "home-cards".into(),
+                label: "What's new".into(),
+            },
+        );
+        cards.style.fill_height = Some(true);
+        children.push(cards);
         children.extend(self.attachments());
-        children.push(self.composer_with(placeholder.to_owned(), true, false, &[], None, true));
+        children.push(self.composer_with(
+            self.ask_words().to_owned(),
+            true,
+            false,
+            &[],
+            None,
+            true,
+        ));
         page(children)
     }
-
-    /// Code mode's suggestions, and the line naming where Coder runs: the
-    /// ready computer's recent Coder chats and its projects, or **Connect a
-    /// computer** without one.
-    fn code_rows(&self, computers: Option<&Computers>) -> (Vec<Node<Intent>>, Option<String>) {
-        let availability = self.availability(computers);
-        let (computers, host) = match (computers, &availability) {
-            (Some(computers), Availability::Ready(host)) => (computers, *host),
-            (_, Availability::NotConfigured) | (None, _) => {
-                return (
-                    vec![icon_button(
-                        "shell-code-connect",
-                        "Connect a computer",
-                        Glyph::Add,
-                        false,
-                        Intent::ConnectComputer,
-                    )],
-                    Some("Coder works in your projects on your own computer.".into()),
-                );
-            }
-            (Some(_), _) => {
-                return (Self::unavailable(&availability).into_iter().collect(), None);
-            }
-        };
-        let mut rows = vec![];
-        let saved = |_: &str, _: &str| None;
-        for (_, _, title, row) in task_rows(
-            computers.snapshot(),
-            &self.activity(computers),
-            &self.list.list,
-            &saved,
-        )
-        .into_iter()
-        .take(3)
-        {
-            if let Element::Button { intent, .. } = row.element {
-                rows.push(icon_button(
-                    &format!("shell-{}", row.key),
-                    &title,
-                    Glyph::History,
-                    false,
-                    intent,
-                ));
-            }
-        }
-        let chosen = self.workspace(host);
-        for workspace in host.workspaces.iter().flatten() {
-            if rows.len() >= CODE_ROWS {
-                break;
-            }
-            let here = chosen.as_deref() == Some(workspace.as_str());
-            rows.push(icon_button(
-                &format!("shell-project-{workspace}"),
-                &format!("Work in {workspace}"),
-                if here { Glyph::Check } else { Glyph::Folder },
-                false,
-                Intent::CodeProject {
-                    host: host.key.clone(),
-                    workspace: workspace.clone(),
-                },
-            ));
-        }
-        let engine = engines_of(host)
-            .into_iter()
-            .find(|engine| engine.state == crate::router::EngineState::Ready)
-            .and_then(|engine| engine_name(&engine.engine));
-        let place = match &chosen {
-            Some(workspace) => format!("{workspace} on {}", host.label),
-            None => host.label.clone(),
-        };
-        let target = match engine {
-            Some(engine) => format!("{engine} · {place}"),
-            None => place,
-        };
-        (rows, Some(target))
-    }
-
-    /// Code mode: new Coder work goes to `workspace` on `host`.
-    pub(super) fn choose_project(&mut self, host: String, workspace: &str) {
-        let now = unix_now();
-        self.list.list.used.insert(used_key(&host, workspace), now);
-        self.list.save();
-        self.preferred = Some(host);
-        self.notice = None;
-    }
-
-    /// Code mode's send: a Coder task on the ready computer with `prompt`,
-    /// opened as its chat.
-    pub(super) fn start_code(
-        &mut self,
-        prompt: &str,
-        computers: Option<&mut Computers>,
-        chats: &mut Chats,
-    ) {
-        let Some(computers) = computers else {
-            self.go = Some(Go::Connect);
-            return;
-        };
-        let host = match self.availability(Some(computers)) {
-            Availability::Ready(host) => host.key.clone(),
-            Availability::Connecting(host) => {
-                self.notice = Some(format!("Connecting to {}…", host.label));
-                return;
-            }
-            Availability::Offline(host) => {
-                self.notice = Some(format!("{} is offline.", host.label));
-                return;
-            }
-            Availability::NotConfigured => {
-                self.go = Some(Go::Connect);
-                return;
-            }
-        };
-        if computers
-            .snapshot()
-            .host(&host)
-            .and_then(|record| self.workspace(record))
-            .is_none()
-            && let Err(refusal) = computers.refresh_workspaces(&host)
-        {
-            self.notice = Some(refusal.reason());
-            return;
-        }
-        let Some(record) = computers.snapshot().host(&host) else {
-            return;
-        };
-        let label = record.label.clone();
-        let Some(workspace) = self.workspace(record) else {
-            self.notice = Some(format!("{label} lists no project for Coder yet."));
-            return;
-        };
-        match computers.start_task_requesting(&host, &workspace, prompt, &[], None) {
-            Ok(task) => {
-                let now = computers.snapshot().now;
-                self.list
-                    .list
-                    .titles
-                    .insert(task.clone(), first_line(prompt));
-                self.list.list.sent.insert(task.clone(), now);
-                self.list.list.used.insert(used_key(&host, &workspace), now);
-                self.list.save();
-                self.notice = None;
-                self.composers += 1;
-                self.open(host, task.clone(), chats);
-                self.echo(&task, prompt, None, false, now);
-            }
-            Err(refusal) => self.notice = Some(refusal.reason()),
-        }
-    }
 }
 
-/// A chat's title from its first message: its first line, shortened.
-fn first_line(prompt: &str) -> String {
-    let line = prompt.lines().next().unwrap_or_default().trim();
-    let mut title: String = line.chars().take(60).collect();
-    if line.chars().count() > 60 {
-        title.push('…');
-    }
-    title
-}
-
-/// An engine's name from its wire word.
-fn engine_name(word: &str) -> Option<&'static str> {
-    nostr::cj_conversation::Engine::ALL
-        .into_iter()
-        .find(|engine| {
-            engine.word() == word || (word == "claude" && engine.word() == "claude_code")
-        })
-        .map(nostr::cj_conversation::Engine::name)
+/// A reply's **Enter the Grid** card, when the router offered the Verse
+/// under it: a surface the host draws, whose tap switches to the Verse.
+pub(super) fn verse_portal() -> Node<Intent> {
+    let mut card = node(
+        "talk-verse-portal",
+        Element::Surface {
+            resource: VERSE_PORTAL.into(),
+            label: "Enter the Grid".into(),
+        },
+    );
+    card.style.min_height = Some(VERSE_PORTAL_HEIGHT);
+    card
 }
 
 /// The first button in a list row (a chat card's row), its label and intent.
@@ -617,6 +478,76 @@ mod tests {
     use super::*;
     use openagents_chat::basic_coder::Turn;
 
+    fn chats() -> (tokio::runtime::Runtime, crate::chats::Chats) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let secret = secp256k1::SecretKey::from_byte_array([0x32; 32]).unwrap();
+        let chats = crate::chats::Chats::new(runtime.handle().clone(), secret, Err("test".into()));
+        (runtime, chats)
+    }
+
+    #[test]
+    fn the_switch_is_coder_or_verse_and_the_verse_card_opens_the_grid() {
+        let (_runtime, mut chats) = chats();
+        let mut tab = CoderTab::new("coder:shell".into()).with_shell(true);
+        let view = tab.shell_view(None, &chats).unwrap();
+        assert_eq!((view.place, view.screen), ("coder", "new"));
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("mode").is_none(), "no Chat / Code mode");
+        assert_eq!(json["carousel"]["dwell_ms"], crate::carousel::DWELL_MS);
+        // Explore the Verse's Try it goes straight to the Grid, sending
+        // nothing.
+        tab.shell(
+            ShellAction::TryCard { id: "verse".into() },
+            None,
+            &mut chats,
+        );
+        assert!(tab.in_verse());
+        assert!(tab.talk.is_none());
+        assert_eq!(tab.shell_view(None, &chats).unwrap().place, "verse");
+        // Back to Coder with the switch, or a new chat.
+        tab.shell(ShellAction::Switch { verse: false }, None, &mut chats);
+        assert!(!tab.in_verse());
+        tab.shell(ShellAction::Switch { verse: true }, None, &mut chats);
+        tab.shell(ShellAction::NewChat, None, &mut chats);
+        assert!(!tab.in_verse());
+        let action: ShellAction =
+            serde_json::from_str(r#"{"action":"switch","verse":true}"#).unwrap();
+        assert_eq!(action, ShellAction::Switch { verse: true });
+        assert!(serde_json::from_str::<ShellAction>(r#"{"action":"mode","code":true}"#).is_err());
+    }
+
+    #[test]
+    fn the_cards_open_on_another_card_each_time_they_come_on_view() {
+        let (_runtime, mut chats) = chats();
+        let mut tab = CoderTab::new("coder:cards".into()).with_shell(true);
+        let mut last = tab.shell_view(None, &chats).unwrap().carousel.start;
+        for _ in 0..12 {
+            // Still on view: the same card.
+            assert_eq!(tab.shell_view(None, &chats).unwrap().carousel.start, last);
+            tab.shell(ShellAction::Switch { verse: true }, None, &mut chats);
+            tab.shell_view(None, &chats);
+            tab.shell(ShellAction::Switch { verse: false }, None, &mut chats);
+            let start = tab.shell_view(None, &chats).unwrap().carousel.start;
+            assert_ne!(start, last);
+            assert!(start < HOME_CARDS.len());
+            last = start;
+        }
+    }
+
+    #[test]
+    fn a_reply_offering_the_verse_shows_a_portal_card() {
+        let card = verse_portal();
+        let Element::Surface { resource, label } = &card.element else {
+            panic!("a surface");
+        };
+        assert_eq!(resource, VERSE_PORTAL);
+        assert_eq!(label, "Enter the Grid");
+        assert_eq!(card.style.min_height, Some(VERSE_PORTAL_HEIGHT));
+    }
+
     #[test]
     fn worked_rows_go_before_replies_that_took_time() {
         let mut asked = Turn::user("hi");
@@ -715,15 +646,11 @@ mod tests {
         assert!(text.contains("Ask OpenAgents"), "{text}");
         assert!(!text.contains("coder-header"), "{text}");
         let shell = tab.shell_view(None, &chats).expect("the shell");
-        assert_eq!((shell.mode, shell.screen), ("chat", "new"));
+        assert_eq!((shell.place, shell.screen), ("coder", "new"));
         assert_eq!(shell.cards.len(), 4);
         assert!(shell.drawer.is_none());
-
-        // Code mode without a computer offers to connect one.
-        tab.shell(ShellAction::Mode { code: true }, None, &mut chats);
-        let text = tab.render(None, &mut chats).expect("a view").to_string();
-        assert!(text.contains("Work with Coder"), "{text}");
-        assert!(text.contains("Connect a computer"), "{text}");
+        // One conversation: no Coder mode words over the field.
+        assert!(!text.contains("Work with Coder"), "{text}");
 
         // The drawer lists rows only while it is open.
         tab.shell(ShellAction::Drawer { open: true }, None, &mut chats);
@@ -740,9 +667,11 @@ mod tests {
     #[test]
     fn shell_words_pass_the_copy_guard() {
         let mut words: Vec<&str> = vec![
-            "Work with Coder",
             "Ask OpenAgents",
-            "Coder works in your projects on your own computer.",
+            "Enter the Grid",
+            "The Verse",
+            "Coder",
+            "Verse",
         ];
         for card in HOME_CARDS {
             words.extend([card.title, card.line]);

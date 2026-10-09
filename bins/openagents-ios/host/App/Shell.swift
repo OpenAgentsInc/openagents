@@ -1,4 +1,4 @@
-// The phone's shell (#11126): the top bar (menu, the Chat / Code switch,
+// The phone's shell (#11126): the top bar (menu, the Coder / Verse switch,
 // new chat), the feature cards on a new chat, and the drawer with the main
 // places and recent chats. Rust owns the state (`coder_tab::shell`); this
 // file draws it and sends the person's taps back as shell actions.
@@ -23,8 +23,15 @@ struct ShellState: Decodable, Equatable {
         let recent: [Recent]
         let more: Bool
     }
-    /// `chat` or `code`.
-    let mode: String
+    struct Carousel: Decodable, Equatable {
+        /// The card the carousel opens on, by index.
+        let start: Int
+        let dwell_ms: Int
+        let resume_ms: Int
+    }
+    /// `coder` (the conversation) or `verse` (the Grid world).
+    let place: String
+    let carousel: Carousel?
     /// `new`, `chat`, or `list`.
     let screen: String
     let cards: [Card]
@@ -67,8 +74,9 @@ struct ShellMenuButton: View {
     }
 }
 
-/// The top bar over the chat: the menu, the Chat / Code switch on a new
-/// chat, and a new chat once a conversation is open.
+/// The top bar over the chat and the Verse: the menu, the Coder / Verse
+/// switch on a new chat and in the Verse, and a new chat once a
+/// conversation is open.
 struct ShellTopBar: View {
     @Environment(\.appColors) private var appColors
     let state: ShellState?
@@ -78,15 +86,15 @@ struct ShellTopBar: View {
 
     var body: some View {
         ZStack {
-            if state?.screen == "new" {
-                ShellModeSwitch(code: state?.mode == "code") { code in
-                    bridge.shell("mode", ["code": code])
+            if state?.screen == "new" || state?.place == "verse" {
+                ShellPlaceSwitch(verse: state?.place == "verse") { verse in
+                    bridge.shell("switch", ["verse": verse])
                 }
             }
             HStack {
                 ShellMenuButton(open: openDrawer, report: report)
                 Spacer()
-                if state?.screen == "chat" {
+                if state?.screen == "chat" && state?.place != "verse" {
                     ShellCircleButton(symbol: "square.and.pencil", label: "New chat",
                                       identifier: "shell-new-chat") { bridge.shell("new_chat") }
                 }
@@ -100,22 +108,22 @@ struct ShellTopBar: View {
     }
 }
 
-/// Chat or Code: one capsule, the chosen half filled.
-struct ShellModeSwitch: View {
+/// Coder or Verse: one capsule, the chosen half filled.
+struct ShellPlaceSwitch: View {
     @Environment(\.appColors) private var appColors
     @Namespace private var fill
-    let code: Bool
+    let verse: Bool
     let choose: (Bool) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            segment("Chat", chosen: !code) { choose(false) }
-            segment("Code", chosen: code) { choose(true) }
+            segment("Coder", chosen: !verse) { choose(false) }
+            segment("Verse", chosen: verse) { choose(true) }
         }
         .padding(4)
         .background(Capsule().fill(appColors.raised))
         .overlay(Capsule().strokeBorder(appColors.border, lineWidth: 0.5))
-        .animation(.snappy(duration: 0.25), value: code)
+        .animation(.snappy(duration: 0.25), value: verse)
     }
 
     private func segment(_ title: String, chosen: Bool, action: @escaping () -> Void) -> some View {
@@ -135,18 +143,46 @@ struct ShellModeSwitch: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(chosen ? .isSelected : [])
-        .accessibilityIdentifier("shell-mode-\(title.lowercased())")
+        .accessibilityIdentifier("shell-switch-\(title.lowercased())")
+    }
+}
+
+/// When the feature cards move on by themselves: the same rules as Rust's
+/// `carousel::AutoScroll` (one card each dwell, nothing while a finger is
+/// down, a pause after it lifts, never with Reduce Motion).
+struct CarouselClock {
+    var dwell: TimeInterval
+    var resume: TimeInterval
+    var reduceMotion: Bool
+    var touching = false
+    var since: TimeInterval
+
+    mutating func touch() { touching = true }
+
+    mutating func release(_ now: TimeInterval) {
+        touching = false
+        since = now + resume
+    }
+
+    mutating func step(_ now: TimeInterval) -> Bool {
+        if reduceMotion || touching || now < since + dwell { return false }
+        since = now
+        return true
     }
 }
 
 /// The feature cards on a new chat: a fan of tilted cards to swipe
 /// through (the row repeats, so there are cards on both sides), the chosen
-/// card's headline and line, and **Try it**.
+/// card's headline and line, and **Try it**. It opens on the card Rust
+/// picks and moves on by itself (`CarouselClock`).
 struct HomeCardsSurface: View {
     @Environment(\.appColors) private var appColors
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let cards: [ShellState.Card]
+    var carousel: ShellState.Carousel?
     let tryIt: (String) -> Void
     @State private var chosen: String?
+    @State private var clock: CarouselClock?
 
     /// How many times the row repeats; the middle copy shows first.
     private static let copies = 7
@@ -165,6 +201,23 @@ struct HomeCardsSurface: View {
 
     private var current: ShellState.Card? {
         slots.first { $0.id == chosen }?.card ?? cards.first
+    }
+
+    /// One card on, smoothly; near the end of the copies it first jumps
+    /// back to the middle copy of the same card, which looks the same.
+    private func advance(_ reader: ScrollViewProxy) {
+        let all = slots
+        guard !all.isEmpty else { return }
+        var at = all.firstIndex { $0.id == chosen } ?? (Self.copies / 2) * cards.count
+        if at >= all.count - cards.count {
+            at = (Self.copies / 2) * cards.count + at % cards.count
+            reader.scrollTo(all[at].id, anchor: .center)
+        }
+        let next = all[at + 1].id
+        withAnimation(.easeInOut(duration: 0.8)) {
+            reader.scrollTo(next, anchor: .center)
+            chosen = next
+        }
     }
 
     var body: some View {
@@ -187,7 +240,10 @@ struct HomeCardsSurface: View {
                                             .scaleEffect(1 - min(abs(turn), 1.5) * 0.06)
                                     }
                                     .id(slot.id)
-                                    .onTapGesture { withAnimation(.snappy) { chosen = slot.id } }
+                                    .onTapGesture {
+                                        withAnimation(.snappy) { chosen = slot.id }
+                                        clock?.release(Date().timeIntervalSinceReferenceDate)
+                                    }
                                     .accessibilityElement(children: .ignore)
                                     .accessibilityLabel(slot.card.title)
                                     .accessibilityAddTraits(.isButton)
@@ -201,12 +257,30 @@ struct HomeCardsSurface: View {
                     .contentMargins(.horizontal, max(0, (outer.size.width - Self.side) / 2), for: .scrollContent)
                     .scrollTargetBehavior(.viewAligned)
                     .scrollPosition(id: $chosen, anchor: .center)
+                    // A finger on the cards stops them; they move again a
+                    // while after it lifts.
+                    .simultaneousGesture(DragGesture(minimumDistance: 0)
+                        .onChanged { _ in clock?.touch() }
+                        .onEnded { _ in clock?.release(Date().timeIntervalSinceReferenceDate) })
                     .onAppear {
-                        guard chosen == nil, let first = cards.first else { return }
-                        let start = "\(Self.copies / 2)#\(first.id)"
+                        guard chosen == nil, !cards.isEmpty else { return }
+                        let index = min(max(carousel?.start ?? 0, 0), cards.count - 1)
+                        let start = "\(Self.copies / 2)#\(cards[index].id)"
+                        clock = CarouselClock(dwell: Double(carousel?.dwell_ms ?? 3500) / 1000,
+                                              resume: Double(carousel?.resume_ms ?? 4000) / 1000,
+                                              reduceMotion: reduceMotion,
+                                              since: Date().timeIntervalSinceReferenceDate)
                         DispatchQueue.main.async {
                             reader.scrollTo(start, anchor: .center)
                             chosen = start
+                        }
+                    }
+                    .onChange(of: reduceMotion) { _, on in clock?.reduceMotion = on }
+                    .task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .milliseconds(250))
+                            guard clock?.step(Date().timeIntervalSinceReferenceDate) == true else { continue }
+                            advance(reader)
                         }
                     }
                 }
@@ -302,8 +376,8 @@ struct ShellDrawer: View {
             ShellPlace(id: "code", title: "Coder", symbol: "chevron.left.forwardslash.chevron.right"),
             ShellPlace(id: "computers", title: "Computers", symbol: "desktopcomputer"),
             ShellPlace(id: "wallet", title: "Wallet", symbol: "bitcoinsign.circle"),
+            ShellPlace(id: "verse", title: "Verse", symbol: "globe"),
         ]
-        if Preview.on { places.append(ShellPlace(id: "verse", title: "Verse", symbol: "globe")) }
         places.append(ShellPlace(id: "settings", title: "Settings", symbol: "gearshape"))
         return places
     }
@@ -418,7 +492,6 @@ struct ShellDrawer: View {
     private var footer: some View {
         HStack {
             Button {
-                bridge.shell("mode", ["code": false])
                 bridge.shell("new_chat")
                 go("chat")
             } label: {
@@ -551,5 +624,45 @@ struct LinkCardSurface: View {
 
     private func open() {
         if let link { UIApplication.shared.open(link) }
+    }
+}
+
+/// A reply's **Enter the Grid** card (Rust's `verse-portal` surface), when
+/// the answer offered the Verse: a tap switches to the Grid.
+struct VersePortalSurface: View {
+    @Environment(\.appColors) private var appColors
+    let label: String
+    let enter: () -> Void
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        Button(action: enter) {
+            HStack(spacing: 14) {
+                HomeCardArt(id: "verse")
+                    .frame(width: 64, height: 64)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(label)
+                        .font(.paper(16, weight: .semibold))
+                        .foregroundStyle(appColors.primary)
+                    Text("The Verse")
+                        .font(.paper(13))
+                        .foregroundStyle(appColors.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(appColors.primary)
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(shape.fill(appColors.raised))
+            .overlay(shape.strokeBorder(appColors.border, lineWidth: 0.5))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("verse-portal")
     }
 }

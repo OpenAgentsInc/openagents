@@ -1,6 +1,6 @@
 // The release gate before a TestFlight build goes to testers (#11093): a
 // fresh install, signed out, against the live chat. It asks the questions
-// testers and Apple's reviewer start with, opens Wallet and Settings from
+// testers and Apple's reviewer start with, opens the Verse, Wallet, and Settings from
 // the drawer (#11126), and opens every Settings row, keeping a screenshot and the screen's text for each step so
 // a person can check them. It needs the network, so it runs only when
 // `OPENAGENTS_UITEST_LIVE` is set (pass `TEST_RUNNER_OPENAGENTS_UITEST_LIVE=1`
@@ -78,8 +78,20 @@ final class ReleaseGateUITests: XCTestCase {
             ask(app, question, String(format: "%02d-ask", index + 1))
         }
 
-        // Put the keyboard away, then open the drawer for Wallet.
+        // Put the keyboard away, then the Verse from the drawer: the Grid,
+        // and back to Coder with the switch.
         app.swipeDown()
+        open(app, "shell-place-verse")
+        sleep(6)
+        record(app, "08-verse")
+        let coder = app.buttons["shell-switch-coder"].firstMatch
+        XCTAssertTrue(coder.waitForExistence(timeout: 10))
+        coder.tap()
+        sleep(1)
+        XCTAssertTrue(app.textViews["Ask OpenAgents"].waitForExistence(timeout: 10))
+        record(app, "09-back-to-coder")
+
+        // The drawer for Wallet.
         open(app, "shell-place-wallet")
         sleep(6)
         record(app, "10-wallet")

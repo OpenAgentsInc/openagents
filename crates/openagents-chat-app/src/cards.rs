@@ -205,6 +205,7 @@ pub fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
         Screen::GymPublish => Glyph::Add,
         Screen::GymTestSet => Glyph::Ask,
         Screen::RoutesMap => Glyph::Map,
+        Screen::Verse => Glyph::Map,
     };
     (
         openagents_chat::suggestions::screen_label(screen, connecting),
@@ -851,6 +852,31 @@ mod tests {
     use std::time::Instant;
 
     #[test]
+    fn a_typed_verse_offer_is_enter_the_grid() {
+        let meta = Meta {
+            offers: vec![Offer::OpenScreen {
+                screen: Screen::Verse,
+            }],
+            ..Meta::default()
+        };
+        assert_eq!(Screen::Verse.word(), "verse");
+        let actions = reply_actions(Some(&meta), &[], false, &Availability::NotConfigured, false);
+        let chip = actions
+            .chips
+            .iter()
+            .find(|chip| {
+                chip.action
+                    == Action::OpenScreen {
+                        screen: Screen::Verse,
+                    }
+            })
+            .expect("the Verse offer");
+        assert_eq!(chip.label, "Enter the Grid");
+        // The plain Grid is not a preview screen.
+        assert!(!preview_screen(Screen::Verse));
+    }
+
+    #[test]
     fn typed_reply_chips_deduplicate_connect_and_preserve_followup_identity() {
         let meta = Meta {
             offers: vec![
@@ -985,7 +1011,9 @@ mod tests {
         };
         assert_eq!(requests.len(), 2);
         assert!(matches!(&requests[0].1, Command::UseSuggestion { id, .. } if id == "meta.who"));
-        assert!(matches!(&requests[1].1, Command::Send { text, .. } if text == "What is OpenAgents?"));
+        assert!(
+            matches!(&requests[1].1, Command::Send { text, .. } if text == "What is OpenAgents?")
+        );
         assert!(matches!(
             session.card_action("coder-suggest-meta.who"),
             Effect::None

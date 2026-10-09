@@ -12,14 +12,17 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 ## What the app has
 
 **Shell (#11126).** The app has no tab bar, as on iOS. A top bar holds the
-menu button, a **Chat** / **Code** switch on a new chat, and **New chat** in
-a conversation; the menu opens a drawer with **Coder**, **Computers**,
-**Wallet**, **Verse** (preview builds), **Settings** (formerly Account), the
+menu button, a **Coder** / **Verse** switch on a new chat and in the Verse,
+and **New chat** in a conversation; the menu opens a drawer with **Coder**,
+**Computers**, **Wallet**, **Verse**, **Settings** (formerly Account), the
 recent chats with search and **See all…**, a **Chat** pill for a new chat,
-and the account button. A new chat in Chat mode shows the four feature
-cards (`openagents-chat` `home_cards.rs`) to swipe through, each with **Try
-it**, over the composer (**Ask OpenAgents**); Code mode's new chat (**Work
-with Coder**) starts Coder on the ready computer. A reply that took time
+and the account button. A new chat shows the four feature cards
+(`openagents-chat` `home_cards.rs`) to swipe through, each with **Try it**,
+over the composer (**Ask OpenAgents**); they open on a different card each
+time and move on by themselves, pausing under a finger and never with
+animations off. **Explore the Verse**'s Try it, the switch, and a reply's
+**Enter the Grid** card open the Verse: the plain Grid (no Gym or Everglade
+outside preview builds). A reply that took time
 starts with **Worked for 6s**, which opens the steps, and a reply that names
 web links shows a card for each under it: the page's title, its site, and its
 preview picture when the page names one (`og:image`), which Rust reads within

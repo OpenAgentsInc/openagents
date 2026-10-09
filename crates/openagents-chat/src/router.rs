@@ -647,6 +647,8 @@ pub enum Screen {
     GymTestSet,
     /// The desktop app's Map page (#10085).
     RoutesMap,
+    /// The Verse: the Grid world (**Enter the Grid**).
+    Verse,
 }
 
 impl Screen {
@@ -664,6 +666,7 @@ impl Screen {
             Self::GymPublish => "gym.publish",
             Self::GymTestSet => "gym.test_set",
             Self::RoutesMap => "routes.map",
+            Self::Verse => "verse",
         }
     }
 
@@ -680,6 +683,7 @@ impl Screen {
             "gym.publish" => Screen::GymPublish,
             "gym.test_set" => Screen::GymTestSet,
             "routes.map" => Screen::RoutesMap,
+            "verse" => Screen::Verse,
             _ => return None,
         })
     }
@@ -1000,7 +1004,10 @@ pub const MAX_PLUGIN_CARDS: usize = 12;
 fn plugin_slugs(value: &Value) -> Vec<String> {
     let mut kept: Vec<String> = vec![];
     for slug in value.as_array().into_iter().flatten() {
-        let Some(slug) = slug.as_str().filter(|slug| slug.len() <= 64 && tag_like(slug)) else {
+        let Some(slug) = slug
+            .as_str()
+            .filter(|slug| slug.len() <= 64 && tag_like(slug))
+        else {
             continue;
         };
         if !kept.iter().any(|kept| kept == slug) {

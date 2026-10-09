@@ -492,11 +492,11 @@ struct VerseTab: View {
                             .accessibilityIdentifier("verse-error")
                         Button("Retry world renderer") { world.retry() }
                     }
-                    .padding(.top, 12)
+                    .padding(.top, 64) // below the shell's top bar
                     .padding(.horizontal, 16)
                 } else if world.inEverglade, !boardOpen, !world.studioOpen, let status = world.studioStatus {
                     studioStatus(status)
-                        .padding(.top, 12)
+                        .padding(.top, 64)
                         .padding(.horizontal, 16)
                 }
             }
@@ -826,9 +826,10 @@ final class VerseWorldView: UIView {
     /// The world runs behind the status bar and the tab bar; the insets keep
     /// the stick above the tab bar.
     private func sendInsets() {
-        send(["action": "hud_insets", "top": Double(max(0, insets.top)),
-              "right": Double(max(0, insets.trailing)), "bottom": Double(max(0, insets.bottom)),
-              "left": Double(max(0, insets.leading))])
+        // Rust takes at most 256 points a side; a keyboard's inset is more.
+        let side = { (value: CGFloat) in Double(min(256, max(0, value))) }
+        send(["action": "hud_insets", "top": side(insets.top), "right": side(insets.trailing),
+              "bottom": side(insets.bottom), "left": side(insets.leading)])
     }
 
     private func layoutSurface() {

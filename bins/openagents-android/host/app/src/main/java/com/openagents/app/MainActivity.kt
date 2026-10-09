@@ -55,14 +55,16 @@ enum class AccountRoute(val title: String) {
 }
 
 /**
- * The release gate (docs/mobile/1.0-audit.md): the Verse tab, the Gym
- * (Train Coder, Profile), Trainer, Playtest, Tailnet, and the display name
- * show only in a build whose Rust library was made with
- * `OPENAGENTS_MOBILE_PREVIEW=on`. Release and normal debug builds hide them.
+ * The release gate (docs/mobile/1.0-audit.md): the Gym (its boards in the
+ * Grid, Train Coder, Profile), Everglade, Trainer, Playtest, Tailnet, and
+ * the display name show only in a build whose Rust library was made with
+ * `OPENAGENTS_MOBILE_PREVIEW=on`. Release and normal debug builds hide
+ * them. The plain Grid (the Verse) shows in every build.
  */
 object Preview {
     val on: Boolean by lazy { runCatching { OpenAgentsNative.preview() }.getOrDefault(false) }
-    fun shows(tab: AppTab) = on || tab != AppTab.VERSE
+    @Suppress("UNUSED_PARAMETER")
+    fun shows(tab: AppTab) = true
     fun shows(route: AccountRoute) = on || !route.previewOnly
 }
 
@@ -139,7 +141,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var homeCards: HomeCards
     private var drawerOpen = false
     private val walletMenu by lazy { FrameLayout(this) }
-    private val verseMenu by lazy { FrameLayout(this) }
+    /** The Verse's top bar: the menu and the Coder / Verse switch over the world. */
+    private lateinit var verseBar: ShellTopBar
+    /** The shell's place in the last packet, to follow Rust's switch. */
+    private var shellPlace: String? = null
+    /** The place this host asked Rust for, until a packet shows it. */
+    private var sentPlace: String? = null
 
     private lateinit var wallet: WalletScreen
     private lateinit var payments: AgentPayments
@@ -215,9 +222,14 @@ class MainActivity : ComponentActivity() {
         bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
         homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
+        verseBar = ShellTopBar(this, bridge, { openDrawer(true) }) { report() }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, floating = true, surfaces = { resource ->
                 if (resource == "home-cards") homeCards.root
+                else if (resource == "verse-portal") VersePortal.card(this, "Enter the Grid") {
+                    bridge.shell("switch", "verse" to true)
+                    select(AppTab.VERSE)
+                }
                 else if (resource.startsWith("link:")) LinkCards.card(this, bridge, resource) { openLink(it) }
                 else if (resource.startsWith("image:")) imageViews.getOrPut(resource) { ChatImages.card(this, bridge, resource) }
                 else resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
@@ -245,7 +257,6 @@ class MainActivity : ComponentActivity() {
         body = column().apply { setBackgroundColor(Palette.BACKGROUND) }
         val pageHost = FrameLayout(this)
         body.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
-        // The Verse's page is built, but the drawer offers it only in a preview build.
         for (value in AppTab.entries) {
             val page = FrameLayout(this).apply { visibility = View.GONE }
             pages[value] = page
@@ -266,7 +277,7 @@ class MainActivity : ComponentActivity() {
         walletPage.addView(walletBody, LinearLayout.LayoutParams(-1, 0, 1f))
         pages.getValue(AppTab.WALLET).addView(walletPage, FrameLayout.LayoutParams(-1, -1))
         buildWallet(walletBody)
-        pages.getValue(AppTab.VERSE).addView(verseMenu, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+        pages.getValue(AppTab.VERSE).addView(verseBar.root, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
         link = AccountLink(this, bridge, menuButton({ openDrawer(true) }) { report() })
         pages.getValue(AppTab.LINK).addView(link.root, FrameLayout.LayoutParams(-1, -1))
@@ -296,7 +307,9 @@ class MainActivity : ComponentActivity() {
             drawer.root.setPadding(bars.left, bars.top, 0, maxOf(bars.bottom, keyboard.bottom))
             terminal.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
             connect.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
-            verseMenu.setPadding(dp(16), bars.top + dp(4), 0, 0)
+            (verseBar.root.layoutParams as? FrameLayout.LayoutParams)?.let {
+                it.topMargin = bars.top; verseBar.root.layoutParams = it
+            }
             // Every page but Verse starts below the status bar; the world
             // fills the screen behind it and keeps its controls below.
             for ((value, page) in pages) if (value != AppTab.VERSE) page.setPadding(0, bars.top, 0, 0)
@@ -360,11 +373,10 @@ class MainActivity : ComponentActivity() {
             }
             intent.getStringExtra("gym_script")?.let { script -> gymScript(script.split("|").filter { it.isNotEmpty() }, 0) }
         }
-        // Debug builds only, for screenshots: `--es shell_mode code` opens
-        // Code mode, `--ez drawer true` opens the drawer, and `--es
-        // appearance light|dark|system` picks the theme (saved).
+        // Debug builds only, for screenshots: `--ez drawer true` opens the
+        // drawer, and `--es appearance light|dark|system` picks the theme
+        // (saved). `--es tab verse` opens on the Grid.
         if (BuildConfig.DEBUG) {
-            if (intent.getStringExtra("shell_mode") == "code") bridge.shell("mode", "code" to true)
             intent.getStringExtra("appearance")?.let { bridge.theme(it) }
             if (intent.getBooleanExtra("drawer", false)) main.postDelayed({ openDrawer(true) }, 1500)
         }
@@ -423,7 +435,15 @@ class MainActivity : ComponentActivity() {
             focus.clearFocus()
         }
         if (tab == AppTab.LINK && value != AppTab.LINK && ::link.isInitialized) link.hide()
+        // The shell's switch follows the place on view.
+        if (value == AppTab.VERSE && shellPlace != "verse") {
+            bridge.shell("switch", "verse" to true); sentPlace = "verse"; shellPlace = "verse"
+        }
+        if (value == AppTab.CODER && shellPlace == "verse") {
+            bridge.shell("switch", "verse" to false); sentPlace = "coder"; shellPlace = "coder"
+        }
         tab = value
+        restyleWindow()
         for ((key, page) in pages) page.visibility = if (key == value) View.VISIBLE else View.GONE
         world.setShown(value == AppTab.VERSE)
         if (value == AppTab.WALLET) wallet.appeared() else wallet.disappeared()
@@ -438,14 +458,12 @@ class MainActivity : ComponentActivity() {
     /** The drawer's width: most of the screen, at most 360 dp. */
     private fun drawerWidth() = minOf((resources.displayMetrics.widthPixels * 0.82f).toInt(), dp(360))
 
-    /** The menu buttons over the Wallet and the Verse, which have no top bar of their own. */
+    /** The menu button over the Wallet, which has no top bar of its own. */
     private fun menus() {
         walletMenu.removeAllViews()
         walletMenu.setPadding(dp(16), dp(4), dp(16), dp(4))
         walletMenu.setBackgroundColor(Palette.BACKGROUND)
         walletMenu.addView(menuButton({ openDrawer(true) }) { report() }, FrameLayout.LayoutParams(dp(44), dp(44)))
-        verseMenu.removeAllViews()
-        if (Preview.on) verseMenu.addView(menuButton({ openDrawer(true) }) { report() }, FrameLayout.LayoutParams(dp(44), dp(44)))
     }
 
     /** Opens or closes the drawer, sliding the app aside; Rust lists its chats while it is open. */
@@ -480,14 +498,10 @@ class MainActivity : ComponentActivity() {
     /** Opens a place from the drawer. */
     private fun go(place: String) {
         when (place) {
-            "code" -> {
-                bridge.shell("mode", "code" to true)
-                bridge.shell("new_chat")
-                select(AppTab.CODER)
-            }
+            "code" -> select(AppTab.CODER)
             "computers" -> { select(AppTab.ACCOUNT); open(AccountRoute.COMPUTERS) }
             "wallet" -> select(AppTab.WALLET)
-            "verse" -> if (Preview.on) select(AppTab.VERSE)
+            "verse" -> select(AppTab.VERSE)
             "settings" -> { select(AppTab.ACCOUNT); open(null) }
             "account", "running", "account_chats" -> {
                 link.show(if (place == "account_chats") "chats" else place)
@@ -924,6 +938,7 @@ class MainActivity : ComponentActivity() {
                 "report" -> report()
                 // See the board: the Verse tab, at the Gym's EVALS board.
                 "verse_gym" -> if (Preview.on) { select(AppTab.VERSE); panels.openEvals() }
+                "verse" -> select(AppTab.VERSE)
                 // Train Coder from the Verse or Account: the Chat tab, on
                 // the Gym intro.
                 "chat" -> select(AppTab.CODER)
@@ -934,6 +949,19 @@ class MainActivity : ComponentActivity() {
         if (::studio.isInitialized) studio.sync()
         if (::connect.isInitialized) connect.update(packet?.objectOrNull("connect"))
         val shell = packet?.objectOrNull("shell")
+        // Rust's switch moved (Try it on Explore the Verse, Enter the Grid,
+        // the switch itself): show its place.
+        // A packet from before this host's own switch is skipped.
+        shell?.optString("place")?.takeIf { it.isNotEmpty() }?.let { place ->
+            if (sentPlace != null) {
+                if (place == sentPlace) sentPlace = null
+            } else if (place != shellPlace) {
+                shellPlace = place
+                if (place == "verse" && tab == AppTab.CODER) select(AppTab.VERSE)
+                else if (place == "coder" && tab == AppTab.VERSE) select(AppTab.CODER)
+            }
+        }
+        verseBar.update(shell)
         homeCards.update(shell)
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         renderGym(packet?.objectOrNull("gym"))
@@ -1131,9 +1159,11 @@ class MainActivity : ComponentActivity() {
     /** The status and navigation bars follow the theme. */
     private fun restyleWindow() {
         window.decorView.setBackgroundColor(Palette.BACKGROUND)
+        // The Verse's world is dark only for now (#11028): light bars over it.
+        val light = Palette.LIGHT && !(::world.isInitialized && tab == AppTab.VERSE)
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = Palette.LIGHT
-            isAppearanceLightNavigationBars = Palette.LIGHT
+            isAppearanceLightStatusBars = light
+            isAppearanceLightNavigationBars = light
         }
     }
 

@@ -34,6 +34,7 @@ mod gym_fixture {
     pub const REPORT: &str = include_str!("../../openagents-mobile/fixtures/gym-report.json");
 }
 pub mod cards;
+pub mod carousel;
 pub mod changes;
 pub mod projection;
 pub mod session;
