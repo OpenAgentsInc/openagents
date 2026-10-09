@@ -18,6 +18,7 @@ mod activity;
 mod code;
 mod markdown;
 mod page;
+mod plugin_card;
 mod source;
 mod table;
 
@@ -25,6 +26,7 @@ pub use activity::{ActivityStatus, FileChanges, ResultCard, Step, Steps, ToolCal
 pub use code::{CodeBlock, StickyActionBar};
 pub use markdown::{Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize, Paragraph};
 pub use page::{Facts, PageColumn};
+pub use plugin_card::{PluginCard, PluginCards};
 pub use source::{Favicon, Source, SourceVariant};
 pub use table::{ColSize, Table};
 

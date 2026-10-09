@@ -6,8 +6,8 @@ use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
     ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, List,
-    ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, ResultCard, Source, SourceVariant,
-    Step, Steps, StickyActionBar, Table, ToolCall, ToolGroup,
+    ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, PluginCard, PluginCards,
+    ResultCard, Source, SourceVariant, Step, Steps, StickyActionBar, Table, ToolCall, ToolGroup,
 };
 use crate::icons::Icon;
 
@@ -124,5 +124,42 @@ pub(super) fn activity(_pane: Pane) -> Markup {
         (specimen("FileChanges", "Changed files", FileChanges::new()
             .file("crates/coder-lease/src/table.rs", 18, 4)
             .file("crates/coder-lease/tests/corrupt.rs", 31, 0)))
+    }
+}
+
+/// Plugin cards as a chat answer shows them: the real catalog's words.
+pub(super) fn plugins(_pane: Pane) -> Markup {
+    let card = |name: &str, icon: Icon, summary: &str| {
+        PluginCard::new(name, icon, summary)
+            .runs_on("With Coder on your computer")
+            .action("Get Coder", "/download")
+    };
+    let cards = PluginCards::new("Plugins").cards([
+        card(
+            "Project map",
+            Icon::Maps,
+            "Shows Coder how the project is laid out before it starts: its files, languages, \
+             largest files, build files, and tests.",
+        ),
+        card(
+            "Code finder",
+            Icon::Search,
+            "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK \
+             notes, grouped by file.",
+        ),
+        card(
+            "Explain this error",
+            Icon::Bug,
+            "Reads a failing command's output, finds the file and line in your project it \
+             points at, and explains the likely cause and a likely fix.",
+        ),
+    ]);
+    html! {
+        (specimen("PluginCards PluginCard", "Plugins in an answer", cards))
+        (specimen("PluginCard", "A card with no action", PluginCard::new(
+            "Test reader",
+            Icon::Flask,
+            "Reads the test reports in a project for Coder: which tests failed, where, and why.",
+        )))
     }
 }
