@@ -54,6 +54,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/chat/{id}/messages/{index}/original", get(original))
         .merge(sidebar::routes())
         .merge(delete_all::routes())
+        .merge(live::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -982,19 +983,28 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
 /// elsewhere rows are plain links. Responses that change the list carry it
 /// again with `oob`, replacing `#chat-sidebar` in place. An unavailable
 /// store leaves the list empty rather than showing an error in the sidebar.
+///
+/// A whole page (not `oob`) also gets the tab's live stream beside the list
+/// ([`live::connector`]), which keeps row statuses current; an `oob`
+/// replacement leaves that connection alone.
 pub(crate) async fn chat_list(
     app: &App,
     owner: &str,
     current: Option<&str>,
     hx: bool,
     oob: bool,
-) -> ChatList {
+) -> Markup {
     let view = sidebar::View {
         current,
         hx,
         ..sidebar::View::default()
     };
-    sidebar::render(app, owner, view, oob).await
+    let drawn = now();
+    let (list, working) = sidebar::render_working(app, owner, view, oob).await;
+    html! {
+        (list)
+        @if !oob { (live::connector(drawn, working.iter().map(String::as_str))) }
+    }
 }
 
 /// A chat row's second line: the repository and branch it was started
@@ -1410,6 +1420,8 @@ mod sidebar;
 
 #[path = "chat_delete_all.rs"]
 pub(crate) mod delete_all;
+#[path = "chat_live.rs"]
+mod live;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

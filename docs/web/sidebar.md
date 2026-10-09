@@ -142,6 +142,17 @@ Where each status comes from:
 - The stream sends only the owner's own rows and closes on sign-out. A tab
   in the background keeps the connection; a reconnect asks for rows changed
   after its last revision.
+- As built (#11035): `GET /chats/events?after=<unix time>&working=<ids>`,
+  held by a hidden `#chat-sidebar-live` element that a whole page draws
+  beside the list (an out-of-band list replacement leaves it alone). Each
+  event (`status`) carries row status slots (`#chat-row-status-{id}`) out of
+  band. The chat store announces this process's writes
+  (`chat_store::Store::changes`); the stream waits a second for a burst to
+  settle and reads only the chats that changed. Chats last seen Working are
+  read again every 5 seconds and the whole list every 2 minutes, for writes
+  on another replica. A connection lasts 10 minutes; the browser then
+  reconnects with the last event id (a unix time) and gets the rows changed
+  since.
 
 ## Narrow screens
 
@@ -167,7 +178,13 @@ menu need no hover: the `…` is always visible on touch.
 2. **Projects**: connect a GitHub repository, a project record, chats join a
    project, sidebar groups.
 3. **Live status**: the sidebar event stream; Cloud job and Coder task
-   statuses (Waiting for you, Paused until, Done) on rows.
+   statuses (Waiting for you, Paused until, Done) on rows. The stream is
+   built for answers (#11035, `pages/chat_live.rs`): Working and Failed
+   change on their own. Task statuses wait for chats to record the tasks
+   they start (phase 5): today no chat names a Cloud job or a Coder task
+   (`Pending::job_id` is always empty and running a chat on a computer is
+   gone), so there is nothing real to show yet, and Done waits for a
+   last-opened time per chat.
 4. **Organize** (built, #11036): pin, rename, archive, search, keyboard.
    `chat_store` keeps `pinned_unix` and `archived_unix`; the routes are
    `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the

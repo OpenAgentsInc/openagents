@@ -17,7 +17,7 @@ use futures_util::stream::{self, StreamExt, TryStreamExt};
 use reqwest::{Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast};
 
 const SCHEMA: &str = "openagents.web.chat.v1";
 const MAX_RECORD_BYTES: usize = 16 * 1024 * 1024;
@@ -177,7 +177,22 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Clone)]
-pub struct Store(Arc<Adapter>);
+pub struct Store(Arc<Adapter>, broadcast::Sender<Change>);
+
+/// A chat this process just wrote, for readers that follow a visitor's
+/// chats without polling each one (the sidebar's live stream, see
+/// `docs/web/sidebar.md` "Live updates"). Only writes made by this process
+/// are announced; another replica's writes reach readers through their own
+/// slower checks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Change {
+    pub owner: Arc<str>,
+    pub id: Arc<str>,
+}
+
+/// How many announcements a slow reader may fall behind before it is told
+/// it missed some (and checks every chat instead).
+const CHANGES: usize = 1024;
 
 enum Adapter {
     Disk(PathBuf),
@@ -213,7 +228,10 @@ struct Active {
 impl Store {
     /// Disk storage is suitable for a single machine and survives restarts.
     pub fn local(directory: PathBuf) -> Self {
-        Self(Arc::new(Adapter::Disk(directory)))
+        Self(
+            Arc::new(Adapter::Disk(directory)),
+            broadcast::channel(CHANGES).0,
+        )
     }
 
     /// Use a private bucket with object read, create, delete, and list rights.
@@ -253,13 +271,21 @@ impl Store {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| Error::Unavailable("Cloud identity could not initialize."))?;
-        Ok(Self(Arc::new(Adapter::Gcs(Gcs {
-            bucket,
-            prefix,
-            client,
-            metadata,
-            token: Mutex::new(None),
-        }))))
+        Ok(Self(
+            Arc::new(Adapter::Gcs(Gcs {
+                bucket,
+                prefix,
+                client,
+                metadata,
+                token: Mutex::new(None),
+            })),
+            broadcast::channel(CHANGES).0,
+        ))
+    }
+
+    /// Announcements of this process's chat writes, from now on.
+    pub(crate) fn changes(&self) -> broadcast::Receiver<Change> {
+        self.1.subscribe()
     }
 
     pub(crate) async fn load(&self, owner: &str, id: &str) -> Result<Option<Loaded>, Error> {
@@ -321,6 +347,11 @@ impl Store {
                     .await?
             }
         };
+        // Nobody listening is not an error.
+        let _ = self.1.send(Change {
+            owner: conversation.owner.as_str().into(),
+            id: conversation.id.as_str().into(),
+        });
         Ok(Loaded {
             conversation: conversation.clone(),
             generation,
@@ -1847,6 +1878,25 @@ mod tests {
         record.requests[0].cloud.as_mut().unwrap().binding = "operator-fixture".into();
         record.requests[0].cloud.as_mut().unwrap().request = ID.into();
         assert!(encode(&record).is_err());
+    }
+
+    #[tokio::test]
+    async fn writes_announce_their_owner_and_chat() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::local(directory.path().join("chats"));
+        let mut changes = store.changes();
+        let record = conversation();
+        let created = store.create(&record).await.unwrap();
+        let change = changes.try_recv().unwrap();
+        assert_eq!(&*change.owner, record.owner.as_str());
+        assert_eq!(&*change.id, record.id.as_str());
+        let mut next = record.clone();
+        next.revision += 1;
+        store.compare_and_swap(&created, &next).await.unwrap();
+        assert_eq!(changes.try_recv().unwrap(), change);
+        // A refused write announces nothing.
+        assert!(store.compare_and_swap(&created, &next).await.is_err());
+        assert!(changes.try_recv().is_err());
     }
 
     #[tokio::test]

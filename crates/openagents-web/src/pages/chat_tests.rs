@@ -979,3 +979,57 @@ async fn an_accounts_chats_never_open_with_a_browser_cookie() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+/// #11035: a page's sidebar holds one live connection for row statuses,
+/// beside the list so the list's own replacements keep it.
+#[tokio::test]
+async fn the_sidebar_follows_row_statuses_live() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let get = |uri: &str, cookie: Option<&str>| {
+        let mut builder = HttpRequest::builder()
+            .method(Method::GET)
+            .uri(uri)
+            .header(header::HOST, HOST);
+        if let Some(owner) = cookie {
+            builder = builder.header(header::COOKIE, format!("oa_visitor={owner}"));
+        }
+        fixture
+            .router
+            .clone()
+            .oneshot(builder.body(Body::empty()).unwrap())
+    };
+    let response = get(&format!("/chat/{CHAT}"), Some(OWNER)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 2 * 1024 * 1024)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(
+        body.matches(r#"id="chat-sidebar-live""#).count(),
+        1,
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"sse-connect="/chats/events?after="#),
+        "{body}"
+    );
+
+    // Someone without chats gets no stream, and is told not to reconnect.
+    let response = get("/chats/events", None).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = get("/chats/events?after=1", Some(OWNER)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "text/event-stream"
+    );
+    assert!(
+        response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .is_some()
+    );
+    fixture.no_worker();
+}

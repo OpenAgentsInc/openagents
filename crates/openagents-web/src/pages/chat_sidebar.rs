@@ -43,15 +43,31 @@ pub(super) struct View<'a> {
 
 /// The list for `owner`; see [`super::chat_list`].
 pub(super) async fn render(app: &App, owner: &str, view: View<'_>, oob: bool) -> ChatList {
+    render_working(app, owner, view, oob).await.0
+}
+
+/// [`render`], and the ids of the listed chats drawn as Working (for the
+/// live stream, `super::live`).
+pub(super) async fn render_working(
+    app: &App,
+    owner: &str,
+    view: View<'_>,
+    oob: bool,
+) -> (ChatList, Vec<String>) {
     let list = ChatList::new().id("chat-sidebar").swap_oob(oob);
     let rows = match app.config.chat_store.list(owner).await {
         Ok(rows) => rows,
         Err(error) => {
             eprintln!("openagents-web: chat list: {error}");
-            return list;
+            return (list, Vec::new());
         }
     };
-    build(list, &rows, &csrf(app, owner), view)
+    let working = rows
+        .iter()
+        .filter(|chat| chat.archived_unix.is_none() && chat.pending.is_some())
+        .map(|chat| chat.id.clone())
+        .collect();
+    (build(list, &rows, &csrf(app, owner), view), working)
 }
 
 /// The list from loaded rows (newest first, as the store sorts them).
