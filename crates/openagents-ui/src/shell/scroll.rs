@@ -13,6 +13,11 @@ pub const SCROLL_TO_BOTTOM_ATTR: &str = "data-oa-scroll-bottom";
 /// When one is present, the button clicks it instead of scrolling.
 pub const SCROLL_TAIL_ATTR: &str = "data-oa-scroll-tail";
 
+/// The data attribute that makes the button's region follow its newest
+/// line: it opens scrolled to the end, and content swapped in while the
+/// reader is near the end keeps the end in view.
+pub const SCROLL_FOLLOW_ATTR: &str = "data-oa-scroll-follow";
+
 /// An icon-only round button, centered at the bottom of its positioned
 /// parent (just above a docked composer), that scrolls `target` to its end.
 ///
@@ -25,6 +30,7 @@ pub const SCROLL_TAIL_ATTR: &str = "data-oa-scroll-tail";
 #[derive(Clone, Debug)]
 pub struct ScrollToBottom {
     target: String,
+    follow: bool,
 }
 
 impl ScrollToBottom {
@@ -34,7 +40,16 @@ impl ScrollToBottom {
     pub fn new(target: impl Into<String>) -> Self {
         Self {
             target: target.into(),
+            follow: false,
         }
+    }
+
+    /// Keep the region on its newest line ([`SCROLL_FOLLOW_ATTR`]), for a
+    /// live log that grows while it is read.
+    #[must_use]
+    pub fn follow(mut self) -> Self {
+        self.follow = true;
+        self
     }
 }
 
@@ -42,6 +57,7 @@ impl Render for ScrollToBottom {
     fn render(&self) -> Markup {
         html! {
             button type="button" class="oa-scroll-bottom" data-oa-scroll-bottom=(self.target)
+                data-oa-scroll-follow=[self.follow.then_some("")]
                 aria-label="Scroll to bottom" title="Scroll to bottom" hidden {
                 (Icon::ArrowDown.size(IconSize::Md))
             }

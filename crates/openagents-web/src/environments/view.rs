@@ -134,7 +134,7 @@ pub(crate) fn pick(p: &Pick<'_>) -> Markup {
             h1 { "New environment" }
             p { "Choose a GitHub repository. An agent will work out how to install it, check the result on a fresh computer, and ask you to save it." }
         }))
-        form action="/environments/new" method="get" {
+        form.oa-page-form action="/environments/new" method="get" {
             @if let Some(mine) = p.mine {
                 @if !mine.is_empty() {
                     (field("env-pick", "Your repositories", None, |aria| {
@@ -173,7 +173,7 @@ pub(crate) fn branch(
             h1 { "Set up " (repo) }
             p { "Pick the branch to set up. The agent works on its latest commit." }
         }))
-        form action="/environments" method="post" {
+        form.oa-page-form action="/environments" method="post" {
             input type="hidden" name="repo" value=(repo);
             (field("env-branch", "Branch", error, |aria| {
                 let mut select = Select::new("branch").id("env-branch").aria(aria).selected(default);
@@ -201,6 +201,12 @@ fn says(markdown: &str) -> Message {
         markdown,
     ))))
     .author(AUTHOR)
+}
+
+/// A progress line ("Working…"): plain text, its "Status" heading kept
+/// for screen readers only.
+fn note(text: impl AsRef<str>) -> Message {
+    Message::status(text).quiet()
 }
 
 fn acts(content: impl Render) -> Message {
@@ -309,7 +315,7 @@ fn progress(records: &[&Record]) -> Steps {
 }
 
 /// The whole conversation: every record, then what is happening now.
-pub(crate) fn transcript(view: &View, claude_ready: bool, notice: Option<&str>) -> Markup {
+pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> Markup {
     let id = &view.summary.id;
     let records = &view.records;
     let mut turns: Vec<Markup> = vec![];
@@ -326,10 +332,8 @@ pub(crate) fn transcript(view: &View, claude_ready: bool, notice: Option<&str>) 
             Entry::User { text } => turns.push(Message::user(text).render()),
             Entry::Agent { text } => turns.push(says(text).render()),
             Entry::Question { text } => turns.push(says(text).render()),
-            Entry::Starting => turns.push(Message::status("Starting a setup computer").render()),
-            Entry::Retried => {
-                turns.push(Message::status("Trying again on a new setup computer").render())
-            }
+            Entry::Starting => turns.push(note("Starting a setup computer").render()),
+            Entry::Retried => turns.push(note("Trying again on a new setup computer").render()),
             Entry::Source {
                 ok,
                 revision,
@@ -488,22 +492,22 @@ pub(crate) fn transcript(view: &View, claude_ready: bool, notice: Option<&str>) 
                 if current {
                     turns.push(acts(failed_card(id, reason)).render());
                 } else {
-                    turns.push(Message::status(reason).render());
+                    turns.push(note(reason).render());
                 }
             }
         }
         i += 1;
     }
     match &view.phase {
-        Phase::Starting => turns.push(Message::status("Starting a setup computer…").render()),
-        Phase::Working => turns.push(Message::status("Working…").render()),
-        Phase::Building => turns.push(Message::status("Building a clean image…").render()),
-        Phase::Verifying => turns.push(Message::status("Checking a fresh computer…").render()),
-        Phase::Saved { .. } => turns.push(acts(claude_card(view, claude_ready)).render()),
+        Phase::Starting => turns.push(note("Starting a setup computer…").render()),
+        Phase::Working => turns.push(note("Working…").render()),
+        Phase::Building => turns.push(note("Building a clean image…").render()),
+        Phase::Verifying => turns.push(note("Checking a fresh computer…").render()),
+        Phase::Saved { .. } => turns.push(acts(claude_card(view, claude)).render()),
         _ => {}
     }
     if let Some(notice) = notice {
-        turns.push(Message::status(notice).render());
+        turns.push(note(notice).render());
     }
     html! {
         @for (n, turn) in turns.iter().enumerate() {
@@ -561,7 +565,18 @@ fn failed_card(id: &str, reason: &str) -> Markup {
         .render()
 }
 
-fn claude_card(view: &View, ready: bool) -> Markup {
+/// What the Claude Code card offers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Claude {
+    /// A Claude key is available: the person's own, or this server's.
+    Ready,
+    /// The person can add their own key in Settings.
+    AddKey,
+    /// This server keeps no keys and names none.
+    Unavailable,
+}
+
+fn claude_card(view: &View, claude: Claude) -> Markup {
     let id = &view.summary.id;
     let version = view.versions.iter().find(|v| v.selected).map(|v| v.number);
     let title = match version {
@@ -582,7 +597,7 @@ fn claude_card(view: &View, ready: bool) -> Markup {
     };
     let card = ResultCard::new(title)
         .subtitle("Claude Code starts on a fresh computer made from this environment.");
-    if ready {
+    if claude == Claude::Ready {
         card.body(runs)
             .footer(html! {
                 form action=(format!("/environments/{id}/claude")) method="post" {
@@ -595,7 +610,13 @@ fn claude_card(view: &View, ready: bool) -> Markup {
             .render()
     } else {
         card.body(html! {
-            (MarkdownRoot::new(html! { p { "To run Claude Code here, add your Anthropic API key to this server's settings." } }).size(MarkdownSize::Sm))
+            (MarkdownRoot::new(html! {
+                @if claude == Claude::AddKey {
+                    p { "To run Claude Code here, add your Claude key in " a href="/settings/claude" { "Settings" } "." }
+                } @else {
+                    p { "To run Claude Code here, add your Anthropic API key to this server's settings." }
+                }
+            }).size(MarkdownSize::Sm))
             (runs)
         })
         .render()
@@ -617,7 +638,7 @@ pub(crate) fn run_word(state: RunState) -> &'static str {
 pub(crate) fn run_transcript(run: &Run) -> Markup {
     let mut turns: Vec<Markup> = vec![Message::user(&run.prompt).render()];
     if let Some(n) = run.version {
-        turns.push(Message::status(format!("Started from environment version {n}")).render());
+        turns.push(note(format!("Started from environment version {n}")).render());
     }
     let steps = claude::transcript(&run.events);
     let said = steps.iter().any(|s| matches!(s, claude::Step::Said(_)));
@@ -638,20 +659,20 @@ pub(crate) fn run_transcript(run: &Run) -> Markup {
     }
     match run.state {
         RunState::Starting => {
-            turns.push(Message::status("Starting a computer from the environment…").render())
+            turns.push(note("Starting a computer from the environment…").render())
         }
-        RunState::Running => turns.push(Message::status("Claude Code is working…").render()),
-        RunState::Paused => turns.push(Message::status(run_word(run.state)).render()),
+        RunState::Running => turns.push(note("Claude Code is working…").render()),
+        RunState::Paused => turns.push(note(run_word(run.state)).render()),
         RunState::Done => {}
         RunState::Failed => turns.push(
-            Message::status(
+            note(
                 run.error
                     .clone()
                     .unwrap_or_else(|| "The run failed.".into()),
             )
             .render(),
         ),
-        RunState::Stopped => turns.push(Message::status("Stopped").render()),
+        RunState::Stopped => turns.push(note("Stopped").render()),
     }
     if !run.state.finished() {
         turns.push(html! {
@@ -691,7 +712,7 @@ pub(crate) fn thread(stream: &str, body: Markup) -> Markup {
                 div #env-transcript sse-swap="transcript" hx-swap="innerHTML" aria-live="polite" { (body) }
             }
         }
-        (ScrollToBottom::new("#env-thread"))
+        (ScrollToBottom::new("#env-thread").follow())
     }
 }
 

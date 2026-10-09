@@ -8,7 +8,10 @@
 //! then offers a reply box on its chats (#11048). A reply typed there is
 //! taken when Coder is free (the chat open here, or any chat when nothing
 //! is being typed), shown as the person's message, and answered as usual;
-//! the answer syncs back like any other.
+//! the answer syncs back like any other. Messages added to a chat on the
+//! website while this computer was offline (a run on a Cloud computer,
+//! #11050) come with the same take and join the chat here, in order,
+//! before any reply is answered (#11052).
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
@@ -42,8 +45,41 @@ pub(crate) struct SyncState {
     listening: bool,
     /// Chats whose replies were asked for and haven't arrived.
     taking: BTreeSet<String>,
-    /// Replies taken from the website, waiting for Coder to be free.
-    inbox: VecDeque<(String, Vec<String>)>,
+    /// What was taken from the website, waiting for Coder to be free.
+    inbox: VecDeque<Inbound>,
+}
+
+/// What one take brought for one chat.
+#[derive(Debug, Default)]
+struct Inbound {
+    session: String,
+    /// Messages added on the website while this computer was offline (a
+    /// run on a Cloud computer, #11050), oldest first: they join the chat
+    /// here, in order, before any reply is answered (#11052).
+    added: Vec<coder_sync::Added>,
+    /// Replies typed on the website, to answer.
+    replies: Vec<String>,
+}
+
+/// A message from the website as a chat entry here.
+fn entry(message: &coder_sync::Added) -> crate::live::Entry {
+    if message.user {
+        crate::live::Entry::User(message.text.clone())
+    } else {
+        crate::live::Entry::Assistant {
+            text: message.text.clone(),
+            model: None,
+            elapsed_ms: None,
+        }
+    }
+}
+
+fn added_notice(count: usize) -> String {
+    if count == 1 {
+        "Added a message from a Cloud computer on openagents.com.".into()
+    } else {
+        format!("Added {count} messages from a Cloud computer on openagents.com.")
+    }
 }
 
 fn now() -> u64 {
@@ -139,30 +175,60 @@ impl App {
                 || (self.draft.text.trim().is_empty() && self.resume_picker.is_none()))
     }
 
-    /// Answer the oldest reply taken from the website, when Coder is free:
-    /// open its chat, show it as the person's message, and run the turn.
+    /// Handle the oldest take from the website, when Coder is free: add the
+    /// messages from a Cloud computer to its chat (in place when the chat
+    /// isn't open and nothing is to be answered), then open the chat, show
+    /// the oldest reply as the person's message, and run the turn.
     pub(crate) fn answer_web_reply(&mut self) {
-        let Some(session) = self
+        let Some((session, answers)) = self
             .sync
             .as_ref()
             .and_then(|sync| sync.inbox.front())
-            .map(|(session, _)| session.clone())
+            .map(|inbound| (inbound.session.clone(), !inbound.replies.is_empty()))
         else {
             return;
         };
-        if !self.free_for(&session) {
+        // Messages for a chat that isn't open, with nothing to answer, go
+        // straight to its saved copy: nothing here changes.
+        let in_place = !answers && self.session_id() != Some(session.as_str());
+        if !in_place && !self.free_for(&session) {
             return;
         }
-        let Some((session, texts)) = self.sync.as_mut().and_then(|sync| sync.inbox.pop_front())
+        let Some(Inbound {
+            session,
+            added,
+            replies: texts,
+        }) = self.sync.as_mut().and_then(|sync| sync.inbox.pop_front())
         else {
             return;
         };
-        if self.session_id() != Some(session.as_str()) && !self.resume(Some(session.as_str())) {
+        let open = self.session_id() == Some(session.as_str());
+        if !open && texts.is_empty() {
+            self.notice = Some(match self.add_to_saved(&session, &added) {
+                Ok(()) => added_notice(added.len()),
+                Err(_) => {
+                    "Messages from openagents.com couldn't be added to their chat here.".into()
+                }
+            });
+            return;
+        }
+        if !open && !self.resume(Some(session.as_str())) {
             self.notice = Some(
                 "A reply from openagents.com couldn't be answered: its chat isn't on this computer."
                     .into(),
             );
             return;
+        }
+        if !added.is_empty() {
+            for message in &added {
+                self.live.entries.push(entry(message));
+            }
+            self.history.dirty = true;
+            self.notice = Some(added_notice(added.len()));
+            if texts.is_empty() {
+                self.persist_session(true);
+                return;
+            }
         }
         let Some((last, earlier)) = texts.split_last() else {
             return;
@@ -179,6 +245,30 @@ impl App {
         self.submit_live();
         self.draft = typed;
         self.notice = Some(ANSWERING.into());
+    }
+
+    /// Add messages from the website to a saved chat that isn't open here,
+    /// after its last step, and send the chat again.
+    fn add_to_saved(&mut self, session: &str, added: &[coder_sync::Added]) -> Result<(), String> {
+        let dir = self.account_dir.clone().ok_or("No chats are saved here.")?;
+        let lease = sessions::Store::under(dir).lease(session)?;
+        let mut document = lease.read()?;
+        for message in added {
+            let source = if message.user {
+                atif::Source::User
+            } else {
+                atif::Source::Agent
+            };
+            atif::append(&mut document, &atif::Step::said(source, &message.text))?;
+        }
+        if !atif::validate(&document).is_empty() {
+            return Err("The chat couldn't take the messages.".into());
+        }
+        document["extra"]["updated_ms"] = serde_json::json!(atif::now_ms());
+        lease.save(&document)?;
+        drop(lease);
+        self.sync_saved(&document);
+        Ok(())
     }
 
     fn store_sync(&mut self) {
@@ -273,7 +363,7 @@ impl App {
                     || !ours
                     || sync.settings.kept_here.contains(session)
                     || sync.taking.contains(session)
-                    || sync.inbox.iter().any(|(waiting, _)| waiting == session)
+                    || sync.inbox.iter().any(|waiting| waiting.session == *session)
                 {
                     continue;
                 }
@@ -297,11 +387,28 @@ impl App {
                 sync.settings.to_delete.remove(&session);
                 sync.settings.sent.remove(&session);
             }
-            Event::Replies { session, replies } => {
+            Event::Replies {
+                session,
+                replies,
+                added,
+            } => {
                 sync.taking.remove(&session);
-                if !replies.is_empty() {
-                    sync.inbox
-                        .push_back((session, replies.into_iter().map(|r| r.text).collect()));
+                // The website screened them; screen again before keeping.
+                let added: Vec<coder_sync::Added> = added
+                    .into_iter()
+                    .map(|mut message| {
+                        if sync.screen.check(&message.text).is_err() {
+                            message.text = coder_sync::LEFT_OUT.into();
+                        }
+                        message
+                    })
+                    .collect();
+                if !replies.is_empty() || !added.is_empty() {
+                    sync.inbox.push_back(Inbound {
+                        session,
+                        added,
+                        replies: replies.into_iter().map(|r| r.text).collect(),
+                    });
                 }
             }
             Event::Waiting { .. } => {}
@@ -537,11 +644,11 @@ mod tests {
         app.attach_session_store(sessions::Store::under(dir.path()));
         app.start_sync();
         let reply = |app: &mut App, text: &str| {
-            app.sync
-                .as_mut()
-                .unwrap()
-                .inbox
-                .push_back(("web".into(), vec![text.into()]));
+            app.sync.as_mut().unwrap().inbox.push_back(Inbound {
+                session: "web".into(),
+                added: Vec::new(),
+                replies: vec![text.into()],
+            });
         };
 
         // Something typed in another chat: the reply waits.
@@ -581,11 +688,11 @@ mod tests {
         app.live.busy = false;
         app.request = None;
         app.draft = crate::Draft::default();
-        app.sync
-            .as_mut()
-            .unwrap()
-            .inbox
-            .push_back(("elsewhere".into(), vec!["Hi".into()]));
+        app.sync.as_mut().unwrap().inbox.push_back(Inbound {
+            session: "elsewhere".into(),
+            added: Vec::new(),
+            replies: vec!["Hi".into()],
+        });
         app.answer_web_reply();
         assert!(app.request.is_none());
         assert!(
@@ -593,5 +700,92 @@ mod tests {
                 .as_deref()
                 .is_some_and(|notice| notice.contains("isn't on this computer"))
         );
+    }
+
+    fn added(user: bool, text: &str) -> coder_sync::Added {
+        coder_sync::Added {
+            user,
+            text: text.into(),
+        }
+    }
+
+    fn texts(chat: &crate::live::Chat) -> Vec<String> {
+        chat.entries
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::live::Entry::User(text) => Some(format!("you: {text}")),
+                crate::live::Entry::Assistant { text, .. } => Some(format!("coder: {text}")),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn messages_from_a_cloud_computer_join_the_chat_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        for id in ["closed", "open"] {
+            let mut chat = crate::live::Chat::default();
+            chat.entries.push(crate::live::Entry::User("Fix it".into()));
+            let document = crate::trajectory::document(&chat, id, "test/local", dir.path());
+            store.save(id, &document).unwrap();
+        }
+        let mut app = App {
+            account_dir: Some(dir.path().to_path_buf()),
+            account: Some("Octo".into()),
+            ..App::default()
+        };
+        app.attach_session_store(sessions::Store::under(dir.path()));
+        app.start_sync();
+
+        // A chat that isn't open, with nothing to answer: added to its saved
+        // copy in place; the open chat and the draft are untouched.
+        assert!(app.resume(Some("open")));
+        app.draft.text = "half typed".into();
+        app.apply_sync(Event::Replies {
+            session: "closed".into(),
+            replies: Vec::new(),
+            added: vec![
+                added(true, "Go on"),
+                added(false, "Fixed on a Cloud computer."),
+            ],
+        });
+        app.answer_web_reply();
+        assert_eq!(app.session_id(), Some("open"));
+        assert_eq!(app.draft.text, "half typed");
+        let saved = crate::trajectory::from_document(&store.read("closed").unwrap()).unwrap();
+        assert_eq!(
+            texts(&saved),
+            [
+                "you: Fix it",
+                "you: Go on",
+                "coder: Fixed on a Cloud computer."
+            ]
+        );
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Added 2 messages from a Cloud computer on openagents.com.")
+        );
+
+        // The open chat: added before the reply that came with them, which
+        // then runs.
+        app.draft = crate::Draft::default();
+        app.apply_sync(Event::Replies {
+            session: "open".into(),
+            replies: vec![coder_sync::Reply {
+                id: "r1".into(),
+                text: "Now the docs".into(),
+            }],
+            added: vec![added(false, "Tests pass on the Cloud computer.")],
+        });
+        app.answer_web_reply();
+        assert_eq!(
+            texts(&app.live)[1..],
+            [
+                "coder: Tests pass on the Cloud computer.",
+                "you: Now the docs"
+            ]
+        );
+        assert!(app.live.busy && app.request.is_some());
     }
 }

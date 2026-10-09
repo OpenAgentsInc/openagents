@@ -174,9 +174,48 @@ async fn an_environment_goes_from_a_repository_to_a_saved_version_and_back_to_wo
     assert_eq!(v.recipe.as_deref(), Some("set -euo pipefail\nmake deps"));
     assert_eq!(v.summary.repository, "example/repo");
 
+    // An earlier build whose image was never saved (its check failed),
+    // and an image some other code made.
+    let jobs =
+        coder_environment_build::store::Store::under(crate::Layout::under(dir.path()).build_jobs());
+    let mut earlier = jobs.list().unwrap().remove(0);
+    earlier.id = "build-earlier".into();
+    earlier.inputs.build_id = "earlier".into();
+    earlier.inputs.image_name =
+        coder_environment_build::image_name(&id, "earlier", &earlier.inputs.recipe_digest);
+    earlier.created_ms -= 1;
+    let name = earlier.inputs.image_name.clone();
+    if let Some(capture) = &mut earlier.capture {
+        capture.name = name.clone();
+    }
+    if let Some(image) = &mut earlier.image {
+        image.image_id = name;
+    }
+    jobs.lease(&earlier.id).unwrap().create(&earlier).unwrap();
+    let stale = earlier.inputs.image_name.clone();
+    {
+        let mut state = provider.state.lock().unwrap();
+        let (record, files) = state.images.values().next().unwrap().clone();
+        state
+            .images
+            .insert(stale.clone(), (record.clone(), files.clone()));
+        state.images.insert("someone-elses".into(), (record, files));
+    }
+    assert_eq!(provider.state.lock().unwrap().images.len(), 3);
+
     // Saving names the exact candidate the person saw.
     assert!(studio.save(&id, "stale").await.is_err());
     assert_eq!(studio.save(&id, &candidate.digest).await.unwrap(), 1);
+    // The unsaved image goes; the saved version's and the other one stay.
+    for _ in 0..400 {
+        if !provider.state.lock().unwrap().images.contains_key(&stale) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let images = provider.state.lock().unwrap().images.clone();
+    assert!(!images.contains_key(&stale), "{:?}", images.keys());
+    assert!(images.contains_key(&candidate.image) && images.contains_key("someone-elses"));
     let v = studio.view(&id).unwrap();
     assert_eq!(v.summary.status, Status::Saved);
     assert_eq!(v.summary.saved, Some(1));
@@ -186,7 +225,10 @@ async fn an_environment_goes_from_a_repository_to_a_saved_version_and_back_to_wo
         Entry::Saved { number: 1 }
     ));
     // No key: Claude Code runs are not offered.
-    assert!(studio.run_claude(&id, "Fix the tests").is_err());
+    assert_eq!(
+        studio.run_claude(&id, "Fix the tests", None),
+        Err("Add your Claude key in Settings to run Claude Code here.".into())
+    );
 
     // A message after saving starts a revision on a new setup computer.
     script.push(say("What should the new version add?", u()));

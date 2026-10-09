@@ -293,8 +293,25 @@ async fn create(
     }
 }
 
+/// Whether Claude Code can run for this request: the signed-in person
+/// saved their own Claude key in Settings, or this server names one.
+pub(crate) async fn claude_ready(app: &App, studio: &Studio, headers: &HeaderMap) -> bool {
+    claude_offer(app, studio, headers).await == view::Claude::Ready
+}
+
+/// What the Claude Code card offers this request.
+async fn claude_offer(app: &App, studio: &Studio, headers: &HeaderMap) -> view::Claude {
+    if crate::cloud::byo::saved(app, headers).await || studio.claude_ready() {
+        view::Claude::Ready
+    } else if app.config.cloud_byo.is_some() {
+        view::Claude::AddKey
+    } else {
+        view::Claude::Unavailable
+    }
+}
+
 /// The environment's page, with an optional notice under the transcript.
-fn page(
+async fn page(
     app: &App,
     studio: &Studio,
     headers: &HeaderMap,
@@ -304,10 +321,10 @@ fn page(
     let Some(v) = studio.view(id) else {
         return missing(headers);
     };
-    let _ = app;
     let rows = studio.list();
     let stream = format!("/environments/{id}/events?after={}", v.records.len());
-    let body = view::transcript(&v, studio.claude_ready(), notice);
+    let ready = claude_offer(app, studio, headers).await;
+    let body = view::transcript(&v, ready, notice);
     protect(
         UiPage::new(v.summary.repository.clone())
             .path(format!("/environments/{id}"))
@@ -331,7 +348,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     if !valid_id(&id) {
         return missing(&headers);
     }
-    page(&app, studio, &headers, &id, None)
+    page(&app, studio, &headers, &id, None).await
 }
 
 #[derive(Deserialize, Default)]
@@ -343,6 +360,7 @@ struct After {
 /// The transcript, again whenever the conversation grows.
 async fn events(
     State(app): State<App>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(after): Query<After>,
 ) -> Response {
@@ -352,9 +370,10 @@ async fn events(
     if !valid_id(&id) || studio.view(&id).is_none() {
         return StatusCode::NOT_FOUND.into_response();
     }
+    let ready = claude_offer(&app, &studio, &headers).await;
     let stream = futures_util::stream::unfold(
         (studio, id, after.after, 0u16),
-        |(studio, id, mut cursor, ticks)| async move {
+        move |(studio, id, mut cursor, ticks)| async move {
             if ticks >= 600 {
                 return None;
             }
@@ -366,7 +385,7 @@ async fn events(
                     Some(v) => Event::default()
                         .id(format!("{id}:{revision}"))
                         .event("transcript")
-                        .data(view::transcript(&v, studio.claude_ready(), None).into_string()),
+                        .data(view::transcript(&v, ready, None).into_string()),
                     None => Event::default().comment("gone"),
                 }
             } else {
@@ -409,7 +428,7 @@ async fn message(
     }
     match result {
         Ok(()) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
-        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())),
+        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }
 }
 
@@ -425,7 +444,7 @@ async fn retry(State(app): State<App>, headers: HeaderMap, Path(id): Path<String
     }
     match studio.retry(&id) {
         Ok(()) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
-        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())),
+        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }
 }
 
@@ -451,7 +470,7 @@ async fn save(
     }
     match studio.save(&id, &form.candidate).await {
         Ok(_) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
-        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())),
+        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }
 }
 
@@ -475,9 +494,10 @@ async fn claude(
     if !valid_id(&id) {
         return missing(&headers);
     }
-    match studio.run_claude(&id, &form.prompt) {
+    let own = crate::cloud::byo::run_key(&app, &headers).await;
+    match studio.run_claude(&id, &form.prompt, own) {
         Ok(run) => protect(Redirect::to(&format!("/environments/{id}/runs/{run}")).into_response()),
-        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())),
+        Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }
 }
 

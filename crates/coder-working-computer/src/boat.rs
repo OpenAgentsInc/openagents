@@ -750,4 +750,19 @@ impl Images for BoatProvider {
             Err(e) => Outcome::unknown(format!("read named snapshot: {e}")),
         }
     }
+
+    async fn delete_image(&self, name: &str) -> Outcome<bool> {
+        match self
+            .client
+            .delete_named_snapshot(&DeleteNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(_) => Outcome::done(true),
+            Err(e) if status(&e) == Some(404) => Outcome::done(false),
+            Err(e) => mutation("delete named snapshot", e),
+        }
+    }
 }

@@ -305,6 +305,56 @@ pub async fn release_turn(
     answered.then_some(()).ok_or(SessionError::Unavailable)
 }
 
+/// The signed-in viewer's owner, when this server keeps Claude credentials.
+async fn viewer_owner<'a>(
+    app: &'a App,
+    headers: &axum::http::HeaderMap,
+) -> Option<(&'a Computers, Owner)> {
+    let computers = app.config.cloud_byo.as_deref()?;
+    let viewer = app
+        .config
+        .cloud
+        .as_deref()?
+        .authenticate(headers)
+        .await
+        .ok()?;
+    Some((computers, Owner::from_viewer(&viewer).ok()?))
+}
+
+/// Whether the signed-in viewer saved their own Claude credential in
+/// Settings, so Claude Code can run in a saved environment for them.
+pub(crate) async fn saved(app: &App, headers: &axum::http::HeaderMap) -> bool {
+    match viewer_owner(app, headers).await {
+        Some((computers, owner)) => computers.status(&owner, now()).is_ok_and(|s| s.is_some()),
+        None => false,
+    }
+}
+
+/// The signed-in viewer's own Claude credential, released for one Claude
+/// Code run in a saved environment (`/environments`, #11052). It is
+/// decrypted only in memory, moved into the run's key (zeroed when the run
+/// has its runtime copy), and never logged or written. `None` when the
+/// viewer saved none; the studio then falls back to this server's key.
+pub(crate) async fn run_key(
+    app: &App,
+    headers: &axum::http::HeaderMap,
+) -> Option<coder_environment_operator::studio::claude::Key> {
+    let (computers, owner) = viewer_owner(app, headers).await?;
+    computers.run_key(&owner, now())
+}
+
+impl Computers {
+    /// The owner's current credential as one environment run's key.
+    pub(crate) fn run_key(
+        &self,
+        owner: &Owner,
+        at: u64,
+    ) -> Option<coder_environment_operator::studio::claude::Key> {
+        let (class, value) = self.release(owner, at).ok()??;
+        coder_environment_operator::studio::claude::Key::new(class.name(), value).ok()
+    }
+}
+
 fn terms_digest() -> String {
     let digest = Sha256::digest(
         serde_json::to_vec(
@@ -354,6 +404,31 @@ mod tests {
 
     const FAKE_KEY: &str = "sk-ant-api03-fake-byo04-key-for-tests-only";
     const FAKE_BEDROCK: &str = r#"{"region":"us-east-1","access_key_id":"AKIAFAKEBYO04","secret_access_key":"fake-bedrock-secret-for-tests"}"#;
+
+    #[test]
+    fn an_environment_run_takes_the_saved_credential_of_its_class() {
+        let (_temp, _root, computers) = computers();
+        let alice = owner(3);
+        assert!(computers.run_key(&alice, 10).is_none(), "nothing saved");
+        let key = Key::for_material(Material::AnthropicApiKey, FAKE_KEY.into()).unwrap();
+        computers
+            .store(&alice, Material::AnthropicApiKey, key, true, 10)
+            .unwrap();
+        let run = computers.run_key(&alice, 11).unwrap();
+        assert_eq!(run.name(), claude::API_KEY);
+        assert!(!format!("{run:?}").contains(FAKE_KEY));
+        assert!(computers.run_key(&owner(4), 11).is_none(), "another epoch");
+        let bedrock = Key::for_material(Material::BedrockCredential, FAKE_BEDROCK.into()).unwrap();
+        computers
+            .store(&alice, Material::BedrockCredential, bedrock, true, 12)
+            .unwrap();
+        assert_eq!(
+            computers.run_key(&alice, 13).unwrap().name(),
+            claude::BEDROCK
+        );
+        computers.revoke(&alice).unwrap();
+        assert!(computers.run_key(&alice, 14).is_none());
+    }
 
     #[test]
     fn own_credentials_are_scoped_replaced_released_per_turn_and_revoked() {

@@ -1483,6 +1483,27 @@ impl<T: Compute> Images for GceProvider<T> {
         }
     }
 
+    async fn delete_image(&self, name: &str) -> Outcome<bool> {
+        let resource = image_resource(name);
+        match self
+            .compute
+            .describe_image(&self.config.project, &resource)
+            .await
+        {
+            Ok(None) => return Outcome::done(false),
+            // Only an image this code made under that name.
+            Ok(Some(i)) if !i.ours() || i.description != name => {
+                return Outcome::failed("the name holds another image");
+            }
+            Ok(Some(_)) => {}
+            Err(e) => return Outcome::unknown(format!("read image: {}", e.message)),
+        }
+        match self.compute.delete_image(&resource).await {
+            Ok(()) => Outcome::done(true),
+            Err(e) => e.outcome("delete image"),
+        }
+    }
+
     async fn hydration(&self, c: &Computer, resource: &str) -> Outcome<bool> {
         let i = match self.instance(resource).await {
             Ok(i) => i,

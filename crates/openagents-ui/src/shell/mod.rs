@@ -51,7 +51,7 @@ pub use layout::{
     AppShell, ChatGroup, ChatList, Document, GROUP_ROWS, LegalLinks, MainMode, NavItem,
     SIDEBAR_COOKIE, SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
 };
-pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
+pub use scroll::{SCROLL_FOLLOW_ATTR, SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
 pub use status::{ChatStatus, TaskRow, TaskStatus};
 pub use suggestions::{SuggestionChip, SuggestionChips};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};

@@ -52,6 +52,7 @@ pub struct Message {
     author: String,
     id: Option<String>,
     body: Markup,
+    quiet: bool,
 }
 
 impl Message {
@@ -63,6 +64,7 @@ impl Message {
             role: MessageRole::User,
             author: "You".to_owned(),
             id: None,
+            quiet: false,
             body: html! { div class="oa-message-bubble" { (text) } },
         }
     }
@@ -75,6 +77,7 @@ impl Message {
             role: MessageRole::Assistant,
             author: "Assistant".to_owned(),
             id: None,
+            quiet: false,
             body: html! { div class="oa-message-content" { (content) } },
         }
     }
@@ -87,6 +90,7 @@ impl Message {
             role: MessageRole::Status,
             author: "Status".to_owned(),
             id: None,
+            quiet: false,
             body: html! { p class="oa-message-status" { (text) } },
         }
     }
@@ -95,6 +99,15 @@ impl Message {
     #[must_use]
     pub fn author(mut self, author: impl Into<String>) -> Self {
         self.author = author.into();
+        self
+    }
+
+    /// A status turn whose author heading stays for screen readers only, for
+    /// threads where status lines are progress notes ("Working…") rather
+    /// than failures.
+    #[must_use]
+    pub fn quiet(mut self) -> Self {
+        self.quiet = true;
         self
     }
 
@@ -114,7 +127,7 @@ impl Message {
 
 impl Render for Message {
     fn render(&self) -> Markup {
-        let author_class = if self.role == MessageRole::Status {
+        let author_class = if self.role == MessageRole::Status && !self.quiet {
             "oa-message-author"
         } else {
             "oa-message-author oa-visually-hidden"

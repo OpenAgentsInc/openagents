@@ -107,6 +107,15 @@ pub(crate) struct Terminal {
     /// them after Coder's transcript. At most [`MAX_CONTINUED`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub continued: Vec<Message>,
+    /// How many of `continued`, from the first, Coder on the computer has
+    /// taken into its own copy (#11052). Each is dropped from `continued`
+    /// once an upload carries it.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub continued_taken: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// The most messages a Coder chat keeps from runs on a Cloud computer.
@@ -1563,6 +1572,7 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
             || terminal.reply_ids.len() > MAX_REPLY_IDS
             || !terminal.reply_ids.iter().all(|id| valid_id(id))
             || terminal.continued.len() > MAX_CONTINUED
+            || terminal.continued_taken > terminal.continued.len()
             || terminal
                 .continued
                 .iter()

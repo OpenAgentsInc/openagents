@@ -11,6 +11,9 @@
 //! ([`Job::Listen`]), so the website offers a reply box on this computer's
 //! chats (#11048). A reply typed there waits on the website until Coder
 //! takes it ([`Job::Take`]) and answers it here, with this computer's tools.
+//! The same take brings the messages added to the chat on the website
+//! while this computer was offline (a run on a Cloud computer, #11050), so
+//! Coder adds them to its own copy, in order, before answering (#11052).
 //!
 //! What goes up is the chat's title, the computer's name, and its
 //! messages: what the person wrote, what the model answered, and one line
@@ -449,13 +452,30 @@ pub async fn check_in(
     }
 }
 
-/// Take the replies waiting in one chat. The website shows them in the
-/// chat at once and won't hand them out again.
-pub async fn take(
-    http: &reqwest::Client,
-    saved: &Saved,
-    session: &str,
-) -> Result<Vec<Reply>, Answer> {
+/// A message added to one of this computer's chats on the website while
+/// it was offline: the person's words, or the answer of a run on a Cloud
+/// computer (#11050).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Added {
+    /// The person wrote it (else the assistant answered it).
+    pub user: bool,
+    pub text: String,
+}
+
+/// What one take brought from the website.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Taken {
+    /// Replies typed on the website, for Coder to answer here.
+    pub replies: Vec<Reply>,
+    /// Messages added there while this computer was offline, oldest first,
+    /// for Coder to add to its own copy before answering `replies`
+    /// (#11052).
+    pub added: Vec<Added>,
+}
+
+/// Take what waits in one chat. The website shows replies in the chat at
+/// once and hands nothing out twice.
+pub async fn take(http: &reqwest::Client, saved: &Saved, session: &str) -> Result<Taken, Answer> {
     let Some(path) = session_path(session) else {
         return Err(Answer::Refused("That isn't a Coder session id.".into()));
     };
@@ -468,20 +488,44 @@ pub async fn take(
     )
     .await
     {
-        (Answer::Done, body) => Ok(body["replies"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|reply| {
-                let text = reply["text"].as_str()?.trim();
-                (!text.is_empty()).then(|| Reply {
-                    id: reply["id"].as_str().unwrap_or_default().to_owned(),
-                    text: text.to_owned(),
-                })
-            })
-            .collect()),
+        (Answer::Done, body) => Ok(taken(&body)),
         (answer, _) => Err(answer),
     }
+}
+
+/// The replies and added messages in a take's answer. A website without
+/// added messages sends none.
+fn taken(body: &Value) -> Taken {
+    let replies = body["replies"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|reply| {
+            let text = reply["text"].as_str()?.trim();
+            (!text.is_empty()).then(|| Reply {
+                id: reply["id"].as_str().unwrap_or_default().to_owned(),
+                text: text.to_owned(),
+            })
+        })
+        .collect();
+    let added = body["continued"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|message| {
+            let user = match message["role"].as_str()? {
+                "user" => true,
+                "assistant" => false,
+                _ => return None,
+            };
+            let text = message["text"].as_str()?.trim();
+            (!text.is_empty()).then(|| Added {
+                user,
+                text: text.to_owned(),
+            })
+        })
+        .collect();
+    Taken { replies, added }
 }
 
 /// Delete one chat from the website now, waiting at most a few seconds
@@ -548,10 +592,12 @@ pub enum Event {
     /// These chats have replies from the website waiting.
     Waiting { sessions: Vec<String> },
     /// The answer to a [`Job::Take`]: the replies taken from the website
-    /// for this chat, oldest first (none when there was nothing to take).
+    /// for this chat, oldest first, and the messages added there while
+    /// this computer was offline (none when there was nothing to take).
     Replies {
         session: String,
         replies: Vec<Reply>,
+        added: Vec<Added>,
     },
 }
 
@@ -728,8 +774,12 @@ async fn round(
     }
     for session in std::mem::take(&mut queue.takes) {
         match take(http, saved, &session).await {
-            Ok(replies) => {
-                let _ = outbox.send(Event::Replies { session, replies });
+            Ok(Taken { replies, added }) => {
+                let _ = outbox.send(Event::Replies {
+                    session,
+                    replies,
+                    added,
+                });
             }
             Err(Answer::SignedOut) => return Round::SignedOut,
             Err(Answer::Deleted) => {
@@ -744,6 +794,7 @@ async fn round(
                 let _ = outbox.send(Event::Replies {
                     session,
                     replies: Vec::new(),
+                    added: Vec::new(),
                 });
             }
         }

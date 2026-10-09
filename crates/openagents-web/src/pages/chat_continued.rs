@@ -16,13 +16,17 @@
 //!
 //! Both messages are also kept on the chat's Coder record
 //! (`Terminal::continued`), so Coder's next upload of its own transcript,
-//! which doesn't have them, keeps them after it
-//! (`crate::coder_sync::save`). Coder on the computer doesn't take them
-//! into its own copy yet.
+//! which doesn't have them yet, keeps them after it
+//! (`crate::coder_sync::save`). The chat is marked as waiting for Coder
+//! ([`crate::coder_sync::mark_waiting`]): when Coder on the computer is
+//! back, it takes them into its own copy with the replies typed on the
+//! website (#11052), and each is dropped here once Coder's upload carries
+//! it.
 //!
 //! The offer shows only when it can really work: environments are set up
 //! here and the request came to the local address (the site guard keeps
-//! `/chat/{id}/continue` local), an Anthropic API key is configured, the
+//! `/chat/{id}/continue` local), a Claude key is available (the person's
+//! own, saved in Settings, or this server's), the
 //! project's environment has a saved version, Coder on the computer hasn't
 //! checked in lately, and nothing is answering the chat now.
 
@@ -82,7 +86,7 @@ pub(super) async fn offer(
         return None;
     }
     let studio = app.config.environments.as_ref()?.clone();
-    if !studio.claude_ready() {
+    if !crate::environments::claude_ready(app, &studio, headers).await {
         return None;
     }
     let rows = studio.list();
@@ -132,9 +136,9 @@ pub(super) fn add_message(chat: &mut Conversation, role: Role, text: &str) {
     if let Some(terminal) = &mut chat.terminal {
         terminal.continued.push(message);
         if terminal.continued.len() > MAX_CONTINUED {
-            terminal
-                .continued
-                .drain(..terminal.continued.len() - MAX_CONTINUED);
+            let extra = terminal.continued.len() - MAX_CONTINUED;
+            terminal.continued.drain(..extra);
+            terminal.continued_taken = terminal.continued_taken.saturating_sub(extra);
         }
     }
     chat.updated_unix = now();
@@ -346,7 +350,8 @@ async fn start(
         return form(&app, &headers, &chat, &computer, &offer, next, Some(error));
     }
     let prompt = context(&chat.messages, &computer, next, MAX_PROMPT - 512);
-    let run = match studio.run_claude(&offer.id, &prompt) {
+    let own = crate::cloud::byo::run_key(&app, &headers).await;
+    let run = match studio.run_claude(&offer.id, &prompt, own) {
         Ok(run) => run,
         Err(error) => {
             return form(
@@ -389,9 +394,12 @@ async fn start(
         true
     })
     .await;
-    if let Err(response) = recorded {
-        return response;
-    }
+    let chat = match recorded {
+        Ok(chat) => chat,
+        Err(response) => return response,
+    };
+    // Coder takes the message into its own copy when it is back.
+    let _ = crate::coder_sync::mark_waiting(&app.config.chat_store, &owner, &chat).await;
     work::watch(app, owner, id.clone());
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
@@ -430,6 +438,7 @@ mod tests {
                 replies: Vec::new(),
                 reply_ids: Vec::new(),
                 continued: Vec::new(),
+                continued_taken: 0,
             }),
             environment: None,
             tasks: Vec::new(),

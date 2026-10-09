@@ -152,7 +152,8 @@ pub(super) async fn offer(app: &App, headers: &HeaderMap, chat: &Conversation) -
         id: row.id.clone(),
         repository: row.repository.clone(),
         version,
-        runnable: row.saved.is_some() && studio.claude_ready(),
+        runnable: row.saved.is_some()
+            && crate::environments::claude_ready(app, &studio, headers).await,
     })
 }
 
@@ -377,7 +378,16 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
     next.revision += 1;
     next.updated_unix = now();
     match app.config.chat_store.compare_and_swap(&loaded, &next).await {
-        Ok(saved) => saved,
+        Ok(saved) => {
+            // A Cloud computer's answer to a Coder chat waits for Coder.
+            let _ = crate::coder_sync::mark_waiting(
+                &app.config.chat_store,
+                &saved.conversation.owner,
+                &saved.conversation,
+            )
+            .await;
+            saved
+        }
         // Another write won; the next read tries again.
         Err(_) => loaded,
     }
@@ -551,7 +561,8 @@ async fn run(
             Some("Write what Claude Code should do."),
         );
     }
-    let run = match studio.run_claude(&offer.id, prompt) {
+    let own = crate::cloud::byo::run_key(&app, &headers).await;
+    let run = match studio.run_claude(&offer.id, prompt, own) {
         Ok(run) => run,
         Err(error) => return run_form(&app, &headers, &chat, &offer, prompt, Some(error.as_str())),
     };

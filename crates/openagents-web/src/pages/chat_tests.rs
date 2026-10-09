@@ -1090,6 +1090,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             replies: Vec::new(),
             reply_ids: Vec::new(),
             continued: Vec::new(),
+            continued_taken: 0,
         }),
         environment: None,
         tasks: Vec::new(),

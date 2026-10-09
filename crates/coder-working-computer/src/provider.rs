@@ -124,8 +124,9 @@ pub struct ImageRecord {
 }
 
 /// Immutable output images for a dedicated builder (ENV-04). There is no
-/// replace, rename, or delete: a name, once captured, always means the
-/// same snapshot.
+/// replace or rename: a name, once captured, always means the same
+/// snapshot. An image nothing will use again can be deleted; its name is
+/// never captured again.
 #[allow(async_fn_in_trait)]
 pub trait Images: Provider {
     /// Capture `resource`'s filesystem under `name`. Implementations read
@@ -143,6 +144,9 @@ pub trait Images: Provider {
     /// A machine booted from an image can be usable before that; this, not
     /// a boot or command exit, is restore readiness (ENV-05).
     async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool>;
+    /// Delete the image named `name`. `Done(false)` when the provider has
+    /// none by that name.
+    async fn delete_image(&self, name: &str) -> Outcome<bool>;
 }
 
 /// The result of one provider effect.
@@ -355,6 +359,9 @@ impl<P: Images> Images for std::sync::Arc<P> {
     }
     async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool> {
         (**self).hydration(computer, resource).await
+    }
+    async fn delete_image(&self, name: &str) -> Outcome<bool> {
+        (**self).delete_image(name).await
     }
 }
 
@@ -991,6 +998,14 @@ pub mod fake {
                 }
                 Outcome::done(!m.hydrating)
             });
+            Self::finish(inject, || out)
+        }
+        async fn delete_image(&self, name: &str) -> Outcome<bool> {
+            let inject = self.begin("delete_image");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = Outcome::done(self.state.lock().unwrap().images.remove(name).is_some());
             Self::finish(inject, || out)
         }
     }

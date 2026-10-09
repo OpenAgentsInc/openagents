@@ -545,6 +545,23 @@ fn scroll_to_bottom_is_an_icon_button_hidden_until_the_script_shows_it() {
     let css = crate::stylesheet();
     assert!(css.contains(".oa-scroll-bottom[hidden]"));
     assert!(THREAD_CSS.contains(".oa-thread-view {\n  position: relative;"));
+    let follow = ScrollToBottom::new("#env-thread")
+        .follow()
+        .render()
+        .into_string();
+    assert!(
+        follow.contains(&format!(r#"{SCROLL_FOLLOW_ATTR}="""#)),
+        "{follow}"
+    );
+    assert!(script.contains("data-oa-scroll-follow"));
+}
+
+#[test]
+fn a_quiet_status_keeps_its_heading_for_screen_readers_only() {
+    let loud = Message::status("Stopped").render().into_string();
+    assert!(loud.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
+    let quiet = Message::status("Working…").quiet().render().into_string();
+    assert!(quiet.contains(r#"<h2 class="oa-message-author oa-visually-hidden">Status</h2>"#));
 }
 
 #[test]

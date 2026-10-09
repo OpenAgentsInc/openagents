@@ -195,6 +195,10 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                             Json(json!({"replies": [
                                 {"id": "r1", "text": " Now the tests "},
                                 {"id": "r2", "text": "  "},
+                            ], "continued": [
+                                {"role": "user", "text": "Go on"},
+                                {"role": "tool", "text": "ignored"},
+                                {"role": "assistant", "text": "Fixed on a Cloud computer."},
                             ]})),
                         )
                     }),
@@ -318,7 +322,17 @@ fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
                 replies: vec![Reply {
                     id: "r1".into(),
                     text: "Now the tests".into()
-                }]
+                }],
+                added: vec![
+                    Added {
+                        user: true,
+                        text: "Go on".into()
+                    },
+                    Added {
+                        user: false,
+                        text: "Fixed on a Cloud computer.".into()
+                    },
+                ]
             },
         ]
     );
@@ -335,4 +349,12 @@ fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
     );
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(checks(&seen.lock().unwrap()), before);
+}
+
+#[test]
+fn a_take_from_a_site_without_added_messages_brings_only_replies() {
+    assert_eq!(taken(&json!({"replies": []})), Taken::default());
+    let only = taken(&json!({"replies": [{"id": "r", "text": "Hi"}]}));
+    assert_eq!(only.replies.len(), 1);
+    assert!(only.added.is_empty());
 }

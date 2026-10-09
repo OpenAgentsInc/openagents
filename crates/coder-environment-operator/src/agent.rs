@@ -998,6 +998,7 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                     detail: reason.clone(),
                 },
             );
+            crate::images::sweep(&self.owners, &self.root, &state.environment).await;
             self.fail(state, format!("The clean build failed: {reason}"));
         }
     }
@@ -1141,6 +1142,9 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                         },
                     );
                 }
+                // The image that failed its check is never saved; free
+                // its place in the account's image allowance.
+                crate::images::sweep(&self.owners, &self.root, &state.environment).await;
                 self.fail(state, format!("The fresh-machine check failed: {reason}"));
             }
         }

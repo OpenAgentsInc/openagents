@@ -25,7 +25,9 @@ Optional:
   Without it, paste a public `owner/name` or `https://github.com/...` URL.
 - `ANTHROPIC_API_KEY`: turns on **Run Claude Code here** for saved
   environments (your own key; it is applied to each run's machine and never
-  saved in an image).
+  saved in an image). A signed-in person who saved their own Claude key at
+  `/settings/claude` runs on that key instead: it is decrypted in memory for
+  that run only and never logged. The variable is the fallback.
 - `OA_ENVIRONMENTS_TEMPLATE`: the Boat template setup and builder machines
   start from. By default the newest ready `oa-coder-runtime-*` template,
   which carries the Coder runtime and Claude Code (see
@@ -75,11 +77,13 @@ The web app runs the environment owners itself. Do not also point
 
 Each setup, build, and check machine is deleted when its step ends, a
 setup that stops cancels its setup machine, and each Claude Code run deletes
-its machine when it finishes or is stopped. Built images stay in Boat as
-named snapshots (`oaenv-*`), including images whose fresh-machine check
-failed; Boat allows 10 named snapshots per account, so delete the ones no
-saved version uses. To see what is running: `openagents boat` or the Boat
-console.
+its machine when it finishes or is stopped. Built images live in Boat as
+named snapshots (`oaenv-*`; Boat allows 10 per account). Saved versions keep
+theirs. An image whose fresh-machine check failed is deleted then, and after
+each save every other image this environment's builds made goes too
+(`coder-environment-operator::images`; names already deleted are kept in
+`environment-studio/<env>/images.json`). Images other code made are never
+touched. To see what is running: `openagents boat` or the Boat console.
 
 ## Recipes and images
 

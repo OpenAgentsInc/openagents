@@ -283,4 +283,7 @@ impl<G: Compute> Images for Selected<G> {
     async fn hydration(&self, c: &Computer, resource: &str) -> Outcome<bool> {
         each!(self, p => p.hydration(c, resource).await)
     }
+    async fn delete_image(&self, name: &str) -> Outcome<bool> {
+        each!(self, p => p.delete_image(name).await)
+    }
 }

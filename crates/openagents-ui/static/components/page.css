@@ -46,6 +46,11 @@
   margin: calc(var(--spacing) * 4) 0;
 }
 
+/* A form under a page's intro text, set off from it. */
+.oa-page-form {
+  margin-top: calc(var(--spacing) * 6);
+}
+
 .oa-page-section {
   margin-top: calc(var(--spacing) * 10);
 }

@@ -58,6 +58,7 @@ pub mod activity;
 pub mod agent;
 pub mod boat;
 pub mod gce;
+pub mod images;
 pub mod studio;
 
 pub const SCHEMA: &str = "openagents.environment.owners.v1";

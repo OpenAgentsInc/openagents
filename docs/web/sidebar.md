@@ -73,13 +73,16 @@ acme/storefront · fix-login · Node 20 v3
   answer back (#11048). Otherwise "This chat runs in Coder on <computer>.
   To reply here, open Coder there with /sync on." stands in place of the
   composer. When the chat is in a project whose repository has a saved
-  environment (local address, environments and an Anthropic key set up,
-  like #11037), the offline note adds **Continue on a Cloud computer**
+  environment (local address, environments set up, and a Claude key saved
+  in Settings or set on the server, like #11037), the offline note adds
+  **Continue on a Cloud computer**
   (`/chat/{id}/continue`, #11050, `pages/chat_continued.rs`): the person's
   message joins the chat, Claude Code runs in that environment's saved
   version with the chat so far in its prompt, the thread shows a "Cloud
   computer" task row, and the run's answer joins the chat when it is done.
-  Coder's next upload keeps those messages after its own transcript.
+  Coder's uploads keep those messages after its own transcript until
+  Coder, back online, takes them into its own copy with its next take
+  (#11052); each is then shown once, where Coder put it.
   Deleting it on the web deletes it in Coder the next time Coder checks.
 - Long-running tasks (phase 3) add a thin progress line under the row only
   when the task reports steps ("3 of 7"); never a fake percentage.
