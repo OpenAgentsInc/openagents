@@ -19,9 +19,9 @@
 
 use super::private::ProtectedFile;
 use super::session::{CloudSession, SessionError, Viewer, native_error};
-use super::{failure, protect, refused, service, ticket, workspace_shell};
+use super::ui;
+use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::Form;
@@ -32,6 +32,8 @@ use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use futures_util::stream;
+use maud::{Markup, Render, html};
+use openagents_ui::forms::{Checkbox, Field, Input, InputType, Select};
 use receipts::team_policy::{Change, Terms};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -266,14 +268,14 @@ impl Context<'_> {
         Ok(())
     }
 
-    fn shell(&self, headers: &HeaderMap, content: &str) -> Response {
+    fn shell(&self, headers: &HeaderMap, content: impl Render) -> Response {
         workspace_shell(
             self.app,
             headers,
             self.service,
             &self.viewer,
             "team",
-            Some(content),
+            Some(content.render()),
             None,
         )
     }
@@ -289,13 +291,6 @@ impl Context<'_> {
             ))
         }
     }
-}
-
-fn hidden(name: &str, value: &str) -> String {
-    format!(
-        "<input type=\"hidden\" name=\"{name}\" value=\"{}\">",
-        escape(value)
-    )
 }
 
 fn subject(value: &str) -> Result<(), Response> {
@@ -328,41 +323,24 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
     if roster.workspace.members_epoch != context.epoch || roster.role != context.role {
         return refused(SessionError::Conflict);
     }
-    let mut content = format!(
-        "<h2>Team</h2><p>Workspace <code>{}</code> · {} · your role <strong>{}</strong> · membership epoch <code>{}</code>{}</p><p class=\"dim\">Read under your current session for the selected workspace only. Membership grants no host, computer, execution, spending, or publication right; each of those keeps its own grant.</p>",
-        escape(&context.workspace),
-        escape(&roster.workspace.kind),
-        escape(&context.role),
-        context.epoch,
-        roster
-            .workspace
-            .seats
-            .map_or_else(String::new, |s| format!(" · {s} seats")),
-    );
-    content.push_str(&format!(
-        "<section id=\"team-observation\" hx-ext=\"sse\" sse-connect=\"/cloud/app/team/watch\" sse-close=\"retire\"><div id=\"team-live\" sse-swap=\"refresh\" hx-swap=\"innerHTML\" aria-live=\"polite\"><p class=\"dim\">Watching current membership.</p></div><div id=\"team-roster\" sse-swap=\"retire\" hx-swap=\"innerHTML\">"
-    ));
     let manage = admin(&context.role);
-    content.push_str("<h3>Members</h3><table><tr><th>Account</th><th>Role</th><th>Status</th>");
-    if manage {
-        content.push_str("<th>Change</th>");
-    }
-    content.push_str("</tr>");
+    let mut members = ui::table("Members");
+    members = if manage {
+        members.header(["Account", "Role", "Status", "Change"])
+    } else {
+        members.header(["Account", "Role", "Status"])
+    };
     for member in &roster.members {
-        content.push_str(&format!(
-            "<tr><td><code>{}</code>{}</td><td>{}</td><td>{}</td>",
-            escape(&member.account),
-            if member.account == context.viewer.account_id {
-                " (you)"
-            } else {
-                ""
+        let mut cells = vec![
+            html! {
+                code { (member.account) }
+                @if member.account == context.viewer.account_id { " (you)" }
             },
-            escape(&member.role),
-            escape(&member.status)
-        ));
+            html! { (member.role) },
+            html! { (member.status) },
+        ];
         if manage {
-            content.push_str("<td>");
-            if member.status == "active"
+            let change = if member.status == "active"
                 && member.role != "owner"
                 && member.account != context.viewer.account_id
             {
@@ -379,42 +357,63 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
                     (Ok(a), Ok(b)) => (a, b),
                     (Err(r), _) | (_, Err(r)) => return r,
                 };
-                content.push_str(&format!(
-                    "<form method=\"post\" action=\"/cloud/app/team/role\">{}{}{}<button type=\"submit\">Make {next}</button></form><form method=\"post\" action=\"/cloud/app/team/remove\">{}{}<button type=\"submit\">Remove</button></form>",
-                    ticket(&role_csrf),
-                    hidden("account", &member.account),
-                    hidden("role", next),
-                    ticket(&remove_csrf),
-                    hidden("account", &member.account),
-                ));
-                if lane(context.app, Lane::Recovery) {
+                let recovery = if lane(context.app, Lane::Recovery) {
                     let csrf = match context.csrf(&headers, "team-recovery", &member.account) {
                         Ok(value) => value,
                         Err(response) => return response,
                     };
-                    content.push_str(&format!(
-                        "<form method=\"post\" action=\"/cloud/app/team/recovery\">{}{}<button type=\"submit\">Issue recovery token</button></form>",
-                        ticket(&csrf),
-                        hidden("account", &member.account),
-                    ));
+                    Some(
+                        ui::BoundForm::new("/cloud/app/team/recovery")
+                            .csrf(&csrf)
+                            .bind("account", &member.account)
+                            .submit_with(ui::submit("Issue recovery token", false)),
+                    )
+                } else {
+                    None
+                };
+                html! {
+                    (ui::BoundForm::new("/cloud/app/team/role")
+                        .csrf(&role_csrf)
+                        .bind("account", &member.account)
+                        .bind("role", next)
+                        .submit_with(ui::submit(&format!("Make {next}"), false)))
+                    (ui::BoundForm::new("/cloud/app/team/remove")
+                        .csrf(&remove_csrf)
+                        .bind("account", &member.account)
+                        .submit_with(ui::submit("Remove", false)))
+                    @if let Some(form) = &recovery { (form) }
                 }
             } else {
-                content.push_str("<span class=\"dim\">No browser change</span>");
-            }
-            content.push_str("</td>");
+                html! { span class="dim" { "No browser change" } }
+            };
+            cells.push(change);
         }
-        content.push_str("</tr>");
+        members = members.row(cells);
     }
-    content.push_str("</table>");
-    content.push_str("<h3>Invitations</h3>");
-    if roster.invitations.is_empty() {
-        content.push_str("<p>No invitations are retained for this workspace.</p>");
-    } else {
-        content.push_str("<table><tr><th>Invitation</th><th>Role</th><th>Status</th><th>Invited by</th><th>Expires</th><th>Accepted by</th>");
-        if manage {
-            content.push_str("<th>Change</th>");
-        }
-        content.push_str("</tr>");
+
+    let mut invitations = None;
+    if !roster.invitations.is_empty() {
+        let mut table = ui::table("Invitations");
+        table = if manage {
+            table.header([
+                "Invitation",
+                "Role",
+                "Status",
+                "Invited by",
+                "Expires",
+                "Accepted by",
+                "Change",
+            ])
+        } else {
+            table.header([
+                "Invitation",
+                "Role",
+                "Status",
+                "Invited by",
+                "Expires",
+                "Accepted by",
+            ])
+        };
         let observed = now();
         for invitation in &roster.invitations {
             let role = match invitation.role {
@@ -426,72 +425,145 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             } else {
                 invitation.status.as_str()
             };
-            content.push_str(&format!(
-                "<tr><td><code>{}</code></td><td>{role}</td><td>{}</td><td><code>{}</code></td><td>{}</td><td>{}</td>",
-                escape(&invitation.id),
-                escape(status),
-                escape(&invitation.invited_by),
-                date(invitation.expires_unix),
-                invitation
-                    .accepted_by
-                    .as_deref()
-                    .map_or_else(|| "none".into(), |a| format!("<code>{}</code>", escape(a))),
-            ));
+            let mut cells = vec![
+                html! { code { (invitation.id) } },
+                html! { (role) },
+                html! { (status) },
+                html! { code { (invitation.invited_by) } },
+                html! { (date(invitation.expires_unix)) },
+                html! {
+                    @match invitation.accepted_by.as_deref() {
+                        Some(account) => { code { (account) } }
+                        None => { "none" }
+                    }
+                },
+            ];
             if manage {
                 if status == "pending" {
                     let csrf = match context.csrf(&headers, "team-withdraw", &invitation.id) {
                         Ok(value) => value,
                         Err(response) => return response,
                     };
-                    content.push_str(&format!(
-                        "<td><form method=\"post\" action=\"/cloud/app/team/withdraw\">{}{}<button type=\"submit\">Withdraw</button></form></td>",
-                        ticket(&csrf),
-                        hidden("invitation", &invitation.id)
-                    ));
+                    cells.push(
+                        ui::BoundForm::new("/cloud/app/team/withdraw")
+                            .csrf(&csrf)
+                            .bind("invitation", &invitation.id)
+                            .submit_with(ui::submit("Withdraw", false))
+                            .render(),
+                    );
                 } else {
-                    content.push_str("<td></td>");
+                    cells.push(html! {});
                 }
             }
-            content.push_str("</tr>");
+            table = table.row(cells);
         }
-        content.push_str("</table>");
+        invitations = Some(table);
     }
-    if manage {
+
+    let invite = if manage {
         let csrf = match context.csrf(&headers, "team-invite", "") {
             Ok(value) => value,
             Err(response) => return response,
         };
-        content.push_str(&format!(
-            "<section class=\"cloud-card\"><h3>Invite someone</h3><p>An invitation is a single-use, expiring token. It is shown once, after you create it; deliver it yourself. It joins only this workspace, at the reviewed role, and holds a seat until it is accepted, withdrawn, or expires.</p><form method=\"post\" action=\"/cloud/app/team/invite\">{}<label>Role <select name=\"role\"><option value=\"member\">member</option><option value=\"admin\">admin</option></select></label> <label>Expires after days <input name=\"days\" type=\"number\" min=\"1\" max=\"{MAX_INVITE_DAYS}\" value=\"7\" required></label> <button type=\"submit\">Create invitation</button></form></section>",
-            ticket(&csrf)
-        ));
+        let role = Field::new("team-invite-role", "Role");
+        let role_aria = role.aria();
+        let days = Field::new("team-invite-days", "Expires after days").required(true);
+        let days_aria = days.aria();
+        Some(ui::card(html! {
+            h3 { "Invite someone" }
+            p { "An invitation is a single-use, expiring token. It is shown once, after you create it; deliver it yourself. It joins only this workspace, at the reviewed role, and holds a seat until it is accepted, withdrawn, or expires." }
+            (ui::BoundForm::new("/cloud/app/team/invite")
+                .csrf(&csrf)
+                .body(html! {
+                    (role.control(
+                        Select::new("role")
+                            .aria(role_aria)
+                            .option("member", "member")
+                            .option("admin", "admin"),
+                    ))
+                    (days.control(
+                        Input::new("days")
+                            .aria(days_aria)
+                            .input_type(InputType::Number)
+                            .min("1")
+                            .max(MAX_INVITE_DAYS.to_string())
+                            .value("7"),
+                    ))
+                })
+                .submit("Create invitation"))
+        }))
     } else {
-        content.push_str("<p class=\"dim\">Your role is read-only here: invitations, roles, removal, recovery, and policy changes need a current admin or owner.</p>");
-    }
-    content.push_str(&format!(
-        "<p class=\"dim\">{EPOCH_NOTE}</p></div></section><p><a href=\"/cloud/app/team/accept\">Accept an invitation to another workspace</a></p>"
-    ));
+        None
+    };
 
-    if lane(context.app, Lane::Policy) {
+    let policy = if lane(context.app, Lane::Policy) {
         match policy_section(&context, &headers).await {
-            Ok(section) => content.push_str(&section),
+            Ok(section) => Some(section),
             Err(response) => return response,
         }
-    }
-    if lane(context.app, Lane::Budgets) {
+    } else {
+        None
+    };
+    let budgets = if lane(context.app, Lane::Budgets) {
         match budget_section(&context, &headers).await {
-            Ok(section) => content.push_str(&section),
+            Ok(section) => Some(section),
             Err(response) => return response,
         }
-    }
-    if lane(context.app, Lane::Reports) {
-        content.push_str("<section class=\"cloud-card\"><h3>Reports</h3><p>Work, cost, wait, and outcome rows from the native team report, under your current read rights: an admin reads every member's work, a member reads their own. Acceptance is a pinned attributed review, not remote attestation.</p><p><a href=\"/cloud/app/team/reports\">Open team report</a> · <a href=\"/cloud/app/team/export\">Export report and access history</a></p></section>");
-    }
-    content.push_str("<section class=\"cloud-card\"><h3>Department knowledge</h3><p>A team shares only admitted documents, workflows, and evaluations through their own exact grants. Sharing them is not model training and not an enterprise certification; training is a separate service with its own terms.</p></section>");
+    } else {
+        None
+    };
+    let content = html! {
+        h2 { "Team" }
+        p {
+            "Workspace " code { (context.workspace) } " \u{b7} " (roster.workspace.kind)
+            " \u{b7} your role " strong { (context.role) }
+            " \u{b7} membership epoch " code { (context.epoch) }
+            @if let Some(seats) = roster.workspace.seats { " \u{b7} " (seats) " seats" }
+        }
+        p class="dim" { "Read under your current session for the selected workspace only. Membership grants no host, computer, execution, spending, or publication right; each of those keeps its own grant." }
+        section id="team-observation" hx-ext="sse" sse-connect="/cloud/app/team/watch" sse-close="retire" {
+            div id="team-live" sse-swap="refresh" hx-swap="innerHTML" aria-live="polite" {
+                p class="dim" { "Watching current membership." }
+            }
+            div id="team-roster" sse-swap="retire" hx-swap="innerHTML" {
+                h3 { "Members" }
+                (members)
+                h3 { "Invitations" }
+                @match &invitations {
+                    Some(table) => { (table) }
+                    None => { p { "No invitations are retained for this workspace." } }
+                }
+                @match &invite {
+                    Some(card) => { (card) }
+                    None => {
+                        p class="dim" { "Your role is read-only here: invitations, roles, removal, recovery, and policy changes need a current admin or owner." }
+                    }
+                }
+                p class="dim" { (EPOCH_NOTE) }
+            }
+        }
+        p { a href="/cloud/app/team/accept" { "Accept an invitation to another workspace" } }
+        @if let Some(section) = &policy { (section) }
+        @if let Some(section) = &budgets { (section) }
+        @if lane(context.app, Lane::Reports) {
+            (ui::card(html! {
+                h3 { "Reports" }
+                p { "Work, cost, wait, and outcome rows from the native team report, under your current read rights: an admin reads every member's work, a member reads their own. Acceptance is a pinned attributed review, not remote attestation." }
+                (ui::links([
+                    ("/cloud/app/team/reports", "Open team report"),
+                    ("/cloud/app/team/export", "Export report and access history"),
+                ]))
+            }))
+        }
+        (ui::card(html! {
+            h3 { "Department knowledge" }
+            p { "A team shares only admitted documents, workflows, and evaluations through their own exact grants. Sharing them is not model training and not an enterprise certification; training is a separate service with its own terms." }
+        }))
+    };
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    context.shell(&headers, &content)
+    context.shell(&headers, content)
 }
 
 // ---- Roster watch -------------------------------------------------------------
@@ -600,7 +672,8 @@ async fn watch(State(app): State<App>, headers: HeaderMap) -> Response {
                 if state.digest.as_ref().is_some_and(|d| d != &digest) {
                     state.digest = Some(digest);
                     Event::default().event("refresh").id(id).data(
-                        "<p>Invitations changed. Reopen this page to review the current list.</p>",
+                        html! { p { "Invitations changed. Reopen this page to review the current list." } }
+                            .into_string(),
                     )
                 } else if state.digest.is_none() {
                     // The first read names the baseline a reconnect resumes from.
@@ -614,7 +687,7 @@ async fn watch(State(app): State<App>, headers: HeaderMap) -> Response {
                 state.ended = true;
                 Event::default()
                     .event("retire")
-                    .data(format!("<p>{RETIRED}</p>"))
+                    .data(html! { p { (RETIRED) } }.into_string())
             }
         };
         Some((Ok::<_, Infallible>(event), state))
@@ -670,15 +743,26 @@ async fn invite(
         Ok(value) => value,
         Err(error) => return refused(native_error(error)),
     };
-    let content = format!(
-        "<h2>Invitation created</h2><p>Invitation <code>{}</code> joins <code>{}</code> as <strong>{}</strong> and expires at {}.</p><p>Copy this single-use token now and deliver it yourself. It is not shown again and is not stored by this site.</p><p><code class=\"secret\">{}</code></p><p>The person signs in with their own account, opens Team, chooses <em>Accept an invitation</em>, and reviews this workspace and role before accepting. {EPOCH_NOTE}</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-        escape(&grant.invitation.id),
-        escape(&context.workspace),
-        escape(&form.role),
-        date(grant.invitation.expires_unix),
-        escape(grant.token.expose()),
-    );
-    context.shell(&headers, &content)
+    let content = html! {
+        h2 { "Invitation created" }
+        p {
+            "Invitation " code { (grant.invitation.id) } " joins " code { (context.workspace) }
+            " as " strong { (form.role) } " and expires at " (date(grant.invitation.expires_unix)) "."
+        }
+        p { "Copy this single-use token now and deliver it yourself. It is not shown again and is not stored by this site." }
+        p { code class="secret" { (grant.token.expose()) } }
+        p {
+            "The person signs in with their own account, opens Team, chooses " em { "Accept an invitation" }
+            ", and reviews this workspace and role before accepting. " (EPOCH_NOTE)
+        }
+        (back())
+    };
+    context.shell(&headers, content)
+}
+
+/// The "Back to team" link every result page ends with.
+fn back() -> Markup {
+    html! { p { a href=(PAGE) { "Back to team" } } }
 }
 
 #[derive(Deserialize)]
@@ -715,10 +799,11 @@ async fn withdraw(
     }
     context.shell(
         &headers,
-        &format!(
-            "<h2>Invitation withdrawn</h2><p>Invitation <code>{}</code> can no longer be accepted.</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-            escape(&form.invitation)
-        ),
+        html! {
+            h2 { "Invitation withdrawn" }
+            p { "Invitation " code { (form.invitation) } " can no longer be accepted." }
+            (back())
+        },
     )
 }
 
@@ -765,12 +850,13 @@ async fn role(
     changed(
         &app,
         &headers,
-        &format!(
-            "<h2>Role changed</h2><p><code>{}</code> is now <strong>{}</strong> in <code>{}</code>.</p>",
-            escape(&member.account),
-            escape(&member.role),
-            escape(&context.workspace)
-        ),
+        html! {
+            h2 { "Role changed" }
+            p {
+                code { (member.account) } " is now " strong { (member.role) }
+                " in " code { (context.workspace) } "."
+            }
+        },
     )
     .await
 }
@@ -811,28 +897,32 @@ async fn remove(
     changed(
         &app,
         &headers,
-        &format!(
-            "<h2>Member removed</h2><p><code>{}</code> no longer belongs to <code>{}</code>. Their sessions in this workspace, task observations, and team reads stop on their next standing check, including views already open. Their retained records and original receipts are unchanged.</p>",
-            escape(&member.account),
-            escape(&context.workspace)
-        ),
+        html! {
+            h2 { "Member removed" }
+            p {
+                code { (member.account) } " no longer belongs to " code { (context.workspace) }
+                ". Their sessions in this workspace, task observations, and team reads stop on their next standing check, including views already open. Their retained records and original receipts are unchanged."
+            }
+        },
     )
     .await
 }
 
 /// After a membership change the selected epoch is new: re-read standing
 /// so the shell shows the current epoch, and explain what that changes.
-async fn changed(app: &App, headers: &HeaderMap, message: &str) -> Response {
+async fn changed(app: &App, headers: &HeaderMap, message: Markup) -> Response {
     let context = match context(app, headers, Lane::Membership).await {
         Ok(value) => value,
         Err(response) => return response,
     };
     context.shell(
         headers,
-        &format!(
-            "{message}<p>The workspace is now at membership epoch <code>{}</code>.</p><p>{EPOCH_NOTE}</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-            context.epoch
-        ),
+        html! {
+            (message)
+            p { "The workspace is now at membership epoch " code { (context.epoch) } "." }
+            p { (EPOCH_NOTE) }
+            (back())
+        },
     )
 }
 
@@ -871,12 +961,20 @@ async fn recovery(
     };
     context.shell(
         &headers,
-        &format!(
-            "<h2>Recovery token issued</h2><p>This single-use token lets <code>{}</code> replace their account key. It expires at {}. Copy it now and deliver it yourself; it is not shown again and is not stored by this site.</p><p><code class=\"secret\">{}</code></p><p>They redeem it at <a href=\"/cloud/recover\">Recover account access</a>, which ends every session of the old key and shows the replacement key once. Recovery restores account access only: it never restores a removed membership, and it changes no task, policy, budget, or receipt.</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-            escape(&grant.account),
-            date(grant.expires_at),
-            escape(grant.token.expose())
-        ),
+        html! {
+            h2 { "Recovery token issued" }
+            p {
+                "This single-use token lets " code { (grant.account) }
+                " replace their account key. It expires at " (date(grant.expires_at))
+                ". Copy it now and deliver it yourself; it is not shown again and is not stored by this site."
+            }
+            p { code class="secret" { (grant.token.expose()) } }
+            p {
+                "They redeem it at " a href="/cloud/recover" { "Recover account access" }
+                ", which ends every session of the old key and shows the replacement key once. Recovery restores account access only: it never restores a removed membership, and it changes no task, policy, budget, or receipt."
+            }
+            (back())
+        },
     )
 }
 
@@ -905,17 +1003,48 @@ async fn accept_page(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let content = format!(
-        "<h2>Accept an invitation</h2><p>Review the exact workspace and role the inviter gave you. The invitation is consumed once, only by your current account, and only for that workspace and role; a mismatch refuses without using it.</p><form method=\"post\" action=\"/cloud/app/team/accept\">{}<label>Workspace <input name=\"workspace\" required maxlength=\"128\" autocomplete=\"off\"></label> <label>Role <select name=\"role\"><option value=\"member\">member</option><option value=\"admin\">admin</option></select></label> <label>Invitation token <input type=\"password\" name=\"token\" required maxlength=\"256\" autocomplete=\"off\"></label> <button type=\"submit\">Accept</button></form><p class=\"dim\">{EPOCH_NOTE}</p>",
-        ticket(&csrf)
-    );
+    let workspace = Field::new("team-accept-workspace", "Workspace").required(true);
+    let workspace_aria = workspace.aria();
+    let role = Field::new("team-accept-role", "Role");
+    let role_aria = role.aria();
+    let token = Field::new("team-accept-token", "Invitation token").required(true);
+    let token_aria = token.aria();
+    let content = html! {
+        h2 { "Accept an invitation" }
+        p { "Review the exact workspace and role the inviter gave you. The invitation is consumed once, only by your current account, and only for that workspace and role; a mismatch refuses without using it." }
+        (ui::BoundForm::new("/cloud/app/team/accept")
+            .csrf(&csrf)
+            .body(html! {
+                (workspace.control(
+                    Input::new("workspace")
+                        .aria(workspace_aria)
+                        .maxlength(128)
+                        .autocomplete("off"),
+                ))
+                (role.control(
+                    Select::new("role")
+                        .aria(role_aria)
+                        .option("member", "member")
+                        .option("admin", "admin"),
+                ))
+                (token.control(
+                    Input::new("token")
+                        .aria(token_aria)
+                        .input_type(InputType::Password)
+                        .maxlength(256)
+                        .autocomplete("off"),
+                ))
+            })
+            .submit("Accept"))
+        p class="dim" { (EPOCH_NOTE) }
+    };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "team",
-        Some(&content),
+        Some(content),
         None,
     )
 }
@@ -975,11 +1104,13 @@ async fn accept_submit(
         Ok(value) => value,
         Err(error) => return refused(native_error(error)),
     };
-    let content = format!(
-        "<h2>Invitation accepted</h2><p>You joined <code>{}</code> as <strong>{}</strong>. Choose it under <em>Choose workspace</em> to open it. {EPOCH_NOTE}</p>",
-        escape(&form.workspace),
-        escape(&member.role)
-    );
+    let content = html! {
+        h2 { "Invitation accepted" }
+        p {
+            "You joined " code { (form.workspace) } " as " strong { (member.role) }
+            ". Choose it under " em { "Choose workspace" } " to open it. " (EPOCH_NOTE)
+        }
+    };
     // Re-read standing so the new workspace appears in the switcher.
     let viewer = match service.authenticate(&headers).await {
         Ok(value) => value,
@@ -991,7 +1122,7 @@ async fn accept_submit(
         service,
         &viewer,
         "team",
-        Some(&content),
+        Some(content),
         None,
     )
 }
@@ -1014,10 +1145,26 @@ async fn recover_page(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let mut response = super::page(&format!(
-        "<h1>Recover account access</h1><p>Enter the single-use recovery token a workspace admin gave you. Redeeming it replaces your account key and ends every session of the old one. The replacement key is shown once. Recovery restores account access only; it does not restore a removed membership.</p><form method=\"post\" action=\"/cloud/recover\">{}<label>Recovery token <input type=\"password\" name=\"token\" required maxlength=\"256\" autocomplete=\"off\"></label> <button type=\"submit\">Recover</button></form><p><a href=\"/cloud/sign-in\">Sign in</a></p>",
-        ticket(&csrf.token)
-    ));
+    let token = Field::new("recover-token", "Recovery token").required(true);
+    let token_aria = token.aria();
+    let mut response = ui::document(
+        &headers,
+        html! {
+            h1 { "Recover account access" }
+            p { "Enter the single-use recovery token a workspace admin gave you. Redeeming it replaces your account key and ends every session of the old one. The replacement key is shown once. Recovery restores account access only; it does not restore a removed membership." }
+            (ui::BoundForm::new("/cloud/recover")
+                .csrf(&csrf.token)
+                .body(token.control(
+                    Input::new("token")
+                        .aria(token_aria)
+                        .input_type(InputType::Password)
+                        .maxlength(256)
+                        .autocomplete("off"),
+                ))
+                .submit("Recover"))
+            p { a href="/cloud/sign-in" { "Sign in" } }
+        },
+    );
     for cookie in csrf.legacy_cookies {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -1060,17 +1207,20 @@ async fn recover_submit(
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let mut response = super::page(&format!(
-        "<h1>Account key replaced</h1><p>{}Copy this replacement account key now. It is shown once and is not stored by this site; every session of the old key has ended.</p><p><code class=\"secret\">{}</code></p><p><a href=\"/cloud/sign-in\">Sign in with the new key</a></p>",
-        recovered
-            .account
-            .as_deref()
-            .map_or_else(String::new, |a| format!(
-                "Account <code>{}</code>. ",
-                escape(a)
-            )),
-        escape(recovered.key.expose())
-    ));
+    let mut response = ui::document(
+        &headers,
+        html! {
+            h1 { "Account key replaced" }
+            p {
+                @if let Some(account) = recovered.account.as_deref() {
+                    "Account " code { (account) } ". "
+                }
+                "Copy this replacement account key now. It is shown once and is not stored by this site; every session of the old key has ended."
+            }
+            p { code class="secret" { (recovered.key.expose()) } }
+            p { a href="/cloud/sign-in" { "Sign in with the new key" } }
+        },
+    );
     for cookie in service.clear_cookies() {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -1079,7 +1229,7 @@ async fn recover_submit(
 
 // ---- Policy -------------------------------------------------------------------
 
-async fn policy_section(context: &Context<'_>, headers: &HeaderMap) -> Result<String, Response> {
+async fn policy_section(context: &Context<'_>, headers: &HeaderMap) -> Result<Markup, Response> {
     let view = match context
         .viewer
         .client()
@@ -1089,42 +1239,28 @@ async fn policy_section(context: &Context<'_>, headers: &HeaderMap) -> Result<St
     {
         Ok(value) => value,
         Err(error) => {
-            return Ok(match native_error(error) {
-                SessionError::Unauthenticated => return Err(refused(SessionError::Unauthenticated)),
-                _ => "<section class=\"cloud-card\"><h3>Policy</h3><p>No current team policy is readable for this workspace and membership. Without one, nothing is narrowed here and nothing is enabled by this page.</p></section>".into(),
-            });
+            return match native_error(error) {
+                SessionError::Unauthenticated => Err(refused(SessionError::Unauthenticated)),
+                _ => Ok(ui::card(html! {
+                    h3 { "Policy" }
+                    p { "No current team policy is readable for this workspace and membership. Without one, nothing is narrowed here and nothing is enabled by this page." }
+                })),
+            };
         }
     };
     let reference = &view.reference;
-    let mut out = format!(
-        "<section class=\"cloud-card\"><h3>Policy</h3><p>Exact team policy version <code>{}</code>, digest <code>{}</code>, expires at {}, owner <code>{}</code>, reviewer <code>{}</code>. Rules narrow native grants; they never add one.</p><p>Enabled here: {}. Unsupported: {}.</p>",
-        reference.version,
-        escape(&reference.digest),
-        date(reference.expires_unix),
-        escape(&reference.owner),
-        escape(&reference.reviewer),
-        list(&view.enabled),
-        list(&view.unsupported),
-    );
-    match &view.reviewed {
-        None => {
-            out.push_str("<p class=\"dim\">Rule details are visible to admins and the owner.</p>")
-        }
+    let rules = match &view.reviewed {
+        None => html! { p class="dim" { "Rule details are visible to admins and the owner." } },
         Some(reviewed) => {
             let narrow = admin(&context.role);
-            let csrf = if narrow {
-                Some(context.csrf(headers, "team-policy", &reviewed.digest)?)
-            } else {
-                None
-            };
-            if let Some(csrf) = &csrf {
-                out.push_str(&format!(
-                    "<form method=\"post\" action=\"/cloud/app/team/policy\">{}{}",
-                    ticket(csrf),
-                    hidden("expected", &reviewed.digest)
-                ));
-            }
-            out.push_str("<table><tr><th>Keep</th><th>Capability</th><th>Model or plugin</th><th>Placement</th><th>Data classes</th><th>Recipients</th></tr>");
+            let mut table = ui::table("Policy rules").header([
+                "Keep",
+                "Capability",
+                "Model or plugin",
+                "Placement",
+                "Data classes",
+                "Recipients",
+            ]);
             for (index, rule) in reviewed.terms.rules.iter().enumerate() {
                 let effect = &rule.effect;
                 let scope = effect.model.clone().unwrap_or_else(|| {
@@ -1133,43 +1269,75 @@ async fn policy_section(context: &Context<'_>, headers: &HeaderMap) -> Result<St
                         .as_ref()
                         .map_or_else(String::new, |p| format!("{} {}", p.release, p.module))
                 });
-                out.push_str(&format!(
-                    "<tr><td>{}</td><td>{}</td><td><code>{}</code></td><td>{} <code>{}</code></td><td>{}</td><td>{}</td></tr>",
-                    if narrow {
-                        format!("<input type=\"checkbox\" name=\"keep\" value=\"{index}\" checked>")
-                    } else {
-                        String::new()
+                table = table.row([
+                    html! {
+                        @if narrow {
+                            (Checkbox::new("keep", format!("Keep rule {}", index + 1))
+                                .id(format!("team-policy-keep-{index}"))
+                                .value(index.to_string())
+                                .checked(true))
+                        }
                     },
-                    escape(&serde_json::to_string(&effect.capability).unwrap_or_default()),
-                    escape(&scope),
-                    escape(&serde_json::to_string(&effect.placement.kind).unwrap_or_default()),
-                    escape(&effect.placement.identity),
-                    escape(&rule.data_classes.join(", ")),
-                    effect.recipients.len()
-                ));
+                    html! { (serde_json::to_string(&effect.capability).unwrap_or_default()) },
+                    html! { code { (scope) } },
+                    html! {
+                        (serde_json::to_string(&effect.placement.kind).unwrap_or_default())
+                        " " code { (effect.placement.identity) }
+                    },
+                    html! { (rule.data_classes.join(", ")) },
+                    html! { (effect.recipients.len()) },
+                ]);
             }
-            out.push_str("</table>");
             if narrow {
-                out.push_str(&format!(
-                    "<p>Narrow this policy: clear rules to drop them, or bring the expiry earlier. A browser change can only narrow; it cannot add a rule or extend the expiry.</p><label>Expires at (Unix seconds) <input name=\"expires\" type=\"number\" min=\"1\" max=\"{}\" value=\"{}\" required></label> <button type=\"submit\">Review narrowed policy</button></form>",
-                    reviewed.terms.expires_unix, reviewed.terms.expires_unix
-                ));
+                let csrf = context.csrf(headers, "team-policy", &reviewed.digest)?;
+                let expires =
+                    Field::new("team-policy-expires", "Expires at (Unix seconds)").required(true);
+                let expires_aria = expires.aria();
+                let limit = reviewed.terms.expires_unix.to_string();
+                ui::BoundForm::new("/cloud/app/team/policy")
+                    .csrf(&csrf)
+                    .bind("expected", &reviewed.digest)
+                    .body(html! {
+                        (table)
+                        p { "Narrow this policy: clear rules to drop them, or bring the expiry earlier. A browser change can only narrow; it cannot add a rule or extend the expiry." }
+                        (expires.control(
+                            Input::new("expires")
+                                .aria(expires_aria)
+                                .input_type(InputType::Number)
+                                .min("1")
+                                .max(limit.clone())
+                                .value(limit),
+                        ))
+                    })
+                    .submit("Review narrowed policy")
+                    .render()
+            } else {
+                table.render()
             }
         }
-    }
-    out.push_str("</section>");
-    Ok(out)
+    };
+    Ok(ui::card(html! {
+        h3 { "Policy" }
+        p {
+            "Exact team policy version " code { (reference.version) } ", digest " code { (reference.digest) }
+            ", expires at " (date(reference.expires_unix)) ", owner " code { (reference.owner) }
+            ", reviewer " code { (reference.reviewer) } ". Rules narrow native grants; they never add one."
+        }
+        p { "Enabled here: " (list(&view.enabled)) ". Unsupported: " (list(&view.unsupported)) "." }
+        (rules)
+    }))
 }
 
-fn list(values: &[String]) -> String {
-    if values.is_empty() {
-        "none".into()
-    } else {
-        values
-            .iter()
-            .map(|v| format!("<code>{}</code>", escape(v)))
-            .collect::<Vec<_>>()
-            .join(", ")
+fn list(values: &[String]) -> Markup {
+    html! {
+        @if values.is_empty() {
+            "none"
+        } @else {
+            @for (index, value) in values.iter().enumerate() {
+                @if index > 0 { ", " }
+                code { (value) }
+            }
+        }
     }
 }
 
@@ -1293,25 +1461,28 @@ async fn policy(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
     };
     context.shell(
         &headers,
-        &format!(
-            "<h2>Policy narrowed</h2><p>Version <code>{}</code>, digest <code>{}</code>, expires at {}. Requests admitted earlier keep the policy they were admitted under; new requests use this one.</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-            view.reference.version,
-            escape(&view.reference.digest),
-            date(view.reference.expires_unix)
-        ),
+        html! {
+            h2 { "Policy narrowed" }
+            p {
+                "Version " code { (view.reference.version) } ", digest " code { (view.reference.digest) }
+                ", expires at " (date(view.reference.expires_unix))
+                ". Requests admitted earlier keep the policy they were admitted under; new requests use this one."
+            }
+            (back())
+        },
     )
 }
 
 // ---- Budgets ------------------------------------------------------------------
 
-fn position(label: &str, value: &Value) -> String {
+fn position(label: Markup, value: &Value) -> Vec<Markup> {
     let n = |k: &str| {
-        value[k]
+        let text = value[k]
             .as_u64()
-            .map_or("unknown".into(), |v| v.to_string())
+            .map_or("unknown".into(), |v| v.to_string());
+        html! { (text) }
     };
-    format!(
-        "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+    vec![
         label,
         n("cap"),
         n("alert_at"),
@@ -1320,89 +1491,134 @@ fn position(label: &str, value: &Value) -> String {
         n("settled_net"),
         n("used"),
         n("remaining"),
-        escape(value["alert"].as_str().unwrap_or("unknown"))
-    )
+        html! { (value["alert"].as_str().unwrap_or("unknown")) },
+    ]
 }
 
-async fn budget_section(context: &Context<'_>, headers: &HeaderMap) -> Result<String, Response> {
+/// One scope's cap and alert inputs for the owner's narrowing form.
+fn limit_inputs(name: &str, label: Markup, limit: &Value) -> Markup {
+    let cap = limit["cap"].as_u64().unwrap_or(0).to_string();
+    let alert = limit["alert_at"].as_u64().unwrap_or(0).to_string();
+    let cap_field = Field::new(format!("team-budget-{name}.cap"), "Cap");
+    let cap_aria = cap_field.aria();
+    let alert_field = Field::new(format!("team-budget-{name}.alert"), "Alert at");
+    let alert_aria = alert_field.aria();
+    html! {
+        fieldset {
+            legend { (label) }
+            (cap_field.control(
+                Input::new(format!("{name}.cap"))
+                    .aria(cap_aria)
+                    .input_type(InputType::Number)
+                    .min("0")
+                    .max(cap.clone())
+                    .value(cap),
+            ))
+            (alert_field.control(
+                Input::new(format!("{name}.alert"))
+                    .aria(alert_aria)
+                    .input_type(InputType::Number)
+                    .min("0")
+                    .max(alert.clone())
+                    .value(alert),
+            ))
+        }
+    }
+}
+
+async fn budget_section(context: &Context<'_>, headers: &HeaderMap) -> Result<Markup, Response> {
     let answer = match context.team().budgets(&context.workspace).await {
         Ok(value) => value,
         Err(error) => {
             return match native_error(error) {
                 SessionError::Unauthenticated => Err(refused(SessionError::Unauthenticated)),
-                _ => Ok("<section class=\"cloud-card\"><h3>Limits</h3><p>No reviewed budget roster is readable for this workspace and membership. Without one, this page shows no limit and enables no spending.</p></section>".into()),
+                _ => Ok(ui::card(html! {
+                    h3 { "Limits" }
+                    p { "No reviewed budget roster is readable for this workspace and membership. Without one, this page shows no limit and enables no spending." }
+                })),
             };
         }
     };
     let budget = &answer["budget"];
-    let mut out = format!(
-        "<section class=\"cloud-card\"><h3>Limits</h3><p>Budget version <code>{}</code>, policy <code>{}</code>, scope {}, in {} millionths. Caps are cumulative; reserved amounts are holds still in flight, and unknown amounts are holds whose outcome is not yet settled. Both count against every cap until resolved, so concurrent holds cannot exceed a cap together. Unattributed earlier use: {}.</p><table><tr><th>Scope</th><th>Cap</th><th>Alert at</th><th>Reserved (holds)</th><th>Unknown</th><th>Settled</th><th>Used</th><th>Remaining</th><th>Alert</th></tr>",
-        budget["version"].as_u64().unwrap_or(0),
-        escape(budget["policy"].as_str().unwrap_or("")),
-        escape(budget["scope"].as_str().unwrap_or("")),
-        escape(budget["currency"].as_str().unwrap_or("")),
-        budget["unattributed_used"]
-            .as_u64()
-            .map_or("unknown".into(), |v| v.to_string()),
-    );
-    out.push_str(&position("Workspace", &budget["workspace"]));
+    let mut table = ui::table("Limits").header([
+        "Scope",
+        "Cap",
+        "Alert at",
+        "Reserved (holds)",
+        "Unknown",
+        "Settled",
+        "Used",
+        "Remaining",
+        "Alert",
+    ]);
+    table = table.row(position(html! { "Workspace" }, &budget["workspace"]));
     for (key, label) in [("teams", "Team"), ("people", "Person")] {
         if let Some(map) = budget[key].as_object() {
             for (name, value) in map {
-                out.push_str(&position(
-                    &format!("{label} <code>{}</code>", escape(name)),
-                    value,
-                ));
+                table = table.row(position(html! { (label) " " code { (name) } }, value));
             }
         }
     }
-    out.push_str("</table>");
-    if let Some(limits) = answer["limitations"].as_array() {
-        out.push_str("<ul class=\"dim\">");
-        for limit in limits.iter().filter_map(Value::as_str) {
-            out.push_str(&format!("<li>{}</li>", escape(limit)));
-        }
-        out.push_str("</ul>");
-    }
     let document = &answer["policy_document"];
-    if context.role == "owner" && document.is_object() {
+    let form = if context.role == "owner" && document.is_object() {
         let digest = budget["policy"].as_str().unwrap_or("");
         let csrf = context.csrf(headers, "team-budgets", digest)?;
-        out.push_str(&format!(
-            "<form method=\"post\" action=\"/cloud/app/team/budgets\">{}{}<p>Lower caps or alert thresholds. A browser change can only narrow limits for the same roster; it never resets earlier use.</p>",
-            ticket(&csrf),
-            hidden("expected", digest)
-        ));
-        let field = |name: &str, label: &str, limit: &Value| {
-            format!(
-                "<p>{label}: <label>cap <input type=\"number\" name=\"{name}.cap\" min=\"0\" max=\"{0}\" value=\"{0}\"></label> <label>alert at <input type=\"number\" name=\"{name}.alert\" min=\"0\" max=\"{1}\" value=\"{1}\"></label></p>",
-                limit["cap"].as_u64().unwrap_or(0),
-                limit["alert_at"].as_u64().unwrap_or(0),
-            )
-        };
-        out.push_str(&field("workspace", "Workspace", &document["workspace"]));
+        let mut inputs = vec![limit_inputs(
+            "workspace",
+            html! { "Workspace" },
+            &document["workspace"],
+        )];
         if let Some(teams) = document["teams"].as_object() {
             for (name, limit) in teams {
-                out.push_str(&field(
-                    &format!("team.{}", escape(name)),
-                    &format!("Team <code>{}</code>", escape(name)),
+                inputs.push(limit_inputs(
+                    &format!("team.{name}"),
+                    html! { "Team " code { (name) } },
                     limit,
                 ));
             }
         }
         if let Some(people) = document["people"].as_object() {
             for (name, person) in people {
-                out.push_str(&field(
-                    &format!("person.{}", escape(name)),
-                    &format!("Person <code>{}</code>", escape(name)),
+                inputs.push(limit_inputs(
+                    &format!("person.{name}"),
+                    html! { "Person " code { (name) } },
                     &person["limit"],
                 ));
             }
         }
-        out.push_str("<button type=\"submit\">Review narrowed limits</button></form>");
-    }
-    out.push_str("</section>");
-    Ok(out)
+        Some(
+            ui::BoundForm::new("/cloud/app/team/budgets")
+                .csrf(&csrf)
+                .bind("expected", digest)
+                .body(html! {
+                    p { "Lower caps or alert thresholds. A browser change can only narrow limits for the same roster; it never resets earlier use." }
+                    @for input in &inputs { (input) }
+                })
+                .submit("Review narrowed limits"),
+        )
+    } else {
+        None
+    };
+    Ok(ui::card(html! {
+        h3 { "Limits" }
+        p {
+            "Budget version " code { (budget["version"].as_u64().unwrap_or(0)) }
+            ", policy " code { (budget["policy"].as_str().unwrap_or("")) }
+            ", scope " (budget["scope"].as_str().unwrap_or(""))
+            ", in " (budget["currency"].as_str().unwrap_or("")) " millionths. Caps are cumulative; reserved amounts are holds still in flight, and unknown amounts are holds whose outcome is not yet settled. Both count against every cap until resolved, so concurrent holds cannot exceed a cap together. Unattributed earlier use: "
+            (budget["unattributed_used"].as_u64().map_or("unknown".into(), |v| v.to_string()))
+            "."
+        }
+        (table)
+        @if let Some(limits) = answer["limitations"].as_array() {
+            ul class="dim" {
+                @for limit in limits.iter().filter_map(Value::as_str) {
+                    li { (limit) }
+                }
+            }
+        }
+        @if let Some(form) = &form { (form) }
+    }))
 }
 
 /// Lower each cap and threshold in place. Anything larger than the
@@ -1532,11 +1748,15 @@ async fn budgets(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
     };
     context.shell(
         &headers,
-        &format!(
-            "<h2>Limits narrowed</h2><p>Budget version <code>{}</code>, policy <code>{}</code>. Earlier use and open holds still count; nothing was reset.</p><p><a href=\"{PAGE}\">Back to team</a></p>",
-            answer["budget"]["version"].as_u64().unwrap_or(0),
-            escape(answer["budget"]["policy"].as_str().unwrap_or(""))
-        ),
+        html! {
+            h2 { "Limits narrowed" }
+            p {
+                "Budget version " code { (answer["budget"]["version"].as_u64().unwrap_or(0)) }
+                ", policy " code { (answer["budget"]["policy"].as_str().unwrap_or("")) }
+                ". Earlier use and open holds still count; nothing was reset."
+            }
+            (back())
+        },
     )
 }
 
@@ -1560,56 +1780,80 @@ async fn reports(State(app): State<App>, headers: HeaderMap) -> Response {
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    let mut content = format!(
-        "<h2>Team report</h2><p>Scope <strong>{}</strong> for <code>{}</code>, account revision <code>{}</code>, statement <code>{}</code>. Amounts use <code>{}</code>. A missing charge, wait, or cost stays unknown. Acceptance is a pinned attributed review, not remote attestation.</p><table><tr><th>Task</th><th>Member</th><th>State</th><th>Hold</th><th>Reserved</th><th>Charged</th><th>Refunded</th><th>Wait (ms)</th><th>Provider cost</th><th>Hosting cost</th><th>Evidence</th><th>Policy</th><th>Budget</th><th>Receipt</th></tr>",
-        escape(report["scope"].as_str().unwrap_or("")),
-        escape(&context.workspace),
-        escape(report["account_revision"].as_str().unwrap_or("")),
-        escape(report["statement_reference"].as_str().unwrap_or("")),
-        escape(&report["unit"].to_string()),
-    );
+    let mut table = ui::table("Team report").header([
+        "Task",
+        "Member",
+        "State",
+        "Hold",
+        "Reserved",
+        "Charged",
+        "Refunded",
+        "Wait (ms)",
+        "Provider cost",
+        "Hosting cost",
+        "Evidence",
+        "Policy",
+        "Budget",
+        "Receipt",
+    ]);
     for row in report["rows"].as_array().into_iter().flatten() {
-        let text = |k: &str| escape(row[k].as_str().unwrap_or("none"));
-        content.push_str(&format!(
-            "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}{}</td><td><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td></tr>",
-            text("task"),
-            escape(row["original_member"]["account"].as_str().unwrap_or("unattributed")),
-            text("state"),
-            escape(&row["hold_phase"].to_string().trim_matches('"').to_string()),
-            amount(&row["reserved"]),
-            amount(&row["charged"]),
-            amount(&row["refunded"]),
-            amount(&row["wait_ms"]),
-            amount(&row["provider_cost"]),
-            amount(&row["hosting_cost"]),
-            escape(row["evidence"]["status"].as_str().unwrap_or("unavailable")),
-            if row["evidence"]["accepted"] == json!(true) { " · accepted" } else { "" },
-            text("team_policy_reference"),
-            text("budget_policy_reference"),
-            text("receipt"),
-        ));
+        let text = |k: &str| row[k].as_str().unwrap_or("none").to_owned();
+        table = table.row([
+            html! { code { (text("task")) } },
+            html! { code { (row["original_member"]["account"].as_str().unwrap_or("unattributed")) } },
+            html! { (text("state")) },
+            html! { (row["hold_phase"].to_string().trim_matches('"')) },
+            html! { (amount(&row["reserved"])) },
+            html! { (amount(&row["charged"])) },
+            html! { (amount(&row["refunded"])) },
+            html! { (amount(&row["wait_ms"])) },
+            html! { (amount(&row["provider_cost"])) },
+            html! { (amount(&row["hosting_cost"])) },
+            html! {
+                (row["evidence"]["status"].as_str().unwrap_or("unavailable"))
+                @if row["evidence"]["accepted"] == json!(true) { " \u{b7} accepted" }
+            },
+            html! { code { (text("team_policy_reference")) } },
+            html! { code { (text("budget_policy_reference")) } },
+            html! { code { (text("receipt")) } },
+        ]);
     }
     let totals = &report["totals"];
-    content.push_str(&format!(
-        "</table><p>{} tasks · {} accepted · {} failed · {} delivered · {} known and {} unknown charges · {} refunded.{}</p><p>Production qualification: {}.</p><p><a href=\"/cloud/app/team/export\">Export report and access history</a> · <a href=\"{PAGE}\">Back to team</a></p>",
-        amount(&totals["tasks"]),
-        amount(&totals["accepted"]),
-        amount(&totals["failed"]),
-        amount(&totals["delivered"]),
-        amount(&totals["known_charges"]),
-        amount(&totals["unknown_charges"]),
-        amount(&totals["refunded"]),
-        if report["more"] == json!(true) {
-            format!(
-                " More rows exist beyond the bounded {} the native report returns.",
-                amount(&report["maximum_rows"])
-            )
-        } else {
-            String::new()
-        },
-        if report["production_qualification"] == json!(true) { "yes" } else { "no" },
-    ));
-    context.shell(&headers, &content)
+    let content = html! {
+        h2 { "Team report" }
+        p {
+            "Scope " strong { (report["scope"].as_str().unwrap_or("")) }
+            " for " code { (context.workspace) }
+            ", account revision " code { (report["account_revision"].as_str().unwrap_or("")) }
+            ", statement " code { (report["statement_reference"].as_str().unwrap_or("")) }
+            ". Amounts use " code { (report["unit"].to_string()) }
+            ". A missing charge, wait, or cost stays unknown. Acceptance is a pinned attributed review, not remote attestation."
+        }
+        (table)
+        p {
+            (amount(&totals["tasks"])) " tasks \u{b7} "
+            (amount(&totals["accepted"])) " accepted \u{b7} "
+            (amount(&totals["failed"])) " failed \u{b7} "
+            (amount(&totals["delivered"])) " delivered \u{b7} "
+            (amount(&totals["known_charges"])) " known and "
+            (amount(&totals["unknown_charges"])) " unknown charges \u{b7} "
+            (amount(&totals["refunded"])) " refunded."
+            @if report["more"] == json!(true) {
+                " More rows exist beyond the bounded " (amount(&report["maximum_rows"]))
+                " the native report returns."
+            }
+        }
+        p {
+            "Production qualification: "
+            (if report["production_qualification"] == json!(true) { "yes" } else { "no" })
+            "."
+        }
+        (ui::links([
+            ("/cloud/app/team/export", "Export report and access history"),
+            (PAGE, "Back to team"),
+        ]))
+    };
+    context.shell(&headers, content)
 }
 
 /// One bounded private export: the native report and access history read
