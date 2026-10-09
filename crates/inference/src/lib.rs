@@ -14,8 +14,11 @@
 //! - [`meter`]: the measurement half (sections 5 and 6): one record per
 //!   upstream attempt, live rates, and the credit ledger with burn-down
 //!   alerts. Adapters report each attempt through [`meter::Recorder`].
+//! - [`upstream`]: the adapters (section 4) for Vertex AI, Z.ai, the Pro
+//!   door, OpenRouter, and the Vercel AI Gateway, behind one
+//!   [`upstream::Upstream`] trait.
 //!
-//! The wire modules do no I/O. `docs/inference/gateway.md` is the spec; the
+//! The wire modules do no I/O; [`upstream`] is the only module that does. `docs/inference/gateway.md` is the spec; the
 //! crate README lists what maps 1:1 between the two APIs and what degrades.
 
 mod wire;
@@ -31,6 +34,7 @@ pub mod response;
 pub mod router;
 pub mod sse;
 pub mod stream;
+pub mod upstream;
 
 /// The Open Responses specification version these types implement.
 pub const SPEC_VERSION: &str = "2026-04-24";

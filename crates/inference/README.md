@@ -4,7 +4,8 @@ The inference gateway library (`docs/inference/gateway.md`). This README
 covers its wire layer (sections 3 and 12): the Open Responses types, the
 server-sent event codec, and the Chat Completions translation, pure types
 and functions with no I/O. `meter` is the measurement half (sections 5
-and 6). Adapters, the router, and the HTTP routes build on both.
+and 6). `upstream` holds the adapters (section 4), the only module that
+does I/O. The router and the HTTP routes build on all three.
 
 ## What is here
 
@@ -19,6 +20,7 @@ and 6). Adapters, the router, and the HTTP routes build on both.
 | `sse` | `SseDecoder` (bytes in, frames out, split anywhere), `ResponsesDecoder`, `encode_event`, `DONE_FRAME` |
 | `stream` | `Sequencer`, `Accumulator` (events folded into a response), `StreamCheck` (a stream checked against the spec's order) |
 | `chat` | Chat Completions request, reply, and chunk types; translation both ways; `ChunkWriter` (events to chunks), `EventWriter` (chunks to events), `CompletionBuilder` |
+| `upstream` | The `Upstream` trait (capabilities, privacy terms, price rows, billed account, `send`) and adapters for Vertex AI (native Gemini, prepaid Google credit), Z.ai (`glm-5.3-flash`, prepaid credit), the Pro door's proxy, OpenRouter, and the Vercel AI Gateway; key lookup (env, mounted file, Secret Manager); Google tokens; the first-token `Gate`; `AttemptMeter`, which reports each attempt as a `meter::Attempt` |
 
 ## Router
 
@@ -116,7 +118,10 @@ No network. `tests/spec.rs` decodes the spec's examples
 in `crates/coder/fixtures/gateway/` through decoding (split at random
 points), re-encoding, the order check, folding, and the Chat Completions
 stream. `tests/chat_table.rs` and `tests/chat_stream.rs` cover the
-translation.
+translation. `tests/upstreams.rs` runs every adapter against a local stub
+server: the streams in `fixtures/upstream/` and the recorded gateway
+streams, request bodies, privacy fields, refusals, status errors, rate
+limits, broken streams, and the attempt records.
 
 What the recorded streams show about upstreams: Vercel's streams end
 without `[DONE]`; its GLM lane sends raw reasoning deltas with no

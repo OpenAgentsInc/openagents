@@ -11,6 +11,16 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order keeps unknown fields in the order the upstream sent them,
 # so a decoded and re-encoded object reads like the original.
 serde_json = { version = "1", features = ["preserve_order"] }
+# Upstream adapters (src/upstream): HTTP, streams, and Google auth.
+base64 = "0.22"
+futures-util = "0.3"
+openrouter = { path = "../openrouter" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+ring = "0.17"
+tokio = { version = "1", features = ["time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 
 [lints]
 workspace = true

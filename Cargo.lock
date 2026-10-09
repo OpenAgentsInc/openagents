@@ -7218,8 +7218,14 @@ dependencies = [
 name = "inference"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "openrouter",
+ "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

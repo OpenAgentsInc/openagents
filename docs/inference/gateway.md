@@ -212,6 +212,13 @@ account it bills, and `send`, which returns a stream of Open Responses
 events. Each adapter keeps a recorded stream per model as a test fixture,
 as `crates/coder/fixtures/gateway/` does today.
 
+Implemented (#11061) in `crates/inference/src/upstream/`: the
+`Upstream` trait and adapters for Vertex (native `streamGenerateContent`),
+Z.ai, the Pro door's proxy, OpenRouter, and Vercel. Z.ai and the Pro door
+take only `standard` requests until their terms are confirmed
+(`ZAI_TERMS_VERIFIED=zero-retention`, `PRO_TERMS_VERIFIED=zero-retention`),
+and the Z.ai adapter refuses as unconfigured until `zai-api-key` exists.
+
 ## 5. Routing
 
 A request names a model id or a task class. The router turns it into an
