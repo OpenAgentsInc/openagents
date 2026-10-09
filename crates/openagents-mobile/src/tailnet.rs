@@ -49,7 +49,7 @@ impl Client {
         let path: PathBuf = dir.join("tailscale-node.json");
         let state: PersistState = match std::fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|_| "The saved Tailscale node keys are unreadable.".to_string())?,
+                .map_err(|_| "Couldn't read this phone's saved Tailscale sign-in.".to_string())?,
             Err(_) => {
                 let state = PersistState::default();
                 std::fs::create_dir_all(dir).map_err(|e| format!("Could not save keys: {e}"))?;
@@ -108,18 +108,18 @@ impl Client {
             let len = reader
                 .read_u32_le()
                 .await
-                .map_err(|_| "The tailnet map ended early.".to_string())?
+                .map_err(|_| "Couldn't read your tailnet. Try again.".to_string())?
                 as usize;
             if len > MAX_FRAME_BYTES {
-                return Err("The tailnet map is too large.".into());
+                return Err("Your tailnet is too large to show here.".into());
             }
             let mut frame = vec![0; len];
             reader
                 .read_exact(&mut frame)
                 .await
-                .map_err(|_| "The tailnet map ended early.".to_string())?;
+                .map_err(|_| "Couldn't read your tailnet. Try again.".to_string())?;
             let map: MapResponse = serde_json::from_slice(&frame)
-                .map_err(|_| "The tailnet map is not readable.".to_string())?;
+                .map_err(|_| "Couldn't read your tailnet. Try again.".to_string())?;
             if let Some(peers) = &map.peers {
                 return Ok(Outcome::Devices(tailnet(&map, peers)));
             }

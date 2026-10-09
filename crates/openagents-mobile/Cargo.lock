@@ -5301,6 +5301,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-copy"
+version = "0.1.0"
+
+[[package]]
 name = "oa-tokens"
 version = "0.1.0"
 dependencies = [
@@ -5527,6 +5531,7 @@ dependencies = [
  "ndk-sys",
  "nostr",
  "nostr-transport",
+ "oa-copy",
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",

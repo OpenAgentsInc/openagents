@@ -204,8 +204,7 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         if (titles.isNotEmpty()) body.section("Titles") {
             add(activity.label(titles.joinToString(", "), 16f).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) })
         }
-        body.section("Counted awards", "Trusting the OpenAgents referee, ${card.optString("referee_npub").take(16)}…, on " +
-            "${card.optString("relay")}. ${card.optString("note")}") {
+        body.section("Counted awards", "Counted by OpenAgents. ${card.optString("note")}") {
             val awards = card.optJSONArray("awards")?.objects() ?: emptyList()
             if (awards.isEmpty()) add(activity.label("No awards yet. Reproduce a published pass from its recipe to earn your first; a tutorial quest is worth 50 XP.",
                 14f, Palette.SECONDARY).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) })
@@ -278,7 +277,7 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         val publishing = card.optString("profile_status") == "publishing"
         val update: (JSONObject) -> Unit = { next -> this.card = next; refresh() }
         body.section("Level over your head", "Other players see your level only after you choose to show it. " +
-            "Your XP stays public either way: anyone can compute it from the relay.") {
+            "Your XP stays public either way.") {
             if (card.optString("profile") == "shown") {
                 add(note("Shown in the Grid and on boards", Palette.PRIMARY)); rowDivider()
                 add(action("Hide my level", "trainer-hide-level", enabled = !publishing) { bridge.trainerProfile(false, update) })
@@ -364,7 +363,7 @@ internal class AccountScreens(private val activity: MainActivity, private val br
     /** Export card: signs and publishes the card after a confirmation; then Share link and Save card JSON. */
     private fun exportSection(body: LinearLayout, card: JSONObject, refresh: () -> Unit) {
         body.section("Trainer card", "A signed summary of your level, keys, and counted awards. " +
-            "Anyone can check it: openagents xp verify-card re-derives it from the relay.") {
+            "Anyone can check it with openagents xp verify-card.") {
             add(action("Export card", "trainer-export") {
                 confirm("Export your trainer card?", "This signs your card with your trainer key and publishes it to relay.openagents.com, " +
                     "so its link opens a public page. It lists your level, your linked keys, and your counted awards.", "Export") {

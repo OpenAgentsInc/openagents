@@ -24,7 +24,7 @@ fn script(n: usize, computer_ready: bool) -> (&'static str, Vec<Value>) {
         0 => (
             "We are OpenAgents. In this chat we answer questions, explain things, and help you \
              plan and write. When something needs a computer, like reading or changing a \
-             repository or running commands, we dispatch Coder, our coding agent, to a \
+             repository or running commands, we send Coder, our coding agent, to a \
              computer you've connected.",
             vec![
                 json!({"v": 2, "type": "judgment", "verdict": "respond", "set": "chat-router-v1",

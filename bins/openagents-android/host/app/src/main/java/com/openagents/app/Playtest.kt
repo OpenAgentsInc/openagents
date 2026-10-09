@@ -414,7 +414,7 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 setPadding(activity.dp(24), activity.dp(16), activity.dp(24), activity.dp(16))
                 add(activity.label(if (waiting) "Saved on this phone" else "Report filed", 24f, bold = true, key = "report-receipt"))
                 row.textOrNull("code")?.let { add(activity.label(it, 20f, mono = true, selectable = true, key = "report-code"), 8) }
-                add(activity.label(if (waiting) "It's sent by a later build that knows the triage key. You'll find it in Account, My reports."
+                add(activity.label(if (waiting) "It's sent by a later build. You'll find it in Account, My reports."
                     else "Quote this code if you talk to us about it. You'll find it in Account, My reports.", 15f, Palette.SECONDARY), 8)
             })
             content.removeAllViews()

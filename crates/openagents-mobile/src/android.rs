@@ -204,7 +204,7 @@ impl SurfaceConfig {
             .as_ref()
             .is_some_and(|code| code.len() > MAX_GYM_CODE_BYTES)
         {
-            return Err(error("The Gym connection exceeds its size limit"));
+            return Err(error("That Gym connection code is too long"));
         }
         Ok(coder_mobile::BareGym {
             code: self.gym_code.clone(),
@@ -442,7 +442,7 @@ mod tests {
                 .err()
                 .map(|e| e.0)
                 .as_deref(),
-            Some("The Gym connection exceeds its size limit")
+            Some("That Gym connection code is too long")
         );
     }
 

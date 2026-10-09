@@ -273,7 +273,7 @@ struct ReportSheet: View {
                             .accessibilityIdentifier("report-code")
                     }
                     Text(row.status == "waiting"
-                         ? "It's sent by a later build that knows the triage key. You'll find it in Account, My reports."
+                         ? "It's sent by a later build. You'll find it in Account, My reports."
                          : "Quote this code if you talk to us about it. You'll find it in Account, My reports.")
                         .font(.paper(.subheadline)).foregroundStyle(.secondary)
                 }

@@ -2558,7 +2558,7 @@ fn a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls(
     let words = node(&chat, "thread-coder-outside").expect("the outside run is said");
     let text = words.to_string();
     assert!(
-        text.contains("Coder task for proj ran on Studio Mac outside its OpenAgents host"),
+        text.contains("Coder task for proj ran on Studio Mac outside the OpenAgents app"),
         "{text}"
     );
     assert!(text.contains("can't open or stop it"), "{text}");

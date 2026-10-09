@@ -193,7 +193,7 @@ fn kind_label(kind: Kind) -> &'static str {
 }
 
 /// What a report sends and to whom, shown on the form.
-pub const PRIVACY: &str = "Sent privately, encrypted to the OpenAgents triage team and signed by your Verse world key. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. Your key also signs a public record that you filed a report on this build (its kind and a fingerprint, never your words), so an accepted report can earn playtest XP. Reports earn nothing by themselves.";
+pub const PRIVACY: &str = "Sent privately to the OpenAgents team. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. A public note says you filed a report on this build, never what it says, so an accepted report can earn playtest XP. Reports earn nothing by themselves.";
 
 /// Where testers report while the app can't send yet.
 pub const FALLBACK: &str =

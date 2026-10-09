@@ -93,6 +93,8 @@ libc = "0.2"
 ndk-sys = "0.6"
 
 [dev-dependencies]
+# The machine-talk guard over the copy in this crate's sources (#11031).
+oa-copy = { path = "../oa-copy" }
 openagents-chat-app = { path = "../openagents-chat-app", features = ["test-support"] }
 # Nearby computers' iroh keys in tests.
 openagents-connect = { path = "../openagents-connect" }

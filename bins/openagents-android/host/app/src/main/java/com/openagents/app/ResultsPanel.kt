@@ -95,7 +95,7 @@ class ResultsPanel(private val context: Context, private val world: VerseSurface
             body.addDivider(4)
         }
         page.textOrNull("footer")?.let { body.add(context.label(it, 11f, Palette.SECONDARY, key = "results-footer", mono = true), 10) }
-        body.add(context.label("Boards are separate studies, in publication order. No number is summed or ranked across them.",
+        body.add(context.label("Each board is separate, in the order it was published. Scores aren't added up or ranked across boards.",
             12f, Palette.SECONDARY), 8)
     }
 

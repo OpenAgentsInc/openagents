@@ -27,7 +27,8 @@ use secp256k1::{Secp256k1, SecretKey};
 use serde::Serialize;
 
 /// Why XP exists and what it isn't, shown under the card.
-pub const NOTE: &str = "XP records work the OpenAgents referee accepted, recomputed on this phone from signed Nostr events. It can't be spent, traded, or converted, and nothing here pays.";
+pub const NOTE: &str =
+    "XP shows work OpenAgents accepted. It can't be spent, traded, or converted into money.";
 
 /// One counted award on the card.
 #[derive(Serialize)]
@@ -98,7 +99,7 @@ pub struct TrainerPacket {
 }
 
 /// Why playtest XP is separate, shown under the playtest card.
-pub const PLAYTEST_NOTE: &str = "Playtest XP records accepted playtest contributions: feedback, reproducible bugs, verified fixes, and sessions with a report. The OpenAgents playtest referee signs it, separately from the trainer referee, so it never counts toward your trainer level. Joining earns nothing.";
+pub const PLAYTEST_NOTE: &str = "Playtest XP is for playtest help we accepted: feedback, bugs we could reproduce, fixes, and sessions with a report. It doesn't count toward your trainer level. Joining earns nothing.";
 
 /// The Account playtest card.
 #[derive(Serialize)]

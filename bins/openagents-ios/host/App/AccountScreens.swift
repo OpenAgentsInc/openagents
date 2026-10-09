@@ -339,7 +339,7 @@ struct TrainerScreen: View {
                 } header: {
                     Text("Level over your head")
                 } footer: {
-                    Text("Other players see your level only after you choose to show it. Your XP stays public either way: anyone can compute it from the relay.")
+                    Text("Other players see your level only after you choose to show it. Your XP stays public either way.")
                 }
             }
             if let card {
@@ -404,7 +404,7 @@ struct TrainerScreen: View {
                 } header: {
                     Text("Trainer card")
                 } footer: {
-                    Text("A signed summary of your level, keys, and counted awards. Anyone can check it: openagents xp verify-card re-derives it from the relay.")
+                    Text("A signed summary of your level, keys, and counted awards. Anyone can check it with openagents xp verify-card.")
                 }
             }
             if let card, !card.titles.isEmpty {
@@ -445,7 +445,7 @@ struct TrainerScreen: View {
                 } header: {
                     Text("Counted awards")
                 } footer: {
-                    Text("Trusting the OpenAgents referee, \(String(card.referee_npub.prefix(16)))…, on \(card.relay). \(card.note)")
+                    Text("Counted by OpenAgents. \(card.note)")
                 }
                 Section {
                     KeyText(value: card.npub)

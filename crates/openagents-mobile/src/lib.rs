@@ -242,6 +242,8 @@ pub extern "C" fn openagents_mobile_coder_shown(shown: bool) {
 #[cfg(test)]
 mod coder_tab_tests;
 #[cfg(test)]
+mod copy_guard_tests;
+#[cfg(test)]
 mod speed_tests;
 #[cfg(test)]
 mod tests;

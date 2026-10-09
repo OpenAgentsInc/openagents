@@ -284,7 +284,7 @@ final class VerseWorld: ObservableObject {
     /// accepted it for this world key.
     func configureGym(_ code: String) -> Bool {
         guard code.utf8.count <= 65_536 else {
-            gymStorageError = "The Gym connection exceeds its size limit."
+            gymStorageError = "That Gym connection code is too long."
             return false
         }
         guard let packet = send(["action": "gym_configure", "code": code]), packet.error == nil,
@@ -1005,7 +1005,7 @@ final class VerseWorldView: UIView {
         guard let data = output.data, output.len > 0, output.len <= 1_048_576,
               let packet = try? JSONDecoder().decode(WorldPacket.self, from: Data(bytes: data, count: output.len)),
               packet.valid else {
-            world.fail("The world returned an invalid packet.")
+            world.fail("The world couldn't update.")
             return nil
         }
         if wantsHDR, packet.hdr_output == false, let metal = layer as? CAMetalLayer {

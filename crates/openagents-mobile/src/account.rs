@@ -111,7 +111,7 @@ pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
         build: "49",
-        title: "Everglade grows a lane",
+        title: "Everglade grows a street",
         what_to_test: "Open Account, then Changelog, and check build 49 is first. Walk into Everglade through the EVERGLADE arch. Around the yard you now find three new buildings: a cottage with a chimney to the west, an open café pavilion with tables to the east, and a reading room behind the strongroom. Walk around each one and check you can't walk through their walls, and that every station still reaches as before.",
         items: &[Item {
             title: "Three new buildings in Everglade",
@@ -302,7 +302,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Big projects start",
-                detail: "Coder now starts in projects with many folders. Before, your computer could refuse every start with \"the granted source snapshot is unavailable or changed\". This needs the latest OpenAgents on your computer.",
+                detail: "Coder now starts in projects with many folders. Before, your computer could refuse to start Coder there. This needs the latest OpenAgents on your computer.",
             },
         ],
     },
@@ -770,11 +770,11 @@ pub const CHANGELOG: &[Release] = &[
         items: &[
             Item {
                 title: "Ready to type",
-                detail: "The Chat tab (the message icon) opens on a new chat with the cursor in the composer.",
+                detail: "The Chat tab (the message icon) opens on a new chat, ready to type.",
             },
             Item {
                 title: "OpenAgents and Coder",
-                detail: "You chat with OpenAgents, which speaks as \"we\"; work for your computer is dispatched to Coder there.",
+                detail: "You chat with OpenAgents, which speaks as \"we\"; work for your computer goes to Coder there.",
             },
             Item {
                 title: "Where it goes",
@@ -790,7 +790,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Faster chats",
-                detail: "Chat lists and transcripts load and open much faster: the phone keeps what it last saw and gets updates pushed instead of polling, and Coder on a computer streams its reply.",
+                detail: "Chat lists and transcripts load and open much faster, and Coder on a computer streams its reply.",
             },
             Item {
                 title: "Delegated sessions",
@@ -838,7 +838,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Automatic payments",
-                detail: "A standing spend grant lets the phone pay trusted payees small amounts without a tap, within the grant's limits.",
+                detail: "The phone can pay people you trust small amounts without a tap, up to limits you set.",
             },
         ],
     },
@@ -878,7 +878,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Long chats",
-                detail: "A chat's rows are laid out from Rust, so long chats open and scroll faster.",
+                detail: "Long chats open and scroll faster.",
             },
             Item {
                 title: "Look stick",
@@ -935,7 +935,7 @@ pub struct AccountPacket {
 
 /// What the key is. Both hosts create it from the platform's secure random
 /// source and keep it in a this-device-only store.
-pub const ORIGIN: &str = "Made at random on this device and kept only in its secure storage. It isn't derived from a seed phrase (NIP-06), so the nsec is its only backup.";
+pub const ORIGIN: &str = "Made at random on this device and kept only in its secure storage. It has no recovery words, so the nsec is its only backup.";
 
 /// The file under the state directory that keeps the display name.
 pub const DISPLAY_NAME_FILE: &str = "display-name";
@@ -1032,7 +1032,7 @@ mod tests {
         assert!(
             packet["origin"]
                 .as_str()
-                .is_some_and(|o| o.contains("NIP-06"))
+                .is_some_and(|o| o.contains("no recovery words"))
         );
         let snapshot: serde_json::Value =
             serde_json::from_slice(&app.respond(Request::Snapshot)).expect("app packet");

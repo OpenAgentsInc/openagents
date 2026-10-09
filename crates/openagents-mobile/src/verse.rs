@@ -190,7 +190,7 @@ unsafe fn openagents_verse_create_inner(
         .as_ref()
         .is_some_and(|code| code.len() > 65_536)
     {
-        return Err("The Gym connection exceeds its size limit".to_owned());
+        return Err("That Gym connection code is too long".to_owned());
     }
     let gym = BareGym {
         code: config.gym_code,
@@ -379,7 +379,7 @@ mod tests {
         );
         let error = openagents_verse_create_error();
         let text = unsafe { std::slice::from_raw_parts(error.data, error.len) };
-        assert_eq!(text, b"The Gym connection exceeds its size limit");
+        assert_eq!(text, b"That Gym connection code is too long");
         unsafe { crate::openagents_mobile_buffer_free(error) };
         #[cfg(not(target_os = "ios"))]
         {

@@ -221,7 +221,7 @@ struct VerseResultsPanel: View {
                 Text(footer).font(.paper(.caption2)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("results-footer")
             }
-            Text("Boards are separate studies, in publication order. No number is summed or ranked across them.")
+            Text("Each board is separate, in the order it was published. Scores aren't added up or ranked across boards.")
                 .font(.paper(.caption)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }

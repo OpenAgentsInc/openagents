@@ -240,7 +240,7 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
      */
     fun configureGym(code: String): Boolean {
         if (code.toByteArray().size > 65_536) {
-            gymStorageError = "The Gym connection exceeds its size limit."; changed(snapshot, null); return false
+            gymStorageError = "That Gym connection code is too long."; changed(snapshot, null); return false
         }
         val result = send(json("action" to "gym_configure", "code" to code)) ?: return false
         if (result.textOrNull("error") != null || result.optJSONObject("gym_board")?.optBoolean("configured") != true) return false

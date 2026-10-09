@@ -32,7 +32,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
             return body
         }
         body.add(context.label(board.optString("status"), 12f, Palette.SECONDARY, key = "gym-status"))
-        if (board.optBoolean("stale")) body.add(context.label("Snapshot is stale. New starts are unavailable.", 12f), 4)
+        if (board.optBoolean("stale")) body.add(context.label("This board is out of date, so new runs can't start.", 12f), 4)
         val problem = board.textOrNull("error") ?: world.snapshot?.textOrNull("error") ?: world.gymStorageError
         problem?.let { body.add(context.label(it.take(2048), 14f, key = "gym-error", selectable = true), 6) }
         when {
@@ -60,7 +60,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
 
     private fun connection(body: LinearLayout, board: JSONObject) {
         body.add(context.label("Connect a Gym host", 17f, bold = true), 12)
-        body.add(context.label("Create a Gym connection grant on your host for this world key, then paste its gym-connect: code."), 6)
+        body.add(context.label("Create a Gym connection on your host for this world key, then paste its gym-connect: code."), 6)
         val publicKey = board.getString("public_key")
         body.add(context.label(publicKey, 11f, mono = true, key = "gym-public-key", selectable = true), 8)
         body.add(context.pill("Copy public key", "gym-copy-key") { Clipboard.copy(context, "Gym public key", publicKey) }, 8, -2)
@@ -83,7 +83,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
             codeDraft = input.text.toString()
             if (codeDraft.isNotBlank() && world.configureGym(codeDraft)) { codeDraft = ""; configuring = false; world.send(json("action" to "gym_view")) }
         }, 10, -2)
-        body.add(context.label("This grant is separate from your computers' access. Only the host's listed recipes can start, after you confirm.",
+        body.add(context.label("This connection is separate from your computers' access. Only runs the host lists can start, and only after you confirm.",
             12f, Palette.SECONDARY), 8)
         if (board.optBoolean("configured")) body.add(context.pill("Back to board", "gym-back") {
             configuring = false; world.send(json("action" to "gym_view"))
@@ -150,7 +150,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
         }
         body.add(context.label("Source: ${run.getString("source")}", 12f, selectable = true), 12)
         body.add(context.label(run.getString("provenance"), 12f, Palette.SECONDARY, selectable = true), 4)
-        body.add(context.label("Completed describes the recorded process; it does not by itself establish benchmark success.",
+        body.add(context.label("Completed means the run finished, not that it passed.",
             12f, Palette.SECONDARY), 4)
     }
 
@@ -162,7 +162,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
         body.add(context.label(if (budget.optBoolean("spend_enforced")) "The host enforces this recipe's spending limit."
             else "No dollar limit is enforced for this recipe."), 4)
         body.add(context.label("Recipe revision: ${recipe.getString("revision")}", 11f, mono = true, selectable = true), 4)
-        body.add(context.label("Starting submits this exact recipe to the host. Leaving the Gym does not cancel the run."), 6)
+        body.add(context.label("Starting sends this recipe to the host. Leaving the Gym does not cancel the run."), 6)
         val phase = board.objectOrNull("launch")?.optString("phase")
         body.add(context.pill("Start this run", "gym-confirm-launch", primary = true) { world.send(json("action" to "gym_launch")) }
             .enabled(board.optBoolean("active") && !board.optBoolean("stale") && phase !in listOf("sending", "unknown")), 10, -2)
@@ -177,7 +177,7 @@ class GymPanel(private val context: Context, private val world: VerseSurface) {
         launch.textOrNull("error")?.let { body.add(context.label(it, 12f), 4) }
         if (launch.optString("phase") == "sending") body.add(context.label("Waiting for the host receipt…", 12f, Palette.SECONDARY), 4)
         if (launch.optString("phase") == "unknown") {
-            body.add(context.label("The host may already have accepted this request. Retry uses the same request identity.", 12f), 4)
+            body.add(context.label("We couldn't confirm the host got this. Retrying won't start it twice.", 12f), 4)
             body.add(context.pill("Retry the same request", "gym-retry") { world.send(json("action" to "gym_retry")) }.enabled(active), 6, -2)
         }
     }

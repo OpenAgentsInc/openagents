@@ -77,7 +77,7 @@ object DeviceKey {
 
     fun saveGymCode(context: Context, code: String) = synchronized(lock) {
         val bytes = code.toByteArray(Charsets.UTF_8)
-        require(bytes.size <= Purpose.GYM.maxBytes) { "The Gym connection exceeds its size limit." }
+        require(bytes.size <= Purpose.GYM.maxBytes) { "That Gym connection code is too long." }
         write(context, Purpose.GYM, bytes)
     }
 

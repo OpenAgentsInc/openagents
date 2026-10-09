@@ -1788,7 +1788,7 @@ impl App {
                 Ok(Ok(TailnetOutcome::Devices(tailnet))) => TailnetScreen::Devices(tailnet),
                 Ok(Ok(TailnetOutcome::SignIn(url))) => TailnetScreen::SignIn(url),
                 Ok(Err(error)) => TailnetScreen::Failed(error),
-                Err(_) => TailnetScreen::Failed("Reading the tailnet failed.".into()),
+                Err(_) => TailnetScreen::Failed("Couldn't read your tailnet. Try again.".into()),
             };
             let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
             state.probe = matches!(screen, TailnetScreen::Devices(_));

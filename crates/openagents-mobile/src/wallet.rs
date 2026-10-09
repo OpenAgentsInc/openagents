@@ -1610,7 +1610,7 @@ impl Wallet {
                 publish: shared.directory.as_ref().map(|_| PublishView {
                     on: shared.published.is_some(),
                     busy: shared.publish_busy,
-                    detail: "Publish this wallet's Spark address in your Nostr profile (a NIP-A3 payment target signed by this device's key), so people can pay your npub. Anyone can read it and link it to your npub.",
+                    detail: "Publish this wallet's Spark address in your Nostr profile so people can pay your npub. Anyone can read it and link it to your npub.",
                     message: shared.publish_message.clone(),
                 }),
             },
@@ -1669,7 +1669,7 @@ impl Wallet {
                 .collect(),
             backup: BackupView {
                 title: "Exit backup",
-                detail: "If Spark's operators ever stop, this file and your recovery words let you take your bitcoin out on the Bitcoin chain yourself. The wallet saves it on this phone after each sync. It holds no keys, but it shows your balance, so keep the exported file private.",
+                detail: "If Spark's operators ever stop, this file and your recovery words let you take your bitcoin out on the Bitcoin chain yourself. The wallet keeps it up to date on this phone. It holds no keys, but it shows your balance, so keep the exported file private.",
                 saved_at: shared.exit_saved_at,
                 can_export: shared.exit_saved_at.is_some(),
                 error: shared.exit_error.clone(),

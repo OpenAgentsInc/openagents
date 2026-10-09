@@ -35,7 +35,7 @@ enum VerseGymConnection {
     static func save(_ code: String) throws {
         let data = Data(code.utf8)
         guard data.count <= 65_536 else {
-            throw DeviceKey.Failure.message("The Gym connection exceeds its size limit.")
+            throw DeviceKey.Failure.message("That Gym connection code is too long.")
         }
         let attributes: [String: Any] = [kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
@@ -71,7 +71,7 @@ struct VerseGymPanel: View {
             if let board {
                 Text(board.status).font(.paper(.caption)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("gym-status")
-                if board.stale { Text("Snapshot is stale. New starts are unavailable.").font(.paper(.caption)) }
+                if board.stale { Text("This board is out of date, so new runs can't start.").font(.paper(.caption)) }
                 if let error = board.error ?? world.error ?? world.gymStorageError {
                     Text(error).font(.paper(.callout)).textSelection(.enabled).accessibilityIdentifier("gym-error")
                 }
@@ -112,7 +112,7 @@ struct VerseGymPanel: View {
     private func connection(_ board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Connect a Gym host").font(.paper(.headline))
-            Text("Create a Gym connection grant on your host for this world key, then paste its gym-connect: code.")
+            Text("Create a Gym connection on your host for this world key, then paste its gym-connect: code.")
             Text(board.public_key).font(.paper(.caption2)).textSelection(.enabled)
                 .accessibilityIdentifier("gym-public-key")
             Button("Copy public key", systemImage: "doc.on.doc") { UIPasteboard.general.string = board.public_key }
@@ -123,7 +123,7 @@ struct VerseGymPanel: View {
             Button("Connect Gym") {
                 if world.configureGym(code) { code = ""; configuring = false }
             }.disabled(code.isEmpty).accessibilityIdentifier("gym-connect")
-            Text("This grant is separate from your computers' access. Only the host's listed recipes can start, after you confirm.")
+            Text("This connection is separate from your computers' access. Only runs the host lists can start, and only after you confirm.")
                 .font(.paper(.caption)).foregroundStyle(.secondary)
             if board.configured { Button("Back to board") { configuring = false } }
         }
@@ -192,7 +192,7 @@ struct VerseGymPanel: View {
             }
             Text("Source: \(run.source)").font(.paper(.caption)).textSelection(.enabled)
             Text(run.provenance).font(.paper(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
-            Text("Completed describes the recorded process; it does not by itself establish benchmark success.")
+            Text("Completed means the run finished, not that it passed.")
                 .font(.paper(.caption)).foregroundStyle(.secondary)
         }
     }
@@ -204,7 +204,7 @@ struct VerseGymPanel: View {
             Text("Time limit: \(recipe.budget.wall_ms / 1000) seconds · Maximum starts: \(recipe.budget.max_starts)")
             Text(recipe.budget.spend_enforced ? "The host enforces this recipe's spending limit." : "No dollar limit is enforced for this recipe.")
             Text("Recipe revision: \(recipe.revision)").font(.paper(.caption2)).textSelection(.enabled)
-            Text("Starting submits this exact recipe to the host. Leaving the Gym does not cancel the run.")
+            Text("Starting sends this recipe to the host. Leaving the Gym does not cancel the run.")
             Button("Start this run") { world.send(["action": "gym_launch"]) }
                 .disabled(!board.active || board.stale || ["sending", "unknown"].contains(board.launch?.phase ?? ""))
                 .accessibilityIdentifier("gym-confirm-launch")
@@ -221,7 +221,7 @@ struct VerseGymPanel: View {
             if let error = launch.error { Text(error).font(.paper(.caption)) }
             if launch.phase == "sending" { ProgressView("Waiting for the host receipt…") }
             if launch.phase == "unknown" {
-                Text("The host may already have accepted this request. Retry uses the same request identity.").font(.paper(.caption))
+                Text("We couldn't confirm the host got this. Retrying won't start it twice.").font(.paper(.caption))
                 Button("Retry the same request") { world.send(["action": "gym_retry"]) }
                     .disabled(!active).accessibilityIdentifier("gym-retry")
             }
