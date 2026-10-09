@@ -25,6 +25,7 @@ fn provider(dir: &Path) -> GceProvider<FakeCompute> {
         compute: FakeCompute::new(dir.join("gce"), "oa-test", &config().base),
         config: config(),
         credentials: Default::default(),
+        fresh: None,
         paths: paths(),
         ready_attempts: 1,
         ready_pause: Duration::ZERO,

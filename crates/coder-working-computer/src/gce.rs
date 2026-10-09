@@ -25,7 +25,9 @@
 //! setup, build, and verify evidence has the same shape on both adapters.
 //! Selected credentials are written per boot to a tmpfs file that no disk
 //! image captures, uploaded through standard input, never on a command
-//! line.
+//! line. With a [`Resolve`] ([`GceProvider::fresh`]) the file is rewritten
+//! from current values before every command step, so a token that expires
+//! within the hour is current when each step starts.
 //!
 //! A turn checkpoint stops the instance; its evidence names the boot disk
 //! and GCE's last stop time, and a restore refuses a disk that booted since.
@@ -45,7 +47,7 @@ use crate::boat::{
 };
 use crate::provider::{
     CheckpointEvidence, CommandCursor, CommandRead, CommandSpec, Commands, ImageRecord, ImageState,
-    Images, Inspection, Meter, Outcome, Provider,
+    Images, Inspection, Meter, Outcome, Provider, Resolve,
 };
 use crate::{Checkpoint, Computer, Health, Purpose, ServiceDecl};
 use boat::shell_quote;
@@ -709,6 +711,9 @@ pub struct GceProvider<T> {
     pub compute: T,
     pub config: GceConfig,
     pub credentials: Credentials,
+    /// Re-reads credential values before each command step; `None` keeps
+    /// the values the provider was built with.
+    pub fresh: Option<Resolve>,
     pub paths: Paths,
     /// Reachability probes after a boot, `ready_pause` apart.
     pub ready_attempts: u32,
@@ -725,6 +730,7 @@ impl GceProvider<Gcloud> {
             compute: Gcloud::new(config.clone())?,
             config,
             credentials,
+            fresh: None,
             paths: Paths::new(workdir),
             ready_attempts: 60,
             ready_pause: Duration::from_secs(5),
@@ -836,6 +842,19 @@ impl<T: Compute> GceProvider<T> {
     /// One bounded command; `Ok(true)` when it exits 0.
     async fn exec(&self, name: &str, script: String, seconds: u64) -> Call<bool> {
         Ok(self.compute.run(name, &script, None, seconds).await?.code == 0)
+    }
+
+    /// The credentials to write now: current values from [`Self::fresh`]
+    /// for every name the computer selects, else the fixed ones.
+    fn current(&self, c: &Computer) -> Result<Option<Credentials>, String> {
+        let Some(resolve) = &self.fresh else {
+            return Ok(None);
+        };
+        let names: Vec<String> = c.credential_names.iter().cloned().collect();
+        if names.is_empty() {
+            return Ok(None);
+        }
+        Credentials::from_names(&names, |n| resolve(n)).map(Some)
     }
 
     /// Source the per-boot credentials file, if any.
@@ -1149,7 +1168,11 @@ impl<T: Compute> Provider for GceProvider<T> {
         let script = format!(
             "umask 077; mkdir -p {dir} && cat > {file}.tmp && mv {file}.tmp {file} && . {file} && {check}"
         );
-        let shell = self.credentials.shell();
+        let shell = match self.current(c) {
+            Ok(Some(fresh)) => fresh.shell(),
+            Ok(None) => self.credentials.shell(),
+            Err(_) => return Outcome::failed("a selected credential is unavailable"),
+        };
         match self
             .compute
             .run(resource, &script, Some(shell.as_bytes()), 60)
@@ -1331,13 +1354,37 @@ impl<T: Compute> Commands for GceProvider<T> {
             spec,
             &unset,
         ));
+        // A step that may use a credential first rewrites the tmpfs file
+        // from current values, through standard input.
+        let fresh = if spec.credential_names.is_empty() {
+            None
+        } else {
+            match self.current(c) {
+                Ok(f) => f.map(|f| f.shell()),
+                Err(_) => return Outcome::failed("a selected credential is unavailable"),
+            }
+        };
+        let refresh = match &fresh {
+            Some(_) => {
+                let dir = shell_quote(&self.paths.runtime);
+                let file = shell_quote(&self.paths.credentials());
+                format!(
+                    "umask 077; mkdir -p {dir} && cat > {file}.tmp && mv {file}.tmp {file} || exit 4\n"
+                )
+            }
+            None => String::new(),
+        };
         // Detached: the wrapper keeps its own records, so the SSH session
         // can end while the command runs.
         let script = format!(
-            "nohup sh -c {} >/dev/null 2>&1 </dev/null &\necho started",
+            "{refresh}nohup sh -c {} >/dev/null 2>&1 </dev/null &\necho started",
             shell_quote(&wrapper)
         );
-        match self.compute.run(resource, &script, None, 60).await {
+        match self
+            .compute
+            .run(resource, &script, fresh.as_ref().map(|s| s.as_bytes()), 60)
+            .await
+        {
             Ok(o) if o.code == 0 => Outcome::done(format!("gce-process:{}", spec.id)),
             Ok(o) if o.code == ALREADY_CLAIMED => Outcome::done(format!("gce-process:{}", spec.id)),
             Ok(o) => Outcome::failed(format!("the command did not start (exit {})", o.code)),

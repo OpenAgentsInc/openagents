@@ -154,6 +154,9 @@ pub fn stop_script(root: &str, id: &str) -> String {
 pub struct BoatProvider {
     pub client: Client,
     pub credentials: Credentials,
+    /// Re-reads credential values at each create and resume; `None` keeps
+    /// the values the provider was built with.
+    pub fresh: Option<crate::provider::Resolve>,
     /// The interactive runtime template a fresh computer starts from.
     pub template: Option<String>,
     /// The working checkout inside the sandbox; service `cwd`s are relative.
@@ -198,9 +201,26 @@ impl BoatProvider {
         Ok(Self {
             client,
             credentials,
+            fresh: None,
             template: None,
             workdir,
         })
+    }
+    /// The per-boot process environment: current values when the
+    /// provider re-reads them, else the fixed ones.
+    fn environment(
+        &self,
+        c: &Computer,
+    ) -> Result<std::collections::BTreeMap<String, String>, Outcome<String>> {
+        match &self.fresh {
+            Some(resolve) if !c.credential_names.is_empty() => {
+                let names: Vec<String> = c.credential_names.iter().cloned().collect();
+                Credentials::from_names(&names, |n| resolve(n))
+                    .map(|c| c.environment())
+                    .map_err(|_| Outcome::failed("a selected credential is unavailable"))
+            }
+            _ => Ok(self.credentials.environment()),
+        }
     }
     async fn sandbox(&self, id: &str) -> Result<Sandbox, boat::Error> {
         Ok(self
@@ -279,6 +299,10 @@ impl BoatProvider {
 
 impl Provider for BoatProvider {
     async fn create(&self, c: &Computer, operation: &str) -> Outcome<String> {
+        let env = match self.environment(c) {
+            Ok(env) => env,
+            Err(o) => return o,
+        };
         let reply = self
             .client
             .create(&CreateParams {
@@ -287,7 +311,7 @@ impl Provider for BoatProvider {
                     type_: Some(c.size.clone()),
                     ttl_seconds: Nullable::Value((c.bounds.absolute_ms / 1000).max(1) as i64),
                     no_env: Some(true),
-                    env: Some(self.credentials.environment()),
+                    env: Some(env),
                     snapshots: Some(true),
                     // A verifier boots from exactly its sealed output image.
                     from_: c
@@ -322,6 +346,10 @@ impl Provider for BoatProvider {
             Err(e) => return Outcome::unknown(format!("read before resume: {e}")),
         };
         if stopped(&sandbox.state) {
+            let env = match self.environment(c) {
+                Ok(env) => env,
+                Err(o) => return o,
+            };
             // Resume restores Boat's latest snapshot; refuse drift from the
             // retained turn checkpoint.
             if let Some(expected) = checkpoint.and_then(|k| k.fact.evidence()) {
@@ -340,7 +368,7 @@ impl Provider for BoatProvider {
                 .resume(&ResumeParams {
                     sandbox_id: resource.into(),
                     body: Some(ResumeRequest {
-                        env: Some(self.credentials.environment()),
+                        env: Some(env),
                         no_env: Some(true),
                         ttl_seconds: Nullable::Value((c.bounds.absolute_ms / 1000).max(1) as i64),
                         ..Default::default()

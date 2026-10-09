@@ -14,6 +14,29 @@ use coder_environment::{ImagePin, Provider as ProviderKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Reads a selected credential's current value when it is applied. A
+/// provider holding one re-reads values when it applies them (GCE: before
+/// every command step; Boat: at every create and resume), so a short-lived
+/// token (a GitHub installation token lasts an hour) is current when each
+/// step starts instead of fixed when the owner process started.
+pub type Resolve = std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// A [`Resolve`] that reads `<dir>/<NAME>` when that file exists (a token
+/// minter keeps it current) and the process environment otherwise.
+pub fn resolve_from(dir: Option<std::path::PathBuf>) -> Resolve {
+    std::sync::Arc::new(move |name: &str| {
+        let from_file = dir.as_ref().and_then(|d| {
+            let safe =
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+            safe.then(|| std::fs::read_to_string(d.join(name)).ok())
+                .flatten()
+                .map(|v| v.trim_end_matches(['\n', '\r']).to_owned())
+                .filter(|v| !v.is_empty())
+        });
+        from_file.or_else(|| std::env::var(name).ok())
+    })
+}
+
 /// One command, identified before it is started. The provider runs a given
 /// `id` at most once on a resource: repeating a start with the same `id`
 /// never runs the command again, so a lost start reply can be retried

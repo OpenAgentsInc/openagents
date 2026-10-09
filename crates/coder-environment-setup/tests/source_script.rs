@@ -2,7 +2,9 @@
 //! against a scratch repository.
 
 use coder_environment::SourcePin;
-use coder_environment_setup::source::{Mode, Report, command, remote_url};
+use coder_environment_setup::source::{
+    Bounds, Lfs, Mode, Report, Submodules, TIMED_OUT, command, command_with, remote_url,
+};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -219,4 +221,184 @@ fn repository_labels_resolve_without_credentials() {
     p.repository = None;
     assert!(remote_url(&p).is_err());
     assert!(command(&p, Mode::Verify, None).is_ok());
+}
+
+fn real_git() -> PathBuf {
+    let out = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .unwrap();
+    PathBuf::from(String::from_utf8(out.stdout).unwrap().trim())
+}
+
+/// A `PATH` holding only `git` (or a stand-in for it) and the system
+/// tools, so no `git-lfs` from the developer's machine is visible.
+fn bare_path(dir: &Path, git_script: Option<&str>) -> String {
+    std::fs::create_dir_all(dir).unwrap();
+    let git = dir.join("git");
+    match git_script {
+        Some(text) => {
+            std::fs::write(&git, text).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        None => std::os::unix::fs::symlink(real_git(), &git).unwrap(),
+    }
+    format!("{}:/usr/bin:/bin", dir.display())
+}
+
+fn run_with(f: &Fixture, pin: &SourcePin, cwd: &Path, path: &str, bounds: Bounds) -> (i32, String) {
+    let (text, names, env) =
+        command_with(pin, Mode::Materialize, Some("GH_TOKEN"), bounds).unwrap();
+    let mut c = Command::new("/bin/sh");
+    c.arg("-c")
+        .arg(&text)
+        .current_dir(cwd)
+        .env_clear()
+        .env("PATH", path)
+        .env("HOME", &f.home)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .envs(env);
+    for n in names {
+        c.env(n, GH_SECRET);
+    }
+    let out = c.output().unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
+}
+
+#[test]
+fn submodules_are_initialized_at_their_recorded_commits() {
+    let Some(f) = fixture() else { return };
+    // Local submodule URLs are file transport, which Git allows only when
+    // asked; a GitHub submodule needs no such setting.
+    std::fs::write(
+        f.home.join(".gitconfig"),
+        "[protocol \"file\"]\n\tallow = always\n",
+    )
+    .unwrap();
+    let sub = f.base.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    git(&f.home, &sub, &["init", "-q", "."]);
+    std::fs::write(sub.join("lib.txt"), "library").unwrap();
+    git(&f.home, &sub, &["add", "."]);
+    git(&f.home, &sub, &["commit", "-q", "-m", "lib"]);
+    let url = format!("file://{}", sub.display());
+    git(
+        &f.home,
+        &f.origin,
+        &["submodule", "add", "-q", &url, "vendor/lib"],
+    );
+    git(
+        &f.home,
+        &f.origin,
+        &["commit", "-q", "-m", "with submodule"],
+    );
+    let head = git(&f.home, &f.origin, &["rev-parse", "HEAD"]);
+    let p = pin(&f, &head);
+
+    let work = f.base.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let path = bare_path(&f.base.join("bin"), None);
+    let (code, out) = run_with(&f, &p, &work, &path, Bounds::default());
+    assert_eq!(code, 0, "{out}");
+    let report = Report::parse(&out).unwrap();
+    assert_eq!(report.submodules, Submodules::Yes, "{out}");
+    assert!(report.verified(&p), "{report:?}");
+    assert_eq!(
+        std::fs::read_to_string(work.join("vendor/lib/lib.txt")).unwrap(),
+        "library"
+    );
+    // Verify proves the same checkout, and refuses an uninitialized one.
+    let (code, out) = run(&f, &p, Mode::Verify, &work);
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(Report::parse(&out).unwrap().submodules, Submodules::Yes);
+    git(
+        &f.home,
+        &work,
+        &["submodule", "deinit", "-q", "--all", "-f"],
+    );
+    let (code, out) = run(&f, &p, Mode::Verify, &work);
+    assert_eq!(code, 3, "{out}");
+    let bad = Report::parse(&out).unwrap();
+    assert_eq!(bad.error.as_deref(), Some("submodules"));
+    assert_eq!(bad.submodules, Submodules::Failed);
+}
+
+#[test]
+fn lfs_files_without_git_lfs_are_reported_as_pointers() {
+    let Some(f) = fixture() else { return };
+    std::fs::write(
+        f.origin.join(".gitattributes"),
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    )
+    .unwrap();
+    let pointer = "version https://git-lfs.github.com/spec/v1\n\
+                   oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n\
+                   size 12345\n";
+    std::fs::write(f.origin.join("model.bin"), pointer).unwrap();
+    git(&f.home, &f.origin, &["add", "."]);
+    git(&f.home, &f.origin, &["commit", "-q", "-m", "lfs"]);
+    let head = git(&f.home, &f.origin, &["rev-parse", "HEAD"]);
+    let p = pin(&f, &head);
+    let work = f.base.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let path = bare_path(&f.base.join("bin"), None);
+    let (code, out) = run_with(&f, &p, &work, &path, Bounds::default());
+    assert_eq!(code, 0, "{out}");
+    let report = Report::parse(&out).unwrap();
+    assert_eq!(report.lfs, Lfs::Pointers, "{out}");
+    assert!(report.verified(&p));
+    assert_eq!(
+        std::fs::read_to_string(work.join("model.bin")).unwrap(),
+        pointer
+    );
+    // A repository without LFS says so.
+    let plain = f.base.join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let (code, out) = run_with(
+        &f,
+        &pin(&f, &f.commits[1]),
+        &plain,
+        &path,
+        Bounds::default(),
+    );
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(Report::parse(&out).unwrap().lfs, Lfs::None);
+}
+
+#[test]
+fn a_hung_fetch_is_reported_as_timed_out_within_its_bound() {
+    let Some(f) = fixture() else { return };
+    let p = pin(&f, &f.commits[1]);
+    let work = f.base.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    // A stand-in `git` whose fetch never answers.
+    let script = format!(
+        "#!/bin/sh\nif [ \"$1\" = fetch ]; then exec sleep 60; fi\nexec '{}' \"$@\"\n",
+        real_git().display()
+    );
+    let path = bare_path(&f.base.join("bin"), Some(&script));
+    let started = std::time::Instant::now();
+    let bounds = Bounds {
+        clone_seconds: 1,
+        fetch_seconds: 1,
+    };
+    let (code, out) = run_with(&f, &p, &work, &path, bounds);
+    let took = started.elapsed();
+    assert_eq!(code, 3, "{out}");
+    let report = Report::parse(&out).unwrap();
+    assert!(report.timed_out(), "{out}");
+    assert_eq!(report.error.as_deref(), Some(TIMED_OUT));
+    // Two bounded attempts and the pause between them, never the hang.
+    assert!(took < std::time::Duration::from_secs(20), "{took:?}");
+    // A fetch that fails outright is still a failed fetch.
+    let missing = f.base.join("missing");
+    std::fs::create_dir_all(&missing).unwrap();
+    let real = bare_path(&f.base.join("realbin"), None);
+    let (code, out) = run_with(&f, &pin(&f, &"0".repeat(40)), &missing, &real, bounds);
+    assert_eq!(code, 3);
+    assert_eq!(Report::parse(&out).unwrap().error.as_deref(), Some("fetch"));
 }

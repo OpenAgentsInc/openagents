@@ -50,6 +50,7 @@ fn harness() -> H {
             compute,
             config: config(),
             credentials,
+            fresh: None,
             paths: paths(),
             ready_attempts: 1,
             ready_pause: Duration::ZERO,
@@ -475,4 +476,50 @@ async fn reconcile_lists_usage_and_sweeps_only_owned_orphans() {
     let id = image.snapshot.unwrap();
     assert!(done(h.p.retire_image("oaenv-kept", &id).await).starts_with("deleted:"));
     assert!(done(h.p.retire_image("oaenv-kept", &id).await).starts_with("absent:"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn each_command_step_gets_the_current_token() {
+    let mut h = harness();
+    let token = std::sync::Arc::new(std::sync::Mutex::new(
+        "ghs_first_token_0000000000".to_string(),
+    ));
+    let current = token.clone();
+    h.p.fresh = Some(std::sync::Arc::new(move |n: &str| {
+        Some(match n {
+            "GH_TOKEN" => current.lock().unwrap().clone(),
+            _ => "npm-secret-value-0000".into(),
+        })
+    }));
+    let c = builder();
+    let r = done(h.p.create(&c, "create-builder-1").await);
+    done(h.p.apply_credentials(&c, &r).await);
+    let step = |id: &str| command(id, "echo \"gh=$GH_TOKEN\"", &["GH_TOKEN"]);
+    done(h.p.start_command(&c, &r, &step("one")).await);
+    let one = String::from_utf8(finish(&h.p, &c, &r, "one").await.stdout).unwrap();
+    assert!(one.contains("gh=ghs_first_token_0000000000"), "{one}");
+    // The token is minted again before the next step; the step sees it.
+    *token.lock().unwrap() = "ghs_second_token_000000000".into();
+    done(h.p.start_command(&c, &r, &step("two")).await);
+    let two = String::from_utf8(finish(&h.p, &c, &r, "two").await.stdout).unwrap();
+    assert!(two.contains("gh=ghs_second_token_000000000"), "{two}");
+    // A credential the minter cannot supply refuses the step.
+    h.p.fresh = Some(std::sync::Arc::new(|_: &str| None));
+    assert!(matches!(
+        h.p.start_command(&c, &r, &step("three")).await,
+        Outcome::Failed { .. }
+    ));
+}
+
+#[test]
+fn the_resolver_prefers_a_minted_file_over_the_environment() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("OA_TEST_MINTED"), "ghs_minted_value\n").unwrap();
+    let resolve = crate::provider::resolve_from(Some(dir.path().to_path_buf()));
+    assert_eq!(
+        resolve("OA_TEST_MINTED").as_deref(),
+        Some("ghs_minted_value")
+    );
+    assert_eq!(resolve("../etc/passwd"), None);
+    assert_eq!(resolve("OA_TEST_SURELY_UNSET_NAME"), None);
 }

@@ -852,10 +852,16 @@ impl<P: Commands + Images> Builder<P> {
                             let ok = code == 0
                                 && !report_overflow
                                 && report.verified(&j.inputs.source);
-                            let detail = format!(
-                                "The pinned source was not materialized (exit {code}; head {:?}; error {:?}).",
-                                report.head, report.error
-                            );
+                            let detail = if report.timed_out() {
+                                format!(
+                                    "Downloading the pinned source timed out (exit {code}); it was stopped, not failed."
+                                )
+                            } else {
+                                format!(
+                                    "The pinned source was not materialized (exit {code}; head {:?}; error {:?}).",
+                                    report.head, report.error
+                                )
+                            };
                             j.checkout = Some(report);
                             if ok {
                                 j.phase = Phase::Installing;

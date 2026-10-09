@@ -51,15 +51,18 @@ pub async fn providers(config: &Config) -> Result<Providers<Selected>, String> {
         }
         Some(gce) => {
             let names: Vec<String> = config.credential_names.iter().cloned().collect();
-            let credentials = Credentials::from_names(&names, |n| std::env::var(n).ok())?;
-            let with = |credentials: Credentials| {
-                GceProvider::new(gce.clone(), credentials, config.workdir.clone())
-                    .map(Selected::Gce)
+            let resolve = crate::boat::resolver();
+            let credentials = Credentials::from_names(&names, |n| resolve(n))?;
+            let with = |credentials: Credentials, fresh: bool| {
+                GceProvider::new(gce.clone(), credentials, config.workdir.clone()).map(|mut p| {
+                    p.fresh = fresh.then(|| resolve.clone());
+                    Selected::Gce(p)
+                })
             };
             Ok(Providers {
-                setup: with(credentials.clone())?,
-                build: with(credentials)?,
-                verify: with(Credentials::default())?,
+                setup: with(credentials.clone(), true)?,
+                build: with(credentials, true)?,
+                verify: with(Credentials::default(), false)?,
             })
         }
     }
