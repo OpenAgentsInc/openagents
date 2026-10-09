@@ -168,13 +168,17 @@ impl UiPage {
                 .fallback_action(theme::TOGGLE_PATH)
                 .return_to(self.return_to)
         });
-        let download = ButtonLink::new("Download", DOWNLOAD)
+        let on_download = current == Some(DOWNLOAD);
+        let mut download = ButtonLink::new("Download", DOWNLOAD)
             .color(Color::Secondary)
             .variant(ButtonVariant::Outline)
             .size(ControlSize::Sm)
             .pill(true)
             .icon_start(Icon::Download)
-            .selected(current == Some(DOWNLOAD));
+            .selected(on_download);
+        if on_download {
+            download = download.attr("aria-current", "page");
+        }
         let actions = html! {
             @if let Some(actions) = &self.actions { (actions) }
             (download)

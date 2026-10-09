@@ -961,7 +961,15 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
     assert!(body.contains("<h2 id=\"coder-title\">Coder + OpenAgents CLI</h2>"));
     assert!(body.contains("<title>Download Coder \u{b7} OpenAgents</title>"));
     assert!(body.contains("<h1>Download Coder</h1>"));
-    assert!(body.contains("href=\"/download\" aria-current=\"page\""));
+    // Download is the header pill now; on its own page it is marked current.
+    let pill = body.find("href=\"/download\"").expect("download pill");
+    let tag_end = pill + body[pill..].find('>').unwrap();
+    let tag_start = body[..pill].rfind('<').unwrap();
+    assert!(
+        body[tag_start..tag_end].contains("aria-current=\"page\""),
+        "{}",
+        &body[tag_start..tag_end]
+    );
     assert!(!body.contains("href=\"/docs\" aria-current"));
     let (status, guide) = get(router(config(root.path().into())), "/docs/download").await;
     assert_eq!(status, StatusCode::OK);
