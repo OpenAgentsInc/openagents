@@ -22,6 +22,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 hmac = "0.12.1"
 nostr = { path = "../nostr" }
 oa-auth = { path = "../oa-auth" }
+inference = { path = "../inference" }
 pay-ledger = { path = "../pay-ledger" }
 receipts = { path = "../receipts" }
 ring = "0.17"

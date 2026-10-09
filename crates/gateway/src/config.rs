@@ -202,6 +202,21 @@ pub struct Config {
     /// Private task evidence and current native team reports. Absent disables these routes.
     #[serde(default)]
     pub team_reports: Option<crate::team_reports::Config>,
+    /// The inference meter (docs/inference/gateway.md, sections 5 and 6):
+    /// rate table, the credit accounts we hold, and the attempt store.
+    /// Absent mounts no route and keeps no records.
+    #[serde(default)]
+    pub inference: Option<Inference>,
+}
+
+/// The inference meter's configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Inference {
+    #[serde(flatten)]
+    pub meter: inference::meter::Config,
+    /// The environment variable holding the bearer the admin status
+    /// route (`/v1/admin/inference/status`) answers.
+    pub admin_token_env: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

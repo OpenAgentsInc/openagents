@@ -97,6 +97,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(account_config()),
         billing: None,
         funding: None,

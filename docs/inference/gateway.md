@@ -261,6 +261,13 @@ numbers. Balances are reconciled daily against the provider's own billing
 
 ## 6. Measurement
 
+Implemented (#11062): `inference::meter` in `crates/inference/src/meter/`
+keeps the attempt records, live rates, credit ledger, burn-down alerts
+(log lines), and the daily reconciliation hook (`ProviderBilling`; real
+billing sources come with the adapters). The gateway serves the state at
+`GET /v1/admin/inference/status` to the bearer in the env var that
+`inference.admin_token_env` names.
+
 Every attempt writes one record. It holds counts and timings, never prompt
 or completion text, like the chat worker's usage log today.
 

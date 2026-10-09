@@ -67,6 +67,7 @@ async fn deploy() -> Deployment {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,

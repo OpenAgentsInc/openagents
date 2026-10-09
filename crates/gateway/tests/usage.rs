@@ -155,6 +155,7 @@ async fn deploy() -> Deployment {
         require_workspace_membership: true,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
         funding: None,
