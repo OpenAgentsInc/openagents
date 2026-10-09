@@ -47,6 +47,12 @@ pub(crate) const PAGE: &str = "/projects";
 pub(crate) const CONNECT: &str = "/auth/github/repos";
 /// The same-site step after GitHub's callback.
 pub(crate) const FINISH: &str = "/auth/github/repos/finish";
+/// Installing the GitHub App on repositories (when this server has one).
+pub(crate) const INSTALL: &str = "/auth/github/install";
+/// Where GitHub's install page sends the person back (the App's setup URL).
+pub(crate) const SETUP: &str = "/auth/github/setup";
+/// Connecting GitHub again after it stopped accepting the access.
+pub(crate) const RECONNECT: &str = "/auth/github/reconnect";
 /// The cookie `shell.js` keeps the closed project groups in.
 const CLOSED_COOKIE: &str = "oa_project_groups";
 const CSRF_SCOPE: &str = "projects";
@@ -60,6 +66,9 @@ pub(crate) fn routes() -> Router<App> {
         .route("/projects/disconnect", post(disconnect))
         .route(CONNECT, get(connect))
         .route(FINISH, get(finish))
+        .route(INSTALL, get(install))
+        .route(SETUP, get(setup))
+        .route(RECONNECT, get(reconnect))
 }
 
 /// The signed-in person's projects for the left panel, and the groups they
@@ -214,7 +223,16 @@ async fn page(
         Ok(found) => found,
         Err(response) => return response,
     };
-    render(service, &viewer, &headers, &query.q, None, StatusCode::OK).await
+    render(
+        service,
+        &viewer,
+        &headers,
+        &query.q,
+        None,
+        StatusCode::OK,
+        app.config.github_install.is_some(),
+    )
+    .await
 }
 
 /// The page, with `problem` shown on top when an action didn't work.
@@ -225,6 +243,7 @@ async fn render(
     q: &str,
     problem: Option<String>,
     status: StatusCode,
+    install: bool,
 ) -> Response {
     let state = match service.github_status(headers).await {
         Ok(state) => state,
@@ -233,7 +252,7 @@ async fn render(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let body = view(&state, &token, q, problem.as_deref());
+    let body = view(&state, &token, q, problem.as_deref(), install);
     protect(
         UiPage::new("Projects")
             .path(PAGE)
@@ -320,7 +339,7 @@ fn repos_page(
                     .color(Color::Warning)
                     .title("GitHub access ended")
                     .description("Your projects are still here. Reconnect GitHub to add repositories again.")
-                    .actions(ButtonLink::new("Reconnect GitHub", format!("{CONNECT}?access=private"))))
+                    .actions(ButtonLink::new("Reconnect GitHub", RECONNECT)))
             };
         }
         Err(error) => {
@@ -405,8 +424,9 @@ fn repos_page(
     }
 }
 
-/// The page body (separate from I/O for tests).
-fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>) -> Markup {
+/// The page body (separate from I/O for tests). `install`: this server
+/// adds repositories through its GitHub App.
+fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: bool) -> Markup {
     let q = q.trim();
     html! {
         (MarkdownRoot::new(html! {
@@ -421,7 +441,7 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>) -> Markup {
                 .color(Color::Warning)
                 .title("GitHub access ended")
                 .description("Your projects are still here. Reconnect GitHub to add repositories again.")
-                .actions(ButtonLink::new("Reconnect GitHub", format!("{CONNECT}?access=private"))))
+                .actions(ButtonLink::new("Reconnect GitHub", RECONNECT)))
         }
         @if !state.projects.is_empty() {
             section aria-labelledby="projects-yours" {
@@ -455,6 +475,46 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>) -> Markup {
         section aria-labelledby="projects-add" {
             (MarkdownRoot::new(html! { h2 #projects-add { "Add a repository" } }))
             @match &state.access {
+                Access::Installed { login, installations } => {
+                    p { "Connected to GitHub as " strong { (login) } "." }
+                    @if installations.is_empty() {
+                        p { "Choose the repositories OpenAgents can use on GitHub." }
+                        div.oa-page-actions {
+                            (ButtonLink::new("Choose repositories", INSTALL))
+                        }
+                    } @else {
+                        form method="get" action=(PAGE) role="search" {
+                            (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
+                        }
+                        div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                            p.oa-thread-working {
+                                (openagents_ui::actions::LoadingIndicator::new().decorative())
+                                span { "Loading your repositories" }
+                            }
+                        }
+                        p {
+                            "Missing one? "
+                            a href=(INSTALL) { "Choose repositories on GitHub" }
+                        }
+                    }
+                    form method="post" action="/projects/disconnect" {
+                        input type="hidden" name="csrf" value=(csrf);
+                        (Button::new("Disconnect GitHub")
+                            .kind(ButtonType::Submit)
+                            .size(ControlSize::Sm)
+                            .variant(ButtonVariant::Ghost)
+                            .color(Color::Secondary))
+                    }
+                }
+                Access::None if install => {
+                    p { "Install OpenAgents on the GitHub repositories you want to use." }
+                    div.oa-page-actions {
+                        (ButtonLink::new("Install on repositories", INSTALL))
+                    }
+                    p.oa-page-meta {
+                        "OpenAgents can read and change code only in the repositories you pick, and you can change them on GitHub at any time."
+                    }
+                }
                 Access::Connected { login, private } => {
                     p { "Connected to GitHub as " strong { (login) } "." }
                     form method="get" action=(PAGE) role="search" {
@@ -468,7 +528,12 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>) -> Markup {
                             span { "Loading your repositories" }
                         }
                     }
-                    @if !private {
+                    @if install {
+                        p {
+                            a href=(INSTALL) { "Install OpenAgents on your repositories" }
+                            " to pick exactly which ones it can use."
+                        }
+                    } @else if !private {
                         p {
                             "Only public repositories are shown. "
                             a href=(format!("{CONNECT}?access=private")) { "Include private repositories" }
@@ -553,6 +618,7 @@ async fn add(State(app): State<App>, headers: HeaderMap, Form(form): Form<AddFor
                 "",
                 Some(error.to_string()),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
+                app.config.github_install.is_some(),
             )
             .await
         }
@@ -664,12 +730,15 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
         Ok(found) => found,
         Err(response) => return response,
     };
+    let install = app.config.github_install.is_some();
     let flow = crate::auth::flow_cookie(headers).filter(|flow| {
-        matches!(flow.purpose, oa_auth::Purpose::Repos { .. })
-            && query
-                .state
-                .as_deref()
-                .is_some_and(|state| flow.matches(state))
+        matches!(
+            flow.purpose,
+            oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+        ) && query
+            .state
+            .as_deref()
+            .is_some_and(|state| flow.matches(state))
     });
     let (Some(flow), Some(code)) = (flow, query.code.as_deref()) else {
         return render(
@@ -679,10 +748,27 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
             "",
             Some("That GitHub connection expired. Start again from this browser.".into()),
             StatusCode::BAD_REQUEST,
+            install,
         )
         .await;
     };
-    match service.github_grant(headers, code, flow.verifier()).await {
+    let granted = if flow.purpose == oa_auth::Purpose::Install {
+        service
+            .github_app_grant(headers, code, flow.verifier())
+            .await
+    } else {
+        service.github_grant(headers, code, flow.verifier()).await
+    };
+    match granted {
+        // Authorized but installed nowhere yet: on to GitHub's page for
+        // picking repositories.
+        Ok(Status {
+            access: Access::Installed { installations, .. },
+            ..
+        }) if installations.is_empty() => match app.config.github_install.as_deref() {
+            Some(found) => protect(Redirect::to(&found.install_url()).into_response()),
+            None => protect(Redirect::to(&flow.return_to).into_response()),
+        },
         Ok(_) => protect(Redirect::to(&flow.return_to).into_response()),
         Err(RepoCallError::Repo(error)) => {
             render(
@@ -692,11 +778,69 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
                 "",
                 Some(error.to_string()),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
+                install,
             )
             .await
         }
         Err(error) => failed(headers, &error),
     }
+}
+
+/// "Install on repositories": a person who authorized the GitHub App goes
+/// straight to GitHub's page for picking repositories; anyone else
+/// authorizes it first (which comes back here through [`finish`]).
+async fn install(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (service, _) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let Some(found) = app.config.github_install.as_deref() else {
+        return protect(Redirect::to(PAGE).into_response());
+    };
+    match service.github_status(&headers).await {
+        Ok(Status {
+            access: Access::Installed { .. },
+            ..
+        }) => protect(Redirect::to(&found.install_url()).into_response()),
+        Ok(_) => crate::auth::begin(&app, &headers, Some(PAGE), oa_auth::Purpose::Install),
+        Err(error) => failed(&headers, &error),
+    }
+}
+
+/// GitHub's install page sends the person back here (the App's setup URL,
+/// with an `installation_id` this server never trusts): the account
+/// service finds the person's installations again with their own token.
+async fn setup(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (service, _) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    if app.config.github_install.is_none() {
+        return protect(Redirect::to(PAGE).into_response());
+    }
+    match service.github_app_refresh(&headers).await {
+        Ok(_) => protect(Redirect::to(PAGE).into_response()),
+        // Installed from GitHub without authorizing here yet, or the
+        // authorization ended: authorize, then back to the projects page.
+        Err(RepoCallError::Repo(RepoError::NotConnected | RepoError::Reconnect)) => {
+            crate::auth::begin(&app, &headers, Some(PAGE), oa_auth::Purpose::Install)
+        }
+        Err(error) => failed(&headers, &error),
+    }
+}
+
+/// Reconnect GitHub: through the GitHub App when this server has one,
+/// else the OAuth App with private repositories.
+async fn reconnect(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Err(response) = viewer(&app, &headers).await {
+        return response;
+    }
+    let purpose = if app.config.github_install.is_some() {
+        oa_auth::Purpose::Install
+    } else {
+        oa_auth::Purpose::Repos { private: true }
+    };
+    crate::auth::begin(&app, &headers, Some(PAGE), purpose)
 }
 
 #[cfg(test)]

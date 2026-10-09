@@ -502,7 +502,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         access: Access::None,
         projects: Vec::new(),
     };
-    let html = view(&status, "t", "", None).into_string();
+    let html = view(&status, "t", "", None, false).into_string();
     crate::copy_guard::assert_plain(PAGE, &html);
     let status = Status {
         access: Access::Connected {
@@ -512,7 +512,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         projects: Vec::new(),
     };
     // The page shows at once; the list loads after it.
-    let html = view(&status, "t", "", None).into_string();
+    let html = view(&status, "t", "", None, false).into_string();
     assert!(html.contains("Include private repositories"), "{html}");
     assert!(
         html.contains(r#"hx-get="/projects/repositories?page=1""#),
@@ -526,6 +526,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         default_branch: "main".into(),
         private: false,
         archived: id == 2,
+        installation: None,
     };
     let listing = |repositories: Vec<Repository>, more: bool| {
         Ok(Listing {
@@ -717,3 +718,5 @@ async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
         "none without a token"
     );
 }
+
+mod app;

@@ -74,6 +74,7 @@ async fn deploy() -> Deployment {
             recovery_ttl_secs: 3_600,
             anonymous: None,
             github: None,
+            github_app: None,
         }),
         billing: None,
         funding: None,

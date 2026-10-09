@@ -136,7 +136,11 @@ pub(crate) fn begin(
     return_to: Option<&str>,
     purpose: oa_auth::Purpose,
 ) -> Response {
-    let Some((github, service)) = github(app) else {
+    let client = match purpose {
+        oa_auth::Purpose::Install => app.config.github_install.as_deref().map(|i| &i.oauth),
+        _ => app.config.github.as_deref(),
+    };
+    let (Some(github), Some(service)) = (client, app.config.cloud.as_deref()) else {
         return notice(
             headers,
             StatusCode::NOT_FOUND,
@@ -162,6 +166,7 @@ pub(crate) fn begin(
                 crate::projects::CONNECT,
                 if private { "private" } else { "public" }
             ),
+            oa_auth::Purpose::Install => crate::projects::INSTALL.to_string(),
         };
         return protect(Redirect::to(&format!("{}{path}", service.origin())).into_response());
     }
@@ -203,7 +208,12 @@ async fn callback(
     headers: HeaderMap,
     query: Result<Query<Callback>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let Some((_, service)) = github(&app) else {
+    let Some(service) = app
+        .config
+        .cloud
+        .as_deref()
+        .filter(|_| app.config.github.is_some() || app.config.github_install.is_some())
+    else {
         return notice(
             &headers,
             StatusCode::NOT_FOUND,
@@ -220,14 +230,21 @@ async fn callback(
         error: None,
     }) = &query
         && flow_cookie(&headers).is_some_and(|flow| {
-            matches!(flow.purpose, oa_auth::Purpose::Repos { .. }) && flow.matches(state)
+            matches!(
+                flow.purpose,
+                oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+            ) && flow.matches(state)
         })
     {
         return crate::projects::continue_page(&headers, code, state);
     }
     let canceled_repos = query.as_ref().is_some_and(|q| q.error.is_some())
-        && flow_cookie(&headers)
-            .is_some_and(|flow| matches!(flow.purpose, oa_auth::Purpose::Repos { .. }));
+        && flow_cookie(&headers).is_some_and(|flow| {
+            matches!(
+                flow.purpose,
+                oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+            )
+        });
     let clear = HeaderValue::from_str(&oa_auth::flow::clear_cookie(service.secure()))
         .expect("static cookie is valid");
     if canceled_repos {

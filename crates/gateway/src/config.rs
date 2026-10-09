@@ -450,6 +450,13 @@ pub struct Accounts {
     /// New accounts land on `signup_tenant`, which must be set too.
     #[serde(default)]
     pub github: Option<GithubSignIn>,
+    /// Repository access through a GitHub App (#11056): the App's private
+    /// file (`{"app_id", "slug", "client_id", "client_secret",
+    /// "token_encryption_key", "private_key"}`, its key file beside it,
+    /// both mode 0600) and the callback registered with it. Absent leaves
+    /// repository access on the OAuth App.
+    #[serde(default)]
+    pub github_app: Option<GithubSignIn>,
 }
 
 /// The OAuth App behind `POST /v1/sessions/github`.

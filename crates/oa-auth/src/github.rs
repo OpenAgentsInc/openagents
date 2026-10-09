@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use oauth2::basic::BasicClient;
 use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, PkceCodeVerifier, RedirectUrl,
-    TokenResponse, TokenUrl,
+    AuthType, AuthorizationCode, ClientId, ClientSecret, PkceCodeVerifier, RedirectUrl,
+    RefreshToken, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 use tenancy::accounts::identities::{GithubEmail, GithubProfile, MAX_EMAILS, MAX_FIELD};
@@ -75,6 +75,17 @@ impl Github {
 
     /// Trade `code` and its PKCE `verifier` for an access token.
     pub(crate) async fn exchange(&self, code: &str, verifier: &str) -> Result<Secret, AuthError> {
+        Ok(self.exchange_tokens(code, verifier).await?.access)
+    }
+
+    /// Trade `code` and its PKCE `verifier` for tokens: the access token
+    /// and, for a GitHub App's expiring user tokens, its lifetime and the
+    /// refresh token.
+    pub(crate) async fn exchange_tokens(
+        &self,
+        code: &str,
+        verifier: &str,
+    ) -> Result<Tokens, AuthError> {
         if code.is_empty()
             || code.len() > 256
             || verifier.len() < 43
@@ -85,13 +96,43 @@ impl Github {
         {
             return Err(AuthError::Denied);
         }
+        let token = self
+            .client()?
+            .exchange_code(AuthorizationCode::new(code.to_string()))
+            .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
+            .request_async(&self.http)
+            .await
+            .map_err(refused)?;
+        Tokens::from_response(&token)
+    }
+
+    /// Trade a GitHub App user token's refresh token for new tokens.
+    /// GitHub rotates the refresh token: the old one stops working.
+    pub(crate) async fn refresh(&self, refresh: &Secret) -> Result<Tokens, AuthError> {
+        let token = self
+            .client()?
+            .exchange_refresh_token(&RefreshToken::new(refresh.as_str().to_string()))
+            .request_async(&self.http)
+            .await
+            .map_err(refused)?;
+        Tokens::from_response(&token)
+    }
+
+    fn client(
+        &self,
+    ) -> Result<
+        BasicClient<
+            oauth2::EndpointNotSet,
+            oauth2::EndpointNotSet,
+            oauth2::EndpointNotSet,
+            oauth2::EndpointNotSet,
+            oauth2::EndpointSet,
+        >,
+        AuthError,
+    > {
         let app = &self.credentials.app;
-        let client = BasicClient::new(ClientId::new(app.client_id.clone()))
+        Ok(BasicClient::new(ClientId::new(app.client_id.clone()))
             .set_client_secret(ClientSecret::new(self.credentials.secret().to_string()))
-            .set_auth_uri(
-                AuthUrl::new(app.endpoints.authorize_url.clone())
-                    .map_err(|_| AuthError::Unavailable)?,
-            )
             .set_token_uri(
                 TokenUrl::new(app.endpoints.token_url.clone())
                     .map_err(|_| AuthError::Unavailable)?,
@@ -99,22 +140,7 @@ impl Github {
             .set_redirect_uri(
                 RedirectUrl::new(app.redirect_url.clone()).map_err(|_| AuthError::Unavailable)?,
             )
-            .set_auth_type(AuthType::RequestBody);
-        let token = client
-            .exchange_code(AuthorizationCode::new(code.to_string()))
-            .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
-            .request_async(&self.http)
-            .await
-            .map_err(|error| match error {
-                oauth2::RequestTokenError::ServerResponse(_)
-                | oauth2::RequestTokenError::Parse(..) => AuthError::Denied,
-                _ => AuthError::Unavailable,
-            })?;
-        let secret = token.access_token().secret();
-        if secret.is_empty() || secret.len() > 1024 {
-            return Err(AuthError::Denied);
-        }
-        Ok(Secret(secret.clone()))
+            .set_auth_type(AuthType::RequestBody))
     }
 
     async fn get<T: for<'de> Deserialize<'de>>(
@@ -163,10 +189,47 @@ impl Github {
     }
 
     async fn api_once(&self, bearer: &str, path: &str, limit: Duration) -> Result<Api, ApiFault> {
+        self.send_once(reqwest::Method::GET, bearer, path, None, limit)
+            .await
+    }
+
+    /// One GitHub API `POST` of `body` with `bearer` (a GitHub App's JWT
+    /// minting an installation token), bounded by [`API_TIMEOUT`]. A
+    /// dropped connection or a 502/503/504 is tried once more, as reads
+    /// are: minting twice is harmless.
+    pub(crate) async fn api_post(
+        &self,
+        bearer: &str,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<Api, ApiFault> {
+        let first = self
+            .send_once(reqwest::Method::POST, bearer, path, Some(body), API_TIMEOUT)
+            .await;
+        match &first {
+            Ok(answer) if !matches!(answer.status, 502..=504) => return first,
+            Err(ApiFault::TooLarge) => return first,
+            _ => {}
+        }
+        tokio::time::sleep(RETRY_PAUSE).await;
+        self.send_once(reqwest::Method::POST, bearer, path, Some(body), API_TIMEOUT)
+            .await
+    }
+
+    async fn send_once(
+        &self,
+        method: reqwest::Method,
+        bearer: &str,
+        path: &str,
+        json: Option<&serde_json::Value>,
+        limit: Duration,
+    ) -> Result<Api, ApiFault> {
         let base = self.credentials.app.endpoints.api_url.trim_end_matches('/');
-        let mut response = self
-            .http
-            .get(format!("{base}{path}"))
+        let mut request = self.http.request(method, format!("{base}{path}"));
+        if let Some(json) = json {
+            request = request.json(json);
+        }
+        let mut response = request
             .bearer_auth(bearer)
             .header("accept", "application/vnd.github+json")
             .header("x-github-api-version", API_VERSION)
@@ -322,6 +385,45 @@ impl Drop for Secret {
         self.0.clear();
         self.0.extend(std::iter::repeat_n('\0', len));
         self.0.clear();
+    }
+}
+
+/// What a token exchange or refresh returned.
+pub(crate) struct Tokens {
+    pub access: Secret,
+    /// A GitHub App's user tokens expire (8 hours) and come with a
+    /// refresh token; an OAuth App's tokens have neither.
+    pub refresh: Option<Secret>,
+    pub expires_in: Option<u64>,
+}
+
+impl Tokens {
+    fn from_response(token: &oauth2::basic::BasicTokenResponse) -> Result<Self, AuthError> {
+        let secret = token.access_token().secret();
+        if secret.is_empty() || secret.len() > 1024 {
+            return Err(AuthError::Denied);
+        }
+        Ok(Self {
+            access: Secret(secret.clone()),
+            refresh: token
+                .refresh_token()
+                .map(|r| r.secret())
+                .filter(|r| !r.is_empty() && r.len() <= 1024)
+                .map(|r| Secret(r.clone())),
+            expires_in: token.expires_in().map(|d| d.as_secs()),
+        })
+    }
+}
+
+fn refused<E>(error: oauth2::RequestTokenError<E, oauth2::basic::BasicErrorResponse>) -> AuthError
+where
+    E: std::error::Error + 'static,
+{
+    match error {
+        oauth2::RequestTokenError::ServerResponse(_) | oauth2::RequestTokenError::Parse(..) => {
+            AuthError::Denied
+        }
+        _ => AuthError::Unavailable,
     }
 }
 

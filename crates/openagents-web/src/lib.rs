@@ -112,6 +112,11 @@ pub struct Config {
     /// callback URL. With `cloud`, the header offers Log in and Sign up and
     /// `/login` continues with GitHub (docs/auth).
     pub github: Option<Arc<oa_auth::GithubApp>>,
+    /// Repository access through a GitHub App (`--github-app`): its client
+    /// id and slug. With it, `/projects` installs the App on the
+    /// repositories a person picks instead of asking the OAuth App for
+    /// `repo` (docs/auth/github.md, "GitHub App").
+    pub github_install: Option<Arc<oa_auth::AppInstall>>,
     /// Explicit account/workspace bindings to separately granted resident hosts.
     pub cloud_hosts: Option<Arc<cloud::hosts::Hosts>>,
     /// Unused since the Cloud pages left (docs/web/cloud-reset.md); the
@@ -155,6 +160,7 @@ impl Config {
             components_build: None,
             cloud: None,
             github: None,
+            github_install: None,
             cloud_hosts: None,
             cloud_build: None,
             cloud_byo: None,

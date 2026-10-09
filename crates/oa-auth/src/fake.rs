@@ -16,6 +16,11 @@
 //! `GET /login/oauth/authorize` shows a small page listing the fake people
 //! (click one to approve as them) and a Cancel link. Tests skip the page
 //! with `&login=<login>` (approve) or `&deny=1` (cancel).
+//!
+//! With [`Fake::with_app`] it is also a GitHub App ([`app`]): the App's
+//! own OAuth client (expiring user tokens and refresh tokens), its install
+//! page, `/user/installations` and their repositories, and installation
+//! tokens minted only for a JWT the App's key signed.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -33,6 +38,9 @@ use sha2::{Digest, Sha256};
 
 use crate::config::{Endpoints, GithubApp, GithubCredentials};
 
+mod app;
+pub use app::{FakeApp, FakeInstallation, app_credentials, app_key};
+
 /// One fake GitHub person: the `/user` body, the `/user/emails` list
 /// (`None` answers 404, as GitHub does without the email scope), and their
 /// repositories (`id`, `full_name`, `default_branch`, `private`).
@@ -44,7 +52,7 @@ pub struct FakeUser {
 }
 
 impl FakeUser {
-    fn login(&self) -> &str {
+    pub(crate) fn login(&self) -> &str {
         self.user["login"].as_str().unwrap_or_default()
     }
 }
@@ -90,14 +98,16 @@ pub fn quiet() -> FakeUser {
     }
 }
 
-struct Grant {
+pub(crate) struct Grant {
     user: usize,
     challenge: String,
     redirect: String,
     scopes: Vec<String>,
+    /// Issued to the GitHub App's client.
+    app: bool,
 }
 
-struct Inner {
+pub(crate) struct Inner {
     client_id: String,
     client_secret: String,
     redirect: String,
@@ -110,6 +120,7 @@ struct Inner {
     api_calls: usize,
     anonymous_calls: usize,
     token_limit: usize,
+    app: Option<app::AppState>,
 }
 
 /// GitHub's hourly limit for reads without a token, per address.
@@ -137,6 +148,7 @@ impl Fake {
             api_calls: 0,
             anonymous_calls: 0,
             token_limit: 5000,
+            app: None,
         })))
     }
 
@@ -206,7 +218,7 @@ impl Fake {
 
     /// The router (mount it at the origin's root).
     pub fn router(&self) -> Router {
-        Router::new()
+        app::routes(Router::new())
             .route("/login/oauth/authorize", get(authorize))
             .route("/login/oauth/access_token", post(token))
             .route("/user", get(user))
@@ -259,7 +271,7 @@ struct Authorize {
     response_type: Option<String>,
 }
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -283,7 +295,11 @@ async fn authorize(
         .redirect_uri
         .clone()
         .unwrap_or_else(|| inner.redirect.clone());
-    if query.client_id != inner.client_id || redirect != inner.redirect {
+    let for_app = inner
+        .app
+        .as_ref()
+        .is_some_and(|app| app.app.client_id == query.client_id);
+    if !(query.client_id == inner.client_id || for_app) || redirect != inner.redirect {
         return (
             StatusCode::BAD_REQUEST,
             "The redirect_uri is not associated with this application.",
@@ -332,6 +348,7 @@ async fn authorize(
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
                     .collect(),
+                app: for_app,
             },
         );
         return back(&redirect, &[("code", &code), ("state", &query.state)]);
@@ -358,17 +375,34 @@ async fn authorize(
 }
 
 #[derive(Deserialize)]
-struct Exchange {
+pub(crate) struct Exchange {
     client_id: Option<String>,
     client_secret: Option<String>,
+    #[serde(default)]
     code: String,
     redirect_uri: Option<String>,
     code_verifier: Option<String>,
-    #[allow(dead_code)]
     grant_type: Option<String>,
+    refresh_token: Option<String>,
 }
 
-fn bad(code: &str) -> Response {
+/// The redirect and PKCE verifier checks every code exchange makes.
+pub(crate) fn checked_grant(grant: &Grant, form: &Exchange) -> Option<Response> {
+    if form
+        .redirect_uri
+        .as_deref()
+        .is_some_and(|r| r != grant.redirect)
+    {
+        return Some(bad("redirect_uri_mismatch"));
+    }
+    let verifier = form.code_verifier.clone().unwrap_or_default();
+    if URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())) != grant.challenge {
+        return Some(bad("bad_verification_code"));
+    }
+    None
+}
+
+pub(crate) fn bad(code: &str) -> Response {
     // GitHub answers token errors with 200 and an error body.
     axum::Json(json!({"error": code, "error_description": "Fake GitHub refused the exchange."}))
         .into_response()
@@ -376,25 +410,21 @@ fn bad(code: &str) -> Response {
 
 async fn token(State(fake): State<Fake>, Form(form): Form<Exchange>) -> Response {
     let mut inner = fake.0.lock().expect("fake GitHub state");
+    if let Some(answer) = app::token(&mut inner, &form) {
+        return answer;
+    }
     if form.client_id.as_deref() != Some(&inner.client_id)
         || form.client_secret.as_deref() != Some(&inner.client_secret)
     {
         return bad("incorrect_client_credentials");
     }
     // Single use: the code is gone whether or not the rest checks out.
-    let Some(grant) = inner.codes.remove(&form.code) else {
+    // A code issued to the GitHub App's client is only for that client.
+    let Some(grant) = inner.codes.remove(&form.code).filter(|g| !g.app) else {
         return bad("bad_verification_code");
     };
-    if form
-        .redirect_uri
-        .as_deref()
-        .is_some_and(|r| r != grant.redirect)
-    {
-        return bad("redirect_uri_mismatch");
-    }
-    let verifier = form.code_verifier.unwrap_or_default();
-    if URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())) != grant.challenge {
-        return bad("bad_verification_code");
+    if let Some(refused) = checked_grant(&grant, &form) {
+        return refused;
     }
     let access = format!("gho_{}", random_hex(18));
     let scope = grant.scopes.join(",");
@@ -413,6 +443,9 @@ fn holder(fake: &Fake, headers: &HeaderMap) -> Option<(FakeUser, Vec<String>)> {
         .ok()?
         .strip_prefix("Bearer ")?;
     let inner = fake.0.lock().expect("fake GitHub state");
+    if let Some(user) = app::user_of(&inner, token) {
+        return Some((inner.users[user].clone(), vec![app::USER_SCOPE.to_string()]));
+    }
     inner
         .tokens
         .get(token)
@@ -470,6 +503,28 @@ async fn repos(
         .map(inflate)
         .collect();
     let mut response = axum::Json(rows).into_response();
+    if let Some(value) = link_header(&headers, &uri, number, last) {
+        response.headers_mut().insert(header::LINK, value);
+    }
+    if fake.0.lock().expect("fake GitHub state").sso_partial {
+        response.headers_mut().insert(
+            "x-github-sso",
+            axum::http::HeaderValue::from_static(
+                "partial-results; organizations=21955855,20582480",
+            ),
+        );
+    }
+    response
+}
+
+/// GitHub's `Link` header for page `number` of `last`, keeping the rest of
+/// the request's query.
+pub(crate) fn link_header(
+    headers: &HeaderMap,
+    uri: &axum::http::Uri,
+    number: usize,
+    last: usize,
+) -> Option<axum::http::HeaderValue> {
     let host = headers
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
@@ -498,20 +553,10 @@ async fn repos(
     if number > 1 {
         parts.push(format!("<{}>; rel=\"first\"", link(1)));
     }
-    if !parts.is_empty()
-        && let Ok(value) = axum::http::HeaderValue::from_str(&parts.join(", "))
-    {
-        response.headers_mut().insert(header::LINK, value);
+    if parts.is_empty() {
+        return None;
     }
-    if fake.0.lock().expect("fake GitHub state").sso_partial {
-        response.headers_mut().insert(
-            "x-github-sso",
-            axum::http::HeaderValue::from_static(
-                "partial-results; organizations=21955855,20582480",
-            ),
-        );
-    }
-    response
+    axum::http::HeaderValue::from_str(&parts.join(", ")).ok()
 }
 
 /// The repository `owner/name` the caller can see: any public one without
@@ -528,9 +573,12 @@ fn reachable(
         let Some((user, scopes)) = holder(fake, headers) else {
             return Err(Box::new(bad_credentials()));
         };
-        visible(&user, &scopes)
-            .into_iter()
-            .find(|r| r["full_name"] == full.as_str())
+        let shown = if scopes.iter().any(|s| s == app::USER_SCOPE) {
+            app::reachable(fake, &user)
+        } else {
+            visible(&user, &scopes)
+        };
+        shown.into_iter().find(|r| r["full_name"] == full.as_str())
     } else {
         let inner = fake.0.lock().expect("fake GitHub state");
         inner
@@ -560,6 +608,10 @@ async fn repo(
     headers: HeaderMap,
     axum::extract::Path((owner, name)): axum::extract::Path<(String, String)>,
 ) -> Response {
+    let full = format!("{owner}/{name}");
+    if let Some(answer) = app::repo_as_installation(&fake, &headers, &full) {
+        return answer;
+    }
     match reachable(&fake, &headers, &owner, &name) {
         Ok(found) => axum::Json(inflate(&found)).into_response(),
         Err(response) => *response,
@@ -729,7 +781,7 @@ async fn api_layer(
     next: axum::middleware::Next,
 ) -> Response {
     let path = request.uri().path().to_string();
-    if !(path.starts_with("/user") || path.starts_with("/repos/")) {
+    if !(path.starts_with("/user") || path.starts_with("/repos/") || path.starts_with("/app/")) {
         return next.run(request).await;
     }
     if let Some(version) = request.headers().get("x-github-api-version")
@@ -950,7 +1002,7 @@ pub fn repository(id: u64, full_name: &str, private: bool) -> Value {
 
 /// A short repository value (`id`, `full_name`, `private`, and any field
 /// it sets) grown to GitHub's whole shape.
-fn inflate(short: &Value) -> Value {
+pub(crate) fn inflate(short: &Value) -> Value {
     let mut full = repository(
         short["id"].as_u64().unwrap_or_default(),
         short["full_name"].as_str().unwrap_or("octo-local/unnamed"),
@@ -1040,7 +1092,7 @@ async fn emails(State(fake): State<Fake>, headers: HeaderMap) -> Response {
     }
 }
 
-fn random_hex(bytes: usize) -> String {
+pub(crate) fn random_hex(bytes: usize) -> String {
     let (_, verifier) = oauth2::PkceCodeChallenge::new_random_sha256_len(bytes.max(32) as u32);
     Sha256::digest(verifier.secret().as_bytes())[..bytes.min(32)]
         .iter()

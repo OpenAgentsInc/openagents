@@ -9698,6 +9698,7 @@ dependencies = [
  "oa-auth",
  "oauth2",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",

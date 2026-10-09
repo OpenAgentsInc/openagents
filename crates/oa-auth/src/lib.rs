@@ -1,5 +1,7 @@
 //! OpenAgents sign-in, owned in Rust. See `docs/auth/README.md`.
 //!
+//! - [`app`]: the GitHub App: its key and JWT, installation tokens and
+//!   their cache (#11056).
 //! - [`config`]: the OAuth App settings and the private credentials file.
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
@@ -13,6 +15,7 @@
 //! - `fake` (feature): an in-process fake GitHub for tests and fixtures.
 //! - `local` (feature): a small account service for local fixtures.
 
+pub mod app;
 pub mod cache;
 pub mod config;
 pub mod device;
@@ -25,6 +28,7 @@ pub mod local;
 pub mod repos;
 pub mod service;
 
+pub use app::{AppClient, AppCredentials, AppInstall, TokenCache};
 pub use config::{CALLBACK_PATH, Endpoints, GithubApp, GithubCredentials};
 pub use flow::{FLOW_COOKIE, Flow, Purpose, return_to};
 pub use github::Github;

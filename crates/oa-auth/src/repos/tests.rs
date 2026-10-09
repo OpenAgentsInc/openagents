@@ -66,6 +66,7 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
             default_branch: "main".into(),
             private: true,
             created_unix: 1,
+            installation_id: None,
         });
         Ok(())
     })

@@ -81,6 +81,7 @@ fn account_config() -> config::Accounts {
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,
+        github_app: None,
         anonymous: None,
     }
 }

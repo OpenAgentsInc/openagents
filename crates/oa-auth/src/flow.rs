@@ -9,7 +9,9 @@
 //! started the flow, and the callback re-validates `return_to` anyway.
 //!
 //! Connecting repositories reuses the same OAuth App and callback: a
-//! second authorize that asks for more scopes only at that moment.
+//! second authorize that asks for more scopes only at that moment. With a
+//! GitHub App, the trip authorizes the App's own client instead
+//! ([`Purpose::Install`], tag `.install`), on the same callback.
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -59,6 +61,9 @@ pub enum Purpose {
     /// Connect repositories for the signed-in account: `private` asks for
     /// `repo` and `read:org`; otherwise nothing beyond sign-in.
     Repos { private: bool },
+    /// Authorize the GitHub App for the signed-in account (its own client;
+    /// GitHub Apps take no scopes), to find where it is installed.
+    Install,
 }
 
 impl Purpose {
@@ -67,6 +72,7 @@ impl Purpose {
             Self::SignIn => &SCOPES,
             Self::Repos { private: true } => &PRIVATE_REPO_SCOPES,
             Self::Repos { private: false } => &PUBLIC_REPO_SCOPES,
+            Self::Install => &[],
         }
     }
 
@@ -75,6 +81,7 @@ impl Purpose {
             Self::SignIn => None,
             Self::Repos { private: true } => Some("repos"),
             Self::Repos { private: false } => Some("repos-public"),
+            Self::Install => Some("install"),
         }
     }
 }
@@ -183,6 +190,7 @@ impl Flow {
             None => Purpose::SignIn,
             Some("repos") => Purpose::Repos { private: true },
             Some("repos-public") => Purpose::Repos { private: false },
+            Some("install") => Purpose::Install,
             Some(_) => return None,
         };
         let token = |s: &str, min: usize| {

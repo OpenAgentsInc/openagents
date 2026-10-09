@@ -27,6 +27,8 @@ struct Inner {
     dir: PathBuf,
     github: Github,
     tenant: String,
+    /// The GitHub App, when repository access goes through one.
+    app: Option<crate::app::AppClient>,
 }
 
 /// The local account service.
@@ -55,7 +57,20 @@ impl LocalService {
             dir: dir.to_path_buf(),
             github,
             tenant: tenant.into(),
+            app: None,
         })))
+    }
+
+    /// The same service with repository access through the GitHub App
+    /// `app` ([`crate::app`]).
+    #[must_use]
+    pub fn with_app(self, app: crate::app::AppClient) -> Self {
+        Self(Arc::new(Inner {
+            dir: self.0.dir.clone(),
+            github: self.0.github.clone(),
+            tenant: self.0.tenant.clone(),
+            app: Some(app),
+        }))
     }
 
     #[must_use]

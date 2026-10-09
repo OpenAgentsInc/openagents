@@ -5,7 +5,7 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
-[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL] \
+[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN]";
 
 #[tokio::main]
@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
     let mut github_oauth: Option<PathBuf> = None;
     let mut github_redirect: Option<String> = None;
+    let mut github_app: Option<PathBuf> = None;
     let mut cloud_byo: Option<PathBuf> = None;
     let mut cloud_byo_keys: Option<PathBuf> = None;
     let mut plan_meter: Option<PathBuf> = None;
@@ -70,6 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
             "--github-redirect" => github_redirect = Some(value),
+            // The GitHub App's private file; the web server reads its
+            // client id and slug only.
+            "--github-app" => github_app = Some(PathBuf::from(value)),
             "--environments" => {
                 let studio =
                     coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
@@ -119,6 +123,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             plan_meter.as_deref(),
             plan_checkout,
         )?));
+    }
+    if let Some(path) = github_app {
+        let redirect = match (github_redirect.clone(), config.cloud.as_deref()) {
+            (Some(url), _) => url,
+            (None, Some(cloud)) => format!("{}{}", cloud.origin(), oa_auth::CALLBACK_PATH),
+            (None, None) => {
+                return Err("--github-app needs --cloud-config (or --github-redirect)".into());
+            }
+        };
+        config.github_install = Some(std::sync::Arc::new(oa_auth::AppInstall::load(
+            &path,
+            &redirect,
+            oa_auth::Endpoints::default(),
+        )?));
+        println!("Repositories are added through the GitHub App");
     }
     if let Some(path) = github_oauth {
         // The callback defaults to the Cloud origin's /auth/github/callback.
