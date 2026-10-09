@@ -361,7 +361,9 @@ impl Everglade {
             bake: None,
             probes: None,
             baked: None,
-            relights: false,
+            // Desktops relight what breaks; a phone keeps its baked light
+            // rather than hold a second copy of the town's geometry.
+            relights: !cfg!(any(target_os = "ios", target_os = "android")),
             relight_from: None,
             relight: None,
             extra_blocks: Vec::new(),
@@ -796,9 +798,9 @@ impl Everglade {
     /// probes near the gaps are traced again without the broken pieces, so
     /// no baked shade floats where a wall stood and rubble takes the light
     /// of the open lot, and when they are restored the baked light returns.
-    /// Call it before [`Self::bake_light`]. The Meteor Showcase does
-    /// (issue #10938); the town waits for its bake's destruction fallback
-    /// (#10907).
+    /// Call it before [`Self::bake_light`]. Desktops relight by default,
+    /// the town over its offline-baked layers too (#10907); the Meteor
+    /// Showcase asks explicitly (#10938).
     pub fn relight_destruction(&mut self) {
         self.relights = true;
     }
@@ -1542,9 +1544,17 @@ impl Everglade {
             self.probes = Some(Arc::new(probes));
         }
         if self.bake.is_none()
-            && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
+            && let Some(combined) = self.baked.as_mut().and_then(|b| b.update(&self.light))
         {
-            self.probes = Some(Arc::new(probes));
+            // What destruction opened stays relit over the new hour's light
+            // (#10907); without a relight the light goes straight to the
+            // renderer.
+            if let Some(relight) = &mut self.relight {
+                relight.rebase(Arc::new(combined.lights), combined.probes.clone());
+            } else if let Some(baked) = &self.baked {
+                baked.scene.baked.deliver_lights(combined.lights);
+            }
+            self.probes = Some(Arc::new(combined.probes));
         }
     }
 
@@ -1835,6 +1845,14 @@ impl Everglade {
             }
         }
         self.poll_bake();
+        // The baked layers combined for this hour, then relit over.
+        for _ in 0..3_000 {
+            if self.baked.as_ref().is_none_or(|b| b.settled(&self.light)) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            self.poll_bake();
+        }
         if let Some(probes) = self.relight.as_mut().and_then(relight::Relight::settle) {
             self.probes = Some(Arc::new(probes));
         }

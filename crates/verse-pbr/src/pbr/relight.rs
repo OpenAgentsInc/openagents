@@ -72,8 +72,9 @@ pub struct Relighter {
     triangles: Vec<u32>,
     /// The merged vertices at each occluder's corners.
     corners: Vec<[u32; 3]>,
-    base_lights: Arc<Vec<[u8; 4]>>,
-    base_probes: AmbientProbes,
+    /// The light to start from: what the bake delivered, or what replaced
+    /// it since ([`Self::rebase`]).
+    base: std::sync::RwLock<(Arc<Vec<[u8; 4]>>, AmbientProbes)>,
 }
 
 /// A relit scene: the light channel of every merged vertex, the probes,
@@ -129,17 +130,40 @@ impl Relighter {
             baker: SceneBaker::from_geometry(geometry, light, settings, 0),
             triangles,
             corners,
-            base_lights,
-            base_probes,
+            base: std::sync::RwLock::new((base_lights, base_probes)),
         })
+    }
+
+    /// Replaces the light to start from, as when offline-baked layers are
+    /// combined again for another hour (#10907): the next relight lays the
+    /// recomputed light over it.
+    pub fn rebase(&self, lights: Arc<Vec<[u8; 4]>>, probes: AmbientProbes) {
+        if lights.len() == self.baker.vertex_count() {
+            *self
+                .base
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = (lights, probes);
+        }
+    }
+
+    fn base_now(&self) -> (Arc<Vec<[u8; 4]>>, AmbientProbes) {
+        self.base
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// The baked light and probes, as nothing hidden leaves them.
     #[must_use]
     pub fn base(&self) -> Relit {
+        let (lights, probes) = self.base_now();
+        Self::from_base(&lights, probes)
+    }
+
+    fn from_base(lights: &Arc<Vec<[u8; 4]>>, probes: AmbientProbes) -> Relit {
         Relit {
-            lights: self.base_lights.as_ref().clone(),
-            probes: self.base_probes.clone(),
+            lights: lights.as_ref().clone(),
+            probes,
             hidden: 0,
             vertices: 0,
             probes_relit: 0,
@@ -152,15 +176,17 @@ impl Relighter {
     /// set.
     #[must_use]
     pub fn relight(&self, hidden: &[u32], threads: usize, cancel: &AtomicBool) -> Option<Relit> {
+        let (base_lights, base_probes) = self.base_now();
+        let base = || Self::from_base(&base_lights, base_probes.clone());
         if hidden.is_empty() {
-            return Some(self.base());
+            return Some(base());
         }
         let skip: Vec<bool> = self
             .triangles
             .iter()
             .map(|t| hidden.binary_search(t).is_ok())
             .collect();
-        let mut gone = vec![false; self.base_lights.len()];
+        let mut gone = vec![false; base_lights.len()];
         let mut marked: HashSet<IVec3> = HashSet::new();
         for (o, _) in skip.iter().enumerate().filter(|(_, s)| **s) {
             let corners = self.corners[o].map(|i| self.baker.vertex_position(i as usize));
@@ -173,7 +199,7 @@ impl Relighter {
             // Only far levels of detail were hidden: nothing occludes less.
             return Some(Relit {
                 hidden: hidden.len(),
-                ..self.base()
+                ..base()
             });
         }
         let near = dilate(&marked, (REACH / CELL).ceil() as i32);
@@ -190,7 +216,7 @@ impl Relighter {
         let traced = run(probes.len(), threads, cancel, |k| {
             self.baker.bake_probe(probes[k], skip)
         })?;
-        let mut out = self.base();
+        let mut out = base();
         for (&i, light) in vertices.iter().zip(lights) {
             out.lights[i] = light;
         }
@@ -206,7 +232,7 @@ impl Relighter {
         let digest = hidden.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &t| {
             (h ^ u64::from(t)).wrapping_mul(0x0100_0000_01b3)
         });
-        out.probes.grid.version = (self.base_probes.grid.version ^ (digest << 1)) | 1;
+        out.probes.grid.version = (base_probes.grid.version ^ (digest << 1)) | 1;
         out.hidden = hidden.len();
         out.vertices = vertices.len();
         out.probes_relit = relit;
@@ -297,6 +323,8 @@ pub struct Relight {
     cancel: Arc<AtomicBool>,
     /// What the last relight recomputed.
     last: Option<RelightStats>,
+    /// A new light to start from, waiting for the relighter to be built.
+    rebased: Option<(Arc<Vec<[u8; 4]>>, AmbientProbes)>,
 }
 
 impl Relight {
@@ -321,6 +349,26 @@ impl Relight {
             pending: None,
             cancel,
             last: None,
+            rebased: None,
+        }
+    }
+
+    /// Starts from `lights` and `probes` from now on, as when the light the
+    /// bake delivered is combined again for another hour, and lays the
+    /// relit light over them again ([`Relighter::rebase`]). Until the next
+    /// relight lands, nothing is delivered: the caller's light stays.
+    pub fn rebase(&mut self, lights: Arc<Vec<[u8; 4]>>, probes: AmbientProbes) {
+        match &self.state {
+            State::Ready(relighter) => {
+                relighter.rebase(lights, probes);
+                // Run again whatever the edits' revision.
+                self.seen = u64::MAX;
+            }
+            State::Failed => {
+                self.scene.baked.deliver_lights(lights.as_ref().clone());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            State::Building(_) => self.rebased = Some((lights, probes)),
         }
     }
 
@@ -391,7 +439,13 @@ impl Relight {
         {
             if let State::Building(receive) = &self.state {
                 self.state = match receive.try_recv() {
-                    Ok(Some(relighter)) => State::Ready(Arc::new(relighter)),
+                    Ok(Some(relighter)) => {
+                        if let Some((lights, probes)) = self.rebased.take() {
+                            relighter.rebase(lights, probes);
+                            self.seen = u64::MAX;
+                        }
+                        State::Ready(Arc::new(relighter))
+                    }
                     Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => State::Failed,
                     Err(std::sync::mpsc::TryRecvError::Empty) => return None,
                 };
@@ -665,6 +719,45 @@ mod tests {
         assert!(relight.settle().is_some());
         let restored = scene.baked.take().unwrap();
         assert!(at(&scene, &restored, Vec3::ZERO) < 0.4);
+    }
+
+    #[test]
+    fn a_new_base_keeps_the_gap_relit_and_returns_whole_on_restore() {
+        let scene = Arc::new(shelter());
+        let (lights, probes) = baked(&scene);
+        let mut relight = Relight::start(
+            scene.clone(),
+            LIGHT,
+            settings(),
+            lights.clone(),
+            probes.clone(),
+        );
+        relight.settle();
+        hide_roof(&scene);
+        relight.settle();
+        scene.baked.take();
+        // Another hour's light, darker everywhere: far ground takes it, and
+        // the ground under the fallen roof stays relit, open to the sky.
+        let darker: Vec<[u8; 4]> = lights
+            .iter()
+            .map(|l| [l[0] / 2, l[1] / 2, l[2] / 2, l[3]])
+            .collect();
+        let darker = Arc::new(darker);
+        relight.rebase(darker.clone(), probes.clone());
+        assert!(!relight.settled());
+        relight.settle();
+        let delivered = scene.baked.take().unwrap();
+        let away = Vec3::new(15.0, 0.0, 15.0);
+        assert_eq!(at(&scene, &delivered, away), at(&scene, &darker, away));
+        assert!(at(&scene, &delivered, Vec3::ZERO) > 0.95);
+        // Restored, the new light exactly.
+        for range in &scene.index_ranges()[1] {
+            scene
+                .edits
+                .write(range.first, scene.range_indices(1, range));
+        }
+        relight.settle();
+        assert_eq!(scene.baked.take().unwrap(), *darker);
     }
 
     #[test]

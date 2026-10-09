@@ -285,9 +285,8 @@ its worker, off the frame. Frame times did not change. With
 floating shade gone from the standing wall
 ([captures/meteor-showcase/relight-aftermath-ambient.jpg](captures/meteor-showcase/relight-aftermath-ambient.jpg),
 committed proxies, before above and after below). `--restore-at` writes
-`restored.png` with the baked light back. The Everglade town itself still
-waits for B3 (#10907); offline-baked sun layers that change after a relight
-replace it.
+`restored.png` with the baked light back. The Everglade town relights the same way
+since B3 (#10907), over its offline-baked layers.
 
 ## Known issues
 

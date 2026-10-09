@@ -588,6 +588,21 @@ reimplemented from published papers.
 - **B3 (#10907): time of day and destruction.** The town clock blends the
   sun layers and fades the lamp layer in at dusk; a broken piece and its
   neighbors fall back to dynamic light. Needs B2.
+  Landed October 9: the town blends the two baked suns either side of the
+  hour (`Layers::sun_weights`, continuous along the suns' order) at the
+  sun's strength, and combines the layers again on a worker whenever a
+  weight or the strength moves a sixty-fourth (`baked::STEP`, about 3.5
+  times a game hour). Through the day the light channel's mean change
+  between quarter hours stays at most 0.0098 (at dawn, from the strength),
+  where the nearest sun alone jumped 0.038, 0.034, and 0.033 at 10:00,
+  14:00, and 16:45. Combining takes about 24 ms on the worker; the frame
+  that uploads the new light costs about 1.7 ms more. Desktops relight
+  what breaks over the layers (`pbr::relight`, rebased when the hour's
+  light changes): a meteor on Stoop Lane's first townhouse hid 17,800
+  triangles and relit 151,958 vertices and 65 probes in 2.4 s on the
+  worker, the baked shade under the fallen houses gone; `R` restores the
+  layered light exactly. Phones keep their baked light. Measured with
+  `everglade_bake_timelapse` (private kit; its frames stay private).
 - **B4 (#10908): tiers and measurement.** Half and quarter resolution for
   web and phones, and the measured download, memory, frame, and load
   costs. Needs B2 and P8.

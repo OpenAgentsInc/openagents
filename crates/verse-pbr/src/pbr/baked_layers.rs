@@ -15,9 +15,10 @@
 //!
 //! The sky and sun layers also come as probe grids for characters. The
 //! combination follows the issue's rule, sky × sky intensity + sun(t) +
-//! lamps × lamp intensity: [`Layers::lights`] adds the nearest sun's bounce
-//! to the sky's multiplier for the light texture, and the shader adds the
-//! lamp layer ([`Layers::lamp_texels`]) times the frame's lamp intensity.
+//! lamps × lamp intensity: [`Layers::lights_blend`] adds the bounce of the
+//! two baked suns either side of the hour ([`Layers::sun_weights`]) to the
+//! sky's multiplier for the light texture, and the shader adds the lamp
+//! layer ([`Layers::lamp_texels`]) times the frame's lamp intensity.
 //!
 //! The file is `VLAY`, the format version and the header's length as
 //! little-endian `u32`s, the header as JSON, and the layers deflated. Each
@@ -491,16 +492,79 @@ impl Layers {
         }
     }
 
+    /// The baked suns to blend for a sun toward `dir`, with their weights
+    /// summing to one. The suns lie in the file in the order the sun
+    /// passes them; `dir` is placed on the nearest stretch between two
+    /// neighbors, by where it falls along the stretch, and each end weighs
+    /// as near as `dir` is to it. Before the first sun or past the last,
+    /// that sun alone. The weights move continuously with `dir`, so the
+    /// blend never pops as the hours pass (#10907).
+    #[must_use]
+    pub fn sun_weights(&self, dir: Vec3) -> Vec<(usize, f32)> {
+        let dir = dir.normalize_or(Vec3::Y);
+        let n = self.suns.len();
+        if n == 0 {
+            return Vec::new();
+        }
+        if n == 1 {
+            return vec![(0, 1.0)];
+        }
+        let angle = |k: usize| Vec3::from(self.suns[k].dir).angle_between(dir);
+        // Each stretch: where along it `dir` falls, 0 to 1, and how far off
+        // it, in radians.
+        let mut best: Option<(f32, usize, f32)> = None;
+        for i in 0..n - 1 {
+            let span = Vec3::from(self.suns[i].dir).angle_between(Vec3::from(self.suns[i + 1].dir));
+            let (a, b) = (angle(i), angle(i + 1));
+            let t = if span > 1e-6 {
+                ((a * a - b * b + span * span) / (2.0 * span * span)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let off = (a * a - (t * span) * (t * span)).max(0.0).sqrt();
+            let off = if t <= 0.0 {
+                a
+            } else if t >= 1.0 {
+                b
+            } else {
+                off
+            };
+            if best.is_none_or(|(o, _, _)| off < o - 1e-6) {
+                best = Some((off, i, t));
+            }
+        }
+        let Some((_, i, t)) = best else {
+            return vec![(0, 1.0)];
+        };
+        if t <= 0.0 {
+            vec![(i, 1.0)]
+        } else if t >= 1.0 {
+            vec![(i + 1, 1.0)]
+        } else {
+            vec![(i, 1.0 - t), (i + 1, t)]
+        }
+    }
+
     /// The light texture's texels: the sky's multiplier plus sun `sun`'s
     /// bounce times `ratio` ([`Self::sun_ratio`]), with the sky's open
     /// fraction.
     #[must_use]
     pub fn lights(&self, sun: Option<usize>, ratio: f32) -> Vec<[u8; 4]> {
+        self.lights_blend(&sun.map(|k| vec![(k, 1.0)]).unwrap_or_default(), ratio)
+    }
+
+    /// [`Self::lights`] with the suns `suns` blended by their weights
+    /// ([`Self::sun_weights`]).
+    #[must_use]
+    pub fn lights_blend(&self, suns: &[(usize, f32)], ratio: f32) -> Vec<[u8; 4]> {
         let table: [f32; 256] = std::array::from_fn(|b| {
             let u = b as f32 / 255.0;
             u * u * MAX_AMBIENT
         });
-        let sun = sun.and_then(|k| self.suns.get(k));
+        let suns: Vec<(&SunLayer, f32)> = suns
+            .iter()
+            .filter_map(|&(k, w)| Some((self.suns.get(k)?, w * ratio)))
+            .collect();
         self.sky
             .iter()
             .enumerate()
@@ -509,12 +573,14 @@ impl Layers {
                     return sky;
                 }
                 let (mut m, open) = decode(sky);
-                if let Some(t) = sun.and_then(|s| s.vertices.get(i)) {
-                    m += Vec3::new(
-                        table[t[0] as usize],
-                        table[t[1] as usize],
-                        table[t[2] as usize],
-                    ) * ratio;
+                for (sun, scale) in &suns {
+                    if let Some(t) = sun.vertices.get(i) {
+                        m += Vec3::new(
+                            table[t[0] as usize],
+                            table[t[1] as usize],
+                            table[t[2] as usize],
+                        ) * *scale;
+                    }
                 }
                 encode(m, open)
             })
@@ -537,34 +603,62 @@ impl Layers {
     /// `ratio`, against the reference light.
     #[must_use]
     pub fn probes(&self, sun: Option<usize>, ratio: f32) -> AmbientProbes {
-        let sun_layer = sun.and_then(|k| self.suns.get(k));
+        self.probes_blend(&sun.map(|k| vec![(k, 1.0)]).unwrap_or_default(), ratio)
+    }
+
+    /// [`Self::probes`] with the suns `suns` blended by their weights.
+    #[must_use]
+    pub fn probes_blend(&self, suns: &[(usize, f32)], ratio: f32) -> AmbientProbes {
+        let layers: Vec<(&SunLayer, f32)> = suns
+            .iter()
+            .filter_map(|&(k, w)| Some((self.suns.get(k)?, w * ratio)))
+            .collect();
         let data = self
             .sky_probes
             .iter()
             .enumerate()
             .map(|(i, sky)| {
                 let mut p = *sky;
-                if let Some(s) = sun_layer.and_then(|s| s.probes.get(i)) {
-                    for (x, y) in p.iter_mut().zip(s) {
-                        *x += y * ratio;
+                for (sun, scale) in &layers {
+                    if let Some(s) = sun.probes.get(i) {
+                        for (x, y) in p.iter_mut().zip(s) {
+                            *x += y * *scale;
+                        }
                     }
                 }
                 p
             })
             .collect();
         // Never zero and never tagged as a studio key's grid; changes with
-        // the sun and its strength.
+        // the suns, their weights, and their strength.
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        let mut tag: Vec<u8> = Vec::new();
+        if suns.is_empty() {
+            tag.extend(u64::MAX.to_le_bytes());
+        }
+        for &(k, w) in suns {
+            tag.extend((k as u64).to_le_bytes());
+            if suns.len() > 1 {
+                tag.extend(w.to_bits().to_le_bytes());
+            }
+        }
         for b in self
             .scene
             .bytes()
-            .chain(sun.map_or(u64::MAX, |k| k as u64).to_le_bytes())
+            .chain(tag)
             .chain(ratio.to_bits().to_le_bytes())
         {
             hash ^= u64::from(b);
             hash = hash.wrapping_mul(0x0100_0000_01b3);
         }
-        let dir = sun_layer.map_or(Vec3::Y, |s| Vec3::from(s.dir));
+        // The light the probes answer to: toward the blended sun.
+        let dir = layers
+            .iter()
+            .map(|(s, _)| s)
+            .zip(suns)
+            .map(|(s, &(_, w))| Vec3::from(s.dir) * w)
+            .sum::<Vec3>()
+            .normalize_or(Vec3::Y);
         AmbientProbes {
             grid: ProbeGrid {
                 origin: Vec3::from(self.probe_origin),
@@ -674,6 +768,46 @@ mod tests {
     }
 
     #[test]
+    fn the_suns_blend_smoothly_between_their_directions() {
+        let layers = sample();
+        // At a baked sun, that sun alone; halfway, half each; the weights
+        // move continuously between them.
+        assert_eq!(layers.sun_weights(Vec3::Y), vec![(0, 1.0)]);
+        let half = layers.sun_weights(Vec3::new(1.0, 1.0, 0.0));
+        assert_eq!(half.len(), 2);
+        assert!((half[0].1 - 0.5).abs() < 1e-4 && (half[1].1 - 0.5).abs() < 1e-4);
+        let mut last = 1.0;
+        for step in 0..=90 {
+            let a = (step as f32).to_radians();
+            let w = layers.sun_weights(Vec3::new(a.sin(), a.cos(), 0.0));
+            let first = w.iter().find(|(k, _)| *k == 0).map_or(0.0, |x| x.1);
+            assert!(
+                first <= last + 1e-4 && (last - first) < 0.03,
+                "{step}: {w:?}"
+            );
+            assert!((w.iter().map(|x| x.1).sum::<f32>() - 1.0).abs() < 1e-5);
+            last = first;
+        }
+        assert!(last < 1e-3);
+        // Past the last sun, away from the others: the last alone.
+        assert_eq!(
+            layers.sun_weights(Vec3::new(1.0, -0.2, 0.0)),
+            vec![(1, 1.0)]
+        );
+        // The blend's light lies between the two suns' lights.
+        let (a, b) = (layers.lights(Some(0), 1.0), layers.lights(Some(1), 1.0));
+        let mid = layers.lights_blend(&half, 1.0);
+        for i in 0..mid.len() {
+            let (x, y, m) = (decode(a[i]).0, decode(b[i]).0, decode(mid[i]).0);
+            assert!(m.cmpge(x.min(y) - 0.02).all() && m.cmple(x.max(y) + 0.02).all());
+        }
+        assert_ne!(
+            layers.probes_blend(&half, 1.0).grid.version,
+            layers.probes(Some(0), 1.0).grid.version
+        );
+    }
+
+    #[test]
     fn the_nearest_sun_adds_its_bounce_in_proportion_to_its_strength() {
         let layers = sample();
         assert_eq!(layers.nearest_sun(Vec3::new(0.1, 0.9, 0.0)), Some(0));
@@ -696,6 +830,11 @@ mod tests {
         assert_ne!(
             probes.grid.version,
             layers.probes(Some(1), 0.5).grid.version
+        );
+        // One sun weighted wholly is that sun.
+        assert_eq!(
+            layers.lights_blend(&[(0, 1.0)], 0.7),
+            layers.lights(Some(0), 0.7)
         );
         let lamps = layers.lamp_texels();
         assert_eq!(lamps.len(), 50);

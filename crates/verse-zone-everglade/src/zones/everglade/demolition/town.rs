@@ -986,12 +986,14 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
     ) -> Result<Self, String> {
-        Self::build(pack, placements, world, false, None)
+        Self::build(pack, placements, world, false, Some(&[]))
     }
 
     /// As [`Town::standalone`], with `houses` the zone's own kit houses:
-    /// each claims the kit pieces on its lot as one building, in place of
-    /// Everglade's town houses, whose lots may overlap the zone's.
+    /// each claims the kit pieces on its lot as one building. A standalone
+    /// town never takes Everglade's town houses, whose lots may overlap the
+    /// zone's ground: one standing where the Grove's tower stands made the
+    /// tower a single piece.
     ///
     /// # Errors
     ///
