@@ -1,0 +1,252 @@
+/* Composer (UI-06). Values come from the Apps SDK UI tokens (MIT, see
+   NOTICE). The composer and message roles are product-only, named in the same
+   scheme as the semantic layer so both themes resolve them through
+   light-dark() primitives. */
+
+:root {
+  --color-background-composer-surface: var(--color-surface-elevated);
+  --color-background-composer-primary: var(--color-background-primary-solid);
+  --color-background-user-message: var(--color-background-secondary-soft);
+  --color-text-user-message: var(--color-text);
+  --color-text-composer-primary: var(--color-text);
+  --color-text-composer-placeholder: var(--color-text-tertiary);
+  --composer-border-radius: var(--radius-3xl);
+  --composer-dropdown-label-color: var(--color-text-secondary);
+  --composer-dropdown-label-value-color: var(--color-text);
+  --elevation-composer: var(--shadow-100);
+  --line-height-composer: var(--font-text-md-line-height);
+  --min-height-composer: calc(var(--spacing) * 14);
+  --max-height-composer: 22.5rem;
+}
+
+.oa-composer {
+  position: relative;
+  width: 100%;
+  max-width: var(--thread-content-max-width, 48rem);
+}
+
+.oa-composer-root {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  width: 100%;
+  margin: 0;
+}
+
+.oa-composer-selectors {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+  padding: 0 calc(var(--spacing) * 1.5);
+}
+
+.oa-composer-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--composer-border-radius);
+  background: var(--color-background-composer-surface);
+  box-shadow: var(--elevation-composer);
+  cursor: text;
+  transition: border-color var(--transition-duration-basic) var(--transition-ease-basic);
+}
+.oa-composer-body:focus-within {
+  border-color: var(--color-border);
+}
+
+.oa-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 3) 0;
+}
+.oa-composer-attachments:empty {
+  display: none;
+}
+
+.oa-composer-input {
+  display: flex;
+  flex-grow: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.oa-rich-text-input {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: var(--min-height-composer);
+  max-height: var(--max-height-composer);
+  margin: 0;
+  padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4) calc(var(--spacing) * 1);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-composer-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-text-md-size);
+  line-height: var(--line-height-composer);
+  resize: none;
+  field-sizing: content;
+  outline: none;
+}
+.oa-rich-text-input::placeholder {
+  color: var(--color-text-composer-placeholder);
+  opacity: 1;
+}
+.oa-rich-text-input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.oa-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5) calc(var(--spacing) * 2.5);
+}
+.oa-composer-footer-start,
+.oa-composer-footer-end {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+}
+.oa-composer-footer-start {
+  flex: 1;
+}
+.oa-composer-footer-end {
+  flex: none;
+}
+
+/* Dropdown labels and the model picker trigger. */
+.oa-composer-dropdown,
+.oa-model-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+  max-width: 15rem;
+  height: calc(var(--spacing) * 8);
+  padding: 0 calc(var(--spacing) * 2) 0 calc(var(--spacing) * 2.5);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--composer-dropdown-label-color);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+  line-height: var(--font-text-sm-line-height);
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--transition-duration-basic) var(--transition-ease-basic);
+}
+.oa-composer-dropdown:hover,
+.oa-model-picker-trigger:hover,
+.oa-composer-dropdown[aria-expanded="true"],
+.oa-model-picker-trigger[aria-expanded="true"] {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.oa-composer-dropdown:focus-visible,
+.oa-model-picker-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-composer-dropdown:disabled,
+.oa-model-picker-trigger:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.oa-composer-dropdown-icon {
+  display: inline-flex;
+  flex: none;
+}
+.oa-composer-dropdown-text,
+.oa-model-picker-content {
+  display: inline-flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+  overflow: hidden;
+}
+.oa-composer-dropdown-label {
+  flex: none;
+}
+.oa-composer-dropdown-value,
+.oa-model-picker-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--composer-dropdown-label-value-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-model-picker-effort {
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+.oa-composer-dropdown-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--composer-dropdown-label-color);
+}
+
+/* Send. */
+.oa-composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(var(--spacing) * 9);
+  height: calc(var(--spacing) * 9);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-background-composer-primary);
+  color: var(--color-text-primary-solid);
+  cursor: pointer;
+  outline: none;
+  transition: opacity var(--transition-duration-basic) var(--transition-ease-basic);
+}
+.oa-composer-send:hover {
+  background: var(--color-background-primary-solid-hover);
+}
+.oa-composer-send:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-ring);
+}
+.oa-composer-send:disabled,
+.oa-composer-send[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Status: failure messages; empty takes no space. */
+.oa-composer-status {
+  padding: 0 calc(var(--spacing) * 3);
+  color: var(--color-text-danger-ghost, var(--color-text-secondary));
+  font-size: var(--font-text-sm-size);
+}
+.oa-composer-status:empty {
+  display: none;
+}
+
+@media (max-width: 40rem) {
+  .oa-composer-dropdown,
+  .oa-model-picker-trigger {
+    max-width: 10rem;
+    padding-inline: calc(var(--spacing) * 1.5);
+    font-size: var(--font-text-xs-size);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-composer-body,
+  .oa-composer-dropdown,
+  .oa-model-picker-trigger,
+  .oa-composer-send {
+    transition: none;
+  }
+}

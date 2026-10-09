@@ -1,0 +1,247 @@
+use maud::{Render, html};
+
+use super::*;
+
+fn chat_composer() -> Composer {
+    Composer::new("chat-form", "/chat/abc")
+        .label("Continue the chat")
+        .input_id("chat-input")
+        .body_id("chat-card")
+        .placeholder("Ask OpenAgents to build, fix bugs, explore")
+        .max_chars(8000)
+        .hidden(html! { input type="hidden" name="csrf" value="t"; })
+        .selectors(
+            ComposerDropdown::new("Repository", "openagents")
+                .hx(HxGet::new("/composer/repository").target("#composer-panel")),
+        )
+        .model_picker(ModelPickerTrigger::new("Auto").hx(HxGet::new("/composer/model")))
+}
+
+#[test]
+fn composer_is_a_plain_post_form_without_javascript() {
+    let html = chat_composer().render().into_string();
+    assert!(html.contains(
+        r#"<form id="chat-form" class="oa-composer-root" action="/chat/abc" method="post""#
+    ));
+    assert!(html.contains(r#"name="q""#));
+    assert!(html.contains(r#"type="submit" class="oa-composer-send""#));
+    assert!(html.contains(r#"<label class="oa-visually-hidden" for="chat-input">Message</label>"#));
+    assert!(html.contains(r#"id="chat-card""#));
+    assert!(html.contains(r#"maxlength="8000""#));
+    assert!(html.contains(" required"));
+    assert!(!html.to_ascii_lowercase().contains("<script"));
+}
+
+#[test]
+fn enhanced_composer_posts_with_htmx_and_never_swaps_the_draft() {
+    let html = chat_composer().render().into_string();
+    assert!(html.contains(r#"hx-post="/chat/abc""#));
+    assert!(html.contains(r#"hx-swap="none""#));
+    assert!(html.contains(r#"hx-disabled-elt="find button[type=submit]""#));
+    assert!(html.contains(r#"hx-sync="this:drop""#));
+    let plain = chat_composer().enhanced(false).render().into_string();
+    assert!(!plain.contains("hx-post") && !plain.contains(r#"hx-swap="none""#));
+    assert!(plain.contains(r#"method="post""#));
+}
+
+#[test]
+fn draft_is_restored_and_escaped() {
+    let html = chat_composer()
+        .draft("fix </textarea><script>x</script> & go")
+        .render()
+        .into_string();
+    assert!(
+        html.contains("fix &lt;/textarea&gt;&lt;script&gt;x&lt;/script&gt; &amp; go</textarea>")
+    );
+}
+
+#[test]
+fn status_region_is_live_and_described() {
+    let composer = chat_composer().status(html! { p { "Not sent. Try again." } });
+    let html = composer.render().into_string();
+    assert_eq!(composer.status_id(), "chat-form-status");
+    assert!(html.contains(
+        r#"id="chat-form-status" class="oa-composer-status" role="status" aria-live="polite""#
+    ));
+    assert!(html.contains(r#"aria-describedby="chat-form-status""#));
+    assert!(html.contains("Not sent. Try again."));
+}
+
+#[test]
+fn selectors_and_picker_load_panels_with_htmx() {
+    let html = chat_composer().render().into_string();
+    assert!(html.contains(r#"<div class="oa-composer-selectors">"#));
+    assert!(html.contains(r#"aria-label="Repository: openagents""#));
+    assert!(html.contains(r#"hx-get="/composer/repository""#));
+    assert!(html.contains(r##"hx-target="#composer-panel""##));
+    assert!(html.contains(r#"aria-label="Model: Auto""#));
+    assert!(html.contains(r#"hx-get="/composer/model""#));
+    // Selectors and picker are buttons, so they never submit the form.
+    assert_eq!(html.matches(r#"type="submit""#).count(), 1);
+}
+
+#[test]
+fn default_ids_derive_from_the_form_id() {
+    let html = Composer::new("ask", "/ask").render().into_string();
+    assert!(html.contains(r#"id="ask-input""#));
+    assert!(html.contains(r#"id="ask-body""#));
+    assert!(html.contains(r#"id="ask-status""#));
+}
+
+#[test]
+fn disabled_composer_disables_input_and_send() {
+    let html = Composer::new("c", "/c")
+        .disabled(true)
+        .render()
+        .into_string();
+    assert_eq!(html.matches(" disabled").count(), 2);
+}
+
+#[test]
+fn sidebar_collapses_behind_an_accessible_popover_toggle() {
+    let html = AppShell::new()
+        .sidebar(
+            Sidebar::new()
+                .brand(html! { a href="/" { "OpenAgents" } })
+                .nav(NavItem::new("Home", "/").current(true))
+                .section(SidebarSection::new("Chats").item(NavItem::new("<b>", "/chat/1"))),
+        )
+        .content(html! { p { "x" } })
+        .render()
+        .into_string();
+    assert!(html.contains(
+        r#"<aside id="oa-left-panel" class="oa-left-panel" popover="auto" aria-label="Sidebar">"#
+    ));
+    assert!(html.contains(r#"popovertarget="oa-left-panel" popovertargetaction="show" aria-controls="oa-left-panel" aria-label="Open sidebar""#));
+    assert!(html.contains(
+        r#"popovertargetaction="hide" aria-controls="oa-left-panel" aria-label="Close sidebar""#
+    ));
+    assert!(html.contains(r#"<nav class="oa-navigation" aria-label="Main">"#));
+    assert!(html.contains(r#"href="/" aria-current="page""#));
+    assert!(html.contains("&lt;b&gt;"));
+    assert!(html.contains(r##"<a class="oa-skip-link" href="#content">"##));
+    assert!(
+        html.contains(r#"<main id="content" class="oa-workspace" tabindex="-1"><p>x</p></main>"#)
+    );
+    let css = SHELL_CSS;
+    assert!(css.contains(".oa-left-panel[popover]:not(:popover-open)"));
+    assert!(css.contains("@media (max-width: 47.999rem)"));
+}
+
+#[test]
+fn shell_without_sidebar_has_no_menu_button() {
+    let html = AppShell::new().render().into_string();
+    assert!(!html.contains("oa-sidebar-toggle") && !html.contains("popover"));
+    assert!(html.contains(r#"data-sidebar="none""#));
+}
+
+#[test]
+fn app_mode_docks_the_composer_and_drops_the_footer() {
+    let shell = AppShell::new()
+        .footer(html! { footer { "legal" } })
+        .composer(Composer::new("chat-form", "/chat"));
+    let page = shell.clone().render().into_string();
+    assert!(page.contains(r#"data-mode="scroll""#) && page.contains("legal"));
+    let app = shell.mode(MainMode::App).render().into_string();
+    assert!(app.contains(r#"data-mode="app""#) && !app.contains("legal"));
+    assert!(app.contains(r#"<div class="oa-main-composer"><section class="oa-composer""#));
+    assert!(app.contains(r#"class="oa-main-top-fade" aria-hidden="true""#));
+}
+
+#[test]
+fn theme_toggle_carries_the_script_hook() {
+    let html = ThemeToggle::new().render().into_string();
+    assert!(html.contains(&format!(r#"{THEME_TOGGLE_ATTR}="""#)));
+    assert!(html.contains(r#"type="button""#));
+    assert!(html.contains(r#"aria-label="Toggle light and dark theme""#));
+    let fallback = ThemeToggle::new()
+        .fallback_action("/theme")
+        .return_to("/chat")
+        .render()
+        .into_string();
+    assert!(
+        fallback.contains(r#"<form class="oa-theme-toggle-form" method="post" action="/theme">"#)
+    );
+    assert!(fallback.contains(r#"type="submit""#) && fallback.contains(r#"value="toggle""#));
+    assert!(fallback.contains(r#"name="return_to" value="/chat""#));
+}
+
+#[test]
+fn document_sets_the_cookie_theme_or_follows_the_system() {
+    let system = Document::new("Chat").render().into_string();
+    assert!(system.starts_with("<!DOCTYPE html><html lang=\"en\"><head>"));
+    assert!(system.contains("<title>Chat \u{b7} OpenAgents</title>"));
+    assert!(system.contains(r#"content="light dark""#));
+    let dark = Document::new("OpenAgents")
+        .theme(Theme::from_cookie("dark"))
+        .render()
+        .into_string();
+    assert!(dark.contains(r#"<html lang="en" data-theme="dark">"#));
+    assert!(dark.contains("<title>OpenAgents</title>"));
+    assert_eq!(Theme::from_cookie("system"), None);
+    assert_eq!(THEME_COOKIE, "oa_theme");
+}
+
+#[test]
+fn product_roles_are_defined_in_the_apps_sdk_naming_scheme() {
+    for role in [
+        "--color-background-composer-surface:",
+        "--color-background-user-message:",
+        "--color-text-user-message:",
+        "--color-text-composer-primary:",
+    ] {
+        assert!(COMPOSER_CSS.contains(role), "{role}");
+    }
+}
+
+#[test]
+fn every_rendered_class_has_a_rule() {
+    let shell = AppShell::new()
+        .sidebar(
+            Sidebar::new()
+                .nav(
+                    NavItem::new("Home", "/")
+                        .icon(html! { "i" })
+                        .trailing(html! { "1" }),
+                )
+                .section(SidebarSection::new("Chats").empty("No chats yet"))
+                .footer(ThemeToggle::new().fallback_action("/theme")),
+        )
+        .actions(ThemeToggle::new())
+        .composer(
+            chat_composer()
+                .attachments(html! {})
+                .dropdown(
+                    ComposerDropdown::new("Branch", "main")
+                        .show_label(true)
+                        .icon(html! { "b" }),
+                )
+                .model_picker(ModelPickerTrigger::new("Auto").effort("High")),
+        )
+        .render()
+        .into_string();
+    let css = format!("{SHELL_CSS}{COMPOSER_CSS}");
+    let mut missing = Vec::new();
+    for chunk in shell.split("class=\"").skip(1) {
+        let classes = chunk.split('"').next().unwrap();
+        for class in classes.split_whitespace() {
+            if !css.contains(&format!(".{class}")) {
+                missing.push(class.to_owned());
+            }
+        }
+    }
+    assert!(missing.is_empty(), "classes without rules: {missing:?}");
+}
+
+#[test]
+fn stylesheets_are_balanced_and_use_the_oa_prefix() {
+    for css in [SHELL_CSS, COMPOSER_CSS] {
+        assert_eq!(css.matches('{').count(), css.matches('}').count());
+        for line in css.lines() {
+            let line = line.trim_start();
+            if line.starts_with('.') {
+                assert!(line.starts_with(".oa-"), "{line}");
+            }
+        }
+    }
+}

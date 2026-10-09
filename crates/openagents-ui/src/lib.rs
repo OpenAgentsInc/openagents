@@ -7,3 +7,4 @@
 
 pub mod content;
 pub mod icons;
+pub mod shell;
