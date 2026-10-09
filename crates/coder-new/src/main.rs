@@ -17,7 +17,33 @@ use crossterm::{
     terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
 
-fn main() -> io::Result<()> {
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            // `main` returning the error would print Rust's debug form
+            // (`Error: Custom { kind: .. }`); people get the sentence.
+            eprintln!("coder: {}", plain_error(&error));
+            std::process::ExitCode::from(if error.kind() == io::ErrorKind::InvalidInput {
+                2
+            } else {
+                1
+            })
+        }
+    }
+}
+
+/// The error's sentence without the operating system's code suffix, such as
+/// ` (os error 2)`.
+fn plain_error(error: &io::Error) -> String {
+    let text = error.to_string();
+    match text.rfind(" (os error ") {
+        Some(at) if text.ends_with(')') => text[..at].to_owned(),
+        _ => text,
+    }
+}
+
+fn run() -> io::Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args
         .iter()
@@ -55,14 +81,22 @@ fn main() -> io::Result<()> {
             args.next().ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("{name} needs a value. Use --help."),
+                    format!("{name} needs a value. Run coder --help to see the options."),
                 )
             })
         };
         match arg.as_str() {
             "--follow" => follow = Some(value("--follow")?),
             "--state" => state = Some(value("--state")?.into()),
-            "--in" => std::env::set_current_dir(value("--in")?)?,
+            "--in" => {
+                let dir = value("--in")?;
+                std::env::set_current_dir(&dir).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("Cannot work in {dir}: {}.", plain_error(&error)),
+                    )
+                })?;
+            }
             "--live" => app.set_mode(Mode::Live),
             "--demo" if DEMO_AVAILABLE => app.set_mode(Mode::Demo),
             "--demo" => {
@@ -82,7 +116,7 @@ fn main() -> io::Result<()> {
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("Unknown argument: {arg}. Use --help."),
+                    format!("Unknown option {arg}. Run coder --help to see the options."),
                 ));
             }
         }
@@ -250,7 +284,7 @@ fn main() -> io::Result<()> {
     result.and(extra_restore)
 }
 
-/// `coder-new login` and `coder-new logout [--state DIR]`.
+/// `coder login` and `coder logout [--state DIR]`.
 fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
     let dir = match rest {
         [] => model_access::store::openagents_dir().map(|root| root.join("coder-new")),
@@ -273,24 +307,45 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
 }
 
 fn help() -> String {
-    let modes = if DEMO_AVAILABLE {
-        "[--live | --demo]"
+    let (demo_option, snapshot_mode) = if DEMO_AVAILABLE {
+        (
+            "  --demo              Use local example conversations.\n",
+            "demo",
+        )
     } else {
-        "[--live]"
-    };
-    let demo_option = if DEMO_AVAILABLE {
-        "--demo             Use local example conversations.\n"
-    } else {
-        ""
-    };
-    let snapshot_mode = if DEMO_AVAILABLE { "demo" } else { "live" };
-    let demo_command = if DEMO_AVAILABLE {
-        "/demo toggles live and demo. "
-    } else {
-        ""
+        ("", "live")
     };
     format!(
-        "Coder terminal\n\nUsage: coder login | logout\n       coder {modes} [--plugins | --plugin-settings | --models] [--follow ID] [--state DIR] [--in DIR] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--follow ID        Watch a conversation another process holds, such as an agent's; any key takes it over.\n--state DIR        Use DIR as the Coder store instead of ~/.openagents/coder-new.\n--in DIR           Work in DIR.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\nlogin              Sign in to your openagents.com account with a code you approve at https://openagents.com/device.\nlogout             Sign this computer out of it.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+        "Coder, an AI coding agent in your terminal.
+
+Usage:
+  coder [OPTIONS]        Open Coder in this directory.
+  coder login            Sign in to openagents.com: approve the code at https://openagents.com/device.
+  coder logout           Sign this computer out.
+
+Options:
+  --in DIR            Work in DIR instead of this directory.
+  --models            Open the model picker first.
+  --plugins           Open plugins first.
+  --plugin-settings   Open the OpenRouter key settings first.
+  --follow ID         Watch a chat another program is running; press any key to take it over.
+  --state DIR         Keep Coder's data in DIR instead of ~/.openagents/coder-new.
+  --live              Use your providers and tools (the default).
+{demo_option}  --snapshot          Print a 110x36 SVG picture of the {snapshot_mode} screen and exit.
+  -V, --version       Print the version.
+  -h, --help          Print this help.
+
+Inside Coder, type / to see every command:
+  /login, then /sync on    Save your chats to your account.
+  /models                  Choose a model and reasoning level.
+  /resume                  Reopen a saved chat.
+  /export [path]           Save this chat to a file.
+  /plugins                 Turn plugins on and add keys (also Ctrl+P, or Cmd+P on macOS).
+  Esc stops a reply. Ctrl+C quits.
+
+Scripts and agents: openagents coder --help
+Update Coder:       curl -fsSL https://openagents.com/cli/install.sh | bash
+Update on Windows:  irm https://openagents.com/cli/install.ps1 | iex"
     )
 }
 

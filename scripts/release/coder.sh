@@ -27,6 +27,7 @@
 # Usage:
 #   scripts/release/coder.sh --version 1.0.0-rc.4
 #   scripts/release/coder.sh --version 1.0.0-rc.4 --publish
+#   scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers
 #   scripts/release/coder.sh --publish-installers
 #
 # Options:
@@ -35,10 +36,13 @@
 #   --targets "a b c"       Platforms to build; default all seven.
 #   --publish               Upload artifacts; off by default.
 #   --channel NAME          Channel to point after publishing; default rc.
+#                            stable takes only X.Y.Z, and also moves rc to the
+#                            release, so rc never names an older version.
 #   --allow-partial         Publish partial artifacts without moving a channel.
 #   --skip-notarization     Local builds only; refused with --publish.
 #   --point-channel NAME    Move a fully covered published version; no build.
-#   --publish-installers    Publish scripts/install/coder.sh and coder.ps1.
+#   --publish-installers    Publish scripts/install/coder.sh and coder.ps1;
+#                            with --version and --publish, after the release.
 #
 # Environment:
 #   CODER_RELEASES_BUCKET   Default openagentsgemini-cli-releases.
@@ -295,6 +299,16 @@ check_channel() {
   printf '%s' "$1" | grep -Eq '^[A-Za-z0-9_-]+$' || die "invalid channel: $1"
 }
 
+# stable names only a release, never a candidate.
+check_stable_version() {
+  if [ "$1" = stable ]; then
+    case "$version" in
+      *-*) die "the stable channel takes a release (X.Y.Z), not $version" ;;
+    esac
+  fi
+  return 0
+}
+
 # One Gatekeeper assessment: `spctl --assess -vv -t install`, the one a
 # person's browser download is held to. Prints the verdict and the source on
 # two lines; returns 0 only for `accepted` from `Notarized Developer ID`.
@@ -427,6 +441,7 @@ fi
 if [ -n "$point_channel_name" ]; then
   [ -n "$version" ] || die "--point-channel needs --version"
   check_version
+  check_stable_version "$point_channel_name"
   command -v gcloud >/dev/null 2>&1 || die "gcloud is required to point a channel"
   work=$(mktemp -d "${TMPDIR:-/tmp}/coder-point-channel.XXXXXX")
   gs cp "$root/$(sums_file_name)" "$work/sums" --quiet >/dev/null 2>&1 || : >"$work/sums"
@@ -441,7 +456,7 @@ sha=$(git -C "$repo_root" rev-parse --verify --quiet "$commit_ref^{commit}") ||
   die "no commit named $commit_ref"
 short=$(git -C "$repo_root" rev-parse --short=10 "$sha")
 
-if [ "$publish_installers" = 1 ]; then
+publish_installers_from_commit() {
   command -v gcloud >/dev/null 2>&1 || die "gcloud is required to publish"
   staged=$(mktemp -d "${TMPDIR:-/tmp}/coder-installers.XXXXXX")
   for pair in coder.sh:install.sh coder.ps1:install.ps1; do
@@ -455,11 +470,16 @@ if [ "$publish_installers" = 1 ]; then
   done
   rm -rf "$staged"
   echo "Install with: curl -fsSL $public_base/install.sh | sh"
+}
+
+if [ "$publish_installers" = 1 ] && { [ -z "$version" ] || [ "$publish" = 0 ]; }; then
+  publish_installers_from_commit
   exit 0
 fi
 
 [ -n "$version" ] || die "--version is required"
 check_version
+[ "$publish" = 0 ] || [ -z "$channel" ] || [ "$allow_partial" = 1 ] || check_stable_version "$channel"
 
 echo "$short $(git -C "$repo_root" log -1 --format=%s "$sha")"
 
@@ -874,3 +894,9 @@ bucket_objects >"$objects"
 refuse_uncovered_channel "$channel" "$sums" "$objects"
 rm -f "$objects"
 point_channel "$channel"
+if [ "$channel" = stable ]; then
+  point_channel rc
+fi
+if [ "$publish_installers" = 1 ]; then
+  publish_installers_from_commit
+fi

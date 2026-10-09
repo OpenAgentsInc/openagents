@@ -17,7 +17,10 @@ use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
 use crate::App;
 use crate::ui_page::UiPage;
 
-/// The Coder release the page and the installers' default channel name.
+/// The Coder release the page names and links. It stays at the newest
+/// published release: set it to a new version only after
+/// `scripts/release/coder.sh` has published that version
+/// (`docs/release/terminal.md`), or the page links files that don't exist.
 pub(crate) const CODER_VERSION: &str = "1.0.0-rc.5";
 pub(crate) const CODER_BASE: &str =
     "https://storage.googleapis.com/openagentsgemini-cli-releases/coder";
@@ -195,7 +198,10 @@ pub(crate) fn page(desktop: bool) -> PageColumn {
             h1 { "Download OpenAgents" }
             section aria-labelledby="coder-title" {
                 h2 #coder-title { "Coder" }
-                p.oa-page-meta { "Release candidate " (CODER_VERSION) "." }
+                p.oa-page-meta {
+                    @if CODER_VERSION.contains("-rc.") { "Release candidate " } @else { "Version " }
+                    (CODER_VERSION) "."
+                }
                 p { "macOS and Linux:" }
                 pre { code { (CODER_SH) } }
                 p { "Windows, in PowerShell:" }

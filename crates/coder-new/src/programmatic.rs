@@ -36,6 +36,7 @@ macro_rules! command_usage {
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
        [--credential-env NAME] [--timeout SECONDS]
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
+                                      Run Microcoder or an enabled ACP subagent.
   remote list                         List saved remote jobs.
   remote status ID                    Read one saved remote job.
   remote follow ID                    Observe a remote job to completion.
@@ -44,7 +45,6 @@ macro_rules! command_usage {
   remote apply ID                     Apply a remote job's artifacts locally.
   remote continue ID --task TEXT       Resume a remote job with a new task.
   remote steer ID --message TEXT       Send a correction to a remote job.
-                                      Run Microcoder or an enabled ACP subagent.
   plugins list                        List registered plugins and their status.
   plugins enable ID                   Turn a registered plugin on.
   plugins disable ID                  Turn a registered plugin off.
@@ -64,7 +64,7 @@ macro_rules! command_usage {
   sessions read ID                    Read one saved chat as an ATIF trajectory.
   sessions delete ID                  Remove one saved chat.
   export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
-  import FILE [--session ID]           Retain ATIF for viewing or continuing.
+  import FILE [--session ID]           Open an ATIF file to view or continue it.
 Options: --json streams NDJSON events for chat and delegation.
          --approvals stdin asks before any command that is not read-only:
          an approval event, answered by `confirm ID` or `reject ID` on stdin.

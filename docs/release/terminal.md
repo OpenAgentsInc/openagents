@@ -12,9 +12,9 @@ the installers still install those, and `/download` lists manual
 downloads only for an archive release (`published_as_archives` in
 `crates/openagents-web/src/pages/download.rs`).
 
-To publish a release: bump the three crates' versions and commit; deploy
-the website first if its installers changed (the hosted installers read
-both layouts, so an older site installer must not meet an archive-only
+To publish a release candidate: bump the three crates' versions and commit;
+deploy the website first if its installers changed (the hosted installers
+read both layouts, so an older site installer must not meet an archive-only
 channel); run `--version 1.0.0-rc.6` to build and check locally, then the
 same with `--publish --channel rc`; run `--publish-installers` from the same
 commit; then set `CODER_VERSION` in `download.rs` to the new version and
@@ -23,6 +23,42 @@ downloads. The website serves the installers at `/cli/install.sh` and
 `/cli/install.ps1`. `scripts/test-release-coder.sh` and
 `scripts/test-install-coder-hosted.py` test the archive layout, channel
 coverage, and the installers (both layouts) without a bucket.
+
+### Channels
+
+The installers take `stable` or `rc` (`install.sh rc`, `CODER_CHANNEL=rc`,
+or `-Channel rc` on Windows). With no channel named they follow `stable`,
+and fall back to `rc`, saying so, while `coder.stable` doesn't exist. So
+the installers default to stable the moment 1.0.0 is published, with no
+second website deploy. `--channel stable` takes only a release (`X.Y.Z`,
+never `-rc.N`), and moves `coder.rc` to the same version, so `rc` never
+names an older build than `stable`.
+
+### Publishing 1.0.0
+
+The crates carry `1.0.0` from #11091. `CODER_VERSION` in
+`crates/openagents-web/src/pages/download.rs` stays at the newest
+published version (`1.0.0-rc.5`) until 1.0.0 is published, because the
+page links that version's files. On the release Mac, from a clean checkout
+of `main`:
+
+1. **Deploy the website** from this commit (its installers default to
+   stable with the rc fallback). Launch step 3 in
+   [operations.md](../launch/1.0/operations.md).
+2. **Build and check, publishing nothing:**
+   `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0`
+3. **Publish, point stable and rc, publish the installers** (the one
+   command):
+   `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers`
+4. **Read it back and install it:**
+   `curl -fsS https://storage.googleapis.com/openagentsgemini-cli-releases/coder/coder.stable`
+   prints `1.0.0`; then `curl -fsSL https://openagents.com/cli/install.sh | bash`
+   in a new terminal and `coder --version` prints `coder 1.0.0 (...)`.
+5. **Turn on the downloads:** set `CODER_VERSION` to `"1.0.0"`, commit, and
+   deploy the website. `/download` then says "Version 1.0.0." and lists the
+   seven archives.
+
+Rollback: [operations.md](../launch/1.0/operations.md#terminal-coder).
 
 Published on 2026-10-06: `1.0.0-rc.3`, from commit `1701e1d3c1`.
 All 22 public executables passed checksum verification. The Mac executables

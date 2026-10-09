@@ -4228,7 +4228,7 @@
                 ]
               }
             ],
-            "summary": "",
+            "summary": "Run Microcoder or an enabled ACP subagent.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -4511,7 +4511,7 @@
                     ]
                   }
                 ],
-                "summary": "Send a correction to a remote job. Run Microcoder or an enabled ACP subagent.",
+                "summary": "Send a correction to a remote job.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -5079,7 +5079,7 @@
                 ]
               }
             ],
-            "summary": "Retain ATIF for viewing or continuing.",
+            "summary": "Open an ATIF file to view or continue it.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }

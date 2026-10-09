@@ -403,7 +403,7 @@ pub fn read(path: &Path) -> Result<Chat, String> {
         return Err("The trajectory exceeds 64 MiB.".into());
     }
     let value: Value =
-        serde_json::from_slice(&bytes).map_err(|_| "The trajectory is not a JSON document.")?;
+        serde_json::from_slice(&bytes).map_err(|_| "That file is not an ATIF trace.")?;
     from_document(&value)
 }
 

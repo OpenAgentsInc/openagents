@@ -8,10 +8,12 @@
 # selects that layout.
 #
 #   irm https://openagents.com/cli/install.ps1 | iex
-#   $env:CODER_VERSION = '1.0.0-rc.5'; irm https://openagents.com/cli/install.ps1 | iex
-#   & ([scriptblock]::Create((irm https://openagents.com/cli/install.ps1))) -Version 1.0.0-rc.5
+#   $env:CODER_VERSION = '1.0.0'; irm https://openagents.com/cli/install.ps1 | iex
+#   $env:CODER_CHANNEL = 'rc'; irm https://openagents.com/cli/install.ps1 | iex
+#   & ([scriptblock]::Create((irm https://openagents.com/cli/install.ps1))) -Version 1.0.0
 #
-# CODER_CHANNEL defaults to rc for the testing release; stable is also accepted.
+# CODER_CHANNEL is stable or rc. Without one, the installer follows stable, and
+# rc until a stable release is published.
 # CODER_BIN_DIR defaults to %USERPROFILE%\.openagents\bin. CODER_BASE_URL
 # overrides the public /coder release prefix. CODER_NO_PATH_UPDATE=1 leaves
 # the user PATH unchanged. Windows PowerShell 5.1 and PowerShell 7 are supported.
@@ -35,9 +37,9 @@ $CoderHomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
 $CoderRoot = if ($env:OPENAGENTS_HOME) { $env:OPENAGENTS_HOME } else { Join-Path $CoderHomeDir '.openagents' }
 $CoderBinDir = if ($env:CODER_BIN_DIR) { $env:CODER_BIN_DIR } else { Join-Path $CoderRoot 'bin' }
 if (-not $Version) { $Version = $env:CODER_VERSION }
-if (-not $Channel) { $Channel = if ($env:CODER_CHANNEL) { $env:CODER_CHANNEL } else { 'rc' } }
+if (-not $Channel) { $Channel = $env:CODER_CHANNEL }
 if ($Version -ceq 'stable' -or $Version -ceq 'rc') { $Channel = $Version; $Version = '' }
-if ($Channel -cnotmatch '\A(?:stable|rc)\z') { throw "Unknown channel '$Channel'; choose stable or rc." }
+if ($Channel -and $Channel -cnotmatch '\A(?:stable|rc)\z') { throw "Unknown channel '$Channel'; choose stable or rc." }
 
 function Test-CoderVersion([string] $Value) {
     return $Value -cmatch '\A[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.(?:0|[1-9][0-9]*))?\z'
@@ -63,6 +65,21 @@ function Get-CoderText([string] $Url) {
     return $Response.Content.ToString()
 }
 
+if (-not $Version -and -not $Channel) {
+    # No channel named: stable, or the newest release candidate while no
+    # stable release is published.
+    $Channel = 'stable'
+    try { $Version = (Get-CoderText "$CoderBaseUrl/coder.stable").Trim() }
+    catch {
+        try {
+            $Version = (Get-CoderText "$CoderBaseUrl/coder.rc").Trim()
+            $Channel = 'rc'
+            Write-Host 'No stable release is published yet; installing the release candidate.'
+        }
+        catch { $Version = '' }
+    }
+    if (-not $Version) { throw "Could not read coder.stable from $CoderBaseUrl. Check your connection or set CODER_VERSION." }
+}
 if (-not $Version) {
     try { $Version = (Get-CoderText "$CoderBaseUrl/coder.$Channel").Trim() }
     catch { throw "Could not read coder.$Channel from $CoderBaseUrl. Check your connection or set CODER_VERSION." }

@@ -126,15 +126,34 @@ class HostedInstallerTests(unittest.TestCase):
                 self.assert_installed("1.0.0-rc.1")
 
     def test_default_rc_and_rerun_update_all_companions(self):
+        # With no stable release published, the default follows rc.
         self.install_initial()
         self.publish("1.0.0-rc.3")
         (self.release / "coder.rc").write_text("1.0.0-rc.3\n")
         for _ in range(2):
             result = self.run_install()
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("No stable release is published yet", result.stderr)
         self.assert_installed("1.0.0-rc.3")
         self.assertEqual(self.profile.read_text().count("export PATH="), 1)
         self.assertTrue(self.profile.read_text().startswith("# Existing shell settings\n"))
+
+    def test_default_follows_stable_once_published(self):
+        self.install_initial()
+        self.publish("1.0.0")
+        self.publish("1.0.1-rc.1")
+        (self.release / "coder.stable").write_text("1.0.0\n")
+        (self.release / "coder.rc").write_text("1.0.1-rc.1\n")
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("No stable release", result.stderr)
+        self.assert_installed("1.0.0")
+        result = self.run_install("rc")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed("1.0.1-rc.1")
+        result = self.run_install(CODER_CHANNEL="stable")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed("1.0.0")
 
     def test_exact_version_and_stable_channel_selection(self):
         self.publish("1.0.0")

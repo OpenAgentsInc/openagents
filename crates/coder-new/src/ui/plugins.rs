@@ -441,7 +441,7 @@ fn brainstorm_settings(frame: &mut Frame, area: Rect, app: &App) {
             area.width,
         ));
         lines.push(Line::from(span(
-            "The separately discovered key is not bound atomically to score responses.",
+            "Scores are not proven to come from this key.",
             t::GRAY,
         )));
     }

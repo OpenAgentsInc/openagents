@@ -4,12 +4,13 @@
 # OpenAgents release contract; no xAI authentication or backend code is used.
 #
 #   curl -fsSL https://openagents.com/cli/install.sh | bash
-#   curl -fsSL https://openagents.com/cli/install.sh | bash -s -- 1.0.0-rc.5
-#   curl -fsSL https://openagents.com/cli/install.sh | CODER_CHANNEL=rc bash
+#   curl -fsSL https://openagents.com/cli/install.sh | bash -s -- 1.0.0
+#   curl -fsSL https://openagents.com/cli/install.sh | bash -s -- rc
 #
 # Environment:
 #   CODER_VERSION         Exact version; a positional version takes precedence.
-#   CODER_CHANNEL         stable or rc; default rc for the testing release.
+#   CODER_CHANNEL         stable or rc. Without one, the installer follows
+#                         stable, and rc until a stable release is published.
 #   CODER_BIN_DIR         Default ~/.openagents/bin.
 #   CODER_BASE_URL        Default the release bucket's /coder prefix.
 #   CODER_NO_PATH_UPDATE  1 leaves shell profiles unchanged.
@@ -28,7 +29,7 @@ coder_base_url="${CODER_BASE_URL:-https://storage.googleapis.com/openagentsgemin
 coder_base_url="${coder_base_url%/}"
 coder_bin_dir="${CODER_BIN_DIR:-${OPENAGENTS_HOME:-$HOME/.openagents}/bin}"
 coder_target="${1:-${CODER_VERSION:-}}"
-coder_channel="${CODER_CHANNEL:-rc}"
+coder_channel="${CODER_CHANNEL:-}"
 coder_commands='coder openagents microcoder'
 
 say() { printf '%s\n' "$*" >&2; }
@@ -37,7 +38,8 @@ usage() {
     cat <<'EOF'
 Install Coder and the openagents command.
 Usage: install.sh [VERSION | stable | rc]
-Rerun without a version to install the latest channel release.
+Rerun without a version to install the latest stable release (or the latest
+release candidate while there is no stable release); pass rc for candidates.
 CODER_BIN_DIR changes the install directory; CODER_NO_PATH_UPDATE=1 skips PATH setup.
 EOF
 }
@@ -53,7 +55,7 @@ is_version() {
 }
 
 case "$coder_channel" in
-    stable | rc) ;;
+    '' | stable | rc) ;;
     *) die "Unknown channel '$coder_channel'; choose stable or rc." ;;
 esac
 if [ -n "$coder_target" ]; then
@@ -146,6 +148,18 @@ if [ -n "$coder_target" ]; then
     coder_version="$coder_target"
 elif [ -n "$coder_channel" ]; then
     coder_version="$(pointer "$coder_channel" || :)"
+else
+    # No channel named: stable, or the newest release candidate while no
+    # stable release is published.
+    coder_channel=stable
+    coder_version="$(pointer stable || :)"
+    if [ -z "$coder_version" ]; then
+        coder_version="$(pointer rc || :)"
+        if [ -n "$coder_version" ]; then
+            coder_channel=rc
+            say "No stable release is published yet; installing the release candidate."
+        fi
+    fi
 fi
 [ -n "$coder_version" ] || die "Could not read coder.$coder_channel from $coder_base_url. Check your connection or choose an exact version."
 is_version "$coder_version" || die "The channel does not name a valid version: $coder_version."

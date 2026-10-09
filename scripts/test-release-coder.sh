@@ -27,6 +27,12 @@ done
 for bad in '../openagents' 'rc/name' 'rc name' ''; do
   if (check_channel "$bad") 2>/dev/null; then fail "refuse channel $bad"; else pass "refuse channel $bad"; fi
 done
+if (version=1.0.0-rc.3; check_stable_version stable) 2>/dev/null; then fail "refuse a candidate on stable"; else pass "refuse a candidate on stable"; fi
+if (version=1.0.0; check_stable_version stable) && (version=1.0.0-rc.3; check_stable_version rc); then
+  pass "stable takes a release, rc takes a candidate"
+else
+  fail "stable takes a release, rc takes a candidate"
+fi
 [ "$prefix" = coder ] && [ "$channel" = rc ] && [ "$(channel_name rc)" = coder.rc ] &&
   [ "$(sums_file_name)" = SHA256SUMS-coder-1.0.0-rc.3 ] && pass "separate Coder prefix and default RC channel" || fail "separate Coder prefix and default RC channel"
 [ "$(binary_for coder)" = coder-new ] && [ "$(products_for linux-x86_64)" = 'coder openagents microcoder' ] &&

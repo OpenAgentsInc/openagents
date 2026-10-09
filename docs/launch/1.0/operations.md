@@ -96,10 +96,26 @@ Point the stable channel back at the last good published version:
 scripts/release/coder.sh --point-channel stable --version <previous>
 ```
 
-New installs and anyone who reruns the installer get `<previous>`. Before
-1.0 there is no `stable` version, so `<previous>` is `1.0.0-rc.5`. The script
-refuses a version that isn't published for all seven platforms. Published
-versions are never replaced; a fix ships as `1.0.1`.
+New installs and anyone who reruns the installer get `<previous>`. The script
+refuses a version that isn't published for all seven platforms, and a
+release candidate on `stable`. Published versions are never replaced; a fix
+ships as `1.0.1`.
+
+1.0.0 is the first stable release, so rolling it back means removing the
+stable pointer (the installers then fall back to `rc`) and pointing `rc`
+back at `1.0.0-rc.5`, which `--point-channel` can't name because it was
+published in the older separate-files layout:
+
+```sh
+export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
+B=gs://openagentsgemini-cli-releases/coder
+gcloud storage rm $B/coder.stable
+printf '1.0.0-rc.5\n' >/tmp/coder.rc && gcloud storage cp /tmp/coder.rc $B/coder.rc \
+  --content-type=text/plain --cache-control='public, max-age=60'
+```
+
+Then set `CODER_VERSION` in `download.rs` back to `1.0.0-rc.5` if it was
+moved, and deploy the website.
 
 ### Desktop
 
@@ -242,8 +258,12 @@ In this order. Stop at the first step that fails and roll that platform back.
 4. **Chat worker**, if it has a new release: install beside the old one,
    move the symlink, restart, run the scratch chat.
 5. **Gateway** (account service): run the gateway and account checks.
-6. **Terminal**: publish 1.0.0 with `--channel stable`, read `coder.stable`
-   back, install on one Mac with the one-line installer, run `coder --version`.
+6. **Terminal**: on the release Mac,
+   `scripts/release/coder.sh --version 1.0.0 --publish --channel stable --publish-installers`
+   (it moves `coder.stable` and `coder.rc` to 1.0.0), read `coder.stable`
+   back, install on one Mac with the one-line installer, run `coder --version`,
+   then set `CODER_VERSION` to `1.0.0` and deploy the website again
+   ([terminal release](../../release/terminal.md#publishing-100)).
 7. **Desktop**: publish per OS, read each manifest back, download each file
    from `/download`.
 8. **Android**: put the APK on `/download`, install it on a phone.

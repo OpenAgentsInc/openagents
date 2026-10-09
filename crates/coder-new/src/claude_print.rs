@@ -116,8 +116,8 @@ pub(super) async fn run(
     if let Err(error) = live.send(task.as_bytes()).await {
         let stopped = live.stop().await;
         return Err(format!(
-            "Claude Code could not read the task: {error}; process group cleared: {}.",
-            stopped.group_clear
+            "Claude Code could not read the task: {error}.{}",
+            crate::bundled_runtime::still_running(stopped.group_clear)
         ));
     }
     live.close_input();
@@ -151,8 +151,8 @@ pub(super) async fn run(
     }
     if stopped.requested || cancel.load(Ordering::Relaxed) {
         return Err(format!(
-            "The Claude Code task was canceled; process group cleared: {}.",
-            stopped.group_clear
+            "The Claude Code task was canceled.{}",
+            crate::bundled_runtime::still_running(stopped.group_clear)
         ));
     }
     let summary = Summary::parse(&kept);

@@ -2,7 +2,7 @@
 name = "openagents-cli"
 # The CLI release version, shared with Coder and its bundled Microcoder.
 # The release scripts check this value before naming downloadable artifacts.
-version = "1.0.0-rc.5"
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true

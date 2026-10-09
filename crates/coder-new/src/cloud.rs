@@ -211,7 +211,7 @@ fn run(
             json!({"event":"remote_job","job":id,"state":record.state,"error":error,"resource":record.resource}),
         );
         return Err(format!(
-            "{error} Remote job: {id}. Use remote follow {id} to reconnect or verify cleanup."
+            "{error} Job {id}: run openagents coder remote follow {id} to reconnect and see whether its computer shut down."
         ));
     }
     let reply = record
@@ -222,17 +222,23 @@ fn run(
     let out = json!({"event":"finished","job":id,"state":record.state,"resource":record.resource,"reply":reply,"result":record.result,"usage":record.usage,"cleanup_complete":record.cleanup_complete,"artifacts":record.artifacts,"artifact_error":record.artifact_error});
     if let Some(error) = &record.artifact_error {
         return Err(format!(
-            "{error} Remote job: {id}; cleanup confirmed: {}.",
-            record.cleanup_complete
+            "{error} Job {id}.{}",
+            if record.cleanup_complete {
+                " Its computer shut down.".to_owned()
+            } else {
+                format!(
+                    " Its computer may still be running; run openagents coder remote status {id} to check."
+                )
+            }
         ));
     }
     if record.state == State::Failed {
         return Err(format!(
-            "{} Remote job: {id}.",
+            "{} Job {id}.",
             record
                 .error
                 .as_deref()
-                .unwrap_or("Remote execution failed.")
+                .unwrap_or("The job on the remote computer failed.")
         ));
     }
     Ok(out)

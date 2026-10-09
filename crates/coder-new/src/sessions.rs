@@ -296,8 +296,8 @@ pub fn read_document(path: &Path) -> Result<Value, String> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err("The chat session exceeds 64 MiB.".into());
     }
-    let value =
-        serde_json::from_slice(&bytes).map_err(|_| "The chat session is not valid JSON.")?;
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|_| "This saved chat is damaged and cannot be opened.")?;
     if !atif::validate(&value).is_empty() {
         return Err("The chat session is not valid ATIF.".into());
     }

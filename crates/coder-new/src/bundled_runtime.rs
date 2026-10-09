@@ -655,7 +655,7 @@ pub async fn acp(
         .await;
     let text = handler.text;
     let group_clear = session.close(Duration::from_secs(2)).await;
-    result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
+    result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("The agent could not finish the task: {error}.{}", still_running(group_clear)))
 }
 
 /// Refuse a Cursor delegation that has neither a credential variable nor a
@@ -745,8 +745,8 @@ async fn codex_cli(
     if let Err(error) = live.send(task.as_bytes()).await {
         let stopped = live.stop().await;
         return Err(format!(
-            "Codex could not read the task: {error}; process group cleared: {}.",
-            stopped.group_clear
+            "Codex could not read the task: {error}.{}",
+            still_running(stopped.group_clear)
         ));
     }
     live.close_input();
@@ -789,8 +789,8 @@ async fn codex_cli(
     }
     if stopped.requested || cancel.load(Ordering::Relaxed) {
         return Err(format!(
-            "The Codex task was canceled; process group cleared: {}.",
-            stopped.group_clear
+            "The Codex task was canceled.{}",
+            still_running(stopped.group_clear)
         ));
     }
     if !stopped.ending.success() || events.error.is_some() {
@@ -807,14 +807,14 @@ async fn codex_cli(
             ""
         };
         return Err(format!(
-            "{limited}Codex task failed: {reason}; process group cleared: {}.",
-            stopped.group_clear
+            "{limited}Codex could not finish the task: {reason}.{}",
+            still_running(stopped.group_clear)
         ));
     }
     if !events.completed {
         return Err(format!(
-            "Codex exited without completing the turn; process group cleared: {}.",
-            stopped.group_clear
+            "Codex stopped before it finished its reply.{}",
+            still_running(stopped.group_clear)
         ));
     }
     let tokens = events
@@ -1469,7 +1469,7 @@ fn command_boundary(directory: &Path) -> Result<Option<coder_boundary::Boundary>
         .owned_scratch_under(std::env::temp_dir())
         .build()
         .map(Some)
-        .map_err(|error| format!("The host could not bound the command: {error}"))
+        .map_err(|error| format!("Coder could not limit the command to this project: {error}"))
 }
 
 struct Checkout<'a> {
@@ -1553,7 +1553,8 @@ impl Env for Checkout<'_> {
                     text.push_str(&stopped.stderr.marked());
                 }
                 if !stopped.group_clear {
-                    text.push_str("\nThe command's process group did not clear.");
+                    text.push('\n');
+                    text.push_str(still_running(false).trim_start());
                 }
                 (
                     text,
@@ -1687,6 +1688,16 @@ fn bounded(text: &str, bytes: usize) -> String {
         end -= 1;
     }
     text[..end].into()
+}
+
+/// What a person reads after a stopped command or agent: nothing when all
+/// of its processes ended, a sentence when some may still be running.
+pub(crate) fn still_running(group_clear: bool) -> &'static str {
+    if group_clear {
+        ""
+    } else {
+        " Some of its processes may still be running."
+    }
 }
 
 #[cfg(test)]
@@ -2166,7 +2177,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         .await
         .unwrap_err();
         assert!(error.contains("Codex needs a login."));
-        assert!(error.contains("process group cleared: true"));
+        assert!(!error.contains("still be running"), "{error}");
     }
 
     #[tokio::test]
@@ -2201,11 +2212,9 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
                 signal.store(true, Ordering::Relaxed);
             }
         );
-        assert!(
-            result
-                .unwrap_err()
-                .contains("canceled; process group cleared: true")
-        );
+        let error = result.unwrap_err();
+        assert!(error.contains("canceled"), "{error}");
+        assert!(!error.contains("still be running"), "{error}");
         tokio::time::sleep(Duration::from_millis(1100)).await;
         assert!(!dir.path().join("escaped").exists());
     }
