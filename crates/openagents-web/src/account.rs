@@ -127,11 +127,14 @@ pub enum Account {
     /// Sign-in is available and the visitor is not signed in.
     SignedOut,
     /// Signed in as `name`; `sign_out` is the sign-out form's CSRF token;
-    /// `picture` when the account has a profile picture ([`AVATAR`]).
+    /// `picture` when the account has a profile picture ([`AVATAR`]);
+    /// `admin` when the account is a site admin (the menu then links the
+    /// analytics dashboard).
     SignedIn {
         name: String,
         sign_out: Option<String>,
         picture: bool,
+        admin: bool,
     },
 }
 
@@ -177,6 +180,7 @@ async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> Account {
         Ok(viewer) => Account::SignedIn {
             sign_out: service.logout_csrf(headers, &viewer).ok(),
             picture: viewer.avatar_url.is_some(),
+            admin: viewer.admin,
             name: viewer.account_label,
         },
         Err(_) => Account::SignedOut,

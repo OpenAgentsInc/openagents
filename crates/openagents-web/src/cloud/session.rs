@@ -134,6 +134,9 @@ pub struct Viewer {
     pub email: Option<String>,
     /// The linked GitHub profile's picture, on GitHub's avatar host.
     pub avatar_url: Option<String>,
+    /// A site admin, as the account service says (`invite_only` entries
+    /// marked `admin`, docs/auth/github.md).
+    pub admin: bool,
     pub workspaces: Vec<Workspace>,
     pub workspace: Option<WorkspaceSelection>,
     pub session_id: String,
@@ -612,6 +615,7 @@ impl CloudSession {
                 .avatar_url
                 .clone()
                 .filter(|url| url.starts_with("https://avatars.githubusercontent.com/")),
+            admin: details.account.admin,
             workspaces,
             workspace: selection,
             session_id: session.id,

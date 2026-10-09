@@ -299,9 +299,17 @@ impl UiPage {
                 name,
                 sign_out,
                 picture,
+                admin,
             } => {
                 let mut menu = AccountMenu::new(name)
-                    .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
+                    .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings));
+                if admin {
+                    menu = menu.item(
+                        MenuItem::link("Analytics", crate::analytics::DASHBOARD)
+                            .icon(Icon::BarChart),
+                    );
+                }
+                let mut menu = menu
                     .item(MenuItem::separator())
                     // Download lives in the header's pill only, not twice.
                     .item(MenuItem::link("Docs", DOCS).icon(Icon::Book));
@@ -652,6 +660,7 @@ mod tests {
             name: "Ada <Lovelace>".into(),
             sign_out: Some("token".into()),
             picture: false,
+            admin: false,
         });
         let footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
         let account = html.find("<div class=\"oa-account\">").expect("account");
@@ -681,6 +690,7 @@ mod tests {
                 name: "a".into(),
                 sign_out: Some("t".into()),
                 picture: true,
+                admin: false,
             })
             .render(&HeaderMap::new())
             .into_string();

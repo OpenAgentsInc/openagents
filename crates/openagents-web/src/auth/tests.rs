@@ -390,6 +390,54 @@ async fn the_web_servers_own_invite_list_sets_no_cookie_and_ends_the_session() {
     assert!(owner.0["oa_cloud_session"].starts_with("sess_"));
 }
 
+/// The analytics dashboard opens for a signed-in admin, whose account menu
+/// links it; an invited person who isn't admin, and anyone signed out, get
+/// the plain 404 and no link (#11153).
+#[tokio::test]
+async fn only_a_signed_in_admin_opens_the_analytics_dashboard() {
+    let invite: oa_auth::InviteOnly = serde_json::from_value(json!({"github": [
+        {"id": 583231, "admin": true},
+        {"login": "quiet-local"}
+    ]}))
+    .unwrap();
+    let world = world_with(true, Some(invite.clone()), Some(invite)).await;
+    let dashboard = crate::analytics::DASHBOARD;
+    let link = format!("href=\"{dashboard}\"");
+
+    let mut visitor = Browser::default();
+    let missing = visitor.get(&world, "/no-such-page").await;
+    let answer = visitor.get(&world, dashboard).await;
+    assert_eq!(answer.status, StatusCode::NOT_FOUND);
+    assert_eq!(answer.body, missing.body);
+
+    let mut member = Browser::default();
+    let done = member
+        .through_github(&world, "%2F", "login=quiet-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    let answer = member.get(&world, dashboard).await;
+    assert_eq!(answer.status, StatusCode::NOT_FOUND);
+    assert!(!answer.body.contains("Top pages"));
+    member.get(&world, "/settings").await;
+    let settings = member.get(&world, "/settings").await;
+    assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+    assert!(!settings.body.contains(&link), "no link for a non-admin");
+
+    let mut owner = Browser::default();
+    let done = owner
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    let answer = owner.get(&world, dashboard).await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert!(answer.body.contains("Top pages for people"));
+    assert_eq!(answer.headers[header::CACHE_CONTROL], "no-store");
+    owner.get(&world, "/settings").await;
+    let settings = owner.get(&world, "/settings").await;
+    assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+    assert!(settings.body.contains(&link) && settings.body.contains(">Analytics<"));
+}
+
 #[tokio::test]
 async fn an_email_less_github_user_signs_in_under_the_login() {
     let world = world(true).await;

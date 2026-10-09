@@ -333,7 +333,15 @@ id = "B16"
 group = "B"
 statement = "You never see ads in your chats, and our websites use no tracking cookies."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "shipped"
+link = "/privacy"
+issues = [11153]
+note = "The website counts its own use: no cookies, no third-party scripts, no IP addresses."
+evidence = [
+  { test = "crates/openagents-web/src/analytics/tests.rs::a_page_view_counts_its_template_referrer_and_device_and_sets_no_cookie" },
+  { test = "crates/openagents-web/src/analytics/tests.rs::no_row_ever_holds_an_address_an_id_or_text_from_the_request" },
+  { doc = "crates/openagents-web/content/legal/privacy.md" },
+]
 posts = [
   { date = "2024-05-20", url = "https://x.com/OpenAgentsInc/status/1792360190689386537" },
   { date = "2024-10-21", url = "https://x.com/OpenAgentsInc/status/1848211700450726214" },

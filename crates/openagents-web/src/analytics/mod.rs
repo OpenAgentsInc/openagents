@@ -357,7 +357,7 @@ pub struct Analytics {
     store: Option<Store>,
     /// This process's name in raw object names: random, per process.
     instance: String,
-    /// SHA-256 of the dashboard key; no dashboard without one.
+    /// SHA-256 of the dashboard key, the bearer fallback for scripts.
     key: Option<[u8; 32]>,
     flushing: tokio::sync::Mutex<()>,
 }
@@ -652,7 +652,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(BEACON, post(beacon))
         .route(SCRIPT, get(script))
-        .route(DASHBOARD, get(dashboard::show).post(dashboard::sign_in))
+        .route(DASHBOARD, get(dashboard::show).fallback(crate::not_found))
 }
 
 async fn script() -> Response {

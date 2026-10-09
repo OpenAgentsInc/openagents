@@ -92,6 +92,7 @@ pub(crate) fn page(
         name: viewer.account_label.clone(),
         sign_out: service.logout_csrf(headers, viewer).ok(),
         picture: viewer.avatar_url.is_some(),
+        admin: viewer.admin,
     };
     protect(
         UiPage::new(title)

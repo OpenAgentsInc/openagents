@@ -460,8 +460,8 @@ async fn rollups_sum_every_instance_and_flushes_never_double_count() {
 }
 
 #[tokio::test]
-async fn the_dashboard_needs_its_key() {
-    // No key configured: no page.
+async fn the_dashboard_is_a_plain_404_without_a_session_or_its_key() {
+    // No key and no sign-in here: no page.
     let (_root, site) = web(Arc::new(Analytics::default()));
     let (status, _, _) = send(&site, get(DASHBOARD).body(Body::empty()).unwrap()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -469,9 +469,12 @@ async fn the_dashboard_needs_its_key() {
     let analytics = Arc::new(Analytics::new(None, Some("correct horse")));
     let (_root, site) = web(analytics.clone());
     send(&site, get("/").body(Body::empty()).unwrap()).await;
+    let (_, _, missing) = send(&site, get("/no-such-page").body(Body::empty()).unwrap()).await;
+    // Signed out, no key: the same page as any address that doesn't exist.
     let (status, headers, body) = send(&site, get(DASHBOARD).body(Body::empty()).unwrap()).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert!(body.contains("type=\"password\"") && !body.contains("Top pages"));
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, missing);
+    assert!(!body.contains("type=\"password\"") && !body.contains("Analytics"));
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     let (status, _, body) = send(
         &site,
@@ -481,9 +484,24 @@ async fn the_dashboard_needs_its_key() {
             .unwrap(),
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert!(!body.contains("Top pages"));
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, missing);
+    // The old key form is gone: a post is the same 404.
     let (status, _, body) = send(
+        &site,
+        Request::builder()
+            .method("POST")
+            .uri(DASHBOARD)
+            .header(header::HOST, LOCAL)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("key=correct+horse"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!body.contains("Top pages"));
+    // The key as a bearer, for scripts.
+    let (status, headers, body) = send(
         &site,
         get(DASHBOARD)
             .header(header::AUTHORIZATION, "Bearer correct horse")
@@ -496,21 +514,6 @@ async fn the_dashboard_needs_its_key() {
         body.contains("Top pages for people") && body.contains("<code>/</code>"),
         "{body}"
     );
-    let (status, headers, body) = send(
-        &site,
-        Request::builder()
-            .method("POST")
-            .uri(DASHBOARD)
-            .header(header::HOST, LOCAL)
-            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(Body::from(
-                "username=openagents-analytics&key=correct+horse",
-            ))
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("Top pages for people"));
     assert!(headers.get(header::SET_COOKIE).is_none());
     // The owner's own visits to the dashboard aren't counted.
     assert!(analytics.snapshot().iter().all(|r| r.name != DASHBOARD));

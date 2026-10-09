@@ -93,6 +93,13 @@ def main():
         secret("openagents-web-analytics-key", "OPENAGENTS_WEB_ANALYTICS_KEY"),
     ])
     web["volumeMounts"] = [{"name": "webstate", "mountPath": "/state"}]
+    # The coder-serve sidecar's secrets from Secret Manager, not plain values.
+    serve = next((c for c in containers if c["name"] == "coder-serve"), None)
+    if serve is not None:
+        set_env(serve, [
+            secret("coder-github-client-secret", "CODER_GITHUB_CLIENT_SECRET"),
+            secret("openagents-posthog-project-token", "POSTHOG_PROJECT_TOKEN"),
+        ])
 
     gateway = {
         "name": "gateway",

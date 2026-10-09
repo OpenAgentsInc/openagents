@@ -219,6 +219,18 @@ if "OPENAGENTS_WEB_ANALYTICS_KEY" not in env:
     envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_KEY",
                  "valueFrom": {"secretKeyRef": {"name": "openagents-web-analytics-key",
                                                 "key": "latest"}}})
+# The coder-serve sidecar's secrets come from Secret Manager, never as
+# plain values in the spec (same values; a no-op once the live spec has it).
+SIDECAR_SECRETS = {"CODER_GITHUB_CLIENT_SECRET": "coder-github-client-secret",
+                   "POSTHOG_PROJECT_TOKEN": "openagents-posthog-project-token"}
+for c in spec["containers"]:
+    if c["name"] != "coder-serve":
+        continue
+    for e in c.get("env", []):
+        if e["name"] in SIDECAR_SECRETS and "value" in e:
+            del e["value"]
+            e["valueFrom"] = {"secretKeyRef": {"name": SIDECAR_SECRETS[e["name"]], "key": "latest"}}
+            sys.stderr.write(f"  coder-serve {e['name']} -> Secret Manager\n")
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):

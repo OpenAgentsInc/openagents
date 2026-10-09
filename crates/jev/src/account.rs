@@ -48,8 +48,9 @@ pub use policy::TeamPolicyView;
 #[path = "account_team.rs"]
 mod team;
 pub use management::{
-    GatewaySession, KeyGrant, KeyIdentity, KeyRecord, ProviderKeyRecord, PurchaseActivity, PurchaseActivityItem,
-    PurchaseCost, PurchaseReceipt, SessionGrant, WorkspaceIdentity, WorkspaceView,
+    GatewaySession, KeyGrant, KeyIdentity, KeyRecord, ProviderKeyRecord, PurchaseActivity,
+    PurchaseActivityItem, PurchaseCost, PurchaseReceipt, SessionGrant, WorkspaceIdentity,
+    WorkspaceView,
 };
 pub use referrals::{
     AttributionBinding, AttributionConfirmation, AttributionDecision, AttributionPolicy,
@@ -383,6 +384,9 @@ pub struct AccountInfo {
     /// The linked GitHub profile's picture.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    /// A site admin (`invite_only` marks the person `admin`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub admin: bool,
 }
 
 /// One workspace as the member may see it.

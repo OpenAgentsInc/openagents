@@ -60,7 +60,7 @@ test passes on production.
 | B13 | Answers can include live pieces such as slides, tables, and buttons, not only text. | W D | Partial | Desktop has slides; typed components are planned | 289 | #11113, #11114 |
 | B14 | It is free to start, and a $20 Pro plan unlocks stronger models and more capacity. | W T | Partial | Stripe Pro is built (`29032775fb`); kept out of launch copy | 119, 164, 242, 277, 280 | — |
 | B15 | You can share a team workspace and its chats with teammates. | W | Missing | — | 136, 137 | — |
-| B16 | You never see ads in your chats, and our websites use no tracking cookies. | all | Partial | No ads or third-party trackers today; not yet written in the privacy policy | X only | — |
+| B16 | You never see ads in your chats, and our websites use no tracking cookies. | all | Live | No ads; the website counts its own use with no cookies, third-party scripts, or IP addresses (privacy policy section 5; `analytics::tests::a_page_view_counts_its_template_referrer_and_device_and_sets_no_cookie`, `no_row_ever_holds_an_address_an_id_or_text_from_the_request`) | X only | #11153 |
 
 ## C. Coding with Coder
 

@@ -26,14 +26,15 @@ The web container reads `OPENAGENTS_WEB_ANALYTICS_BUCKET` and
 
 ## Opening the dashboard
 
-Production has no owner sign-in yet, so `/admin/analytics` asks for the
-dashboard key and keeps nothing (no cookie). Get the key:
+Sign in on <https://openagents.com> with GitHub as a site admin (an
+`invite_only` entry marked `admin`, `docs/auth/github.md`; in production,
+the owner) and choose **Analytics** in the account menu at the bottom of
+the left panel, or open <https://openagents.com/admin/analytics>. Anyone
+else, signed out or signed in without admin, gets the site's plain 404.
 
-    gcloud secrets versions access latest --secret openagents-web-analytics-key --project openagentsgemini
-
-Open <https://openagents.com/admin/analytics>, paste it, and choose
-**Show counts** (a password manager can save it). From a terminal:
+Scripts can send the dashboard key as a bearer instead:
 
     curl -s -H "Authorization: Bearer $(gcloud secrets versions access latest --secret openagents-web-analytics-key --project openagentsgemini)" https://openagents.com/admin/analytics
 
-To change the key, add a new secret version and deploy a new revision.
+A wrong key also gets the 404. To change the key, add a new secret
+version and deploy a new revision.

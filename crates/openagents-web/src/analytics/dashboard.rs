@@ -1,24 +1,20 @@
 //! `/admin/analytics`: the owner's view of the counts.
 //!
-//! Production has no sign-in for the owner yet, so the page is opened with
-//! the dashboard key (`OPENAGENTS_WEB_ANALYTICS_KEY`, a Secret Manager
-//! secret): typed into the page's form (a `POST`, so the key never sits in
-//! an address, a history entry, or a log), or sent as
-//! `Authorization: Bearer KEY`. Nothing is remembered: no cookie, so each
-//! visit asks again (a password manager fills it). Without a key
-//! configured the page doesn't exist (`404`).
+//! Open to a signed-in site admin (the account service's `admin`, from the
+//! `invite_only` entries marked `admin`, docs/auth/github.md); the account
+//! menu links it for them. Scripts can send the dashboard key instead
+//! (`OPENAGENTS_WEB_ANALYTICS_KEY`, a Secret Manager secret) as
+//! `Authorization: Bearer KEY`. Anyone else, signed out, signed in without
+//! admin, or with a wrong key, gets the site's plain `404`: the page
+//! doesn't say it exists. Nothing is set in the browser.
 
 use std::collections::BTreeMap;
 
-use axum::Form;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use maud::{Markup, html};
-use openagents_ui::actions::{Button, ButtonType};
 use openagents_ui::content::{Facts, MarkdownRoot, PageColumn, Table};
-use openagents_ui::forms::{Field, Input, InputType};
-use serde::Deserialize;
 
 use super::{Counts, DASHBOARD, Series, hour_now};
 use crate::App;
@@ -27,52 +23,42 @@ use crate::ui_page::UiPage;
 /// The windows every table shows, in days.
 const WINDOWS: [(u64, &str); 3] = [(1, "Today"), (7, "7 days"), (30, "30 days")];
 
-#[derive(Deserialize)]
-pub(super) struct KeyForm {
-    #[serde(default)]
-    key: String,
-}
-
 pub(super) async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
-    let offered = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .unwrap_or_default();
-    respond(&app, &headers, offered).await
-}
-
-pub(super) async fn sign_in(
-    State(app): State<App>,
-    headers: HeaderMap,
-    Form(form): Form<KeyForm>,
-) -> Response {
-    respond(&app, &headers, &form.key).await
-}
-
-async fn respond(app: &App, headers: &HeaderMap, offered: &str) -> Response {
-    let analytics = &app.config.analytics;
-    if analytics.key.is_none() {
+    if !allowed(&app, &headers).await {
         return guarded(crate::not_found().await);
     }
-    if offered.is_empty() {
-        return guarded(page(headers, StatusCode::UNAUTHORIZED, key_form(None)));
-    }
-    if !analytics.admits(offered) {
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-        return guarded(page(
-            headers,
-            StatusCode::FORBIDDEN,
-            key_form(Some("That key isn't right.")),
-        ));
-    }
+    let analytics = &app.config.analytics;
     let content = match analytics.load(30).await {
         Ok(counts) => report(&counts, hour_now(), analytics.has_store()),
         Err(_) => html! {
             (MarkdownRoot::new(html! { h1 { "Analytics" } p { "The counts couldn't be read. Try again in a minute." } }))
         },
     };
-    guarded(page(headers, StatusCode::OK, content))
+    guarded(page(&headers, StatusCode::OK, content))
+}
+
+/// A bearer dashboard key that matches, or a signed-in site admin. A
+/// wrong key waits a moment before the same `404` as everyone else.
+async fn allowed(app: &App, headers: &HeaderMap) -> bool {
+    let offered = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .filter(|v| !v.trim().is_empty());
+    if let Some(offered) = offered {
+        if app.config.analytics.admits(offered) {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        return false;
+    }
+    let Some(service) = app.config.cloud.as_deref() else {
+        return false;
+    };
+    service
+        .authenticate(headers)
+        .await
+        .is_ok_and(|viewer| viewer.admin)
 }
 
 fn page(headers: &HeaderMap, status: StatusCode, content: Markup) -> Response {
@@ -97,31 +83,6 @@ fn guarded(mut response: Response) -> Response {
         HeaderValue::from_static("no-referrer"),
     );
     response
-}
-
-fn key_form(problem: Option<&str>) -> Markup {
-    let field = Field::new("analytics-key", "Dashboard key")
-        .required(true)
-        .error_opt(problem);
-    html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Analytics" }
-            p { "Enter the dashboard key to see the site's counts." }
-        }))
-        form method="post" action=(DASHBOARD) {
-            input type="text" name="username" value="openagents-analytics" autocomplete="username" hidden;
-            (field.clone().control(
-                Input::new("key")
-                    .aria(field.aria())
-                    .input_type(InputType::Password)
-                    .required(true)
-                    .autocomplete("current-password")
-                    .autofocus(true)
-                    .invalid(problem.is_some()),
-            ))
-            p { (Button::new("Show counts").kind(ButtonType::Submit)) }
-        }
-    }
 }
 
 /// Sums of the counts, per window.
