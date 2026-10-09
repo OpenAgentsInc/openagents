@@ -13,10 +13,10 @@
 //! separately: none implies another.
 
 use super::super::session::SessionError;
+use super::super::ui::{self, Details};
 use super::super::{custody, refused, workspace_shell};
 use super::{Delegation, Failure, Journal, PAGE, answer, context, fresh_request, target};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
@@ -24,6 +24,7 @@ use axum::response::Response;
 use axum::routing::get;
 use compute_workbench::credits;
 use compute_workbench::retail::{self as native, Client};
+use maud::{Markup, html};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -48,11 +49,7 @@ pub(super) fn routes() -> Router<App> {
 }
 
 pub(crate) fn href(delegation: &str, execution: &str) -> String {
-    format!(
-        "{PAGE}/{}/purchases/{}",
-        escape(delegation),
-        escape(execution)
-    )
+    format!("{PAGE}/{delegation}/purchases/{execution}")
 }
 
 // ---- Retained record --------------------------------------------------------
@@ -383,30 +380,15 @@ async fn list(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let mut content = format!(
-        "<h2>Purchases</h2><p>Funded executions for delegation <code>{}</code>, read from the retail service with its native principal. Each purchase keeps its own payer, quote, approval, work identity, meter, charges, artifacts, and cleanup record. Payment, completion, acceptance, and publication are separate.</p><p><a href=\"{PAGE}#retail-{}\">Back to Retail</a></p>",
-        escape(&id),
-        escape(&id)
-    );
+    let retail = format!("{PAGE}#retail-{id}");
     let pending: Vec<&String> = journal
         .records
         .iter()
         .filter(|(_, r)| r.op == "confirm" && r.outcome.is_none())
         .map(|(request, _)| request)
         .collect();
-    for request in pending {
-        content.push_str(&format!(
-            "<p class=\"retail-pending\">Approval request {} · Outcome unknown. <a href=\"{PAGE}#retail-{}\">Retry the same request</a> from the Retail page; it recovers the original funded execution and never confirms twice.</p>",
-            escape(&request[..8]),
-            escape(&id)
-        ));
-    }
     let executions = page["executions"].as_array().cloned().unwrap_or_default();
-    if executions.is_empty() {
-        content.push_str("<p>No funded purchases.</p>");
-    } else {
-        content.push_str("<ul class=\"retail-purchases\">");
-    }
+    let mut rows = Vec::with_capacity(executions.len());
     for entry in &executions {
         let Some(execution) = entry["execution"].as_str() else {
             continue;
@@ -417,34 +399,52 @@ async fn list(
                     .as_ref()
                     .is_some_and(|o| o["execution"] == json!(execution))
         });
-        content.push_str(&format!(
-            "<li><a href=\"{}\">Purchase {}</a> · {}</li>",
-            href(&id, execution),
-            escape(execution),
-            if here {
-                "approved on this page"
-            } else {
-                "approved by another client of this principal"
+        rows.push((execution.to_owned(), here));
+    }
+    let next = page["next"].as_str().filter(|_| executions.len() >= 32);
+    let content = html! {
+        h2 { "Purchases" }
+        p {
+            "Funded executions for delegation " code { (id) }
+            ", read from the retail service with its native principal. Each purchase keeps its own payer, quote, approval, work identity, meter, charges, artifacts, and cleanup record. Payment, completion, acceptance, and publication are separate."
+        }
+        p { a href=(retail) { "Back to Retail" } }
+        @for request in &pending {
+            div class="retail-pending" {
+                (ui::outcome_unknown(
+                    html! {
+                        "Approval request " (&request[..8]) " \u{b7} Outcome unknown. "
+                        a href=(retail) { "Retry the same request" }
+                        " from the Retail page; it recovers the original funded execution and never confirms twice."
+                    },
+                    None,
+                ))
             }
-        ));
-    }
-    if !executions.is_empty() {
-        content.push_str("</ul>");
-    }
-    if let Some(next) = page["next"].as_str().filter(|_| executions.len() >= 32) {
-        content.push_str(&format!(
-            "<p><a href=\"{PAGE}/{}/purchases?after={}\">Older purchases</a></p>",
-            escape(&id),
-            escape(next)
-        ));
-    }
+        }
+        @if executions.is_empty() {
+            p { "No funded purchases." }
+        } @else {
+            ul class="retail-purchases" {
+                @for (execution, here) in &rows {
+                    li {
+                        a href=(href(&id, execution)) { "Purchase " (execution) }
+                        " \u{b7} "
+                        @if *here { "approved on this page" } @else { "approved by another client of this principal" }
+                    }
+                }
+            }
+        }
+        @if let Some(next) = next {
+            p { a href=(format!("{PAGE}/{id}/purchases?after={next}")) { "Older purchases" } }
+        }
+    };
     workspace_shell(
         context.app,
         &headers,
         context.service,
         &context.viewer,
         "billing",
-        Some(&content),
+        Some(content),
         None,
     )
 }
@@ -482,38 +482,40 @@ async fn detail(
         Err(error) => return refused(error),
     };
     let can_cancel = !delegation.read_only() && rights.observe && rights.execute;
-    let mut content = render(&observed, &id);
     let terminal = observed.receipt.settlement.is_some();
-    if can_cancel && !terminal {
+    let stop = if can_cancel && !terminal {
         let request = fresh_request();
         let token = match context.csrf(&headers, "retail-cancel", &target(delegation, &request)) {
             Ok(value) => value,
             Err(response) => return response,
         };
-        content.push_str(&format!(
-            "<section class=\"cloud-card\"><h3>Request a stop</h3><form method=\"post\" action=\"{PAGE}/{}/cancel\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><input type=\"hidden\" name=\"execution\" value=\"{}\"><button type=\"submit\">Request stop</button></form><p class=\"dim\">A stop request is not a stopped meter. Executor acknowledgment, sandbox deletion, and settlement appear above when the service records them.</p></section>",
-            escape(&id),
-            super::super::ticket(&token),
-            escape(&execution),
-        ));
-    }
+        Some(ui::card(html! {
+            h3 { "Request a stop" }
+            (ui::BoundForm::new(format!("{PAGE}/{id}/cancel"))
+                .csrf(&token)
+                .bind("request", &request)
+                .bind("execution", &execution)
+                .body(html! {
+                    p { "A stop request is not a stopped meter. Executor acknowledgment, sandbox deletion, and settlement appear above when the service records them." }
+                })
+                .submit_with(ui::submit("Request stop", false)))
+        }))
+    } else {
+        None
+    };
+    let content = html! {
+        (render(&observed, &id))
+        @if let Some(stop) = stop { (stop) }
+    };
     workspace_shell(
         context.app,
         &headers,
         context.service,
         &context.viewer,
         "billing",
-        Some(&content),
+        Some(content),
         None,
     )
-}
-
-fn row(out: &mut String, label: &str, value: &str) {
-    out.push_str(&format!(
-        "<dt>{}</dt><dd>{}</dd>",
-        escape(label),
-        escape(value)
-    ));
 }
 
 fn text(value: &Value) -> String {
@@ -584,123 +586,86 @@ fn verdict(observed: &Observed) -> Option<String> {
         .map(|v| text(&serde_json::to_value(v).unwrap_or_default()))
 }
 
-fn render(observed: &Observed, id: &str) -> String {
+fn render(observed: &Observed, id: &str) -> Markup {
     let execution = &observed.execution;
     let admission = &execution.admission;
     let receipt = &observed.receipt;
-    let mut out = format!(
-        "<h2>Purchase {}</h2><p><a href=\"{PAGE}/{}/purchases\">All purchases</a> · <a href=\"{PAGE}#retail-{}\">Retail</a></p>",
-        escape(&execution.execution),
-        escape(id),
-        escape(id)
-    );
-    out.push_str("<section class=\"cloud-card retail-status\"><h3>Status</h3><dl>");
-    row(&mut out, "Payment", &payment(observed));
-    row(&mut out, "Completion", &completion(observed));
-    row(
-        &mut out,
-        "Acceptance",
-        &match verdict(observed) {
-            Some(v) => format!(
-                "Not recorded. Checks {v} is evidence about the candidate, not your acceptance."
+
+    let status = Details::new()
+        .row("Payment", payment(observed))
+        .row("Completion", completion(observed))
+        .row(
+            "Acceptance",
+            match verdict(observed) {
+                Some(v) => format!(
+                    "Not recorded. Checks {v} is evidence about the candidate, not your acceptance."
+                ),
+                None => "Not recorded. No checks verdict yet.".into(),
+            },
+        )
+        .row(
+            "Publication",
+            "Not published. This purchase never applies or publishes the patch; you apply it yourself.",
+        );
+
+    let payer = Details::new()
+        .row("Native account", &admission.account)
+        .row(
+            "Principal",
+            text(&observed.retained.binding["payer"]["principal"]),
+        )
+        .row("Grant generation", admission.grant_generation.to_string())
+        .row(
+            "Current rights",
+            format!(
+                "observe={}, spend={}, execute={}, disclose={}",
+                observed.account.capabilities.observe,
+                observed.account.capabilities.spend,
+                observed.account.capabilities.execute,
+                observed.account.capabilities.disclose
             ),
-            None => "Not recorded. No checks verdict yet.".into(),
-        },
-    );
-    row(
-        &mut out,
-        "Publication",
-        "Not published. This purchase never applies or publishes the patch; you apply it yourself.",
-    );
-    out.push_str("</dl></section>");
+        )
+        .row(
+            "Model payer",
+            "Your own OpenAI key; model expense is billed by OpenAI to you and is not part of this charge",
+        );
 
-    out.push_str("<section class=\"cloud-card\"><h3>Payer</h3><dl>");
-    row(&mut out, "Native account", &admission.account);
-    row(
-        &mut out,
-        "Principal",
-        &text(&observed.retained.binding["payer"]["principal"]),
-    );
-    row(
-        &mut out,
-        "Grant generation",
-        &admission.grant_generation.to_string(),
-    );
-    row(
-        &mut out,
-        "Current rights",
-        &format!(
-            "observe={}, spend={}, execute={}, disclose={}",
-            observed.account.capabilities.observe,
-            observed.account.capabilities.spend,
-            observed.account.capabilities.execute,
-            observed.account.capabilities.disclose
-        ),
-    );
-    row(
-        &mut out,
-        "Model payer",
-        "Your own OpenAI key; model expense is billed by OpenAI to you and is not part of this charge",
-    );
-    out.push_str("</dl></section>");
+    let quote = Details::new()
+        .row(
+            "Price book",
+            format!("{} / {}", execution.quote.version, execution.quote.book),
+        )
+        .row(
+            "Maximum",
+            format!(
+                "{} sats for at most {} seconds",
+                execution.quote.max_sats, execution.quote.max_seconds
+            ),
+        )
+        .row(
+            "Quote digest",
+            text(&observed.retained.binding["quote"]["digest"]),
+        );
 
-    out.push_str("<section class=\"cloud-card\"><h3>Quote</h3><dl>");
-    row(
-        &mut out,
-        "Price book",
-        &format!("{} / {}", execution.quote.version, execution.quote.book),
-    );
-    row(
-        &mut out,
-        "Maximum",
-        &format!(
-            "{} sats for at most {} seconds",
-            execution.quote.max_sats, execution.quote.max_seconds
-        ),
-    );
-    row(
-        &mut out,
-        "Quote digest",
-        &text(&observed.retained.binding["quote"]["digest"]),
-    );
-    out.push_str("</dl>");
-    match observed.local.quote.as_ref().and_then(|q| q["lines"].as_str()) {
-        Some(lines) => out.push_str(&format!(
-            "<p>The exact review you confirmed:</p><pre class=\"retail-review\">{}</pre>",
-            escape(lines)
-        )),
-        None => out.push_str("<p>This quote was reviewed by another client of this principal; its review text is not held here.</p>"),
-    }
-    out.push_str("</section>");
-
-    out.push_str("<section class=\"cloud-card\"><h3>Approval and request</h3><dl>");
-    match &observed.local.accepted {
-        Some(accepted) => {
-            row(
-                &mut out,
+    let mut approval = match &observed.local.accepted {
+        Some(accepted) => Details::new()
+            .row(
                 "Approval",
-                &format!(
+                format!(
                     "Confirmed on this page, request {}",
                     observed.local.confirm_request.as_deref().unwrap_or("")
                 ),
-            );
-            row(
-                &mut out,
+            )
+            .row(
                 "Review",
                 observed.local.review.as_deref().unwrap_or("unknown"),
-            );
-            row(&mut out, "Offer", &text(&accepted["offer"]));
-        }
-        None => row(
-            &mut out,
-            "Approval",
-            "Confirmed by another client of this principal",
-        ),
-    }
-    row(
-        &mut out,
+            )
+            .row("Offer", text(&accepted["offer"])),
+        None => Details::new().row("Approval", "Confirmed by another client of this principal"),
+    };
+    approval = approval.row(
         "Funded request",
-        &text(
+        text(
             observed
                 .retained
                 .binding
@@ -708,68 +673,36 @@ fn render(observed: &Observed, id: &str) -> String {
                 .unwrap_or(&Value::Null),
         ),
     );
-    out.push_str("</dl></section>");
 
-    out.push_str("<section class=\"cloud-card\"><h3>Work</h3><dl>");
-    row(&mut out, "Execution", &execution.execution);
-    row(&mut out, "Admission", &admission.digest().to_string());
-    row(
-        &mut out,
-        "Public source",
-        &format!(
-            "{} @ {}",
-            admission.source.repository, admission.source.commit
-        ),
-    );
-    row(
-        &mut out,
-        "Computer",
-        &format!("{} / {}", admission.computer_class, admission.task_class),
-    );
-    row(
-        &mut out,
-        "Sandbox",
-        &text(
-            observed
-                .retained
-                .binding
-                .get("resource")
-                .unwrap_or(&Value::Null),
-        ),
-    );
-    out.push_str("</dl></section>");
+    let work = Details::new()
+        .row("Execution", &execution.execution)
+        .row("Admission", admission.digest().to_string())
+        .row(
+            "Public source",
+            format!(
+                "{} @ {}",
+                admission.source.repository, admission.source.commit
+            ),
+        )
+        .row(
+            "Computer",
+            format!("{} / {}", admission.computer_class, admission.task_class),
+        )
+        .row(
+            "Sandbox",
+            text(
+                observed
+                    .retained
+                    .binding
+                    .get("resource")
+                    .unwrap_or(&Value::Null),
+            ),
+        );
 
-    out.push_str("<section class=\"cloud-card\"><h3>Progress</h3>");
-    match &observed.live {
-        Live::Read(Some(status)) => out.push_str(&format!(
-            "<p>Task owner status: {}</p>",
-            escape(&text(&status["state"]))
-        )),
-        Live::Read(None) => out.push_str("<p>Task owner status: not yet reported.</p>"),
-        Live::Unavailable => out.push_str("<p>Live progress is unavailable now: not yet dispatched, custody has ended, or the service did not answer. Retained events remain below; reload to read on.</p>"),
-        Live::Bounded => out.push_str("<p>The retained progress log reached its bound. Read the retained artifacts.</p>"),
-    }
-    if observed.retained.events.is_empty() {
-        out.push_str("<p class=\"dim\">No progress events retained.</p>");
-    } else {
-        out.push_str("<ol class=\"retail-progress\">");
-        for event in &observed.retained.events {
-            out.push_str(&format!(
-                "<li value=\"{}\"><pre>{}</pre></li>",
-                event.cursor,
-                escape(&event.text)
-            ));
-        }
-        out.push_str("</ol>");
-    }
-    out.push_str("</section>");
-
-    out.push_str("<section class=\"cloud-card\"><h3>Meter and charges</h3><dl>");
     let usage = execution.snapshot.as_ref().and_then(|s| s.usage.as_ref());
-    row(
-        &mut out,
+    let mut meter = Details::new().row(
         "Metered seconds",
-        &match usage {
+        match usage {
             Some(u) => format!(
                 "{}{} ({} observations, {})",
                 u.seconds
@@ -787,10 +720,9 @@ fn render(observed: &Observed, id: &str) -> String {
         },
     );
     if let Some(hold) = &execution.hold {
-        row(
-            &mut out,
+        meter = meter.row(
             "Hold",
-            &format!(
+            format!(
                 "{} · held {} · charge {}",
                 hold.state,
                 credits(hold.held_msat),
@@ -800,138 +732,157 @@ fn render(observed: &Observed, id: &str) -> String {
             ),
         );
     }
-    out.push_str("</dl><pre class=\"retail-receipt\">");
-    out.push_str(&escape(&receipt.lines()));
-    out.push_str("</pre></section>");
 
-    out.push_str("<section class=\"cloud-card\"><h3>Artifacts</h3>");
-    match receipt.retention.as_ref() {
-        Some(retention) => {
-            if let Some(manifest) = &retention.manifest {
-                out.push_str(&format!(
-                    "<p>Source {} @ {} · engine {} · sandbox {}</p>",
-                    escape(&manifest.source.repository),
-                    escape(&manifest.source.commit),
-                    escape(&manifest.engine),
-                    escape(&manifest.resource)
-                ));
-                if !retention.complete {
-                    out.push_str("<p>Artifact retention is incomplete; incomplete artifacts are not offered.</p>");
-                } else if retention.expired {
-                    out.push_str("<p>Retained artifacts have expired.</p>");
-                } else {
-                    out.push_str(&format!(
-                        "<p class=\"dim\">Retained until {}.</p>",
-                        retention.expires_at
-                    ));
-                }
-                out.push_str("<ul class=\"retail-artifacts\">");
-                for artifact in &manifest.artifacts {
-                    let kind = text(&serde_json::to_value(&artifact.kind).unwrap_or_default());
-                    if retention.complete && !retention.expired {
-                        out.push_str(&format!(
-                            "<li><a href=\"{}/artifacts/{}\">{}</a> · {} · {} bytes · SHA-256 {}</li>",
-                            href(id, &execution.execution),
-                            escape(&artifact.name),
-                            escape(&artifact.name),
-                            escape(&kind),
-                            artifact.size,
-                            escape(&artifact.digest)
-                        ));
-                    } else {
-                        out.push_str(&format!(
-                            "<li>{} · {} · {} bytes</li>",
-                            escape(&artifact.name),
-                            escape(&kind),
-                            artifact.size
-                        ));
-                    }
-                }
-                out.push_str("</ul>");
-            } else {
-                out.push_str("<p>No artifact manifest was retained.</p>");
-            }
-        }
-        None => out.push_str("<p>Artifacts are retained when the sandbox is cleaned up.</p>"),
-    }
-    out.push_str("</section>");
-
-    out.push_str("<section class=\"cloud-card\"><h3>Cancellation</h3><dl>");
-    match &receipt.cancellation {
-        Some(cancel) => {
-            row(
-                &mut out,
+    let cancellation = match &receipt.cancellation {
+        Some(cancel) => Details::new()
+            .row(
                 "Stop",
-                &format!(
+                format!(
                     "{} at {}",
                     text(&serde_json::to_value(cancel.reason).unwrap_or_default()),
                     cancel.requested_at
                 ),
-            );
-            row(
-                &mut out,
+            )
+            .row(
                 "Stop sent",
                 if cancel.stop_sent { "yes" } else { "not yet" },
-            );
-            row(
-                &mut out,
+            )
+            .row(
                 "Executor acknowledged",
                 if cancel.executor.is_some() {
                     "yes"
                 } else {
                     "not yet; the meter may still run"
                 },
-            );
-            row(
-                &mut out,
+            )
+            .row(
                 "Provider deleted",
                 if cancel.provider_deleted {
                     "yes"
                 } else {
                     "not yet"
                 },
-            );
-            row(
-                &mut out,
-                "Remaining hold",
-                &credits(cancel.remaining_hold_msat),
-            );
-        }
-        None => row(&mut out, "Stop", "No stop requested"),
-    }
-    out.push_str("</dl></section>");
+            )
+            .row("Remaining hold", credits(cancel.remaining_hold_msat)),
+        None => Details::new().row("Stop", "No stop requested"),
+    };
 
-    out.push_str("<section class=\"cloud-card\"><h3>Cleanup</h3>");
-    match &receipt.retention {
-        Some(retention) => {
-            out.push_str(&format!(
-                "<p>{}</p><ul>",
-                if retention.deleted() {
-                    "Cleanup confirmed: every discovered sandbox resource acknowledged deletion."
-                } else if !retention.discovery_complete {
-                    "Cleanup unconfirmed: resource discovery is incomplete. The service keeps retrying."
-                } else {
-                    "Cleanup unconfirmed: deletion is not yet acknowledged for every resource. The service keeps retrying."
-                }
-            ));
-            for resource in &retention.resources {
-                out.push_str(&format!(
-                    "<li>{} · intent at {} · {} · attempts {}</li>",
-                    escape(&resource.resource),
-                    resource.intent_at,
-                    resource
-                        .acknowledged_at
-                        .map(|t| format!("deletion acknowledged at {t}"))
-                        .unwrap_or_else(|| "deletion unacknowledged".into()),
-                    resource.attempts
-                ));
-            }
-            out.push_str("</ul>");
+    let purchase = href(id, &execution.execution);
+    let all = format!("{PAGE}/{id}/purchases");
+    let retail = format!("{PAGE}#retail-{id}");
+    html! {
+        h2 { "Purchase " (execution.execution) }
+        (ui::links([(all.as_str(), "All purchases"), (retail.as_str(), "Retail")]))
+        section class="cloud-card retail-status" {
+            h3 { "Status" }
+            (status)
         }
-        None => out.push_str("<p>No cleanup recorded yet.</p>"),
+        (ui::card(html! { h3 { "Payer" } (payer) }))
+        (ui::card(html! {
+            h3 { "Quote" }
+            (quote)
+            @match observed.local.quote.as_ref().and_then(|q| q["lines"].as_str()) {
+                Some(lines) => {
+                    p { "The exact review you confirmed:" }
+                    pre class="retail-review" { (lines) }
+                }
+                None => {
+                    p { "This quote was reviewed by another client of this principal; its review text is not held here." }
+                }
+            }
+        }))
+        (ui::card(html! { h3 { "Approval and request" } (approval) }))
+        (ui::card(html! { h3 { "Work" } (work) }))
+        (ui::card(html! {
+            h3 { "Progress" }
+            @match &observed.live {
+                Live::Read(Some(status)) => { p { "Task owner status: " (text(&status["state"])) } }
+                Live::Read(None) => { p { "Task owner status: not yet reported." } }
+                Live::Unavailable => { p { "Live progress is unavailable now: not yet dispatched, custody has ended, or the service did not answer. Retained events remain below; reload to read on." } }
+                Live::Bounded => { p { "The retained progress log reached its bound. Read the retained artifacts." } }
+            }
+            @if observed.retained.events.is_empty() {
+                p { "No progress events retained." }
+            } @else {
+                ol class="retail-progress" {
+                    @for event in &observed.retained.events {
+                        li value=(event.cursor) { pre { (event.text) } }
+                    }
+                }
+            }
+        }))
+        (ui::card(html! {
+            h3 { "Meter and charges" }
+            (meter)
+            pre class="retail-receipt" { (receipt.lines()) }
+        }))
+        (ui::card(html! {
+            h3 { "Artifacts" }
+            @match receipt.retention.as_ref() {
+                Some(retention) => {
+                    @if let Some(manifest) = &retention.manifest {
+                        p {
+                            "Source " (manifest.source.repository) " @ " (manifest.source.commit)
+                            " \u{b7} engine " (manifest.engine) " \u{b7} sandbox " (manifest.resource)
+                        }
+                        @if !retention.complete {
+                            p { "Artifact retention is incomplete; incomplete artifacts are not offered." }
+                        } @else if retention.expired {
+                            p { "Retained artifacts have expired." }
+                        } @else {
+                            p { "Retained until " (retention.expires_at) "." }
+                        }
+                        ul class="retail-artifacts" {
+                            @for artifact in &manifest.artifacts {
+                                @let kind = text(&serde_json::to_value(&artifact.kind).unwrap_or_default());
+                                @if retention.complete && !retention.expired {
+                                    li {
+                                        a href=(format!("{purchase}/artifacts/{}", artifact.name)) { (artifact.name) }
+                                        " \u{b7} " (kind) " \u{b7} " (artifact.size) " bytes \u{b7} SHA-256 " (artifact.digest)
+                                    }
+                                } @else {
+                                    li { (artifact.name) " \u{b7} " (kind) " \u{b7} " (artifact.size) " bytes" }
+                                }
+                            }
+                        }
+                    } @else {
+                        p { "No artifact manifest was retained." }
+                    }
+                }
+                None => { p { "Artifacts are retained when the sandbox is cleaned up." } }
+            }
+        }))
+        (ui::card(html! { h3 { "Cancellation" } (cancellation) }))
+        (ui::card(html! {
+            h3 { "Cleanup" }
+            @match &receipt.retention {
+                Some(retention) => {
+                    p {
+                        @if retention.deleted() {
+                            "Cleanup confirmed: every discovered sandbox resource acknowledged deletion."
+                        } @else if !retention.discovery_complete {
+                            "Cleanup unconfirmed: resource discovery is incomplete. The service keeps retrying."
+                        } @else {
+                            "Cleanup unconfirmed: deletion is not yet acknowledged for every resource. The service keeps retrying."
+                        }
+                    }
+                    ul {
+                        @for resource in &retention.resources {
+                            li {
+                                (resource.resource) " \u{b7} intent at " (resource.intent_at) " \u{b7} "
+                                @match &resource.acknowledged_at {
+                                    Some(t) => { "deletion acknowledged at " (t) }
+                                    None => { "deletion unacknowledged" }
+                                }
+                                " \u{b7} attempts " (resource.attempts)
+                            }
+                        }
+                    }
+                }
+                None => { p { "No cleanup recorded yet." } }
+            }
+        }))
     }
-    out.push_str("</section>");
-    out
 }
 
 async fn artifact(
@@ -993,26 +944,31 @@ async fn artifact(
         Ok(value) => value,
         Err(error) => return answer(error),
     };
-    let content = format!(
-        "<h2>Artifact {}</h2><p><a href=\"{}\">Purchase {}</a></p><dl><dt>Source</dt><dd>{} @ {}</dd><dt>Engine</dt><dd>{}</dd><dt>Sandbox</dt><dd>{}</dd><dt>SHA-256</dt><dd>{} (matches the retained manifest)</dd><dt>Size</dt><dd>{} bytes</dd></dl><p class=\"dim\">This is a retained candidate. Reading it is not acceptance, and nothing here applies or publishes it.</p><pre class=\"retail-artifact\">{}</pre>",
-        escape(&declared.name),
-        href(&id, &execution),
-        escape(&execution),
-        escape(&manifest.source.repository),
-        escape(&manifest.source.commit),
-        escape(&manifest.engine),
-        escape(&manifest.resource),
-        escape(&declared.digest),
-        declared.size,
-        escape(&text),
-    );
+    let content = html! {
+        h2 { "Artifact " (declared.name) }
+        p { a href=(href(&id, &execution)) { "Purchase " (execution) } }
+        (Details::new()
+            .row(
+                "Source",
+                format!("{} @ {}", manifest.source.repository, manifest.source.commit),
+            )
+            .row("Engine", &manifest.engine)
+            .row("Sandbox", &manifest.resource)
+            .row(
+                "SHA-256",
+                format!("{} (matches the retained manifest)", declared.digest),
+            )
+            .row("Size", format!("{} bytes", declared.size)))
+        p { "This is a retained candidate. Reading it is not acceptance, and nothing here applies or publishes it." }
+        pre class="retail-artifact" { (text) }
+    };
     workspace_shell(
         context.app,
         &headers,
         context.service,
         &context.viewer,
         "billing",
-        Some(&content),
+        Some(content),
         None,
     )
 }

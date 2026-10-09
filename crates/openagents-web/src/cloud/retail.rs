@@ -20,7 +20,8 @@
 use super::custody::{self, CustodyError, Key, Material, Scope, Vault};
 use super::private::ProtectedFile;
 use super::session::{SessionError, Viewer, now};
-use super::{failure, protect, refused, service, ticket, workspace_shell};
+use super::ui::{self, Tone};
+use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
 use crate::layout::escape;
 use axum::Router;
@@ -30,6 +31,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use compute_workbench::retail::{self as native, Client, ProviderKey};
+use maud::{Markup, Render, html};
+use openagents_ui::forms::{Checkbox, Field, FieldAria, Input, InputType, Textarea};
 use route_contract::Digest as RouteDigest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -881,67 +884,67 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut content = String::from(
-        "<h2>Retail delegation</h2><p>Retail purchases go through an operator-provisioned delegation for this account, workspace, and membership. The server calls the retail service with that native principal; no service credential reaches this page. Signing in grants no funding, quote, confirmation, or cancellation right.</p>",
-    );
     let delegations = context.retail.current(&context.viewer);
-    if delegations.is_empty() {
-        content.push_str("<p>Unavailable: no retail delegation is provisioned for this account, workspace, and membership.</p>");
-    }
-    for delegation in delegations {
+    let mut sections = Vec::with_capacity(delegations.len());
+    for delegation in &delegations {
         match section(&context, &headers, delegation).await {
-            Ok(value) => content.push_str(&value),
+            Ok(value) => sections.push(value),
             Err(response) => return response,
         }
     }
+    let content = html! {
+        h2 { "Retail delegation" }
+        p { "Retail purchases go through an operator-provisioned delegation for this account, workspace, and membership. The server calls the retail service with that native principal; no service credential reaches this page. Signing in grants no funding, quote, confirmation, or cancellation right." }
+        @if delegations.is_empty() {
+            (ui::unavailable(
+                "Unavailable",
+                "Unavailable: no retail delegation is provisioned for this account, workspace, and membership.",
+            ))
+        }
+        @for section in &sections { (section) }
+    };
     workspace_shell(
         context.app,
         &headers,
         context.service,
         &context.viewer,
         "billing",
-        Some(&content),
+        Some(content),
         None,
     )
+}
+
+/// A required, labelled form control: `control` receives the field's ARIA
+/// wiring; `description` is the note under it.
+fn field<C: Render>(
+    id: &str,
+    label: &str,
+    description: Option<&str>,
+    control: impl FnOnce(FieldAria) -> C,
+) -> Markup {
+    let mut field = Field::new(id, label).required(true);
+    if let Some(description) = description {
+        field = field.description(description);
+    }
+    let aria = field.aria();
+    field.control(control(aria)).render()
 }
 
 async fn section(
     context: &Context<'_>,
     headers: &HeaderMap,
     delegation: &Delegation,
-) -> Result<String, Response> {
-    let id = escape(delegation.id());
+) -> Result<Markup, Response> {
+    let id = delegation.id();
     let base = format!("{PAGE}/{id}");
-    let mut out = format!(
-        "<section class=\"cloud-card\" id=\"retail-{id}\"><h3>Delegation {id}</h3><p>Principal {} · {} · identity <code>{}</code></p>",
-        escape(&delegation.client.principal),
-        if delegation.read_only() {
-            "Observation only"
-        } else {
-            "Funding, quotes, confirmation, and cancellation delegated"
-        },
-        escape(&delegation.identity[..19]),
-    );
     let account = context
         .retail
         .account(&context.viewer, delegation.id())
         .await;
     let rights = match &account {
-        Ok(account) => {
-            out.push_str(&format!(
-                "<pre class=\"retail-account\">{}</pre>",
-                escape(&account.lines())
-            ));
-            out.push_str(&format!(
-                "<p><a href=\"{base}/purchases\">Purchases: progress, artifacts, receipts, and recovery</a></p>"
-            ));
-            Some(account.capabilities.clone())
-        }
+        Ok(account) => Some(account.capabilities.clone()),
         Err(Failure::Session(error)) => return Err(refused(*error)),
-        Err(_) => {
-            out.push_str("<p>Retail service: Unavailable. Current rights are unknown, so no effect is offered.</p>");
-            None
-        }
+        Err(_) => None,
     };
     let can_spend =
         !delegation.read_only() && rights.as_ref().is_some_and(|r| r.observe && r.spend);
@@ -954,50 +957,122 @@ async fn section(
         .retail
         .custody(&context.viewer, delegation.id())
         .map_err(answer)?;
-    out.push_str("<h4>Your OpenAI API key</h4>");
-    match &custody {
-        Some(status) => {
+    let remove = match &custody {
+        Some(_) => {
             let request = fresh_request();
-            out.push_str(&format!(
-                "<p>In custody: {} · {} · expires at {}</p><form method=\"post\" action=\"{base}/key/remove\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><button type=\"submit\">Remove key from custody</button></form>",
-                escape(status.material.label()),
-                escape(&status.masked()),
-                status.expires_at,
-                ticket(&context.csrf(headers, "retail-key-remove", &target(delegation, &request))?),
-            ));
+            let csrf = context.csrf(headers, "retail-key-remove", &target(delegation, &request))?;
+            Some(
+                ui::BoundForm::new(format!("{base}/key/remove"))
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .submit_with(ui::submit("Remove key from custody", false)),
+            )
         }
-        None => out.push_str("<p>No key in custody.</p>"),
-    }
-    if !delegation.read_only() {
+        None => None,
+    };
+    let place = if delegation.read_only() {
+        None
+    } else {
         let request = fresh_request();
-        out.push_str(&format!(
-            "<form method=\"post\" action=\"{base}/key\" autocomplete=\"off\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><p><label>OpenAI API key <input type=\"password\" name=\"key\" autocomplete=\"off\" spellcheck=\"false\" required></label></p><p class=\"dim\">{}</p><p><label><input type=\"checkbox\" name=\"consent\" value=\"custody\" required> I consent to this custody</label></p><p><button type=\"submit\">Place key in custody</button></p></form>",
-            ticket(&context.csrf(headers, "retail-key", &target(delegation, &request))?),
-            escape(TERMS),
-        ));
-    }
-
-    if can_spend {
+        let csrf = context.csrf(headers, "retail-key", &target(delegation, &request))?;
+        // Built by hand for `autocomplete="off"` on the form itself.
+        Some(html! {
+            form class="cloud-form" method="post" action=(format!("{base}/key")) autocomplete="off" {
+                (ui::csrf(&csrf))
+                (ui::hidden("request", &request))
+                (field(&format!("retail-{id}-key"), "OpenAI API key", Some(TERMS), |aria| {
+                    Input::new("key")
+                        .input_type(InputType::Password)
+                        .autocomplete("off")
+                        .spellcheck(false)
+                        .required(true)
+                        .aria(aria)
+                }))
+                (Checkbox::new("consent", "I consent to this custody")
+                    .id(format!("retail-{id}-consent"))
+                    .value("custody")
+                    .required(true))
+                div class="cloud-form-actions" { (ui::submit("Place key in custody", true)) }
+            }
+        })
+    };
+    let fund = if can_spend {
         let request = fresh_request();
-        out.push_str(&format!(
-            "<h4>Fund</h4><form method=\"post\" action=\"{base}/top-up\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><label>Credits (sats) <input type=\"number\" name=\"amount_sats\" min=\"1\" max=\"1000000\" required></label> <button type=\"submit\">Request an exact invoice</button></form><p class=\"dim\">Pay the invoice with your own wallet. Credits are non-withdrawable and grant no execution authority.</p>",
-            ticket(&context.csrf(headers, "retail-top-up", &target(delegation, &request))?),
-        ));
-    }
-    if can_dispatch && custody.is_some() {
+        let csrf = context.csrf(headers, "retail-top-up", &target(delegation, &request))?;
+        Some(
+            ui::BoundForm::new(format!("{base}/top-up"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .body(field(
+                    &format!("retail-{id}-amount"),
+                    "Credits (sats)",
+                    Some("Pay the invoice with your own wallet. Credits are non-withdrawable and grant no execution authority."),
+                    |aria| {
+                        Input::new("amount_sats")
+                            .input_type(InputType::Number)
+                            .min("1")
+                            .max("1000000")
+                            .required(true)
+                            .aria(aria)
+                    },
+                ))
+                .submit("Request an exact invoice"),
+        )
+    } else {
+        None
+    };
+    let quote = if can_dispatch && custody.is_some() {
         let request = fresh_request();
-        out.push_str(&format!(
-            "<h4>Review a quote</h4><form method=\"post\" action=\"{base}/quote\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><p><label>Public GitHub repository <input name=\"repository\" required></label></p><p><label>Commit (40 hex) <input name=\"commit\" required></label></p><p><label>Task <textarea name=\"task\" required></textarea></label></p><p><label>Checks, one per line <textarea name=\"checks\" required></textarea></label></p><p><label>Wall limit (seconds) <input type=\"number\" name=\"max_seconds\" min=\"1\" max=\"3600\" required></label></p><p><button type=\"submit\">Review quote</button></p></form>",
-            ticket(&context.csrf(headers, "retail-quote", &target(delegation, &request))?),
-        ));
-    }
-    if can_cancel {
+        let csrf = context.csrf(headers, "retail-quote", &target(delegation, &request))?;
+        Some(
+            ui::BoundForm::new(format!("{base}/quote"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .body(html! {
+                    (field(&format!("retail-{id}-repository"), "Public GitHub repository", None, |aria| {
+                        Input::new("repository").required(true).aria(aria)
+                    }))
+                    (field(&format!("retail-{id}-commit"), "Commit (40 hex)", None, |aria| {
+                        Input::new("commit").required(true).aria(aria)
+                    }))
+                    (field(&format!("retail-{id}-task"), "Task", None, |aria| {
+                        Textarea::new("task").required(true).aria(aria)
+                    }))
+                    (field(&format!("retail-{id}-checks"), "Checks, one per line", None, |aria| {
+                        Textarea::new("checks").required(true).aria(aria)
+                    }))
+                    (field(&format!("retail-{id}-max-seconds"), "Wall limit (seconds)", None, |aria| {
+                        Input::new("max_seconds")
+                            .input_type(InputType::Number)
+                            .min("1")
+                            .max("3600")
+                            .required(true)
+                            .aria(aria)
+                    }))
+                })
+                .submit("Review quote"),
+        )
+    } else {
+        None
+    };
+    let cancel = if can_cancel {
         let request = fresh_request();
-        out.push_str(&format!(
-            "<h4>Request a stop</h4><form method=\"post\" action=\"{base}/cancel\">{}<input type=\"hidden\" name=\"request\" value=\"{request}\"><label>Execution <input name=\"execution\" required></label> <button type=\"submit\">Request stop</button></form><p class=\"dim\">A stop request is not a stopped meter; acknowledgment, deletion, and settlement are recorded separately.</p>",
-            ticket(&context.csrf(headers, "retail-cancel", &target(delegation, &request))?),
-        ));
-    }
+        let csrf = context.csrf(headers, "retail-cancel", &target(delegation, &request))?;
+        Some(
+            ui::BoundForm::new(format!("{base}/cancel"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .body(field(
+                    &format!("retail-{id}-execution"),
+                    "Execution",
+                    Some("A stop request is not a stopped meter; acknowledgment, deletion, and settlement are recorded separately."),
+                    |aria| Input::new("execution").required(true).aria(aria),
+                ))
+                .submit_with(ui::submit("Request stop", false)),
+        )
+    } else {
+        None
+    };
 
     // Journaled requests with retry and confirmation controls.
     let requests = context
@@ -1005,60 +1080,135 @@ async fn section(
         .requests(&context.viewer, delegation.id())
         .await
         .map_err(answer)?;
-    if !requests.is_empty() {
-        out.push_str("<h4>Requests</h4><ul class=\"retail-requests\">");
-    }
+    let mut items = Vec::with_capacity(requests.len());
     for (request, record) in &requests {
         let op = record["op"].as_str().unwrap_or("");
-        let state = if record["outcome"].is_null() {
-            "Outcome unknown"
+        let unknown = record["outcome"].is_null();
+        let retry = if unknown && !delegation.read_only() {
+            retry_form(context, headers, delegation, request, record)?
         } else {
-            "Recorded"
+            None
         };
-        out.push_str(&format!(
-            "<li><span>{} · request {} · {state}</span>",
-            escape(op),
-            escape(&request[..8])
-        ));
-        if record["outcome"].is_null() && !delegation.read_only() {
-            out.push_str(&retry_form(context, headers, delegation, request, record)?);
-        }
-        if op == "quote" {
-            if let Some(lines) = record["outcome"]["lines"].as_str() {
-                out.push_str(&format!("<pre>{}</pre>", escape(lines)));
-            }
-            if let (Some(review), true) = (record["outcome"]["digest"].as_str(), can_dispatch) {
-                let confirm = fresh_request();
-                out.push_str(&format!(
-                    "<form method=\"post\" action=\"{base}/confirm\">{}<input type=\"hidden\" name=\"request\" value=\"{confirm}\"><input type=\"hidden\" name=\"review\" value=\"{}\"><p><label><input type=\"checkbox\" name=\"custody\" value=\"service\" required> Hand my key to the authenticated retail service for this exact task</label></p><button type=\"submit\">Confirm and reserve the maximum</button></form>",
-                    ticket(&context.csrf(headers, "retail-confirm", &target(delegation, &confirm))?),
-                    escape(review),
-                ));
+        let detail = if op == "quote" {
+            let confirm = match (record["outcome"]["digest"].as_str(), can_dispatch) {
+                (Some(review), true) => {
+                    let confirm = fresh_request();
+                    let csrf =
+                        context.csrf(headers, "retail-confirm", &target(delegation, &confirm))?;
+                    Some(
+                        ui::BoundForm::new(format!("{base}/confirm"))
+                            .csrf(&csrf)
+                            .bind("request", &confirm)
+                            .bind("review", review)
+                            .body(
+                                Checkbox::new(
+                                    "custody",
+                                    "Hand my key to the authenticated retail service for this exact task",
+                                )
+                                .id(format!("retail-{id}-confirm-{confirm}"))
+                                .value("service")
+                                .required(true),
+                            )
+                            .submit("Confirm and reserve the maximum"),
+                    )
+                }
+                _ => None,
+            };
+            html! {
+                @if let Some(lines) = record["outcome"]["lines"].as_str() {
+                    pre { (lines) }
+                }
+                @if let Some(confirm) = confirm { (confirm) }
             }
         } else if let Some(value) = record["outcome"].as_object() {
-            if let Some(execution) = value
+            let execution = value
                 .get("execution")
                 .and_then(Value::as_str)
-                .filter(|e| valid_id(e))
-            {
-                out.push_str(&format!(
-                    "<a href=\"{}\">Open purchase {}</a>",
-                    purchases::href(delegation.id(), execution),
-                    escape(execution)
-                ));
+                .filter(|e| valid_id(e));
+            html! {
+                @if let Some(execution) = execution {
+                    a href=(purchases::href(delegation.id(), execution)) { "Open purchase " (execution) }
+                }
+                pre { (serde_json::to_string_pretty(value).unwrap_or_default()) }
             }
-            out.push_str(&format!(
-                "<pre>{}</pre>",
-                escape(&serde_json::to_string_pretty(value).unwrap_or_default())
-            ));
+        } else {
+            html! {}
+        };
+        let short = &request[..8];
+        items.push(html! {
+            li {
+                span {
+                    (op) " \u{b7} request " (short) " \u{b7} "
+                    @if unknown {
+                        (ui::status("Outcome unknown", Tone::Warning))
+                    } @else {
+                        (ui::status("Recorded", Tone::Neutral))
+                    }
+                }
+                @if let Some(retry) = retry {
+                    (ui::outcome_unknown(
+                        html! { "Request " (short) " has no recorded outcome. Retry it with its original identity and parameters; it never repeats a purchase or dispatch." },
+                        Some(retry),
+                    ))
+                }
+                (detail)
+            }
+        });
+    }
+
+    Ok(html! {
+        section class="cloud-card" id=(format!("retail-{id}")) {
+            h3 { "Delegation " (id) }
+            p {
+                "Principal " (delegation.client.principal) " \u{b7} "
+                (if delegation.read_only() {
+                    "Observation only"
+                } else {
+                    "Funding, quotes, confirmation, and cancellation delegated"
+                })
+                " \u{b7} identity " code { (&delegation.identity[..19]) }
+            }
+            @match &account {
+                Ok(account) => {
+                    pre class="retail-account" { (account.lines()) }
+                    p { a href=(format!("{base}/purchases")) { "Purchases: progress, artifacts, receipts, and recovery" } }
+                }
+                Err(_) => {
+                    (ui::unavailable(
+                        "Retail service: Unavailable",
+                        "Current rights are unknown, so no effect is offered.",
+                    ))
+                }
+            }
+            h4 { "Your OpenAI API key" }
+            @match &custody {
+                Some(status) => {
+                    p { "In custody: " (status.material.label()) " \u{b7} " (status.masked()) " \u{b7} expires at " (status.expires_at) }
+                    @if let Some(remove) = remove { (remove) }
+                }
+                None => { p { "No key in custody." } }
+            }
+            @if let Some(place) = place { (place) }
+            @if let Some(fund) = fund {
+                h4 { "Fund" }
+                (fund)
+            }
+            @if let Some(quote) = quote {
+                h4 { "Review a quote" }
+                (quote)
+            }
+            @if let Some(cancel) = cancel {
+                h4 { "Request a stop" }
+                (cancel)
+            }
+            @if !items.is_empty() {
+                h4 { "Requests" }
+                ul class="retail-requests" {
+                    @for item in &items { (item) }
+                }
+            }
         }
-        out.push_str("</li>");
-    }
-    if !requests.is_empty() {
-        out.push_str("</ul>");
-    }
-    out.push_str("</section>");
-    Ok(out)
+    })
 }
 
 /// A request whose outcome is unknown is retried with its original identity
@@ -1069,8 +1219,8 @@ fn retry_form(
     delegation: &Delegation,
     request: &str,
     record: &Value,
-) -> Result<String, Response> {
-    let base = format!("{PAGE}/{}", escape(delegation.id()));
+) -> Result<Option<ui::BoundForm>, Response> {
+    let base = format!("{PAGE}/{}", delegation.id());
     let params = &record["params"];
     let (action, fields) = match record["op"].as_str().unwrap_or("") {
         "top_up" => (
@@ -1119,22 +1269,15 @@ fn retry_form(
                 ],
             )
         }
-        _ => return Ok(String::new()),
+        _ => return Ok(None),
     };
-    let scope = format!("retail-{}", action);
-    let mut form = format!(
-        "<form method=\"post\" action=\"{base}/{action}\">{}<input type=\"hidden\" name=\"request\" value=\"{}\">",
-        ticket(&context.csrf(headers, &scope, &target(delegation, request))?),
-        escape(request)
-    );
+    let scope = format!("retail-{action}");
+    let csrf = context.csrf(headers, &scope, &target(delegation, request))?;
+    let mut form = ui::retry(format!("{base}/{action}"), &csrf).bind("request", request);
     for (name, value) in fields {
-        form.push_str(&format!(
-            "<input type=\"hidden\" name=\"{name}\" value=\"{}\">",
-            escape(&value)
-        ));
+        form = form.bind(name, &value);
     }
-    form.push_str("<button type=\"submit\">Retry the same request</button></form>");
-    Ok(form)
+    Ok(Some(form))
 }
 
 fn done(fragment: &str) -> Response {
