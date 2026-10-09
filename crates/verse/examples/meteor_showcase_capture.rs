@@ -8,7 +8,7 @@
 //! [--flash-repeats N] [--flash-every N]
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
 //! [--particle-frame N] [--particle-repeats N] [--particle-every N]
-//! [--smoke-frame N] [--restore-at SECONDS] [--orbit]
+//! [--smoke-frame N] [--restore-at SECONDS] [--orbit] [--pipelined]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -28,6 +28,13 @@
 //! triangles. `--live` plays as a player does instead, for the frame
 //! budget: 60 frames a second at one step each, the light still baking,
 //! no staged caster, and the player's own Meteor Swarm at three seconds.
+//! Without a film, a live run times each frame without reading its pixels
+//! back, as the app draws, and draws a still's frame a second time to read
+//! it. Its frame is the CPU's work and the wait for the GPU one after the
+//! other; `--pipelined` instead submits each frame and waits for the one
+//! before it, so the CPU's work overlaps the GPU's as in the app (a frame
+//! latency of two), and its frame is the CPU's work plus whatever wait for
+//! the last frame remains. `capture.json` names the timing.
 //! `--compare-flash-lights` measures each simulation snapshot with and
 //! without its flash lights, alternates the order, and records the signed
 //! render cost difference without pixel readback. It also writes
@@ -111,6 +118,7 @@ struct Args {
     particle_every: usize,
     restore_at: Option<f32>,
     orbit: bool,
+    pipelined: bool,
 }
 
 /// One frame's costs, ms, and how much it drew.
@@ -143,6 +151,9 @@ struct Sample {
     density_max: f32,
     sprite_area: f32,
     lit_alpha_area: f32,
+    /// The GPU's own time for the frame, from timestamps, when the
+    /// adapter has them and the frame was timed without readback.
+    gpu_time: Option<f32>,
 }
 
 impl Sample {
@@ -303,6 +314,11 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "dynamic_mesh_ms": col(|s| s.mesh),
                 "encode_ms": col(|s| s.encode),
                 "gpu_wait_ms": col(|s| s.gpu),
+                "gpu_time_ms": spread(samples.iter().filter_map(|s| s.gpu_time).collect()),
+                // The app draws with the CPU a frame ahead of the GPU
+                // (a frame latency of two), so its frame is the longer of
+                // the two rather than their sum.
+                "overlapped_frame_ms": col(|s| (s.tick + s.mesh + s.encode).max(s.gpu)),
                 "town_swarm_ms": col(|s| s.swarm),
                 "town_physics_ms": col(|s| s.physics),
                 "physics_detect_ms": col(|s| s.detect),
@@ -441,6 +457,7 @@ fn args() -> Result<Args, String> {
         particle_every: 1,
         restore_at: None,
         orbit: false,
+        pipelined: false,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -496,6 +513,7 @@ fn args() -> Result<Args, String> {
                 );
             }
             "--orbit" => args.orbit = true,
+            "--pipelined" => args.pipelined = true,
             "--restore-at" => {
                 args.restore_at = Some(
                     value()?
@@ -904,8 +922,55 @@ fn main() -> Result<(), String> {
             .map(|r| r.points.len().saturating_sub(1))
             .sum();
         most_sprites = most_sprites.max(sprites);
-        let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
-        (sample.encode, sample.gpu) = renderer.last_timing();
+        let wreck = runtime.everglade_wreckage().unwrap_or_default();
+        let landed = runtime.zone_snapshot(1.0).caption;
+        if first_impact.is_none() && wreck[1] > 0 && wreck[2] > 0 {
+            first_impact = Some(k);
+        }
+        let capture_impact = args.impact_frame.map_or_else(
+            || first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize),
+            |frame| k == frame,
+        );
+        let capture_smoke = args.smoke_frame.map_or_else(
+            || first_impact.is_some_and(|frame| k >= frame + (0.65 * fps) as usize),
+            |frame| k == frame,
+        );
+        // A live run without a film times each frame as the app draws it,
+        // without reading its pixels back, and reads them only for a
+        // still, from a second draw of the same frame.
+        let timed_apart = args.live && args.video.is_none() && !args.orbit;
+        let needs_pixels = !timed_apart
+            || k == (2.0 * fps) as usize
+            || (!impact_shot && capture_impact)
+            || (smoke_frame.is_none() && capture_smoke)
+            || restored_still
+            || k == aftermath
+            || (args.compare_particles && args.particle_frame == Some(k))
+            || args.every.is_some_and(|every| every > 0 && k % every == 0);
+        let pixels = if timed_apart && args.pipelined {
+            // As the app draws: this frame's CPU work while the GPU draws
+            // the last, then a wait for the last to finish.
+            sample.encode = renderer.submit(runtime.view(aspect), &dynamic, &ui)?;
+            sample.gpu = renderer.wait_previous()?;
+            if needs_pixels {
+                renderer.render(runtime.view(aspect), &dynamic, &ui)?
+            } else {
+                Vec::new()
+            }
+        } else if timed_apart {
+            renderer.measure(runtime.view(aspect), &dynamic, &ui)?;
+            (sample.encode, sample.gpu) = renderer.last_timing();
+            sample.gpu_time = renderer.last_gpu_ms();
+            if needs_pixels {
+                renderer.render(runtime.view(aspect), &dynamic, &ui)?
+            } else {
+                Vec::new()
+            }
+        } else {
+            let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
+            (sample.encode, sample.gpu) = renderer.last_timing();
+            pixels
+        };
         sample.flash_lights = renderer.selected_flash_lights();
         if let Some(stats) = renderer.draw_stats() {
             sample.draws = stats.draws;
@@ -951,18 +1016,9 @@ fn main() -> Result<(), String> {
                 Comparison::Particles,
             )?);
         }
-        let wreck = runtime.everglade_wreckage().unwrap_or_default();
-        let landed = runtime.zone_snapshot(1.0).caption;
-        if first_impact.is_none() && wreck[1] > 0 && wreck[2] > 0 {
-            first_impact = Some(k);
-        }
         if k == (2.0 * fps) as usize {
             write_png(&args.out.join("establishing.png"), &pixels)?;
         }
-        let capture_impact = args.impact_frame.map_or_else(
-            || first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize),
-            |frame| k == frame,
-        );
         if !impact_shot && capture_impact {
             write_png(&args.out.join("impact.png"), &pixels)?;
             impact_shot = true;
@@ -993,10 +1049,6 @@ fn main() -> Result<(), String> {
                 capture_particle_pair(&mut renderer, view, &mut dynamic, &ui, &args.out, "impact")?;
             }
         }
-        let capture_smoke = args.smoke_frame.map_or_else(
-            || first_impact.is_some_and(|frame| k >= frame + (0.65 * fps) as usize),
-            |frame| k == frame,
-        );
         if smoke_frame.is_none() && capture_smoke {
             smoke_frame = Some(k);
             write_png(&args.out.join("ground-smoke.png"), &pixels)?;
@@ -1160,6 +1212,7 @@ fn main() -> Result<(), String> {
         "relit": relit_report,
         "restore_at": args.restore_at,
         "orbit": args.orbit,
+        "timing": if args.live && args.pipelined && args.video.is_none() && !args.orbit { "pipelined" } else { "sequential" },
         "taa": std::env::var("VERSE_TAA").map_or(true, |v| !matches!(v.as_str(), "0" | "off" | "false")),
         "temporal_flicker": if flicker.is_empty() { serde_json::Value::Null } else {
             serde_json::json!({

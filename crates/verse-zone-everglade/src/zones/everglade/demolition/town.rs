@@ -393,6 +393,10 @@ struct Wreck {
     /// Each chunk shape's boxes, in the body frame, and its meshes.
     cuboids: Vec<Vec<Cuboid>>,
     meshes: Vec<Vec<ChunkMesh>>,
+    /// The carved shapes cut so far by what their cut depends on
+    /// ([`carve::CellBody::key`]): blocks of one model placed alike share
+    /// one shape, so their chunks draw as instances of one mesh.
+    carved_shapes: std::collections::HashMap<(bool, Vec<u32>), usize>,
     /// The placements, for cutting carved blocks.
     placements: Vec<crate::zones::everglade::layout::Placement>,
     /// Whether the town has Everglade's water, which its debris floats on.
@@ -452,9 +456,10 @@ impl Wreck {
             return;
         }
         let b = &self.buildings[building];
-        let mut cut: Vec<(usize, Vec<ChunkMesh>)> = Vec::new();
+        let mut cut: Vec<(usize, (bool, Vec<u32>), Option<Vec<ChunkMesh>>)> = Vec::new();
+        let mut fresh = 0;
         for (k, piece) in b.pieces.iter().enumerate() {
-            if cut.len() >= budget {
+            if fresh >= budget {
                 break;
             }
             let Some((placement, cell)) = piece.carve else {
@@ -466,20 +471,35 @@ impl Wreck {
             let Some(carved) = b.carved.iter().find(|c| c.placement == placement) else {
                 continue;
             };
-            let meshes = carve::cut_cell(
-                &carved.split,
-                &self.placements[placement],
-                cell,
-                piece.draft.placement,
-                self.debris.shards,
+            let at = &self.placements[placement];
+            let body = carve::CellBody::of(&carved.split, at, cell, piece.draft.placement);
+            let key = (
+                self.debris.shards >= 3 && at.model.starts_with("kit/"),
+                body.key(),
             );
-            cut.push((k, meshes));
+            // A block cut alike before, here or in this batch, shares it.
+            let known =
+                self.carved_shapes.contains_key(&key) || cut.iter().any(|(_, k, _)| *k == key);
+            let meshes = if known {
+                None
+            } else {
+                fresh += 1;
+                Some(carve::cut_body(&body, at, self.debris.shards))
+            };
+            cut.push((k, key, meshes));
         }
-        for (k, meshes) in cut {
-            let boxes: Vec<Cuboid> = meshes.iter().filter_map(|m| m.cuboid).collect();
-            self.cuboids.push(boxes.clone());
-            self.meshes.push(meshes);
-            let shape = self.meshes.len() - 1;
+        for (k, key, meshes) in cut {
+            let shape = match meshes {
+                Some(meshes) => {
+                    self.cuboids
+                        .push(meshes.iter().filter_map(|m| m.cuboid).collect());
+                    self.meshes.push(meshes);
+                    self.carved_shapes.insert(key, self.meshes.len() - 1);
+                    self.meshes.len() - 1
+                }
+                None => self.carved_shapes[&key],
+            };
+            let boxes = self.cuboids[shape].clone();
             let piece = &mut self.buildings[building].pieces[k];
             piece.look.shape = shape;
             piece.cut = true;
@@ -1288,6 +1308,7 @@ impl Town {
                 frozen: BTreeMap::new(),
                 cuboids,
                 meshes,
+                carved_shapes: std::collections::HashMap::new(),
                 placements: placements.to_vec(),
                 water: everglade,
                 clock: 0.0,

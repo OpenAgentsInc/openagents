@@ -412,25 +412,80 @@ pub fn cut_cell(
     frame: Mat4,
     shards: usize,
 ) -> Vec<ChunkMesh> {
-    let to_body = frame.inverse() * placement.transform();
-    let rotate = Mat4::from_quat(to_body.to_scale_rotation_translation().1);
-    let triangles: Vec<Triangle> = split
-        .triangles
-        .iter()
-        .filter(|(_, _, c)| *c == cell)
-        .map(|(corners, material, _)| Triangle {
-            corners: corners.map(|v| TexturedVertex {
-                pos: to_body.transform_point3(Vec3::from(v.pos)).to_array(),
-                normal: rotate
-                    .transform_vector3(Vec3::from(v.normal))
-                    .normalize_or_zero()
-                    .to_array(),
-                ..v
-            }),
-            host: true,
-            material: *material,
-        })
-        .collect();
+    cut_body(
+        &CellBody::of(split, placement, cell, frame),
+        placement,
+        shards,
+    )
+}
+
+/// A carved cell's triangles in its body's frame, snapped to [`SNAP`], so
+/// pieces of one model placed alike (every wall section of a house) give
+/// the same triangles bit for bit whatever their place and turn, and so
+/// share one cut and its meshes ([`CellBody::key`], issue #10937).
+pub struct CellBody {
+    triangles: Vec<Triangle>,
+}
+
+/// The grid a cell's body-frame positions snap to, m: a tenth of a
+/// millimeter, far under a pixel, and far over the rounding a placement's
+/// turn and its body's opposite turn leave behind.
+pub const SNAP: f32 = 1.0e-4;
+
+impl CellBody {
+    /// Cell `cell` of `placement`'s model `split`, in the body frame
+    /// `frame`.
+    #[must_use]
+    pub fn of(split: &Split, placement: &Placement, cell: u32, frame: Mat4) -> Self {
+        let to_body = frame.inverse() * placement.transform();
+        let rotate = Mat4::from_quat(to_body.to_scale_rotation_translation().1);
+        let snap = |v: f32, step: f32| (v / step).round() * step;
+        let triangles = split
+            .triangles
+            .iter()
+            .filter(|(_, _, c)| *c == cell)
+            .map(|(corners, material, _)| Triangle {
+                corners: corners.map(|v| {
+                    let pos = to_body.transform_point3(Vec3::from(v.pos));
+                    let normal = rotate
+                        .transform_vector3(Vec3::from(v.normal))
+                        .normalize_or_zero();
+                    TexturedVertex {
+                        pos: pos.to_array().map(|x| snap(x, SNAP)),
+                        normal: normal.to_array().map(|x| snap(x, 1.0e-4)),
+                        ..v
+                    }
+                }),
+                host: true,
+                material: *material,
+            })
+            .collect();
+        Self { triangles }
+    }
+
+    /// What the cut depends on, bit for bit: two cells with the same key
+    /// cut into the same chunks.
+    #[must_use]
+    pub fn key(&self) -> Vec<u32> {
+        let mut key = Vec::with_capacity(self.triangles.len() * 40);
+        for t in &self.triangles {
+            key.push(u32::from(t.material));
+            for v in &t.corners {
+                key.extend(v.pos.iter().map(|x| x.to_bits()));
+                key.extend(v.normal.iter().map(|x| x.to_bits()));
+                key.extend(v.uv.iter().map(|x| x.to_bits()));
+                key.push(u32::from_le_bytes(v.color));
+                key.push(u32::from_le_bytes(v.light));
+            }
+        }
+        key
+    }
+}
+
+/// [`cut_cell`] of a cell already in its body's frame.
+#[must_use]
+pub fn cut_body(body: &CellBody, placement: &Placement, shards: usize) -> Vec<ChunkMesh> {
+    let triangles = &body.triangles;
     if triangles.is_empty() {
         return Vec::new();
     }
@@ -458,7 +513,7 @@ pub fn cut_cell(
         grid,
         thickness: None,
     };
-    chunks::cut_region(&triangles, &region, Vec3::ZERO)
+    chunks::cut_region(triangles, &region, Vec3::ZERO)
 }
 
 #[cfg(test)]

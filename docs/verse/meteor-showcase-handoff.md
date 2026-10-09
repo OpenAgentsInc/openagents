@@ -167,6 +167,56 @@ Lowering the chunk cap early in the swarm would trade away visible debris
 (the live cast peaks at about 500 chunks, under the 700 cap), so it is not
 done.
 
+### Physics over threads, shared chunk shapes, and app-like timing
+
+The second pass at #10937 (October 9):
+
+- Rigid-body detection splits over threads (`physics::parallel`): the
+  broadphase queries, then the narrow phase, each pair's result back in
+  order, so the contacts are the same as one thread finds.
+- The contact solve splits by island: islands share no body that moves,
+  so each thread sweeps whole islands and the result is the one-thread
+  result bit for bit. A swarm's rubble is mostly one island of 1,000 to
+  2,500 contacts, so an island of 1,024 or more contacts without joints
+  solves by four slabs of its bodies along its longer side, the slabs at
+  once and the contacts between slabs after them, each pass
+  (`physics::contact::regions`). That order is fixed by the island, never
+  by the machine's threads. Smaller islands keep the old order: a 384
+  contact threshold changed which pieces a test strike broke.
+- Carved blocks cut alike share one chunk shape
+  (`carve::CellBody::key`): the body-frame triangles snap to a tenth of a
+  millimeter, so every wall section of one model breaks into the same
+  chunks and draws as instances of one mesh. Draws in the swarm fell from
+  about 5,500 to 3,200.
+- `meteor_showcase_capture` no longer reads every live frame's pixels back
+  (only a still's, from a second draw), and `--pipelined` times frames as
+  the app draws them: each frame's CPU work overlaps the last frame's GPU
+  work (a frame latency of two). The sequential frame still adds the full
+  GPU round trip to every frame.
+
+Three interleaved runs each, `--live --settle-light`, High, licensed kit,
+this Mac with other agents' builds running (load average 8 to 14),
+medians of each run's p50 / p99 frame:
+
+| Phase | Sequential before | Sequential after | Pipelined before | Pipelined after |
+| --- | --- | --- | --- | --- |
+| Before the cast | 6.6 / 9.7 | 6.7 / 9.7 | 2.6 / 4.5 | 2.6 / 4.5 |
+| Swarm (6 s) | 17.9 / 26.1 | 14.4 / 21.8 | 11.8 / 18.8 | 8.9 / 16.1 |
+| After | 10.8 / 17.2 | 10.9 / 14.1 | 4.8 / 8.7 | 5.2 / 7.4 |
+
+The swarm's physics fell from 7.3 / 12.6 to 4.8 / 9.7 ms a frame (two
+120 Hz steps): detection 3.5 / 4.8 to 1.8 / 2.3, the solve 3.4 / 7.8 to
+2.6 / 6.4. As the app draws, the swarm holds p99 under 16.7 ms (runs of
+15.3, 16.6, and 16.1 ms), with little room; the sequential sum does not.
+The debris looks the same: the same chunk counts over time, both houses
+down, the rubble spread alike
+([parallel-physics-impact-pair.jpg](captures/meteor-showcase/parallel-physics-impact-pair.jpg)
+and
+[parallel-physics-aftermath-pair.jpg](captures/meteor-showcase/parallel-physics-aftermath-pair.jpg),
+committed proxies, film frame 163 and the aftermath, before left); the
+large islands' new solve order moves individual chunks, so the pairs
+differ chunk by chunk (25.8 and 33.0 dB).
+
 ## Relighting what breaks (#10938)
 
 The showcase's light is baked at load: each vertex's sky visibility and one

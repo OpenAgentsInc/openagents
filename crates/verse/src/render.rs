@@ -1749,6 +1749,8 @@ pub struct Offscreen {
     timing: (f32, f32),
     gpu_timestamps: Option<GpuTimestamps>,
     last_gpu_ms: Option<f32>,
+    /// Frames submitted by [`Self::submit`] and not yet waited for.
+    pending: std::collections::VecDeque<wgpu::SubmissionIndex>,
 }
 
 #[cfg(feature = "capture")]
@@ -1858,6 +1860,7 @@ impl Offscreen {
             timing: (0.0, 0.0),
             gpu_timestamps,
             last_gpu_ms: None,
+            pending: std::collections::VecDeque::new(),
         })
     }
 
@@ -1938,6 +1941,72 @@ impl Offscreen {
     ) -> Result<(f32, f32), String> {
         self.render_frame(view, dynamic, ui, None, false)?;
         Ok(self.timing)
+    }
+
+    /// Encodes and submits one frame without waiting for the GPU, as the
+    /// app does while the frame before is still drawing, and returns the
+    /// CPU time to fit, encode, and submit it, in ms.
+    /// [`Self::wait_previous`] then waits for the frame before it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the frame is invalid.
+    pub fn submit(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<f32, String> {
+        if !self.settled {
+            self.render_frame(view, dynamic, ui, None, false)?;
+            return Ok(self.timing.0);
+        }
+        let started = std::time::Instant::now();
+        validate_frame(view, dynamic, ui)?;
+        let (fitted, fitted_ui) = fit_frame(
+            verse_engine::quality::Resources::default(),
+            self.scene.capability.quality,
+            dynamic,
+            ui,
+        )?;
+        let dynamic = fitted.as_ref().unwrap_or(dynamic);
+        let ui = fitted_ui.as_ref().unwrap_or(ui);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("verse capture"),
+            });
+        self.scene.encode(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &self.output,
+            &mut self.targets,
+            view,
+            dynamic,
+            ui,
+        );
+        self.pending
+            .push_back(self.queue.submit([encoder.finish()]));
+        if let Some(photo) = &mut self.scene.photo {
+            photo.submitted();
+        }
+        Ok(started.elapsed().as_secs_f32() * 1000.0)
+    }
+
+    /// Waits until at most one submitted frame is still drawing: the app's
+    /// frame latency of two. Returns the wait, in ms.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the GPU fails.
+    pub fn wait_previous(&mut self) -> Result<f32, String> {
+        let started = std::time::Instant::now();
+        while self.pending.len() > 1 {
+            let index = self.pending.pop_front();
+            self.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: index,
+                    timeout: None,
+                })
+                .map_err(|e| format!("the GPU did not finish: {e}"))?;
+        }
+        Ok(started.elapsed().as_secs_f32() * 1000.0)
     }
 
     fn render_with_overlay(
@@ -2075,6 +2144,7 @@ impl Offscreen {
                 timeout: None,
             })
             .map_err(|e| format!("the GPU did not finish: {e}"))?;
+        self.pending.clear();
         self.last_gpu_ms = None;
         if let (Some(timer), Some(mapping)) = (timestamps, timestamp_mapping) {
             mapping
