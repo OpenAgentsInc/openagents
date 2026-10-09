@@ -1,5 +1,6 @@
 //! The public pages, one module per section.
 
+mod blue_rush;
 pub(crate) mod chat;
 mod cloud;
 mod connect;
@@ -17,6 +18,8 @@ use axum::Router;
 use crate::App;
 
 #[cfg(test)]
+pub(crate) use blue_rush::{ASSETS as BLUE_RUSH_ASSETS, PATH as BLUE_RUSH};
+#[cfg(test)]
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
 pub(crate) use content::DOCS;
@@ -31,6 +34,7 @@ pub(crate) use stats::utc;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
+        .merge(blue_rush::routes())
         .merge(chat::routes())
         .merge(cloud::routes())
         .merge(live::routes())

@@ -64,7 +64,12 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
     (status, body)
 }
 
-/// Every public HTML page a development server serves.
+/// Every public HTML page a development server serves in the OpenAgents
+/// shell. `/studios/blue-rush` is left out on purpose: it is the Blue Rush
+/// Studios brand, with its own stylesheet, script, nav and footer instead
+/// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
+/// script) don't apply. Its own test below holds it to the same policy
+/// rules: no inline script or style, scripts from this site only.
 const PAGES: [&str; 42] = [
     "/",
     "/live",
@@ -251,6 +256,77 @@ async fn the_component_catalog_is_served_at_ui() {
     assert!(!policy.contains("'unsafe-inline'"), "{policy}");
     assert!(!policy.contains("'unsafe-eval'"), "{policy}");
     assert!(upstream::owned("/ui"));
+}
+
+/// `/studios/blue-rush`: the studio's own page, its stylesheet, script and
+/// pictures, under a strict policy and never proxied.
+#[tokio::test]
+async fn the_blue_rush_studio_page_serves_its_own_brand() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    let (status, headers, html) = get_with(site.clone(), pages::BLUE_RUSH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.to_ascii_lowercase().starts_with("<!doctype html>"));
+    assert!(html.contains("<title>Blue Rush Studios</title>"));
+    assert!(html.contains("href=\"/games/grow-little-bunny\""));
+    assert!(
+        html.contains("id=\"br-water\""),
+        "the water behind the cards"
+    );
+    assert!(html.contains("id=\"br-sand\""), "the sand garden");
+    assert!(!html.contains("oa-wordmark"), "not the OpenAgents shell");
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.starts_with("default-src 'none'"), "{policy}");
+    assert!(policy.contains("script-src 'self'"), "{policy}");
+    assert!(policy.contains("style-src 'self'"), "{policy}");
+    assert!(!policy.contains("'unsafe-inline'"), "{policy}");
+    assert!(!policy.contains("'unsafe-eval'"), "{policy}");
+    let lower = html.to_ascii_lowercase();
+    assert!(!lower.contains("<style"));
+    assert_eq!(lower.matches("<script").count(), 1);
+    for tag in lower.split('<').skip(1) {
+        let tag = tag.split('>').next().unwrap_or_default();
+        assert!(!tag.contains(" style="), "styles an element: {tag}");
+        assert!(
+            !tag.split_whitespace()
+                .any(|word| word.starts_with("on") && word.contains('=')),
+            "inline handler: {tag}"
+        );
+        if tag.starts_with("script") {
+            assert!(
+                tag.contains(&format!("src=\"{}bluerush.js?v=", pages::BLUE_RUSH_ASSETS)),
+                "{tag}"
+            );
+        }
+    }
+    for target in html.split("href=\"").skip(1) {
+        let target = &target[..target.find('"').unwrap()];
+        if target.starts_with('/') && !target.starts_with("/games/") {
+            let path = target.split('?').next().unwrap();
+            let (status, _) = get(site.clone(), path).await;
+            assert_eq!(status, StatusCode::OK, "links {target}");
+        }
+    }
+    for (file, kind) in [
+        ("bluerush.css", "text/css"),
+        ("bluerush.js", "text/javascript"),
+        ("hero-bay.jpg", "image/jpeg"),
+        ("lighthouse.jpg", "image/jpeg"),
+        ("harbor.jpg", "image/jpeg"),
+        ("sea-arch.jpg", "image/jpeg"),
+    ] {
+        let path = format!("{}{file}", pages::BLUE_RUSH_ASSETS);
+        let (status, headers, body) = get_bytes(site.clone(), &path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(!body.is_empty(), "{path}");
+        let content_type = headers[header::CONTENT_TYPE].to_str().unwrap();
+        assert!(content_type.starts_with(kind), "{path}: {content_type}");
+        assert!(headers.contains_key(header::CACHE_CONTROL), "{path}");
+        assert!(upstream::owned(&path), "{path}");
+    }
+    let missing = format!("{}nope.js", pages::BLUE_RUSH_ASSETS);
+    assert_eq!(get(site, &missing).await.0, StatusCode::NOT_FOUND);
+    assert!(upstream::owned(pages::BLUE_RUSH));
 }
 
 #[tokio::test]

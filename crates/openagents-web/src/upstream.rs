@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 45] = [
+const OWNED_EXACT: [&str; 46] = [
     "/",
     "/static/ui.css",
     "/static/ui.js",
@@ -55,6 +55,7 @@ const OWNED_EXACT: [&str; 45] = [
     "/stats",
     "/efficiency",
     "/everglade",
+    "/studios/blue-rush",
     "/druid",
     "/grid",
     "/ask",
@@ -86,8 +87,9 @@ const OWNED_EXACT: [&str; 45] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 9] = [
+const OWNED_PREFIXES: [&str; 10] = [
     "/docs/",
+    "/studios/blue-rush/",
     "/demo/",
     "/app/",
     "/everglade/",
