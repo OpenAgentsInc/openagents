@@ -150,9 +150,10 @@ few cases.
 | --- | --- | --- |
 | `http`, local site → the production chat worker (release `bbed5d89af`, 2026-10-03) | 25 of 97 (26 %) | 2.3 s / 18.2 s |
 | `local`, this checkout's worker and site | 69 of 97 (71 %) | 1.8 s / 7.0 s |
+| `http`, local site → the production chat worker after deploying `42fe20c01b` | 67 of 97 (69 %) | 1.5 s / 8.2 s |
 | `router`, this checkout | 67–68 of 97 | Jev alone 0.3–1.1 s |
 
-The production chat worker ran a release from 2026-10-03: its bank still
+Until `42fe20c01b` was deployed on 2026-10-09, the production chat worker ran a release from 2026-10-03: its bank still
 said Coder is "dispatched" to "a computer you've connected", its notes
 still offered a Mac `.dmg`, an account question on the website got
 "download the app", and it had none of the notes on projects, sign-in, the

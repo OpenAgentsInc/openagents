@@ -1668,3 +1668,20 @@ the `chat` symlink from `16063d5024` (kept for rollback) and restarting
 The log names `router chat-router-v5@226865d8437b (Live)`, bank
 `chat-answers-v1@a4b2858f9f09` (75 answers) and the product KB at 106
 entries. Fresh-home `openagents chat send` runs returned the new wording.
+
+Release `42fe20c01b` (2026-10-09 UTC, web chat goldens): the website's
+`.website` answers, account questions read the product notes, `WEB_NOTE`
+names Coder and the download page, and the notes on sign-in, the Claude
+key, environments, Coder's sign-in and sync, and deleting chats. The
+release before it (`bbed5d89af`, 2026-10-03) was six days behind main: its
+bank still said "dispatch" and "a computer you've connected", and its notes
+offered a Mac `.dmg`. Built on this Mac with `cargo zigbuild --locked
+--release -p coder --bin coder-worker --target x86_64-unknown-linux-musl`
+at that commit, installed as `/opt/coder-worker/releases/42fe20c01b` with
+`knowledge/` from `git archive 42fe20c01b knowledge/` and `codebase-kb.gz`
+copied from `bbed5d89af` (kept for rollback), checked with `--check`, and
+put live by moving the `chat` symlink and restarting `coder-worker-chat`.
+The environment file and unit did not change. The log names bank
+`chat-answers-v1@aa9fa65069b4` (83 answers) and the product KB at 112
+entries. The web chat goldens through a local site against it: 67 of 97
+(from 25 of 97 on `bbed5d89af`); see `docs/web/chat-goldens.md`.
