@@ -472,9 +472,11 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     crate::chat_html::protect(page.respond(&headers))
 }
 
-/// A chat synced from Coder (#11047): the transcript, read-only, and in
-/// place of the composer one line saying where it runs. Rows are plain
-/// links here, since there is no composer for a web chat to load into.
+/// A chat synced from Coder (#11047): the transcript, and a composer
+/// whose replies Coder on that computer takes and answers (#11048) while
+/// it is online ([`crate::coder_sync::online`]); otherwise one line saying
+/// where it runs. Rows are plain links here, since a web chat can't load
+/// into this composer.
 async fn show_terminal(
     app: &App,
     headers: &HeaderMap,
@@ -482,6 +484,17 @@ async fn show_terminal(
     computer: &str,
 ) -> Response {
     let id = &chat.id;
+    let online = app
+        .config
+        .chat_store
+        .computers(&chat.owner)
+        .await
+        .is_ok_and(|computers| crate::coder_sync::online(&computers, computer));
+    let dock = if online {
+        terminal_composer(app, chat, computer)
+    } else {
+        terminal_note(computer)
+    };
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -491,13 +504,88 @@ async fn show_terminal(
         .content(html! {
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, false)) }
         })
-        .composer(terminal_note(computer));
+        .composer(dock);
     crate::chat_html::protect(page.respond(headers))
 }
 
-/// What a Coder chat shows where the composer would be.
+/// What a Coder chat shows where the composer would be when Coder on its
+/// computer isn't online.
 pub(crate) fn terminal_note(computer: &str) -> Markup {
-    html! { p.oa-thread-notice #chat-terminal-note { "This chat runs in Coder on " (computer) "." } }
+    html! {
+        p.oa-thread-notice #chat-terminal-note {
+            "This chat runs in Coder on " (computer) ". To reply here, open Coder there with /sync on."
+        }
+    }
+}
+
+/// The composer on a Coder chat while Coder on its computer is online: a
+/// reply waits for Coder there, which answers it with that computer's
+/// tools.
+fn terminal_composer(app: &App, chat: &Conversation, computer: &str) -> Markup {
+    Composer::new("chat-form", format!("/chat/{}", chat.id))
+        .label("Reply in Coder")
+        .enhanced(true)
+        .input_id("chat-input")
+        .body_id("chat-card")
+        .max_chars(MAX_CHARS)
+        .placeholder(format!("Reply to Coder on {computer}"))
+        .autofocus(true)
+        .after(html! {
+            (ticket(app, chat, false, false))
+            p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
+        })
+        .render()
+}
+
+/// A reply sent from a Coder chat's page: it waits for Coder on the
+/// computer ([`crate::coder_sync::queue_reply`]), and the thread's live
+/// stream shows it, then Coder's answer.
+async fn reply_to_coder(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    request_id: &str,
+    text: &str,
+) -> Response {
+    use crate::coder_sync::Queued;
+    let store = &app.config.chat_store;
+    match crate::coder_sync::queue_reply(store, owner, id, request_id, text).await {
+        Ok(Queued::Queued) => {}
+        Ok(Queued::Offline(computer)) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                &format!("Coder on {computer} isn't online now. Open Coder there to reply."),
+            );
+        }
+        Ok(Queued::Full) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                "Wait for Coder to answer your earlier replies.",
+            );
+        }
+        Ok(Queued::Secret) => {
+            return refusal(
+                StatusCode::BAD_REQUEST,
+                "This looks like it holds a password or key, so it wasn't sent.",
+            );
+        }
+        Ok(Queued::Missing) => return missing(),
+        Err(e) => return unavailable(e),
+    }
+    let chat = match store.load(owner, id).await {
+        Ok(Some(loaded)) => loaded.conversation,
+        Ok(None) => return missing(),
+        Err(e) => return unavailable(e),
+    };
+    if headers.get("HX-Request").is_some_and(|v| v == "true") {
+        crate::chat_html::protect(
+            html! { (ticket(app, &chat, true, false)) (chat_list(app, owner, Some(id), false, true).await) }
+                .into_response(),
+        )
+    } else {
+        crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+    }
 }
 
 async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -676,7 +764,7 @@ async fn follow(
         Err(r) => return r,
     };
     if loaded.conversation.terminal.is_some() {
-        return refusal(StatusCode::CONFLICT, "Continue this chat in Coder.");
+        return reply_to_coder(&app, &headers, &owner, &id, &prompt.request_id, &text).await;
     }
     let selection = match selected(&app, &owner, &prompt) {
         Ok(v) => v,
@@ -1178,8 +1266,15 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
             (work::rows(chat, index + start + 1, links))
         }
+        // Replies sent here that Coder hasn't taken yet (#11048).
+        @if let Some(terminal) = chat.terminal.as_ref().filter(|_| before.is_none()) {
+            @for (index, reply) in terminal.replies.iter().enumerate() {
+                (ThreadMessage::user(&reply.text).id(format!("chat-reply-{index}")))
+            }
+        }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.working() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
+            @else if let Some(terminal) = chat.terminal.as_ref().filter(|t| !t.replies.is_empty()) {"Waiting for Coder on " (terminal.computer) "."}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
         }

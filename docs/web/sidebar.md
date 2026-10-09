@@ -66,9 +66,14 @@ acme/storefront · fix-login · Node 20 v3
 - A Coder chat synced from a terminal (#11046, #11047,
   `crates/openagents-web/src/coder_sync.rs`) says "Terminal · <computer>"
   on line 2, shows Working while Coder's heartbeat says it is replying,
-  and opens read-only at `/chat/{id}` with "This chat runs in Coder on
-  <computer>." in place of the composer. Deleting it on the web deletes it
-  in Coder the next time Coder checks.
+  and opens at `/chat/{id}`. While Coder on that computer has checked in
+  within the last minute (sync on), the page has a composer ("Reply to
+  Coder on <computer>"): the reply waits on the chat ("Waiting for Coder
+  on <computer>.") until Coder takes it, runs the turn there, and syncs the
+  answer back (#11048). Otherwise "This chat runs in Coder on <computer>.
+  To reply here, open Coder there with /sync on." stands in place of the
+  composer. Deleting it on the web deletes it in Coder the next time Coder
+  checks.
 - Long-running tasks (phase 3) add a thin progress line under the row only
   when the task reports steps ("3 of 7"); never a fake percentage.
 - Collapsed to the rail (or the closed narrow panel), rows hide like other

@@ -3,7 +3,14 @@
 //! deletes in both directions. The sending, screening, and setting live in
 //! [`coder_sync`]; this is the terminal's side. Off by default, and shown
 //! only when signed in.
+//!
+//! While sync is on, this computer also checks in with the website, which
+//! then offers a reply box on its chats (#11048). A reply typed there is
+//! taken when Coder is free (the chat open here, or any chat when nothing
+//! is being typed), shown as the person's message, and answered as usual;
+//! the answer syncs back like any other.
 
+use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
 
@@ -16,8 +23,9 @@ use crate::{App, sessions};
 /// What `/sync` says when it is off.
 pub const OFF: &str = "Saving chats to your account is off. /sync on saves new and changed chats; /sync all adds your earlier chats too.";
 /// What `/sync` says when it is on.
-pub const ON: &str =
-    "Chats save to your account. /sync off stops; /sync delete removes the ones already there.";
+pub const ON: &str = "Chats save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the ones already there.";
+/// What Coder says when it answers a reply typed on the website.
+pub const ANSWERING: &str = "Answering your reply from openagents.com.";
 /// The most earlier chats `/sync all` sends (the newest).
 const EARLIER: usize = 150;
 
@@ -30,6 +38,12 @@ pub(crate) struct SyncState {
     /// The last heartbeat sent for the open chat: working, and when.
     heartbeat: Option<(String, bool, Instant)>,
     told_full: bool,
+    /// Checking in for replies typed on the website.
+    listening: bool,
+    /// Chats whose replies were asked for and haven't arrived.
+    taking: BTreeSet<String>,
+    /// Replies taken from the website, waiting for Coder to be free.
+    inbox: VecDeque<(String, Vec<String>)>,
 }
 
 fn now() -> u64 {
@@ -73,6 +87,9 @@ impl App {
             computer: openagents_login::computer_name(),
             heartbeat: None,
             told_full: false,
+            listening: false,
+            taking: BTreeSet::new(),
+            inbox: VecDeque::new(),
         });
         sync.settings = settings;
         if (sync.settings.on || !sync.settings.to_delete.is_empty())
@@ -86,6 +103,8 @@ impl App {
                 });
             }
             sync.worker = Some(worker);
+            sync.listening = false;
+            sync.taking.clear();
         }
         self.sync = Some(sync);
     }
@@ -95,7 +114,71 @@ impl App {
         if let Some(sync) = &mut self.sync {
             sync.worker = None;
             sync.heartbeat = None;
+            sync.listening = false;
+            sync.taking.clear();
         }
+    }
+
+    /// Whether nothing runs here, so a reply from the website can start.
+    fn idle_for_replies(&self) -> bool {
+        !self.live.busy
+            && !self.following()
+            && self.request.is_none()
+            && self.brainstorm_job.is_none()
+            && !self.checking_key
+            && !self.checking_jev
+            && !self.delegations.iter().any(|child| child.running)
+    }
+
+    /// Whether a reply for `session` can start now: the chat is open here,
+    /// or nothing is being typed and no picker is open, so switching to it
+    /// loses nothing.
+    fn free_for(&self, session: &str) -> bool {
+        self.idle_for_replies()
+            && (self.session_id() == Some(session)
+                || (self.draft.text.trim().is_empty() && self.resume_picker.is_none()))
+    }
+
+    /// Answer the oldest reply taken from the website, when Coder is free:
+    /// open its chat, show it as the person's message, and run the turn.
+    pub(crate) fn answer_web_reply(&mut self) {
+        let Some(session) = self
+            .sync
+            .as_ref()
+            .and_then(|sync| sync.inbox.front())
+            .map(|(session, _)| session.clone())
+        else {
+            return;
+        };
+        if !self.free_for(&session) {
+            return;
+        }
+        let Some((session, texts)) = self.sync.as_mut().and_then(|sync| sync.inbox.pop_front())
+        else {
+            return;
+        };
+        if self.session_id() != Some(session.as_str()) && !self.resume(Some(session.as_str())) {
+            self.notice = Some(
+                "A reply from openagents.com couldn't be answered: its chat isn't on this computer."
+                    .into(),
+            );
+            return;
+        }
+        let Some((last, earlier)) = texts.split_last() else {
+            return;
+        };
+        self.select_agent(None);
+        let typed = std::mem::take(&mut self.draft);
+        for text in earlier {
+            self.live
+                .entries
+                .push(crate::live::Entry::User(text.clone()));
+        }
+        self.draft.text = last.clone();
+        self.draft.cursor = self.draft.text.len();
+        self.submit_live();
+        self.draft = typed;
+        self.notice = Some(ANSWERING.into());
     }
 
     fn store_sync(&mut self) {
@@ -141,6 +224,13 @@ impl App {
             return;
         };
         let events = worker.drain();
+        // Check in for replies typed on the website while sync is on.
+        if sync.listening != sync.settings.on {
+            sync.listening = sync.settings.on;
+            worker.send(Job::Listen {
+                computer: sync.listening.then(|| sync.computer.clone()),
+            });
+        }
         if let Some(session) = open.filter(|session| sync.settings.sent.contains_key(session)) {
             let due = match &sync.heartbeat {
                 Some((last, working, at)) => {
@@ -158,18 +248,44 @@ impl App {
                 sync.heartbeat = Some((session, busy, Instant::now()));
             }
         }
-        if events.is_empty() {
-            return;
+        if !events.is_empty() {
+            for event in events {
+                self.apply_sync(event);
+            }
+            self.store_sync();
         }
-        for event in events {
-            self.apply_sync(event);
-        }
-        self.store_sync();
+        self.answer_web_reply();
     }
 
     fn apply_sync(&mut self, event: Event) {
         let open = self.session_id().map(str::to_owned);
         let dir = self.account_dir.clone();
+        if let Event::Waiting { sessions } = &event {
+            let free: Vec<bool> = sessions.iter().map(|s| self.free_for(s)).collect();
+            let Some(sync) = &mut self.sync else {
+                return;
+            };
+            for (session, free) in sessions.iter().zip(free) {
+                // Only this computer's own chats, one take at a time.
+                let ours = sync.settings.sent.contains_key(session)
+                    || open.as_deref() == Some(session.as_str());
+                if !free
+                    || !ours
+                    || sync.settings.kept_here.contains(session)
+                    || sync.taking.contains(session)
+                    || sync.inbox.iter().any(|(waiting, _)| waiting == session)
+                {
+                    continue;
+                }
+                if let Some(worker) = &sync.worker {
+                    sync.taking.insert(session.clone());
+                    worker.send(Job::Take {
+                        session: session.clone(),
+                    });
+                }
+            }
+            return;
+        }
         let Some(sync) = &mut self.sync else {
             return;
         };
@@ -181,7 +297,16 @@ impl App {
                 sync.settings.to_delete.remove(&session);
                 sync.settings.sent.remove(&session);
             }
+            Event::Replies { session, replies } => {
+                sync.taking.remove(&session);
+                if !replies.is_empty() {
+                    sync.inbox
+                        .push_back((session, replies.into_iter().map(|r| r.text).collect()));
+                }
+            }
+            Event::Waiting { .. } => {}
             Event::Gone { session } => {
+                sync.taking.remove(&session);
                 sync.settings.sent.remove(&session);
                 // Deleted on the website: delete it here too, unless it is
                 // the chat open now, which stays here and isn't sent again.
@@ -207,6 +332,8 @@ impl App {
             }
             Event::SignedOut => {
                 sync.worker = None;
+                sync.listening = false;
+                sync.taking.clear();
                 self.notice = Some(
                     "Your sign-in ended. Run /login to keep saving chats to your account.".into(),
                 );
@@ -390,6 +517,81 @@ mod tests {
                 .settings
                 .kept_here
                 .contains("elsewhere")
+        );
+    }
+
+    #[test]
+    fn a_reply_from_the_website_opens_its_chat_and_runs_without_losing_a_draft() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        let mut chat = crate::live::Chat::default();
+        chat.entries
+            .push(crate::live::Entry::User("Fix the build".into()));
+        let document = crate::trajectory::document(&chat, "web", "test/local", dir.path());
+        store.save("web", &document).unwrap();
+        let mut app = App {
+            account_dir: Some(dir.path().to_path_buf()),
+            account: Some("Octo".into()),
+            ..App::default()
+        };
+        app.attach_session_store(sessions::Store::under(dir.path()));
+        app.start_sync();
+        let reply = |app: &mut App, text: &str| {
+            app.sync
+                .as_mut()
+                .unwrap()
+                .inbox
+                .push_back(("web".into(), vec![text.into()]));
+        };
+
+        // Something typed in another chat: the reply waits.
+        app.draft.text = "half typed".into();
+        reply(&mut app, "Now the tests");
+        app.answer_web_reply();
+        assert!(app.request.is_none());
+        assert_eq!(app.sync.as_ref().unwrap().inbox.len(), 1);
+
+        // Nothing typed: its chat opens and the turn runs.
+        app.draft = crate::Draft::default();
+        app.answer_web_reply();
+        assert_eq!(app.session_id(), Some("web"));
+        assert!(matches!(
+            app.live.entries.last(),
+            Some(crate::live::Entry::User(text)) if text == "Now the tests"
+        ));
+        assert!(app.live.busy && app.request.is_some());
+        assert_eq!(app.notice.as_deref(), Some(ANSWERING));
+
+        // While it runs, the next waits; then it runs in the open chat and
+        // keeps what is being typed.
+        reply(&mut app, "And the docs");
+        app.answer_web_reply();
+        assert_eq!(app.sync.as_ref().unwrap().inbox.len(), 1);
+        app.live.busy = false;
+        app.request = None;
+        app.draft.text = "my own words".into();
+        app.answer_web_reply();
+        assert!(matches!(
+            app.live.entries.last(),
+            Some(crate::live::Entry::User(text)) if text == "And the docs"
+        ));
+        assert_eq!(app.draft.text, "my own words");
+
+        // A chat this computer doesn't have: said plainly, nothing runs.
+        app.live.busy = false;
+        app.request = None;
+        app.draft = crate::Draft::default();
+        app.sync
+            .as_mut()
+            .unwrap()
+            .inbox
+            .push_back(("elsewhere".into(), vec!["Hi".into()]));
+        app.answer_web_reply();
+        assert!(app.request.is_none());
+        assert!(
+            app.notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("isn't on this computer"))
         );
     }
 }

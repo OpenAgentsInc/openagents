@@ -5,7 +5,7 @@
 //! cannot replace a record that changed after it was read. Neither adapter
 //! treats an HTTP connection as the owner of a running answer.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -87,6 +87,98 @@ pub(crate) struct Terminal {
     /// its own copy, so the next upload doesn't bring it back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_unix: Option<u64>,
+    /// Replies sent on the website, waiting for Coder on the computer to
+    /// take them (#11048). Coder takes them into the transcript, oldest
+    /// first. At most [`MAX_WEB_REPLIES`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replies: Vec<WebReply>,
+    /// The ids of the last replies sent on the website, so a resent form
+    /// isn't queued twice. At most [`MAX_REPLY_IDS`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reply_ids: Vec<String>,
+}
+
+/// A reply typed on the website for a Coder chat (#11048).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WebReply {
+    pub id: String,
+    pub text: String,
+    pub sent_unix: u64,
+}
+
+/// The most replies that wait for Coder in one chat.
+pub(crate) const MAX_WEB_REPLIES: usize = 4;
+/// How many sent reply ids a Coder chat remembers.
+pub(crate) const MAX_REPLY_IDS: usize = 16;
+/// The longest reply sent from the website, in bytes.
+pub(crate) const MAX_WEB_REPLY_BYTES: usize = 16 * 1024;
+
+/// Per account: the computers whose Coder checked in, each with when it
+/// last did, and the Coder chats with replies from the website waiting
+/// (session to computer), so Coder finds them with one read (#11048). One
+/// small record beside the account's chats.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Computers {
+    #[serde(default)]
+    pub seen: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub waiting: BTreeMap<String, String>,
+}
+
+/// The most computers one account's record keeps (the oldest go first).
+pub(crate) const MAX_COMPUTERS: usize = 16;
+/// The most Coder chats with replies waiting at once.
+pub(crate) const MAX_WAITING_CHATS: usize = 64;
+
+impl Computers {
+    fn valid(&self) -> bool {
+        self.seen.len() <= MAX_COMPUTERS
+            && self.waiting.len() <= MAX_WAITING_CHATS
+            && self.seen.keys().all(|name| bounded_text(name, 128))
+            && self
+                .waiting
+                .iter()
+                .all(|(session, computer)| coder_session(session) && bounded_text(computer, 128))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct ComputersRecord {
+    schema: String,
+    computers: Computers,
+}
+
+const COMPUTERS_FILE: &str = ".coder.json";
+
+fn computers_bytes(computers: &Computers) -> Result<Vec<u8>, Error> {
+    if !computers.valid() {
+        return Err(Error::Invalid("The computer list is invalid."));
+    }
+    serde_json::to_vec(&ComputersRecord {
+        schema: format!("{SCHEMA}.coder"),
+        computers: computers.clone(),
+    })
+    .map_err(|_| Error::Invalid("The computer list is invalid."))
+}
+
+fn decode_computers(bytes: &[u8]) -> Result<Computers, Error> {
+    let record: ComputersRecord = serde_json::from_slice(bytes)
+        .map_err(|_| Error::Corrupt("The computer list is invalid."))?;
+    if record.schema != format!("{SCHEMA}.coder") || !record.computers.valid() {
+        return Err(Error::Corrupt("The computer list is invalid."));
+    }
+    Ok(record.computers)
+}
+
+/// Coder's session ids: letters, numbers, `_`, and `-`, up to 128 bytes.
+fn coder_session(session: &str) -> bool {
+    !session.is_empty()
+        && session.len() <= 128
+        && session
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 /// How long a "working" heartbeat from Coder shows the chat as Working.
@@ -679,6 +771,76 @@ impl Store {
         }
     }
 
+    /// The account's Coder computers and waiting replies (#11048). None
+    /// saved is empty.
+    pub(crate) async fn computers(&self, owner: &str) -> Result<Computers, Error> {
+        validate_owner(owner)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let path = root.join(owner_digest(owner)).join(COMPUTERS_FILE);
+                blocking(move || read_computers_disk(&path)).await
+            }
+            Adapter::Gcs(gcs) => {
+                let name = format!("{}{COMPUTERS_FILE}", gcs.owner_prefix(owner));
+                match gcs.read_object(&name).await? {
+                    Some((bytes, _)) => decode_computers(&bytes),
+                    None => Ok(Computers::default()),
+                }
+            }
+        }
+    }
+
+    /// Change the account's Coder computers record with `change`, which
+    /// says whether it changed anything; nothing is written when it
+    /// didn't. Returns the record as it now stands.
+    pub(crate) async fn update_computers<F>(
+        &self,
+        owner: &str,
+        change: F,
+    ) -> Result<Computers, Error>
+    where
+        F: Fn(&mut Computers) -> bool + Send + Sync + 'static,
+    {
+        validate_owner(owner)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let directory = root.join(owner_digest(owner));
+                blocking(move || {
+                    create_directory(&directory)?;
+                    let path = directory.join(COMPUTERS_FILE);
+                    let _lock = lock(&directory.join(".coder.lock"))?;
+                    let mut computers = read_computers_disk(&path)?;
+                    if change(&mut computers) {
+                        atomic_write(&path, &computers_bytes(&computers)?)?;
+                    }
+                    Ok(computers)
+                })
+                .await
+            }
+            Adapter::Gcs(gcs) => {
+                let name = format!("{}{COMPUTERS_FILE}", gcs.owner_prefix(owner));
+                for _ in 0..4 {
+                    let (mut computers, generation) = match gcs.read_object(&name).await? {
+                        Some((bytes, generation)) => (decode_computers(&bytes)?, generation),
+                        None => (Computers::default(), "0".to_owned()),
+                    };
+                    if !change(&mut computers) {
+                        return Ok(computers);
+                    }
+                    match gcs
+                        .put_object(&name, computers_bytes(&computers)?, &generation)
+                        .await
+                    {
+                        Ok(_) => return Ok(computers),
+                        Err(Error::Conflict) => continue,
+                        Err(error) => return Err(error),
+                    }
+                }
+                Err(Error::Conflict)
+            }
+        }
+    }
+
     /// Remove one chat for good. `expected` is the generation the caller
     /// read: a chat that changed since then is not removed (`Conflict`), so
     /// a delete never drops a message the person did not see. Returns false
@@ -726,6 +888,8 @@ impl Store {
             terminal.title.clear();
             terminal.digest.clear();
             terminal.working_unix = None;
+            terminal.replies.clear();
+            terminal.reply_ids.clear();
             terminal.deleted_unix = Some(now_unix());
         }
         self.compare_and_swap(loaded, &next).await.map(|_| true)
@@ -1166,7 +1330,9 @@ impl Gcs {
             let listed: Page = serde_json::from_slice(&limited_body(response, 128 * 1024).await?)
                 .map_err(|_| Error::Corrupt("The chat list is invalid."))?;
             for object in listed.items {
-                if object.name == format!("{prefix}.active.json") {
+                if object.name == format!("{prefix}.active.json")
+                    || object.name == format!("{prefix}{COMPUTERS_FILE}")
+                {
                     continue;
                 }
                 let Some(id) = object
@@ -1365,6 +1531,14 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
             || !(terminal.digest.is_empty() || terminal.digest.len() == 64)
+            || terminal.replies.len() > MAX_WEB_REPLIES
+            || terminal.replies.iter().any(|reply| {
+                !valid_id(&reply.id)
+                    || reply.text.trim().is_empty()
+                    || reply.text.len() > MAX_WEB_REPLY_BYTES
+            })
+            || terminal.reply_ids.len() > MAX_REPLY_IDS
+            || !terminal.reply_ids.iter().all(|id| valid_id(id))
             || !conversation.requests.is_empty()
             || conversation.pending.is_some())
     {
@@ -1701,6 +1875,24 @@ fn read_active_disk(path: &Path) -> Result<Option<Active>, Error> {
         ));
     }
     Ok(Some(decode_active(&bytes)?))
+}
+
+fn read_computers_disk(path: &Path) -> Result<Computers, Error> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Computers::default());
+        }
+        Err(_) => return Err(Error::Unavailable("The computer list could not be read.")),
+    };
+    let mut bytes = Vec::new();
+    file.take(64 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::Unavailable("The computer list could not be read."))?;
+    if bytes.len() > 64 * 1024 {
+        return Err(Error::Corrupt("The computer list exceeds its size limit."));
+    }
+    decode_computers(&bytes)
 }
 
 fn active_bytes(active: &Active) -> Result<Vec<u8>, Error> {

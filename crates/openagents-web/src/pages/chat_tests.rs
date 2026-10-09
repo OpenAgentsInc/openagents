@@ -1084,6 +1084,8 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             digest: "d".repeat(64),
             working_unix: None,
             deleted_unix: None,
+            replies: Vec::new(),
+            reply_ids: Vec::new(),
         }),
         environment: None,
         tasks: Vec::new(),
@@ -1145,5 +1147,85 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
     assert!(marker.deleted() && marker.messages.is_empty());
     let (status, _) = fixture.request(Method::GET, &page, OWNER, &[]).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    fixture.no_worker();
+}
+
+/// A Coder chat takes a reply from the website while Coder on its computer
+/// is online (#11048): the composer shows, the reply waits for Coder, and
+/// another visitor can't send one.
+#[tokio::test]
+async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
+    use crate::coder_sync::{Upload, WireMessage};
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    let upload = Upload {
+        computer: "Studio".into(),
+        title: "Fix the build".into(),
+        messages: vec![WireMessage {
+            role: "user".into(),
+            text: "Fix the build".into(),
+        }],
+    };
+    crate::coder_sync::save(&store, OWNER, "coder-new-1", &upload)
+        .await
+        .unwrap();
+    let chat = crate::coder_sync::chat_id(OWNER, "coder-new-1");
+    let page = format!("/chat/{chat}");
+
+    // Offline: one plain line, no composer.
+    let (status, body) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("To reply here, open Coder there"), "{body}");
+    assert!(!body.contains("id=\"chat-form\""), "{body}");
+
+    // Coder on Studio checks in: the composer shows.
+    crate::coder_sync::check_in(&store, OWNER, "Studio")
+        .await
+        .unwrap()
+        .unwrap();
+    let (status, body) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("id=\"chat-form\""), "{body}");
+    assert!(body.contains("Reply to Coder on Studio"), "{body}");
+    assert!(!body.contains("chat-terminal-note"), "{body}");
+
+    // Another visitor can't send to it.
+    let other = csrf(&fixture.app, OTHER_OWNER);
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &page,
+            OTHER_OWNER,
+            &[("q", "Hi"), ("request_id", NEXT), ("csrf", &other)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The owner's reply waits for Coder and shows in the thread.
+    let token = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &page,
+            OWNER,
+            &[
+                ("q", "Now the tests"),
+                ("request_id", NEXT),
+                ("csrf", &token),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = fixture
+        .request(Method::GET, &format!("{page}/transcript"), OWNER, &[])
+        .await;
+    assert!(body.contains("Now the tests"), "{body}");
+    assert!(body.contains("Waiting for Coder on Studio."), "{body}");
+    assert_eq!(
+        crate::coder_sync::check_in(&store, OWNER, "Studio")
+            .await
+            .unwrap(),
+        Ok(vec!["coder-new-1".to_string()])
+    );
     fixture.no_worker();
 }
