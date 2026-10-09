@@ -39,6 +39,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Plan CoderOS | [CoderOS index](os/README.md), [audit of what moves from the private tree](os/2026-09-28-coderos-audit.md) |
 | Run reliable, user-defined background processes such as disk cleanup | [Background processes](background/README.md) |
 | Fan Coder runs out onto Google Cloud machines | [Cloud](cloud/README.md), [parallel execution audit](cloud/2026-10-02-cloud-parallel-execution-audit.md) |
+| Sign people in: accounts, GitHub sign-in, sessions, and what comes next | [Authentication](auth/README.md), [GitHub sign-in](auth/github.md) |
 | Build Coder Cloud and the openagents.com work, Verse, billing, and sales interfaces | [Coder Cloud web specification](cloud/coder-cloud.md) |
 | Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |
 | Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md), [Unreal source study](research/unreal/README.md) |

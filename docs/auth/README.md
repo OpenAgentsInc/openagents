@@ -155,6 +155,9 @@ ends the session at the account service and clears the cookies. Unchanged.
   or "Sign out everywhere" (P2, Settings) ends all of an account's sessions.
 - The browser cookie is `HttpOnly; SameSite=Strict; Path=/`, `Secure` on
   HTTPS, and lives no longer than the session.
+- The web server checks a session once per request: the account menu and a
+  Cloud page share one read of the account service
+  (`cloud::session::shared`).
 
 ### Apps and the command line (P2)
 
