@@ -1,0 +1,191 @@
+/*
+ * Document pages: the reading column inside a scrolling shell, its eyebrow,
+ * lead and meta lines, action rows, cards, item lists, the facts grid, the
+ * server-drawn bar chart, and a framed canvas panel. Builders live in
+ * `src/content/page.rs`; prose inside the column is styled by
+ * `.oa-markdown` (content.css).
+ */
+
+.oa-page {
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+  padding: calc(var(--spacing) * 10) calc(var(--spacing) * 4) calc(var(--spacing) * 6);
+}
+
+.oa-page[data-width="wide"] {
+  max-width: 64rem;
+}
+
+.oa-page-eyebrow {
+  margin: 0 0 calc(var(--spacing) * 2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-page .oa-page-lead,
+.oa-page-lead {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-lg-size);
+  line-height: var(--font-text-lg-line-height);
+}
+
+.oa-page .oa-page-meta,
+.oa-page-meta {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin: calc(var(--spacing) * 4) 0;
+}
+
+.oa-page-section {
+  margin-top: calc(var(--spacing) * 10);
+}
+
+.oa-card {
+  margin: calc(var(--spacing) * 6) 0;
+  padding: calc(var(--spacing) * 5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.oa-card > :first-child {
+  margin-top: 0;
+}
+
+.oa-card > :last-child {
+  margin-bottom: 0;
+}
+
+.oa-item-list {
+  margin: calc(var(--spacing) * 4) 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.oa-markdown .oa-item-list > li,
+.oa-item-list > li {
+  margin: 0;
+  padding: calc(var(--spacing) * 3) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.oa-item-list > li > :first-child {
+  margin-top: 0;
+}
+
+.oa-item-list > li > :last-child {
+  margin-bottom: 0;
+}
+
+.oa-item-title {
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: calc(var(--spacing) * 3);
+  margin: calc(var(--spacing) * 6) 0;
+}
+
+.oa-facts > div {
+  min-width: 0;
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.oa-facts dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-facts dd {
+  margin: calc(var(--spacing) * 1) 0 0;
+  color: var(--color-text);
+  font-size: var(--font-text-lg-size);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.oa-chart {
+  margin: 0 0 calc(var(--spacing) * 6);
+}
+
+.oa-chart svg {
+  display: block;
+  width: 100%;
+  height: 4rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.oa-chart-slot {
+  fill: transparent;
+}
+
+.oa-chart-bar {
+  fill: var(--color-text-secondary);
+}
+
+.oa-chart g:hover .oa-chart-bar {
+  fill: var(--color-text);
+}
+
+.oa-chart figcaption {
+  margin: calc(var(--spacing) * 2) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-canvas-panel {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  margin: calc(var(--spacing) * 4) 0 calc(var(--spacing) * 3);
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.oa-canvas-panel canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.oa-event-list {
+  margin: calc(var(--spacing) * 3) 0 calc(var(--spacing) * 6);
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-markdown .oa-event-list > li,
+.oa-event-list > li {
+  margin: 0;
+  padding: calc(var(--spacing) * 1.5) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .oa-page {
+    padding-top: calc(var(--spacing) * 6);
+  }
+
+  .oa-canvas-panel {
+    aspect-ratio: 1 / 1;
+  }
+}

@@ -1,6 +1,7 @@
 //! Conversation content: the Markdown root and its elements, code blocks,
 //! the table family, source chips with favicons, and the sticky action bar.
-//! Styles live in `static/components/content.css`.
+//! Styles live in `static/components/content.css`. Document-page layout
+//! (the reading column, facts) lives in `page.rs` and `page.css`.
 //!
 //! Markdown keeps its existing renderer (`openagents-web/src/markdown.rs`).
 //! [`MarkdownRoot`] wraps that renderer's HTML in `.oa-markdown`, and the
@@ -13,11 +14,13 @@
 
 mod code;
 mod markdown;
+mod page;
 mod source;
 mod table;
 
 pub use code::{CodeBlock, StickyActionBar};
 pub use markdown::{Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize, Paragraph};
+pub use page::{Facts, PageColumn};
 pub use source::{Favicon, Source, SourceVariant};
 pub use table::{ColSize, Table};
 
