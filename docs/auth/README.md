@@ -137,7 +137,10 @@ All browser flows run on the web origin (`openagents.com`, staging, or
 6. The web server reads the session back like any other, sets the
    `oa_cloud_session` cookie, and answers a small page that continues to
    `return_to` (a same-origin step, so the `SameSite=Strict` session cookie
-   is sent on the next request).
+   is sent on the next request). Before it answers, it moves the web chats
+   this browser made signed out (its `oa_visitor` cookie's) to the account,
+   once; from then on, signed-in chats belong to the account, not the
+   browser (#11039, `crates/openagents-web/src/chat_owner.rs`).
 
 ### Sign out
 

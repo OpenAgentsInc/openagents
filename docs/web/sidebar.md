@@ -33,9 +33,16 @@ Top to bottom:
 
 Archived chats leave the sidebar; an **Archived chats** link under the list
 (shown only when there are some) opens `/chat/archived`, which lists them
-with **Restore** (phase 4; chats belong to the browser's visitor cookie, so
-the page is not under Settings, which needs sign-in). The open chat always
-stays visible, even inside a closed group.
+with **Restore** (phase 4; signed out, chats belong to the browser's
+visitor cookie, so the page is not under Settings, which needs sign-in).
+The open chat always stays visible, even inside a closed group.
+
+Whose chats the list shows (#11039, `crates/openagents-web/src/chat_owner.rs`):
+signed in, the account's, on any browser; signed out, the browser's
+`oa_visitor` cookie's. Signing in moves the browser's signed-out chats to
+the account once (a chat still being answered stays). **Delete all chats**
+(`/chat/delete-all`, one confirm step) is in Settings when signed in, and
+on a chat's delete step and the Archived chats page when signed out.
 
 Order inside a list: activity time, which is the latest of the last message
 sent, the last answer, and the last task change. Pinned order is the
@@ -146,8 +153,8 @@ menu need no hover: the `…` is always visible on touch.
 ## Privacy
 
 - Repository, branch, environment, and project names are shown only to the
-  chat's owner (and, later, project members). The visitor-scoped list for
-  someone not signed in shows only that visitor's own chats, as today.
+  chat's owner (and, later, project members). Signed in, the list is the
+  account's chats; signed out, only that browser's own chats.
 - Shared or public chat pages never render the sidebar of the person who
   shared them.
 - Nothing in a row is sent to analytics.

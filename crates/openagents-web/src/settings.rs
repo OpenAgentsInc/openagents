@@ -138,13 +138,18 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
         .cloud_byo
         .as_deref()
         .map(|computers| Standing::of(computers, &viewer).hint());
-    let body = settings_content(&viewer.account_label, claude);
+    let chats = crate::pages::chat::delete_all::saved(
+        &app,
+        &crate::chat_store::account_owner(&viewer.account_id),
+    )
+    .await;
+    let body = settings_content(&viewer.account_label, claude, chats);
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }
 
 /// The Settings page: profile, theme, and (when this server keeps keys)
 /// the Claude credential row with its hint and whether Manage can work.
-fn settings_content(name: &str, claude: Option<(String, bool)>) -> Markup {
+fn settings_content(name: &str, claude: Option<(String, bool)>, chats: Option<usize>) -> Markup {
     html! {
         div class="oa-settings" {
             h1 class="oa-heading" data-level="1" { "Settings" }
@@ -169,6 +174,7 @@ fn settings_content(name: &str, claude: Option<(String, bool)>) -> Markup {
                     }
                 }
             }
+            (chats_section(chats))
             @if let Some((hint, manage)) = claude {
                 section class="oa-settings-group" aria-labelledby="settings-claude" {
                     h2 #settings-claude { "Claude" }
@@ -183,6 +189,33 @@ fn settings_content(name: &str, claude: Option<(String, bool)>) -> Markup {
                         @if manage {
                             div class="oa-settings-control" { (action_link("Manage", CLAUDE)) }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Chats (#11039, #11038): they belong to the account, and can all be
+/// deleted at once. The link shows only when there is something to delete.
+fn chats_section(saved: Option<usize>) -> Markup {
+    html! {
+        section class="oa-settings-group" aria-labelledby="settings-chats" {
+            h2 #settings-chats { "Chats" }
+            div class="oa-settings-row" {
+                div class="oa-settings-text" {
+                    span class="oa-settings-label" { "Saved chats" }
+                    span class="oa-settings-hint" {
+                        @match saved {
+                            Some(0) => { "You have no saved chats." }
+                            Some(_) => { "Your chats are saved to your account, so they show wherever you sign in." }
+                            None => { "Your chats can't be read right now." }
+                        }
+                    }
+                }
+                @if saved.is_some_and(|count| count > 0) {
+                    div class="oa-settings-control" {
+                        (action_link("Delete all chats", crate::pages::chat::delete_all::PATH))
                     }
                 }
             }
@@ -488,19 +521,19 @@ mod tests {
     fn settings_hides_manage_when_the_claude_key_cant_be_kept() {
         let manage = "href=\"/settings/claude\"";
         for standing in [Standing::Empty, Standing::Saved(Material::AnthropicApiKey)] {
-            let html = settings_content("Ada", Some(standing.hint())).into_string();
+            let html = settings_content("Ada", Some(standing.hint()), Some(0)).into_string();
             assert!(html.contains(manage), "{html}");
             assert!(!html.contains("Unavailable"));
         }
         for standing in [Standing::NoWorkspace, Standing::Broken] {
             let (hint, can) = standing.hint();
             assert!(!can);
-            let html = settings_content("Ada", Some((hint.clone(), can))).into_string();
+            let html = settings_content("Ada", Some((hint.clone(), can)), Some(0)).into_string();
             assert!(!html.contains(manage), "{html}");
             assert!(html.contains(&hint.replace('\'', "&#39;")) || html.contains(&hint));
         }
         // No key store: no Claude row at all.
-        let html = settings_content("Ada", None).into_string();
+        let html = settings_content("Ada", None, Some(0)).into_string();
         assert!(!html.contains("settings-claude"));
         for needle in [">Settings<", ">Profile<", ">Theme<", ">Ada<"] {
             assert!(html.contains(needle), "{needle}");

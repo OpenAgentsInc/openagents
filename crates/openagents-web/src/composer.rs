@@ -311,7 +311,7 @@ async fn show(
     ) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let Some(owner) = crate::ask::visitor(&headers) else {
+    let Some(owner) = crate::pages::chat::reader(&app, &headers).await else {
         return refused(
             StatusCode::FORBIDDEN,
             "Open the homepage before choosing a source.",
@@ -612,7 +612,7 @@ async fn select(
     if !matches!(kind.as_str(), "repository" | "branch" | "environment") {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let owner = match crate::pages::chat::validate_form(&app, &headers, &form.csrf) {
+    let owner = match crate::pages::chat::validate_form(&app, &headers, &form.csrf).await {
         Ok(value) => value,
         Err(response) => return response,
     };

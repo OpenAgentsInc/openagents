@@ -2,16 +2,24 @@
 
 ## Your chats
 
-- **No account.** There's no account or password. Your phone or computer
-  makes its own key the first time it runs and signs every message with
-  it. On the website, a random cookie tells your chats apart, and the
-  site signs your messages for you.
-- **In the web chat** on openagents.com, we save your chats on our servers
-  so you can open them again in the same browser. Only that browser's
-  cookie opens them, and our team can read them. To delete a chat, open it
-  and choose **Delete chat**. It's removed from our servers right away,
-  though our storage provider may keep a copy we can recover for up to 7
-  days. Chats you don't delete stay; there's no time limit yet.
+- **No account needed.** The apps have no account or password. Your phone
+  or computer makes its own key the first time it runs and signs every
+  message with it. On the website, the site signs your messages for you.
+- **In the web chat** on openagents.com, we save your chats on our servers.
+  Our team can read them.
+  - **Signed in** (with GitHub), your chats belong to your account: you see
+    them in any browser where you sign in, and after you sign out, someone
+    else using that browser doesn't. Chats you started in that browser
+    before signing in move to your account when you sign in.
+  - **Not signed in,** a random cookie tells this browser's chats apart.
+    Only this browser opens them, and anyone using it can. If you clear
+    your cookies, you can't open them again.
+  - **Deleting.** To delete a chat, open it and choose **Delete chat**. To
+    delete every chat, choose **Delete all chats**: in Settings when signed
+    in, or on a chat's delete step when not. Chats are removed from our
+    servers right away, though our storage provider may keep a copy we can
+    recover for up to 7 days. Chats you don't delete stay; there's no time
+    limit yet.
 - **In the Mac app, Terminal, and phone app,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
   messages are encrypted before they leave your device, and the OpenAgents

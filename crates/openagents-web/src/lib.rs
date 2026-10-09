@@ -17,6 +17,7 @@ mod auth;
 pub mod ask;
 pub mod backend;
 mod chat_html;
+mod chat_owner;
 pub mod chat_store;
 pub mod cloud;
 mod components;

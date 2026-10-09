@@ -278,7 +278,7 @@ async fn pin(
     Path(id): Path<String>,
     Form(form): Form<Change>,
 ) -> Response {
-    let owner = match validate_form(&app, &headers, &form.csrf) {
+    let owner = match validate_form(&app, &headers, &form.csrf).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -313,7 +313,7 @@ async fn archive(
     Path(id): Path<String>,
     Form(form): Form<Change>,
 ) -> Response {
-    let owner = match validate_form(&app, &headers, &form.csrf) {
+    let owner = match validate_form(&app, &headers, &form.csrf).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -351,7 +351,7 @@ async fn rename(
     Path(id): Path<String>,
     Form(form): Form<Change>,
 ) -> Response {
-    let owner = match validate_form(&app, &headers, &form.csrf) {
+    let owner = match validate_form(&app, &headers, &form.csrf).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -393,7 +393,7 @@ async fn rename_field(
     Path(id): Path<String>,
     Query(search): Query<Search>,
 ) -> Response {
-    let Some(owner) = crate::ask::visitor(&headers).filter(|_| valid_id(&id)) else {
+    let Some(owner) = reader(&app, &headers).await.filter(|_| valid_id(&id)) else {
         return missing();
     };
     let chat = match app.config.chat_store.load(&owner, &id).await {
@@ -440,7 +440,7 @@ async fn list(
     headers: HeaderMap,
     Query(search): Query<Search>,
 ) -> Response {
-    let Some(owner) = crate::ask::visitor(&headers) else {
+    let Some(owner) = reader(&app, &headers).await else {
         return crate::chat_html::protect(
             html! { (ChatList::new().id("chat-sidebar")) }.into_response(),
         );
@@ -497,7 +497,7 @@ async fn list(
 
 /// Archived chats, newest archived first, each with Restore.
 async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
-    let owner = crate::ask::visitor(&headers);
+    let owner = reader(&app, &headers).await;
     let mut rows = match &owner {
         Some(owner) => match app.config.chat_store.list(owner).await {
             Ok(rows) => rows,
@@ -505,6 +505,12 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
         },
         None => Vec::new(),
     };
+    // Signed out, this page is where every chat in the browser can be
+    // deleted at once; signed in, Settings is (#11038).
+    let delete_all = !rows.is_empty()
+        && owner
+            .as_deref()
+            .is_some_and(|owner| !crate::chat_store::is_account_owner(owner));
     rows.retain(|chat| chat.archived_unix.is_some());
     rows.sort_by(|a, b| {
         b.archived_unix
@@ -540,6 +546,11 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
                         }
                     }
                 }
+            }
+            @if delete_all {
+                h2 { "Delete all chats" }
+                p { "Remove every chat saved in this browser, archived or not." }
+                p { (crate::ui_page::action_link("Delete all chats", super::delete_all::PATH)) }
             }
         }));
     if let Some(owner) = &owner {

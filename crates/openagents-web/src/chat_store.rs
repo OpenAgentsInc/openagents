@@ -517,6 +517,43 @@ impl Store {
         }
     }
 
+    /// Move one chat to `to` (a signed-in account's owner, see
+    /// [`account_owner`]) when its browser signs in. The copy is written
+    /// only where nothing exists yet, then the original is removed fenced by
+    /// the generation `from` was read at. If the original changed or went
+    /// away meanwhile, the copy is removed again and the chat stays where
+    /// it was. Returns whether the chat moved.
+    pub(crate) async fn adopt(&self, from: &Loaded, to: &str) -> Result<bool, Error> {
+        let source = &from.conversation;
+        validate_address(&source.owner, &source.id)?;
+        validate_address(to, &source.id)?;
+        if source.owner == to {
+            return Err(Error::Invalid("The chat already belongs here."));
+        }
+        let mut moved = source.clone();
+        moved.owner = to.to_owned();
+        validate_conversation(&moved)?;
+        let copy = match self.write(&moved, None).await {
+            Ok(copy) => copy,
+            Err(Error::Conflict) => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        match self
+            .delete(&source.owner, &source.id, &from.generation)
+            .await
+        {
+            Ok(true) => Ok(true),
+            Ok(false) | Err(Error::Conflict) => {
+                self.delete(to, &source.id, &copy.generation).await?;
+                Ok(false)
+            }
+            Err(error) => {
+                let _ = self.delete(to, &source.id, &copy.generation).await;
+                Err(error)
+            }
+        }
+    }
+
     /// Remove every chat, for every visitor, untouched since `cutoff_unix`
     /// (the server's `--chat-retention-days`; see
     /// `docs/deployment/openagents-web.md`). On disk a chat's last activity
@@ -1526,11 +1563,39 @@ fn validate_address(owner: &str, id: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// An owner is a browser's visitor cookie (32 hex characters) or a
+/// signed-in account ([`account_owner`]). The two shapes never overlap, so a
+/// cookie can never name an account's chats.
 fn validate_owner(owner: &str) -> Result<(), Error> {
-    if owner.len() != 32 || !owner.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    let visitor = owner.len() == 32 && owner.bytes().all(|byte| byte.is_ascii_hexdigit());
+    let account = owner.strip_prefix(ACCOUNT_OWNER).is_some_and(|rest| {
+        rest.len() == 64
+            && rest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    });
+    if !visitor && !account {
         return Err(Error::Invalid("The visitor identity is invalid."));
     }
     Ok(())
+}
+
+/// The prefix of an account's owner value.
+const ACCOUNT_OWNER: &str = "account:";
+
+/// The owner value for a signed-in account's chats: a digest of the account
+/// id, so storage never holds the id itself, in a shape no visitor cookie
+/// can take.
+pub(crate) fn account_owner(account_id: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"openagents.web.chat.account.v1\0");
+    hash.update(account_id.as_bytes());
+    format!("{ACCOUNT_OWNER}{:x}", hash.finalize())
+}
+
+/// Whether `owner` is a signed-in account's, not a browser's.
+pub(crate) fn is_account_owner(owner: &str) -> bool {
+    owner.starts_with(ACCOUNT_OWNER) && validate_owner(owner).is_ok()
 }
 
 fn valid_id(id: &str) -> bool {
@@ -1888,6 +1953,77 @@ mod tests {
             Err(Error::Conflict)
         ));
         assert!(store.load(OWNER, ID).await.unwrap().is_none());
+    }
+
+    #[test]
+    fn an_account_owner_is_a_shape_no_cookie_can_take() {
+        let owner = account_owner("acct_123");
+        assert_eq!(owner, account_owner("acct_123"));
+        assert_ne!(owner, account_owner("acct_124"));
+        assert!(validate_owner(&owner).is_ok());
+        assert!(is_account_owner(&owner));
+        assert!(!is_account_owner(OWNER));
+        assert!(validate_owner(OWNER).is_ok());
+        for bad in [
+            "account:",
+            "account:acct_123",
+            "account:ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            "1111111111111111111111111111111",
+            "../../11111111111111111111111111",
+        ] {
+            assert!(validate_owner(bad).is_err(), "{bad}");
+        }
+        // The visitor cookie reader only takes 32 hex characters.
+        assert_ne!(owner.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn local_adopt_moves_a_chat_once_and_never_over_another() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::local(directory.path().join("chats"));
+        let account = account_owner("acct_1");
+        let original = store.create(&conversation()).await.unwrap();
+        let mut next = conversation();
+        next.revision = 2;
+        next.title = "Renamed".into();
+        let changed = store.compare_and_swap(&original, &next).await.unwrap();
+
+        // A stale read moves nothing, and leaves no copy behind.
+        assert!(!store.adopt(&original, &account).await.unwrap());
+        assert!(store.load(&account, ID).await.unwrap().is_none());
+        assert!(store.load(OWNER, ID).await.unwrap().is_some());
+
+        assert!(store.adopt(&changed, &account).await.unwrap());
+        assert!(store.load(OWNER, ID).await.unwrap().is_none());
+        let moved = store.load(&account, ID).await.unwrap().unwrap();
+        assert_eq!(moved.conversation.owner, account);
+        assert_eq!(moved.conversation.title, "Renamed");
+        assert_eq!(moved.conversation.revision, 2);
+        assert_eq!(store.list(&account).await.unwrap().len(), 1);
+        assert!(store.list(OWNER).await.unwrap().is_empty());
+        // The moved chat keeps working under its new owner.
+        let mut later = moved.conversation.clone();
+        later.revision = 3;
+        store.compare_and_swap(&moved, &later).await.unwrap();
+
+        // A chat with the same id already on the account is never replaced.
+        let again = store.create(&conversation()).await.unwrap();
+        assert!(!store.adopt(&again, &account).await.unwrap());
+        assert_eq!(
+            store
+                .load(&account, ID)
+                .await
+                .unwrap()
+                .unwrap()
+                .conversation
+                .revision,
+            3
+        );
+        assert!(store.load(OWNER, ID).await.unwrap().is_some());
+        assert!(matches!(
+            store.adopt(&again, OWNER).await,
+            Err(Error::Invalid(_))
+        ));
     }
 
     #[tokio::test]

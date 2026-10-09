@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-privacy
-version: 8
+version: 9
 kind: product
 title: "How chat messages travel and who sees them"
 summary: >-
@@ -35,7 +35,9 @@ provenance:
     - INVARIANTS.md
     - nips/openagents/NIP-CJ.md
     - crates/openagents-web/src/chat_store.rs
+    - crates/openagents-web/src/chat_owner.rs
 evidence:
+  - "2026-10-09: v9 (#11039, #11038): signed in, web chats belong to the account (crates/openagents-web/src/chat_owner.rs; the owner is a digest of the account id that no browser cookie can take), show on any browser where the person signs in, and stay hidden from the browser after sign-out. Signing in moves the browser's signed-out chats to the account once (chat_owner::claim), never replacing a chat already on the account and leaving a chat still being answered. Signed out, chats stay tied to the browser cookie. Delete all chats is in Settings (signed in) and on a chat's delete step and the Archived chats page (signed out), at /chat/delete-all."
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-01: the chat model is Space Bunny Alpha on OpenRouter first, Gemini 3.8 Flash on the gateway after (#10109); OpenRouter's notice for the model says prompts and completions may be retained by the provider but are not used for training."
   - "2026-10-02: the answer now names Jev's route through the Vercel AI Gateway (its first door since #10110), says the worker stores no message text and that the chat is not answered on the computer, and says no setting turns the providers off (#10136)."
@@ -58,9 +60,12 @@ In the web chat, our website reads your messages and saves your chats on our ser
 - The phone shows only answers signed by the worker's key, tagged to its own request and device.
 - Each message is signed by your device key; the relay is relay.openagents.com, and the chat events it carries to and from our chat worker are ephemeral, so it keeps none of them.
 - In the Mac app, Terminal, and phone app, your conversations are saved on your device, encrypted with its key, not on our servers. When a phone reaches a computer through the relay, the relay holds those messages, encrypted, for that phone and computer only.
-- In the web chat on openagents.com, the website holds the key that signs for you, so it reads your messages, and it saves each conversation in a private Google Cloud Storage bucket. Only the browser with that chat's cookie opens it, and our team can read the bucket. **Delete chat** on a chat's page removes it from our servers right away; the storage provider may keep a recoverable copy for up to 7 days. Chats you don't delete stay; there's no time limit yet.
+- In the web chat on openagents.com, the website holds the key that signs for you, so it reads your messages, and it saves each conversation in a private Google Cloud Storage bucket. Our team can read the bucket.
+- Signed in with GitHub, your web chats belong to your account: they show in any browser where you sign in, and after you sign out, someone else using that browser doesn't see them. Chats you started in that browser before signing in move to your account when you sign in.
+- Not signed in, your web chats belong to this browser: a random cookie tells them apart, only this browser opens them, and anyone using it can. Clearing your cookies loses them.
+- **Delete chat** on a chat's page removes it from our servers right away; **Delete all chats** (in Settings when signed in, or on a chat's delete step when not) removes every one. The storage provider may keep a recoverable copy for up to 7 days. Chats you don't delete stay; there's no time limit yet.
 - We may use chats to train and improve our models. Paid plans can opt out by arrangement with us; free use can't.
-- There is no account, sign-in, or key to paste: the device key made on first launch signs the request, and the app holds no model key.
+- In the apps there is no account, sign-in, or key to paste: the device key made on first launch signs the request, and the app holds no model key.
 - Jev's doors, in order: the Vercel AI Gateway (`typesafe-ai/jev`), then OpenRouter, then TypeSafe direct.
 - The worker's usage log records each job's time, key, surface, route, model, and timings, never the message text.
 - When Coder runs on your computer, the coding agent sends what it reads to its model provider, under your sign-in there.
@@ -71,3 +76,4 @@ In the web chat, our website reads your messages and saves your chats on our ser
 - `INVARIANTS.md`
 - `nips/openagents/NIP-CJ.md`
 - `crates/openagents-web/src/chat_store.rs`
+- `crates/openagents-web/src/chat_owner.rs`

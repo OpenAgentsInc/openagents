@@ -53,6 +53,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/chat/{id}/events", get(events))
         .route("/chat/{id}/messages/{index}/original", get(original))
         .merge(sidebar::routes())
+        .merge(delete_all::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -84,11 +85,22 @@ fn now() -> u64 {
         .as_secs()
 }
 
-pub(crate) fn visitor(headers: &HeaderMap) -> (String, Option<String>) {
-    match crate::ask::visitor(headers) {
-        Some(id) => (id, None),
+/// The owner a page shows chats for, and a fresh visitor id when the
+/// browser has none yet (signed in, the account's; see
+/// [`crate::chat_owner`]). The fresh id goes into the cookie.
+pub(crate) async fn visitor(app: &App, headers: &HeaderMap) -> (String, Option<String>) {
+    match crate::chat_owner::who(app, headers).await.reader() {
+        Some(owner) => (owner.to_owned(), None),
         None => (crate::ask::new_visitor(), Some(String::new())),
     }
+}
+
+/// The owner whose chats this request may show; see [`crate::chat_owner`].
+pub(crate) async fn reader(app: &App, headers: &HeaderMap) -> Option<String> {
+    crate::chat_owner::who(app, headers)
+        .await
+        .reader()
+        .map(str::to_owned)
 }
 
 pub(crate) fn cookie(app: &App, owner: &str, fresh: bool, response: &mut Response) {
@@ -119,16 +131,27 @@ pub(crate) fn csrf(app: &App, owner: &str) -> String {
         .collect()
 }
 
-pub(crate) fn validate_form(
+pub(crate) async fn validate_form(
     app: &App,
     headers: &HeaderMap,
     supplied: &str,
 ) -> Result<String, Response> {
-    let Some(owner) = crate::ask::visitor(headers) else {
-        return Err(refusal(
-            StatusCode::FORBIDDEN,
-            "Open the homepage before sending a message.",
-        ));
+    let owner = match crate::chat_owner::who(app, headers).await {
+        crate::chat_owner::Who::Unchecked(_) => {
+            return Err(refusal(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "We couldn't check your sign-in. Try again in a minute.",
+            ));
+        }
+        who => match who.writer() {
+            Some(owner) => owner.to_owned(),
+            None => {
+                return Err(refusal(
+                    StatusCode::FORBIDDEN,
+                    "Open the homepage before sending a message.",
+                ));
+            }
+        },
     };
     let expected = csrf(app, &owner);
     // Compare digests in constant time without exposing the visitor signing key.
@@ -172,8 +195,12 @@ pub(crate) fn validate_form(
     Ok(owner)
 }
 
-fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, String), Response> {
-    let owner = validate_form(app, headers, &prompt.csrf)?;
+async fn command(
+    app: &App,
+    headers: &HeaderMap,
+    prompt: &Prompt,
+) -> Result<(String, String), Response> {
+    let owner = validate_form(app, headers, &prompt.csrf).await?;
     if !valid_id(&prompt.request_id) {
         return Err(refusal(
             StatusCode::FORBIDDEN,
@@ -195,7 +222,7 @@ fn selected(app: &App, owner: &str, prompt: &Prompt) -> Result<Option<Selection>
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Prompt>) -> Response {
-    let (owner, text) = match command(&app, &headers, &prompt) {
+    let (owner, text) = match command(&app, &headers, &prompt).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -314,9 +341,19 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
 }
 
 pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Response> {
-    let Some(owner) = crate::ask::visitor(headers).filter(|_| valid_id(id)) else {
+    let Some(owner) = reader(app, headers).await else {
         return Err(missing());
     };
+    load_owned(app, &owner, id).await
+}
+
+/// [`load`] for an owner already resolved: a chat's live updates resolve
+/// the owner once, not every second.
+async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response> {
+    if !valid_id(id) {
+        return Err(missing());
+    }
+    let owner = owner.to_owned();
     let mut loaded = app
         .config
         .chat_store
@@ -474,7 +511,7 @@ async fn confirm_delete(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let Some(owner) = crate::ask::visitor(&headers) else {
+    let Some(owner) = reader(&app, &headers).await else {
         return missing();
     };
     let record = match stored(&app, &owner, &id).await {
@@ -493,6 +530,8 @@ async fn confirm_delete(
                 (crate::ui_page::action_link("Cancel", &format!("/chat/{id}")))
             }
         }
+        // Every chat at once (#11038): its own confirm step.
+        (MarkdownRoot::new(html! { p { a href=(delete_all::PATH) { "Delete all chats instead" } } }))
     });
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}/delete"))
@@ -510,7 +549,7 @@ async fn delete(
     Path(id): Path<String>,
     Form(removal): Form<Removal>,
 ) -> Response {
-    let owner = match validate_form(&app, &headers, &removal.csrf) {
+    let owner = match validate_form(&app, &headers, &removal.csrf).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -575,7 +614,7 @@ async fn follow(
     Path(id): Path<String>,
     Form(prompt): Form<Prompt>,
 ) -> Response {
-    let (owner, text) = match command(&app, &headers, &prompt) {
+    let (owner, text) = match command(&app, &headers, &prompt).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -1138,7 +1177,10 @@ async fn events(
     Path(id): Path<String>,
     Query(window): Query<Window>,
 ) -> Response {
-    let loaded = match load(&app, &headers, &id).await {
+    let Some(owner) = reader(&app, &headers).await else {
+        return missing();
+    };
+    let loaded = match load_owned(&app, &owner, &id).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -1163,13 +1205,13 @@ async fn events(
         return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
     let stream = futures_util::stream::unfold(
-        (app, headers, id, cursor, 0u16),
-        |(app, headers, id, mut cursor, mut ticks)| async move {
+        (app, owner, id, cursor, 0u16),
+        |(app, owner, id, mut cursor, mut ticks)| async move {
             if ticks >= 300 {
                 return None;
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let event = match load(&app, &headers, &id).await {
+            let event = match load_owned(&app, &owner, &id).await {
                 Ok(v) if v.conversation.revision > cursor => {
                     let revision = v.conversation.revision;
                     let missed = revision.saturating_sub(cursor + 1);
@@ -1190,7 +1232,7 @@ async fn events(
             };
             Some((
                 Ok::<_, Infallible>(event),
-                (app, headers, id, cursor, ticks + 1),
+                (app, owner, id, cursor, ticks + 1),
             ))
         },
     );
@@ -1365,6 +1407,9 @@ mod uuid_tests {
 
 #[path = "chat_sidebar.rs"]
 mod sidebar;
+
+#[path = "chat_delete_all.rs"]
+pub(crate) mod delete_all;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

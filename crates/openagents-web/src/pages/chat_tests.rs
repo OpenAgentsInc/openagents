@@ -847,3 +847,135 @@ async fn delete_waits_for_a_running_answer() {
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn delete_all_asks_first_then_removes_only_this_browsers_chats() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let store = fixture.app.config.chat_store.clone();
+    let mut theirs = fixture.read().await.conversation;
+    theirs.owner = OTHER_OWNER.into();
+    store.create(&theirs).await.unwrap();
+    let path = delete_all::PATH;
+
+    // Signed out, the Archived chats page links the confirm step.
+    let (status, body) = fixture
+        .request(Method::GET, "/chat/archived", OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&format!("href=\"{path}\"")), "{body}");
+    // So does a chat's own delete step.
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}/delete"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&format!("href=\"{path}\"")), "{body}");
+    let (status, body) = fixture.request(Method::GET, path, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("Delete your 1 chat in this browser?"),
+        "{body}"
+    );
+    assert!(body.contains(&format!("action=\"{path}\"")), "{body}");
+
+    // Another browser's token is refused.
+    let wrong = csrf(&fixture.app, OTHER_OWNER);
+    let (status, _) = fixture
+        .request(Method::POST, path, OWNER, &[("csrf", &wrong)])
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(store.load(OWNER, CHAT).await.unwrap().is_some());
+
+    let token = csrf(&fixture.app, OWNER);
+    let (status, _) = fixture
+        .request(Method::POST, path, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(store.list(OWNER).await.unwrap().is_empty());
+    // The other browser keeps its chat.
+    assert!(store.load(OTHER_OWNER, CHAT).await.unwrap().is_some());
+
+    // With nothing left, the page says so and offers no Delete button.
+    let (status, body) = fixture.request(Method::GET, path, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("You have no saved chats."), "{body}");
+    assert!(!body.contains(&format!("action=\"{path}\"")), "{body}");
+    let (_, body) = fixture
+        .request(Method::GET, "/chat/archived", OWNER, &[])
+        .await;
+    assert!(!body.contains(&format!("href=\"{path}\"")), "{body}");
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn delete_all_leaves_a_chat_still_being_answered() {
+    let fixture = Fixture::new();
+    let loaded = fixture.record(None).await;
+    let mut next = loaded.conversation.clone();
+    next.revision += 1;
+    next.pending = Some(Pending {
+        request_id: NEXT.into(),
+        started_unix: now(),
+        job_id: None,
+    });
+    let store = fixture.app.config.chat_store.clone();
+    store.compare_and_swap(&loaded, &next).await.unwrap();
+    let token = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(Method::POST, delete_all::PATH, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("1 chat is still being answered"), "{body}");
+    assert!(store.load(OWNER, CHAT).await.unwrap().is_some());
+}
+
+#[test]
+fn delete_all_says_whose_chats_go() {
+    let account = crate::chat_store::account_owner("acct_1");
+    assert_eq!(
+        delete_all::question(&account, 3),
+        "Delete all 3 chats on your account? This can't be undone."
+    );
+    assert_eq!(
+        delete_all::question(OWNER, 1),
+        "Delete your 1 chat in this browser? This can't be undone."
+    );
+}
+
+#[tokio::test]
+async fn an_accounts_chats_never_open_with_a_browser_cookie() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let account = crate::chat_store::account_owner("acct_1");
+    let store = fixture.app.config.chat_store.clone();
+    // Move the browser's chat to an account, as signing in does.
+    assert_eq!(
+        crate::chat_owner::adopt_all(&store, OWNER, &account).await,
+        1
+    );
+    // The browser that made it no longer opens it, follows it, or deletes it.
+    for uri in [format!("/chat/{CHAT}"), format!("/chat/{CHAT}/events")] {
+        let (status, _) = fixture.request(Method::GET, &uri, OWNER, &[]).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+    let token = csrf(&fixture.app, OWNER);
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/delete"),
+            OWNER,
+            &[("csrf", &token)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = fixture
+        .request(Method::POST, delete_all::PATH, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(store.list(&account).await.unwrap().len(), 1);
+    // An account's owner value is not a cookie this site accepts.
+    let (status, _) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), &account, &[])
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

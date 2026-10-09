@@ -193,12 +193,13 @@ async fn callback(
     };
     let clear = HeaderValue::from_str(&oa_auth::flow::clear_cookie(service.secure()))
         .expect("static cookie is valid");
-    let mut response = finish(service, &headers, query.ok().map(|q| q.0)).await;
+    let mut response = finish(&app, service, &headers, query.ok().map(|q| q.0)).await;
     response.headers_mut().append(header::SET_COOKIE, clear);
     response
 }
 
 async fn finish(
+    app: &App,
     service: &crate::cloud::session::CloudSession,
     headers: &HeaderMap,
     query: Option<Callback>,
@@ -273,6 +274,8 @@ async fn finish(
         );
     };
     cookies.extend(selected);
+    // Chats this browser made signed out now belong to the account (#11039).
+    crate::chat_owner::claim(app, headers, &grant.viewer.account_id).await;
     // The session cookie is SameSite=Strict, and this response ends a trip
     // that began on github.com, so continue with a same-site step: the next
     // request then carries the cookie.

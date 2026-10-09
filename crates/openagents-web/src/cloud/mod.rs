@@ -259,6 +259,8 @@ async fn sign_in_submit(
         Ok(selected) => cookies.extend(selected),
         Err(error) => return refused(error),
     }
+    // Chats this browser made signed out now belong to the account (#11039).
+    crate::chat_owner::claim(&app, &headers, &grant.viewer.account_id).await;
     let mut response = see_other("/");
     for cookie in cookies {
         response.headers_mut().append(header::SET_COOKIE, cookie);

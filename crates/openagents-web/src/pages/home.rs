@@ -20,7 +20,7 @@ pub(crate) fn routes() -> Router<App> {
 /// The composer sits centered in the content area; the left panel lists the
 /// visitor's recent chats.
 async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
-    let (owner, fresh) = super::chat::visitor(&headers);
+    let (owner, fresh) = super::chat::visitor(&app, &headers).await;
     let selection = Default::default();
     let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
     // Starter questions under the composer, as on the phone's new chat
