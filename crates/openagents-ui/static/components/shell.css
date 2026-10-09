@@ -554,10 +554,8 @@ html:has(> body.oa-body) {
   white-space: nowrap;
 }
 .oa-chat-status[data-status="working"] {
-  color: var(--color-text-info);
-}
-.oa-chat-status[data-status="working"] .oa-chat-status-dot {
-  animation: oa-chat-status-pulse 1.2s ease-in-out infinite;
+  color: var(--color-text-secondary);
+  --indicator-size: 12px;
 }
 .oa-chat-status[data-status="waiting"] {
   color: var(--color-text-warning);
@@ -567,21 +565,6 @@ html:has(> body.oa-body) {
 }
 .oa-chat-status[data-status="failed"] {
   color: var(--color-text-danger);
-}
-@keyframes oa-chat-status-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.3;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .oa-chat-status[data-status="working"] .oa-chat-status-dot {
-    animation: none;
-  }
 }
 
 /* Bottom of the left panel: Docs (signed out), then the account. */

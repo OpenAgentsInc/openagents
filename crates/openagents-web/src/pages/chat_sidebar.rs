@@ -136,9 +136,7 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>) -> NavItem {
         item = item.detail(detail);
     }
     let working = chat.pending.is_some();
-    if let Some(status) = row_status(chat) {
-        item = item.trailing(status);
-    }
+    item = item.trailing(row_status_slot(chat, false));
     if view.hx {
         item = item.hx(HxGet::new(format!("/chat/{id}/workspace"))
             .target("#chat-content")

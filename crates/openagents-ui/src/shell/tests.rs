@@ -197,7 +197,9 @@ fn chat_rows_carry_a_detail_line_and_a_plain_status() {
         r#"<span class="oa-nav-item-label oa-nav-item-label--stacked"><span class="oa-nav-item-title">Fix &lt;the&gt; build</span><span class="oa-nav-item-detail">acme/app · main</span></span>"#
     ));
     assert!(list.contains(r#"<span class="oa-nav-item-label">Plain</span>"#));
-    assert!(list.contains(r#"data-status="working""#) && list.contains(">Working<"));
+    // Working is a spinner with no words beside it; screen readers hear it.
+    assert!(list.contains(r#"data-status="working""#) && list.contains(r#"aria-label="Working""#));
+    assert!(!list.contains(">Working<") && list.contains("oa-loading-indicator"));
     assert!(list.contains(r#"data-status="paused""#) && list.contains("Paused until 3:40 PM"));
     let labels: Vec<String> = [
         ChatStatus::Working,

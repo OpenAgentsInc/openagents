@@ -971,6 +971,17 @@ fn row_detail(chat: &Conversation) -> Option<String> {
 
 /// A chat row's status: "Working" while an answer runs, "Failed" when the
 /// last one did not finish, and nothing otherwise (see `docs/web/sidebar.md`).
+/// The row's status in a slot the live stream can replace (`oob`), so the
+/// spinner clears the moment the answer lands.
+pub(crate) fn row_status_slot(chat: &Conversation, oob: bool) -> Markup {
+    html! {
+        span id=(format!("chat-row-status-{}", chat.id)) class="oa-chat-row-status"
+            hx-swap-oob=[oob.then_some("true")] {
+            @if let Some(status) = row_status(chat) { (status) }
+        }
+    }
+}
+
 fn row_status(chat: &Conversation) -> Option<ChatStatus> {
     if chat.pending.is_some() {
         return Some(ChatStatus::Working);
@@ -1038,7 +1049,7 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
             (turn(message, index + start))
         }
-        p #chat-status.oa-thread-status role="status" aria-live="polite" {
+        div #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.pending.is_some() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
@@ -1164,7 +1175,7 @@ async fn events(
                     let missed = revision.saturating_sub(cursor + 1);
                     let _ = missed; // A resume re-renders the full transcript; nothing to announce.
                     let chips = crate::suggestions::reply_chips(&app, &v.conversation).await;
-                    let body = html! { (messages(&v.conversation,None)) (chips) }.into_string();
+                    let body = html! { (messages(&v.conversation,None)) (chips) (row_status_slot(&v.conversation, true)) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))

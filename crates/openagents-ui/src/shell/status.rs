@@ -63,6 +63,14 @@ impl ChatStatus {
 
 impl Render for ChatStatus {
     fn render(&self) -> Markup {
+        // Working is a spinner alone, with its words for screen readers.
+        if *self == Self::Working {
+            return html! {
+                span class="oa-chat-status" data-status=(self.key()) role="img" aria-label=(self.label()) {
+                    (crate::actions::LoadingIndicator::new().decorative())
+                }
+            };
+        }
         html! {
             span class="oa-chat-status" data-status=(self.key()) {
                 span class="oa-chat-status-dot" aria-hidden="true" {}
