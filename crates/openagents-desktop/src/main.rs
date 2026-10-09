@@ -1,4 +1,4 @@
-//! `openagents-desktop`: OpenAgents for Mac.
+//! `openagents-desktop`: OpenAgents for Mac, Linux, and Windows.
 //!
 //! With no option it opens the window and, off the UI thread, starts Coder:
 //! it registers the login agent that runs `coder host serve`, upgrading an
@@ -46,7 +46,7 @@ use std::time::{Duration, Instant};
 use worker::Context;
 
 const USAGE: &str = "\
-openagents-desktop: OpenAgents for Mac
+openagents-desktop: OpenAgents for Mac, Linux, and Windows
 
 Usage: openagents-desktop [options]
 

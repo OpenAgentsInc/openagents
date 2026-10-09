@@ -1234,7 +1234,7 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
 }
 
 #[tokio::test]
-async fn the_download_page_links_only_the_coder_release_bundle() {
+async fn the_download_page_offers_every_platform_from_its_table() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/download").await;
     assert_eq!(status, StatusCode::OK);
@@ -1246,14 +1246,13 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
         "OpenAgents for Mac",
         "OpenAgents Terminal",
         "Everything else",
-        ".dmg",
         "openagentsgemini-cli-releases/openagents/install.",
     ] {
         assert!(!body.contains(legacy), "legacy download remained: {legacy}");
     }
-    assert!(!body.contains(pages::TESTFLIGHT));
-    assert!(!body.contains("testflight") && !body.contains("TestFlight"));
-    assert!(!body.contains("AppImage") && !body.contains("amd64.deb"));
+    // Desktop files show only once the release is out (`DESKTOP_RELEASED`).
+    assert_eq!(body.contains(".dmg"), pages::DESKTOP_RELEASED);
+    assert_eq!(body.contains("AppImage"), pages::DESKTOP_RELEASED);
     let main = &body[body.find("<main").unwrap()..body.find("</main>").unwrap()];
     let links: Vec<&str> = main
         .split("href=\"")
@@ -1279,11 +1278,23 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
             pages::CODER_VERSION
         ));
     }
+    // Then every other platform, in the table's order.
+    for part in [pages::Part::Desktop, pages::Part::Phone, pages::Part::Web] {
+        for (download, url) in pages::shown(part, pages::DESKTOP_RELEASED) {
+            if download.platform == "iPhone" {
+                expected.push(pages::TESTFLIGHT_APP.to_owned());
+            }
+            expected.push(url.to_owned());
+        }
+    }
     assert_eq!(links, expected, "{body}");
+    assert!(body.contains(pages::TESTFLIGHT));
     assert!(!main.to_lowercase().contains("microcoder"), "{main}");
     assert!(body.contains("<h2 id=\"coder-title\">Coder</h2>"));
-    assert!(body.contains("<title>Download Coder \u{b7} OpenAgents</title>"));
-    assert!(body.contains("<h1>Download Coder</h1>"));
+    assert!(body.contains("<h2 id=\"phone-title\">Phone</h2>"));
+    assert!(body.contains("<h2 id=\"web-title\">Web</h2>"));
+    assert!(body.contains("<title>Download OpenAgents \u{b7} OpenAgents</title>"));
+    assert!(body.contains("<h1>Download OpenAgents</h1>"));
     // Download is the header pill now; on its own page it is marked current.
     let pill = body.find("href=\"/download\"").expect("download pill");
     let tag_end = pill + body[pill..].find('>').unwrap();

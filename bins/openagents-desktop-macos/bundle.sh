@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds OpenAgents for Mac and assembles `OpenAgents.app`.
+# Builds the OpenAgents desktop app for this Mac and assembles `OpenAgents.app`.
 #
 # The bundle holds the window (`Contents/MacOS/OpenAgents`), the Coder host
 # and the binaries a task runs (`coder`, `microcoder`), the `openagents`

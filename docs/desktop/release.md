@@ -72,8 +72,8 @@ gcloud storage cp target/desktop-release/OpenAgents-$v.dmg \
 kept outside the repository, uploads the zip to `desktop/macos/<version>/`,
 and then `desktop/macos/manifest.json`. The download link is
 `https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/<version>/OpenAgents-<version>.dmg`;
-the website's `MAC_VERSION` and `MAC_DMG` (`crates/openagents-web/src/pages/download.rs`)
-point at it.
+the website's download table (`DOWNLOADS` in
+`crates/openagents-web/src/pages/download.rs`) points at it.
 
 What it does, in order:
 
@@ -236,7 +236,79 @@ Universal; notarization `a8933968-3f82-4929-92af-67748c91c7ef` (app) and
 was accepted, and `stapler validate` passed on both. The release
 acceptance gate on that copy passed 29 of 30 scenarios; `delegate-grok`
 failed because Grok Build answered by reading the files without running a
-shell command, which the scenario requires.
+shell command, which the scenario then required. That was the check's
+mistake, not the app's: a test delegation is a read-only question, so
+reading the project with Grok Build's own tools is the right answer. The
+scenario has counted any completed Grok Build tool call as work in the
+project since `f5e4aaba20`
+([#10236](https://github.com/OpenAgentsInc/openagents/issues/10236),
+with a recorded read-only trajectory as its test fixture), so it is not a
+1.0 blocker; the release run's gate checks it again.
+
+## Release day: 1.0.0 (#11092)
+
+Desktop ships as **1.0.0** (owner, 2026-10-09), at the version already in
+the lockstep files. A 1.0.0 build was uploaded on 2026-09-30 to
+`desktop/macos/1.0.0/` and `desktop/linux/1.0.0/`, and both platforms'
+`manifest.json` name it, but it was never released. It moves to a
+`1.0.0-rc.0` label and the real 1.0.0 takes its place. Windows has no
+earlier upload outside `desktop/windows-test/`.
+
+One thing this can't fix: an app that already took the 2026-09-30 build
+as an update is at 1.0.0, so the updater (which compares versions) does
+not offer it the real 1.0.0. Those installs move with the next version,
+or by downloading 1.0.0 again from the download page.
+
+Each step names the computer it runs on. `CLOUDSDK_CONFIG=...` is an
+account that can write `openagentsgemini-oa-updates`.
+
+1. **Build**, from a clean checkout of the release commit:
+   - Mac (the release Mac, with the Developer ID and notarization
+     credentials): `scripts/desktop/package-macos.sh --notary-env ~/work/.secrets/appstoreconnect.env`
+   - Linux (any x86_64 Linux computer with Docker):
+     `scripts/desktop/build-linux-release.sh --out /tmp/openagents-linux-1.0.0`,
+     then copy that folder to the release Mac.
+   - Windows (any Mac or Linux computer with the MinGW target and `wixl`):
+     `scripts/desktop/package-windows.sh --out /tmp/openagents-windows-1.0.0`
+     (unsigned: no `--pfx` and no `--require-signing`; see Authenticode
+     below), then copy that folder to the release Mac.
+2. **Gate** the signed app (release Mac):
+   `scripts/release/acceptance.sh --app target/desktop-release/OpenAgents.app`.
+   Every scenario must pass (`docs/release/acceptance.md`).
+3. **Move the 2026-09-30 build aside** (release Mac). Read the plan
+   first; it only prints:
+
+   ```sh
+   CLOUDSDK_CONFIG=... scripts/desktop/retire-prerelease.sh
+   CLOUDSDK_CONFIG=... scripts/desktop/retire-prerelease.sh --run
+   ```
+
+   It copies `desktop/<os>/1.0.0/` and the current `manifest.json` to
+   `desktop/<os>/1.0.0-rc.0/`, checks each copy, and only then deletes
+   `desktop/<os>/1.0.0/`. From here until step 4's manifests are up,
+   installed apps find nothing to download and check again later, so go
+   straight on.
+4. **Publish** 1.0.0 (release Mac, which holds the update key):
+
+   ```sh
+   CLOUDSDK_CONFIG=... scripts/desktop/sign-manifest.sh --version 1.0.0 \
+     --app target/desktop-release/OpenAgents.app --upload
+   CLOUDSDK_CONFIG=... gcloud storage cp target/desktop-release/OpenAgents-1.0.0.dmg \
+     gs://openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg
+   CLOUDSDK_CONFIG=... scripts/desktop/sign-manifest-linux.sh --version 1.0.0 \
+     --dir /tmp/openagents-linux-1.0.0 --upload
+   CLOUDSDK_CONFIG=... scripts/desktop/sign-manifest-windows.sh --version 1.0.0 \
+     --dir /tmp/openagents-windows-1.0.0 --upload
+   ```
+
+5. **Show it on the download page**: set `DESKTOP_RELEASED` to `true` in
+   `crates/openagents-web/src/pages/download.rs`, run
+   `cargo test -p openagents-web`, push, and deploy the site as usual.
+   Until then `/download` shows no desktop files, so nobody downloads the
+   2026-09-30 build from it.
+6. **Check** every link and manifest: `scripts/dev/check-downloads.sh`
+   must end with `Every link answered 200.`, and each platform's manifest
+   line must say `1.0.0 published <today>`.
 
 ## Record of the first runs (2026-09-29)
 
@@ -308,8 +380,8 @@ Two steps, on two computers:
 
 The downloads are
 `https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/<version>/OpenAgents-<version>-x86_64.AppImage`
-and `.../openagents_<version>_amd64.deb`; the website's `LINUX_APPIMAGE`
-and `LINUX_DEB` (`crates/openagents-web/src/pages/download.rs`) point at
+and `.../openagents_<version>_amd64.deb`; the website's download table
+(`DOWNLOADS` in `crates/openagents-web/src/pages/download.rs`) points at
 them. To check one by hand, beside `SHA256SUMS`, `SHA256SUMS.sig`, and
 the public key:
 

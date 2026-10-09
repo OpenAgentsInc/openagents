@@ -1,4 +1,4 @@
-//! OpenAgents for Mac.
+//! OpenAgents for Mac, Linux, and Windows.
 //!
 //! The desktop app a person installs so their phone can connect to this
 //! computer by scanning a QR code

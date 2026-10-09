@@ -32,12 +32,16 @@ verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
 | The Verse page (sidebar footer): the Grid's Watch and Play, loaded only while the page shows | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
 | The Map page (sidebar footer, palette, Window menu): OpenAgents' routes, members, plugins, and gaps as one zoomable graph colored by kind, with details, a Gaps panel, and an outline | macOS, Linux, Windows | Built only while it shows; the plugin records are a committed snapshot | [design](../../docs/desktop/route-map.md), [verification](../../docs/desktop/verification/2026-10-01-route-map/verification.md) |
 
-Packages: the signed, notarized macOS `.dmg`; the Linux 1.0.0 AppImage and
-`.deb` ([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
-Windows MSIs are built but unsigned, published only to a test prefix until an
-Authenticode certificate exists, so `/install` does not offer Windows yet
+Packages, all at 1.0.0: the signed, notarized macOS `.dmg`; the Linux
+AppImage and `.deb`
+([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
+and the Windows MSI and `.zip`, released without an Authenticode signature
+(owner, 2026-10-09), so Windows asks people to confirm the first run (**More
+info**, **Run anyway**)
 ([record](../../docs/desktop/verification/2026-09-30-windows/verification.md)).
-See [release](../../docs/desktop/release.md).
+They are offered on [openagents.com/download](https://openagents.com/download)
+once the 1.0.0 release run publishes them
+([release day](../../docs/desktop/release.md#release-day-100-11092)).
 
 ## The shell and sidebar
 

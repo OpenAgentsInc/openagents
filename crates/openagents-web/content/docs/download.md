@@ -1,7 +1,7 @@
 # Download
 
 The [download page](/download) has Coder's install commands for seven
-platforms.
+platforms, the iPhone beta, and a link to the web app.
 
 ## Coder
 
@@ -41,5 +41,14 @@ need no manual download.
 
 Windows RC: local task services and background automation require macOS
 or Linux.
+
+## Phone
+
+On iPhone, install TestFlight from the App Store, then open the beta link
+on the [download page](/download) on your phone.
+
+## Web
+
+Nothing to install: chat at [openagents.com](/) in any browser.
 
 Next: [Chat on openagents.com](/docs/website).
