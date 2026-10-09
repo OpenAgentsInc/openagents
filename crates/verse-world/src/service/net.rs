@@ -539,6 +539,20 @@ async fn serve_observed<F: Future<Output = ()>>(
     }
     exit
 }
+/// Whether the loop can admit another request into the next durable fence.
+fn admission_room(
+    writer: Option<&Writer>,
+    pending: usize,
+    fences: usize,
+    pending_bytes: usize,
+) -> bool {
+    writer.is_none_or(|writer| {
+        pending < QUEUE
+            && fences < 2
+            && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
+            && writer.send.as_ref().unwrap().capacity() > 0
+    })
+}
 async fn serve_loop<F: Future<Output = ()>>(
     listener: TcpListener,
     listen: Listen,
@@ -654,12 +668,16 @@ async fn serve_loop<F: Future<Output = ()>>(
                     .map(|fence: &Fence| fence.reply_bytes)
                     .sum::<usize>(),
         );
-        let request_room = writer.as_ref().is_none_or(|writer| {
-            pending.len() < QUEUE
-                && fences.len() < 2
-                && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
-                && writer.send.as_ref().unwrap().capacity() > 0
-        });
+        let request_room =
+            admission_room(writer.as_ref(), pending.len(), fences.len(), pending_bytes);
+        // A checkpoint handed to the writer fills its one-slot channel until the
+        // writer thread dequeues it. Nothing else wakes the loop then, so watch
+        // the slot: queued requests must not wait for the next deadline.
+        let handoff = writer
+            .as_ref()
+            .and_then(|writer| writer.send.as_ref())
+            .filter(|send| fences.len() < 2 && send.capacity() == 0)
+            .cloned();
         tokio::select! {
             _ = &mut shutdown => break,
             _ = async { monitor.unwrap().draining().await }, if monitor.is_some() => break,
@@ -680,6 +698,9 @@ async fn serve_loop<F: Future<Output = ()>>(
                     resume_requests = resume_requests.max(receive.len());
                     storage_paused = false;
                 }
+            }
+            freed = async { handoff.as_ref().unwrap().reserve().await.map(drop) }, if handoff.is_some() => {
+                if freed.is_err() {failure = Some("Chamber storage writer stopped".into()); break;}
             }
             accepted = listener.accept() => {
                 match accepted {
@@ -724,6 +745,10 @@ async fn serve_loop<F: Future<Output = ()>>(
                 last_tick = now;
                 let elapsed = deferred_tick.unwrap_or(0.) + wall_elapsed;
                 let room = writer.as_ref().is_none_or(|writer| fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0);
+                // Re-read admission room: the writer may have dequeued a
+                // checkpoint since the loop began waiting. A stale refusal here
+                // would let this deadline overtake already queued movement.
+                let request_room = admission_room(writer.as_ref(), pending.len(), fences.len(), pending_bytes);
                 let history = match gateway.chamber.rewards.history_capacity() {
                     Ok(available) => available,
                     Err(error) => {failure = Some(error); break;}

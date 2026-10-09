@@ -54,7 +54,10 @@ async fn shared_player_pressure_and_long_writer_stall_preserve_owned_interval_ti
 }
 #[tokio::test]
 async fn mixed_cast_and_native_interval_stream_preserve_control() {
-    interval_stream(false, 0, 67, 100, 0, true, false).await;
+    // A 67/100 ms route leaves a command no margin under COMMAND_AGE (six
+    // ticks), so its cast outcome depended on scheduling phase. Interval-only
+    // coverage of that route stays in the bootstrap test above.
+    interval_stream(false, 0, 40, 40, 0, true, false).await;
 }
 #[tokio::test]
 async fn cast_during_shared_writer_stall_preserves_native_intervals() {
@@ -229,6 +232,8 @@ async fn interval_stream(
     let mut bound = 0;
     let mut accepted = 0;
     let mut cast_sent = false;
+    let mut cast_ready = false;
+    let mut frame_sent = std::collections::BTreeMap::new();
     let mut cast_sequence = None;
     let mut accepted_casts = 0;
     let mut corrections = Vec::new();
@@ -243,6 +248,7 @@ async fn interval_stream(
             match update {
                 Update::FrameBound { binding, .. } => {
                     let frame = binding.unwrap();
+                    frame_sent.insert(frame.sequence, Instant::now());
                     if !credit_bursts {
                         local.bind_movement_frame(&frame).unwrap();
                     }
@@ -273,6 +279,19 @@ async fn interval_stream(
                         accepted_casts += 1;
                     }
                     if let Some(control) = &response.control {
+                        // A command carries the newest delivered authority tick and
+                        // must arrive within COMMAND_AGE ticks of it. Its age is one
+                        // round trip plus the dispatch phase within a tick and one
+                        // tick of fixed-schedule jitter. Cast right after an interval
+                        // round trip that leaves those two ticks, so the fixture
+                        // checks shared control instead of racing the route clock
+                        // (a durable backlog after a writer stall exceeds the bound).
+                        if let Some(sent) = frame_sent.remove(&control.accepted_sequence) {
+                            let budget = Duration::from_secs_f64(
+                                crate::COMMAND_AGE.saturating_sub(2) as f64 / 30.,
+                            );
+                            cast_ready = sent.elapsed() < budget;
+                        }
                         verified_credit = verified_credit.max(control.credit_step);
                         if !credit_bursts
                             && local.context() == Some((control.life.into(), control.epoch))
@@ -287,7 +306,14 @@ async fn interval_stream(
                                 .unwrap();
                         }
                     }
-                    assert!(matches!(response.body, Reply::Accepted));
+                    assert!(
+                        matches!(response.body, Reply::Accepted),
+                        "Refused at {:?}: {:?} control {:?} recent {}",
+                        started.elapsed(),
+                        response.body,
+                        response.control,
+                        serde_json::to_string(&recent).unwrap()
+                    );
                     accepted += 1;
                 }
                 Update::Snapshot(response) => {
@@ -369,6 +395,7 @@ async fn interval_stream(
         }
         if cast_during_movement
             && !cast_sent
+            && cast_ready
             && started.elapsed() >= Duration::from_millis(if durable_stall { 1500 } else { 500 })
         {
             token += 1;
