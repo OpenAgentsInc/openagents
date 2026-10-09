@@ -2036,7 +2036,11 @@ pub enum Grounded {
 /// on a computer (`here`), an answer written for a chat that is not
 /// ([`seams::Passage::off_computer`]) is never whole, and on the website
 /// (`web`), neither is one that walks through the app's screens
-/// ([`seams::Passage::in_app`]).
+/// ([`seams::Passage::in_app`]). On the website the needs-specifics
+/// reading doesn't hold a whole answer back: the website knows nothing of
+/// the visitor's computer, repositories, or account that a model writing
+/// from the same note could add, so the note Jev judged to fully answer
+/// the message is the better reply, at once (#11106).
 #[must_use]
 pub fn grounded(
     grounding: &seams::Grounding,
@@ -2057,7 +2061,7 @@ pub fn grounded(
     passages.truncate(MAX_PASSAGES);
     if let Some(top) = passages.first()
         && top.relevance >= KB_ANSWER_CONFIDENCE
-        && needs_specifics < policy::SPECIFICS_CEILING
+        && (web || needs_specifics < policy::SPECIFICS_CEILING)
         && !(here && top.off_computer)
         && !(web && top.in_app)
         && top
@@ -2213,6 +2217,33 @@ mod tests {
         assert!(matches!(
             grounded(&grounding, 0.0, false, true),
             Grounded::Passages(passages) if passages.len() == 1
+        ));
+    }
+
+    /// On the website a whole knowledge answer stands even when the message
+    /// reads as needing specifics: the website has none to add (#11106).
+    #[test]
+    fn needs_specifics_holds_a_whole_answer_back_only_off_the_website() {
+        let grounding = seams::Grounding {
+            passages: vec![seams::Passage {
+                id: "openagents.connect-codebase@1".into(),
+                title: "Connecting your codebase".into(),
+                text: "Add it as a project, or run Coder in it.".into(),
+                source: "knowledge/openagents/openagents.connect-codebase.md".into(),
+                relevance: 0.9,
+                answer: Some("Add it as a project, or run Coder in it.".into()),
+                off_computer: false,
+                in_app: false,
+            }],
+            ..seams::Grounding::default()
+        };
+        assert!(matches!(
+            grounded(&grounding, 0.5, false, false),
+            Grounded::Passages(_)
+        ));
+        assert!(matches!(
+            grounded(&grounding, 0.5, false, true),
+            Grounded::Answer(_)
         ));
     }
 

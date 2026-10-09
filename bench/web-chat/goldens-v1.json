@@ -90,7 +90,7 @@
           "answers": ["meta.codebase", "openagents.connect-codebase"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["openagents.com/projects"], ["connect GitHub"], ["install.sh"], ["install.ps1"], ["coder login"], ["openagents.com/device"], ["/sync on"]],
+          "required": [["openagents.com/projects"], ["connect GitHub", "connect your GitHub"], ["install.sh"], ["install.ps1"], ["coder login"], ["openagents.com/device"], ["/sync on"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -182,14 +182,13 @@
             "how do i connect github repo",
             "how do I add my github repository",
             "connect my repo",
-            "can you work on my github repos?",
             "how do i add a private repo"
           ],
           "route": ["meta", "product.kb"],
           "answers": ["meta.github.website", "openagents.github-projects", "meta.codebase", "openagents.connect-codebase"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Projects"], ["connect GitHub", "sign in with GitHub"], ["https://openagents.com/projects"]],
+          "required": [["Projects"], ["connect GitHub", "connect your GitHub", "sign in with GitHub"], ["https://openagents.com/projects"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -464,6 +463,16 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["Coder"], ["https://openagents.com/download"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "limits.repos",
+          "phrasings": ["can you work on my github repos?"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.github.website", "meta.limits_chat.website", "meta.capabilities.website", "meta.codebase", "openagents.connect-codebase"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"], ["openagents.com/download", "install.sh", "openagents.com/projects"]],
           "forbidden": ["computer you connect"]
         },
         {

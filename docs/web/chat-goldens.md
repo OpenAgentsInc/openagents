@@ -184,8 +184,10 @@ Jev's readings vary from run to run, so numbers move by a few cases.
 | Run | Pass | Right (bar) | Critical wrong | Instant first words p50 / p90 |
 | --- | --- | --- | --- | --- |
 | `router`, `main` at `5af7b4257b` | 86 of 113 | - | - | Jev alone 0.5 / 1.2 s |
-| `local`, `main` at `5af7b4257b`, gateway kept out | 87 of 113 | 88 % | 5 | 1.8 / 3.3 s |
-| `local`, after #11106's fixes, gateway kept out | 92 of 113 | 98 %, met | 0 | 1.9 / 3.3 s |
+| `local`, `main` at `5af7b4257b` with only the Jev door fix, gateway kept out | 87 of 113 | 88 % | 5 | 1.8 / 3.3 s |
+| `local`, after #11106's first fixes, gateway kept out | 91–92 of 113 | 97–98 % | 0–2 | 1.9 / 3.3–4.1 s |
+| `local`, final (`main` after #11106), gateway kept out | 90 of 113 | 99 %, met | 0 | 2.0 / 3.6 s |
+| `local`, final, again | 96 of 113 | 99 %, met | 0 | 1.9 / 3.3 s |
 
 The first `local` run with the shipped configuration failed half its cases
 with "We couldn't answer this time": the Vercel AI Gateway answers every
@@ -207,6 +209,10 @@ What #11106 fixed:
 - `openagents.chat-privacy` v11 says it covers training and opting out, so
   "can I opt out of training" finds it instead of "we have no documented
   answer".
+- On the website, Jev's needs-specifics reading no longer keeps a product
+  note it judged to fully answer the message from showing whole: the
+  website knows nothing of the visitor's computer or repositories that a
+  model writing from the same note could add (`router::grounded`).
 - Jev's OpenRouter door asked for `typesafe/jev-latest`, which OpenRouter
   refuses with a 400 that never fails over: with the gateway down, every
   routed turn went unrouted. `jev-latest` now asks OpenRouter for
@@ -214,23 +220,31 @@ What #11106 fixed:
 - Goldens: the page draws code without backticks and may show a link
   without `https://`, so the text checks ignore both; "connect my repo" and
   "run Claude Code on my repo" accept the connect-your-codebase answer added
-  in #11095.
+  in #11095, and "connect your GitHub" or "sign in with GitHub" for
+  "connect GitHub". "can you work on my github repos?" moved from the
+  connect-a-repository how-to to its own `limits.repos` golden: it asks
+  whether we can do the work, and a right reply names Coder and how to get
+  it or add the repository.
 
-Still failing in the last run, and why that's acceptable for launch:
+Still failing in the final runs, and why that's acceptable for launch:
 
-- `environments.when#2` "when will environments be available?": the model
-  answered without the note ("no specific release date") instead of "not
-  open yet". Not critical, and environments aren't public.
-- `claude_key.add#4` "can I use my bedrock credentials": OpenRouter didn't
-  start in 4 s and the gateway fallback answered 402. Gone once the gateway
-  has credit.
+- `coder.what#2` "how does coder work" (second run): the model, writing
+  from the notes, said "Remote dispatch", which the machine-talk check
+  flags. Not critical; the note it read says "dispatch" for the phone.
+- `followup.repo_after_hello#1` (first run): the site answered 409 "still
+  answering your previous message" to the second turn: the runner's wait
+  for the first reply, not the reply.
+- Earlier runs also missed `environments.when#2` (the notes lookup ran past
+  its 2 s budget on OpenRouter and the model said "no release date") and
+  lost one or two turns to the gateway fallback's 402.
 
-Nineteen more were right but not instant: a product note the model wrote
-from (3 to 4 s) instead of shown whole, because Jev's whole-answer or
-needs-specifics reading kept it from standing alone (projects, sign-in, the
-Claude key, environments, "connect my repo", "can you read my repo from
-here?"), or a right model reply on another route ("what is the code at
-openagents.com/device", "can you open this link").
+Sixteen to twenty-two more were right but not instant: mostly a product
+note the model wrote from (3 to 4 s on OpenRouter) because Jev's
+whole-answer reading kept it from standing alone (projects, sign-in,
+environments, "connect my repo", "can you read my repo from here?"), a
+note shown whole that took more than 3 s through OpenRouter, or a right
+model reply on another route ("what is the code at openagents.com/device",
+"can you open this link").
 
 ### Earlier, 97 cases
 
