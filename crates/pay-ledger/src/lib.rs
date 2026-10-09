@@ -21,11 +21,16 @@ pub mod earnings;
 pub mod markets;
 pub mod payee;
 pub mod payout;
+pub mod pylon;
 pub mod reconcile;
 pub mod session;
 pub mod shared;
 
 pub const V1: &str = include_str!("../rules/v1.toml");
+/// The rule that gives a pylon's provider a share of a brokered compute
+/// sale (`[pylon_job]`). A ledger that brokers pylon jobs installs it with
+/// [`Ledger::load_rule`]; [`pylon`] does so when it opens.
+pub const V2: &str = include_str!("../rules/v2.toml");
 pub const OPENAGENTS: &str = "openagents";
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -62,6 +67,14 @@ struct Rule {
     plugin_call: PluginRule,
     hosted_resource: ResourceRule,
     bonus: BonusRule,
+    #[serde(default)]
+    pylon_job: Option<PylonJobRule>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PylonJobRule {
+    provider_bps: u16,
+    openagents: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +112,10 @@ fn parse_rule(text: &str) -> Result<(Rule, i64)> {
         || rule.bonus.first_paid_call_msat > i64::MAX as u64
         || rule.bonus.launch_match_cap_msat_per_month > i64::MAX as u64
         || DateTime::parse_from_rfc3339(&rule.bonus.launch_match_until).is_err()
+        || rule
+            .pylon_job
+            .as_ref()
+            .is_some_and(|p| p.provider_bps > 10_000 || p.openagents != "rest")
     {
         return Err(Error::Invalid("unsupported split rule"));
     }
@@ -138,6 +155,13 @@ pub enum Split {
         beneficiary: String,
         amount_msat: i64,
         kind: EarnedKind,
+    },
+    /// A brokered pylon compute job: the provider's share under the
+    /// effective rule's `[pylon_job]`, bound to the NIP-PYLON receipt
+    /// (`3201` event ID) it pays.
+    PylonJob {
+        provider: String,
+        receipt: String,
     },
 }
 #[derive(Debug, Clone)]
@@ -338,6 +362,7 @@ impl Ledger {
         tx.commit()?;
         connection.execute_batch(shared::TABLES)?;
         connection.execute_batch(shared::accounting::TABLES)?;
+        connection.execute_batch(pylon::TABLES)?;
         let mut ledger = Self {
             connection,
             #[cfg(unix)]
@@ -795,6 +820,29 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
             shares.push((beneficiary.as_str(), role, *amount_msat));
             *amount_msat
         }
+        Split::PylonJob { provider, receipt } => {
+            if provider.is_empty()
+                || provider == OPENAGENTS
+                || !pylon::is_event_id(receipt)
+                || input.plugin_id.is_some()
+                || input.release_id.is_some()
+            {
+                return Err(Error::Invalid(
+                    "pylon job provider, receipt, or classification",
+                ));
+            }
+            let bps = rule
+                .pylon_job
+                .as_ref()
+                .ok_or(Error::Invalid("the effective rule has no pylon job split"))?
+                .provider_bps;
+            if pylon::settlement_for(tx, receipt)?.is_some() {
+                return Err(Error::Conflict("the receipt already has a settlement"));
+            }
+            let amount = ((input.received_msat as i128 * bps as i128) / 10_000) as i64;
+            shares.push((provider.as_str(), "provider", amount));
+            amount
+        }
         Split::OpenAgents => 0,
     };
     let mut openagents = input.received_msat - allocated;
@@ -835,6 +883,12 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
         tx.execute(
             "INSERT INTO share(settlement,party,role,amount_msat) VALUES(?,?,?,?)",
             params![input.key, party, role, amount],
+        )?;
+    }
+    if let Split::PylonJob { provider, receipt } = &input.split {
+        tx.execute(
+            "INSERT INTO pylon_job(settlement,receipt,provider) VALUES(?,?,?)",
+            params![input.key, receipt, provider],
         )?;
     }
     if let Split::Plugin { author, .. } = &input.split

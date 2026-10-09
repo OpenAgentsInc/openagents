@@ -27,6 +27,8 @@ fn sample(status: PylonStatus, busy: u32, observed_at: u64) -> PylonSample {
         observed_at,
         owner: true,
         sigil: false,
+        paid_msat: BTreeMap::new(),
+        coin: None,
     }
 }
 
@@ -467,6 +469,8 @@ fn remote(busy: u32) -> PylonSample {
         observed_at: NOW,
         owner: false,
         sigil: false,
+        paid_msat: BTreeMap::new(),
+        coin: None,
     }
 }
 
@@ -701,7 +705,7 @@ fn a_relay_pylon_samples_from_its_verified_beacon_and_turns_unknown_when_stale()
     };
     let mut live = pylon::field::Live::new(Some("everglade"));
     assert!(live.offer(np::beacon_event(&provider, &beacon).unwrap(), NOW));
-    let fresh = super::relay::sample(live.pylons(NOW).remove(0));
+    let fresh = super::relay::sample(live.pylons(NOW).remove(0), NOW);
     assert_eq!(fresh.family, Family::Gpu);
     assert_eq!(
         (fresh.status, fresh.busy, fresh.total),
@@ -712,8 +716,126 @@ fn a_relay_pylon_samples_from_its_verified_beacon_and_turns_unknown_when_stale()
     assert_eq!(look.shape, Shape::Obelisk);
     assert!(look.burns && look.lit_runes == 1);
     // Past the beacon's validity the pylon is unknown and dark.
-    let stale = super::relay::sample(live.pylons(NOW + 241).remove(0));
+    let stale = super::relay::sample(live.pylons(NOW + 241).remove(0), NOW + 241);
     assert_eq!(stale.status, PylonStatus::Unknown);
     let dark = look::pylon(&project(&stale, NOW + 241)).unwrap();
     assert!(dark.unknown && dark.glow == 0.0 && dark.lit_runes == 0);
+}
+
+#[test]
+fn the_coin_light_burns_only_while_a_paid_receipt_is_fresh() {
+    assert_eq!(coin(NOW, true, NOW), Some(Coin { test: true }));
+    assert_eq!(
+        coin(NOW - COIN_SECS, false, NOW),
+        Some(Coin { test: false })
+    );
+    assert_eq!(coin(NOW - COIN_SECS - 1, true, NOW), None);
+    assert_eq!(coin(NOW + AHEAD + 1, true, NOW), None);
+    let site = pylon_field::site().unwrap();
+    let eye = Vec3::new(site.center[0] + 6.0, 4.0, site.center[1] - 6.0);
+    let glows = |pylon: PylonSample| {
+        let mut field = Compute::with_source(Box::new(Fixed(Sample {
+            pylons: vec![pylon],
+            pool: "everglade".into(),
+            ..Sample::default()
+        })));
+        field.tick(0.0, NOW);
+        field.mesh(eye, true, 1.0).glow.len()
+    };
+    let mut paid = remote(0);
+    paid.coin = Some(Coin { test: true });
+    paid.paid_msat = BTreeMap::from([("regtest".to_string(), 3_000)]);
+    // Two motes: the coin and its core.
+    assert_eq!(glows(paid.clone()), glows(remote(0)) + 2 * 6);
+    let State::Pylon { paid_msat, .. } = project(&paid, NOW) else {
+        unreachable!()
+    };
+    assert_eq!(paid_msat.get("regtest"), Some(&3_000));
+    // An unknown pylon shows no coin.
+    let mut stale = paid;
+    stale.observed_at = NOW - 900;
+    let mut plain = remote(0);
+    plain.observed_at = NOW - 900;
+    assert_eq!(glows(stale), glows(plain));
+}
+
+#[cfg(feature = "pylon-relay")]
+#[test]
+fn only_a_receipt_with_a_valid_preimage_lights_a_relay_pylons_coin() {
+    use nostr::domain::RelaySigner;
+    use nostr::pylon as np;
+    let provider = RelaySigner::from_secret_hex(&"01".repeat(32)).unwrap();
+    let buyer = RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
+    let beacon = np::Beacon {
+        v: np::BEACON_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        provider: provider.pubkey().into(),
+        pylon: "paid-4080".into(),
+        label: "paid-4080".into(),
+        status: np::Status::Online,
+        generation: 1,
+        since: NOW - 600,
+        observed_at: NOW,
+        valid_until: NOW + 240,
+        class: np::Class {
+            family: np::Family::Gpu,
+            tier: np::Tier::Medium,
+            memory_gb: 16,
+        },
+        slots: np::Slots { total: 2, free: 2 },
+        services: vec![np::Service {
+            capability: format!("{}:pylon/text-generation", provider.pubkey()),
+            model: "m".into(),
+            lanes: vec![np::Lane::CjConversation],
+            offering: None,
+            price_hint_msat: Some(3_000),
+        }],
+        settlement: vec!["lightning-bolt11".into()],
+        pools: vec!["everglade".into()],
+    };
+    let preimage = [7_u8; 32];
+    let receipt = |request: &str, preimage_hex: String| np::Receipt {
+        v: np::RECEIPT_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        buyer: buyer.pubkey().into(),
+        provider: provider.pubkey().into(),
+        pylon: "paid-4080".into(),
+        lane: np::Lane::CjConversation,
+        capability: format!("{}:pylon/text-generation", provider.pubkey()),
+        request: request.into(),
+        request_digest: "a".repeat(64),
+        result_digest: Some("b".repeat(64)),
+        started_at: NOW - 2,
+        finished_at: NOW - 1,
+        units: np::Units {
+            kind: np::UnitKind::Jobs,
+            count: 1,
+        },
+        outcome: np::Outcome::Accepted,
+        payment: Some(np::Payment {
+            profile: "lightning-bolt11".into(),
+            network: "regtest".into(),
+            amount_msat: 3_000,
+            payment_hash: np::sha256_hex(&preimage),
+            preimage: preimage_hex,
+        }),
+    };
+    let mut live = pylon::field::Live::new(Some("everglade"));
+    assert!(live.offer(np::beacon_event(&provider, &beacon).unwrap(), NOW));
+    // A receipt whose preimage doesn't hash to its payment hash never signs.
+    assert!(np::receipt_event(&buyer, &receipt(&"c".repeat(64), "0".repeat(64)), NOW).is_err());
+    let unlit = super::relay::sample(live.pylons(NOW).remove(0), NOW);
+    assert!(unlit.coin.is_none() && unlit.paid_msat.is_empty());
+    let good = receipt(&"d".repeat(64), "07".repeat(32));
+    assert!(live.offer(np::receipt_event(&buyer, &good, NOW).unwrap(), NOW));
+    let lit = super::relay::sample(live.pylons(NOW).remove(0), NOW);
+    assert_eq!(lit.coin, Some(Coin { test: true }));
+    assert_eq!(lit.paid_msat.get("regtest"), Some(&3_000));
+    assert!(!lit.paid_msat.contains_key("bitcoin"));
+    // The coin goes out once the receipt is older than COIN_SECS.
+    let later = NOW + COIN_SECS + 5;
+    let out = super::relay::sample(live.pylons(later).remove(0), later);
+    assert!(out.coin.is_none());
 }

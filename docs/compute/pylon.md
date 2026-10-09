@@ -8,8 +8,9 @@ with an encrypted result (`26900`). The buyer then publishes a service
 receipt (`3201`), and an aggregator can count a pool's beacons and receipts
 into a pool aggregate (`30201`) that any reader can recompute.
 
-This is phase P1 of [Compute in the Verse](verse-compute.md#p1-presence-and-free-jobs-over-nostr):
-free jobs only, so every receipt's `payment` is null.
+This covers phases P1 to P3 of [Compute in the Verse](verse-compute.md#phased-plan):
+free jobs, checks, and [paid jobs](#paid-jobs-p3-test-sats) on test sats. A
+free job's receipt has a null `payment`.
 
 ## Pieces
 
@@ -211,13 +212,64 @@ With trusted checkers, the subscription also reads their verdicts, and a
 pylon with passing checks and no failure carries a sigil: four gold motes
 above its point.
 
-## Limits in P1 and P2
+## Paid jobs (P3, test sats)
 
-- Free jobs only; no invoices, payments, or provider shares.
+Two settlement paths, both on test networks until the owner turns mainnet
+on ([verse-compute](verse-compute.md#p3-paid-jobs)).
+
+**Direct, per job.** A pylon with a price (`provider::Config::price`,
+started with `Provider::priced` and an invoicer) advertises
+`price_hint_msat` and the `lightning-bolt11` settlement profile. For each
+admitted request it sends `payment-required` feedback (`27000`, NIP-44
+encrypted) with a BOLT11 invoice, its payment hash, network, and amount
+(`pylon::paid::terms_body`), waits up to `payment_wait` for the invoice to
+settle, and only then runs the job; an unpaid invoice ends in a
+`payment_required` refusal. The buyer (`client::Ask::pay` =
+`Pay::Wallet`) refuses terms on another network or over its per-job
+ceiling, pays, checks that the preimage hashes to the payment hash, and
+puts `{profile, network, amount_msat, payment_hash, preimage}` in its
+`3201` receipt. A priced pylon on `bitcoin` refuses to start.
+
+**Brokered.** A customer pays OpenAgents by an x402 payment or a compute
+balance debit; OpenAgents' broker key buys the job (`Pay::Brokered` puts
+the customer's x402 payment in the receipt) and `pylon::broker::Broker`
+settles it in the central split ledger (`crates/pay-ledger`) under rule
+v2: the provider (the pylon's NIP-OA owner, else its key) gets
+`provider_bps` = 8,500 of the net receipts, OpenAgents the rest, and the
+settlement names the receipt it pays (`pay_ledger::pylon`, one settlement
+per receipt). `Broker::sweep` pays providers by balance sweeps through the
+ordinary payout worker (`Policy::pylon_sweeps`: 1,000 sats owed, or the
+oldest share ten minutes old), never per job. `Broker::forfeit` turns a
+trusted checker's `check-fail` on a sold job's receipt into a forfeit of
+that job's unpaid provider share; a share already swept is recorded as a
+loss and is not clawed back. A book takes receipts of one network only, and
+on `bitcoin` a sweep needs the owner's grant (`paid::Grant`), with every
+payout under its per-payment and daily ceilings.
+
+`pylon::paid::TestLightning` is an in-memory regtest network for fixtures;
+it refuses `bitcoin`. `crates/pylon/tests/paid.rs` runs nine direct paid
+jobs on three priced pylons and 1,000 brokered jobs across three pylons
+through the in-process relay, with sweeps, forfeits, and ledger rows
+matched to receipts. `cargo run -p pylon --features fixture --example
+paid_field` runs a paid regtest field for captures.
+
+In Verse, a pylon whose newest paid receipt finished in the last 15 seconds
+shows a coin of light over its point: gold for mainnet sats, pale and
+marked **TEST** for test sats. Only a receipt whose preimage hashes to its
+payment hash verifies, so nothing else lights it. The pylon's world state
+carries its paid msat per network, test networks apart from `bitcoin`.
+
+## Limits
+
+- No real wallet adapter for pylons or buyers yet: paid jobs run on
+  `TestLightning` only, and `openagents pylon serve` and `ask` stay free.
+  Mainnet needs the owner's grant and ceilings (`NEEDS_OWNER.md`).
+- Direct payment rides NIP-CJ feedback, not NIP-X402's native `3188`
+  purchase records; the brokered x402 path is recorded from the receipt,
+  not run through `openagents-x402`'s facilitator.
 - The capability is a qualified ID, not a published NIP-CAP manifest.
 - Redundant runs compare normalized text exactly; there is no Jev
   judgment for non-deterministic answers yet.
-- The league is a CLI and JSON view; Verse's Gym boards don't draw it yet.
 - The job runs in the Psionic process; it is inference only, with no tool or
   command execution, so there is nothing to put inside `coder-boundary` yet.
 - Only day plans route to the pool; reflections, share drafts, and

@@ -180,6 +180,7 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
         publish_receipt: true,
         home: home.path().to_path_buf(),
         checkers: BTreeSet::new(),
+        pay: None,
     };
     let answer = client::ask(&buyer, &ask("hello pylon")).await.unwrap();
     assert_eq!(answer.text.as_deref(), Some("echo: nolyp olleh"));
@@ -392,6 +393,7 @@ async fn an_owned_pylon_yields_to_the_owner_and_never_counts_their_receipts() {
         publish_receipt: true,
         home: home.path().to_path_buf(),
         checkers: BTreeSet::new(),
+        pay: None,
     };
     // A buyer's job and the owner's own job both run; each took a lease
     // that is gone once the job ended.
@@ -661,6 +663,7 @@ async fn a_pylon_with_wrong_canary_answers_is_marked_check_fail_and_leaves_the_p
                 publish_receipt: false,
                 home: home.path().to_path_buf(),
                 checkers: trusted.clone(),
+                pay: None,
             },
         )
         .await
@@ -677,6 +680,7 @@ async fn a_pylon_with_wrong_canary_answers_is_marked_check_fail_and_leaves_the_p
             publish_receipt: false,
             home: home.path().to_path_buf(),
             checkers: trusted.clone(),
+            pay: None,
         },
     )
     .await;

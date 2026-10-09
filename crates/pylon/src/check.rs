@@ -251,6 +251,7 @@ impl Checker {
                 publish_receipt: true,
                 home: self.home.clone(),
                 checkers: BTreeSet::new(),
+                pay: None,
             },
         )
         .await

@@ -114,6 +114,7 @@ pub fn ask_blocking(
         publish_receipt: true,
         home: home.to_path_buf(),
         checkers: crate::check::trusted(home),
+        pay: None,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

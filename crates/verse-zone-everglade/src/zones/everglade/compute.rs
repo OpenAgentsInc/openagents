@@ -86,6 +86,30 @@ pub struct PylonSample {
     /// A trusted checker's verdicts pass it and none fails it: it carries
     /// the sigil (P2).
     pub sigil: bool,
+    /// Paid on its receipts of the last day, msat by network (P3); test
+    /// networks never sum with `bitcoin`.
+    pub paid_msat: BTreeMap<String, u64>,
+    /// The coin-light: a receipt whose preimage hashes to its payment hash
+    /// paid this pylon in the last [`COIN_SECS`] (P3).
+    pub coin: Option<Coin>,
+}
+
+/// A pylon's coin-light.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Coin {
+    /// Paid in test sats: the coin is pale and marked **TEST**.
+    pub test: bool,
+}
+
+/// How long a paid receipt lights its pylon's coin, s.
+pub const COIN_SECS: u64 = 15;
+
+/// The coin-light for a paid receipt that finished at `finished_at`, at
+/// `now`: lit for [`COIN_SECS`] after it, never from the future.
+#[must_use]
+pub fn coin(finished_at: u64, test: bool, now: u64) -> Option<Coin> {
+    (finished_at <= now.saturating_add(AHEAD) && now.saturating_sub(finished_at) <= COIN_SECS)
+        .then_some(Coin { test })
 }
 
 /// A model provider's well round the basin, from the capacity book.
@@ -175,7 +199,7 @@ pub fn project(pylon: &PylonSample, now: u64) -> State {
         },
         total: pylon.total,
         jobs: pylon.jobs,
-        paid_msat: BTreeMap::new(),
+        paid_msat: pylon.paid_msat.clone(),
         uptime: pylon.uptime.filter(|_| known),
     }
 }

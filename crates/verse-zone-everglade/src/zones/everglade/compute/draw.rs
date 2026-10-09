@@ -292,6 +292,13 @@ pub fn draw(
             if sigil && !look.unknown {
                 draw_sigil(&mut glows, base, &look, time, eye, soft);
             }
+            if let Some(coin) = sample.pylons.get(i).and_then(|p| p.coin)
+                && !look.unknown
+            {
+                draw_coin(
+                    mesh, &mut glows, base, &look, coin, time, i, eye, detail, soft,
+                );
+            }
             if look.stream > 0.0 {
                 draw_stream(&mut glows.flow, base, center, look.stream, time, i, soft);
             }
@@ -513,6 +520,54 @@ fn draw_sigil(glows: &mut Glows, base: Vec3, look: &PylonLook, time: f32, eye: V
             0.08,
             times(GOLD, TIP_LUMINANCE * 0.6 * soft),
             eye,
+        );
+    }
+}
+
+/// Test sats' coin: pale silver, never gold.
+const TEST_COIN: [f32; 3] = [0.72, 0.78, 0.86];
+
+/// A pylon's coin-light: a coin of light rising off its point while a
+/// receipt with a valid preimage paid it in the last `COIN_SECS`. Gold for
+/// mainnet sats; pale and marked TEST for test sats.
+#[allow(clippy::too_many_arguments)]
+fn draw_coin(
+    mesh: &mut Mesh,
+    glows: &mut Glows,
+    base: Vec3,
+    look: &PylonLook,
+    coin: super::Coin,
+    time: f32,
+    seed: usize,
+    eye: Vec3,
+    detail: bool,
+    soft: f32,
+) {
+    let color = if coin.test { TEST_COIN } else { GOLD };
+    let rise = (time * 0.5 + seed as f32 * 0.37).fract();
+    let at = base + Vec3::Y * (look.height + 1.3 + 0.9 * rise);
+    let fade = 1.0 - rise * rise;
+    motes::blob(
+        &mut glows.key,
+        at,
+        0.14,
+        times(color, TIP_LUMINANCE * 0.9 * fade * soft),
+        eye,
+    );
+    motes::blob(
+        &mut glows.key,
+        at,
+        0.07,
+        times(CORE, TIP_LUMINANCE * fade * soft),
+        eye,
+    );
+    if coin.test && detail {
+        crate::doors::scene_label(
+            mesh,
+            "TEST",
+            base + Vec3::Y * (look.height + 2.5),
+            0.22,
+            Intensity::Full,
         );
     }
 }

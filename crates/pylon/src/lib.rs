@@ -8,11 +8,15 @@
 //! publishes a `3201` receipt. An aggregator counts a pool's beacons and
 //! receipts into a `30201` aggregate that any reader can recompute.
 //!
-//! Phases P1 and P2 of `docs/compute/verse-compute.md`: free jobs only, so
-//! every receipt's payment is null. A checker ([`check`]) runs canaries and
-//! redundant jobs and signs NIP-32 verdicts; the pylon league ([`league`])
-//! ranks pylons per class on pinned suites. See `docs/compute/pylon.md`.
+//! Phases P1 to P3 of `docs/compute/verse-compute.md`. A checker
+//! ([`check`]) runs canaries and redundant jobs and signs NIP-32 verdicts;
+//! the pylon league ([`league`]) ranks pylons per class on pinned suites.
+//! Paid jobs (P3, test sats first): a priced pylon takes a per-job
+//! Lightning payment ([`paid`]), and OpenAgents' broker settles brokered
+//! sales in the split ledger and sweeps provider balances ([`broker`]).
+//! See `docs/compute/pylon.md`.
 
+pub mod broker;
 pub mod check;
 pub mod cli;
 pub mod client;
@@ -25,6 +29,7 @@ pub mod inflight;
 pub mod job;
 pub mod league;
 pub mod lease;
+pub mod paid;
 pub mod pool;
 pub mod provider;
 pub mod relay;

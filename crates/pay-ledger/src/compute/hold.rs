@@ -364,6 +364,51 @@ impl Ledger {
             let record = crate::read_record(&self.connection, &format!("debit:{}", out.intent.id))?;
             return Ok((hold, record));
         }
+        self.settle_local_hold(id, charge_msat, at, RETAIL_RESOURCE, Split::OpenAgents)
+    }
+
+    /// Settle a hold that paid for one brokered pylon job: as
+    /// [`Ledger::settle_hold`], but the debit splits under the effective
+    /// rule's `[pylon_job]`, with the provider's share bound to `receipt`
+    /// (`crate::pylon`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Ledger::settle_hold`]; a hold of the shared retail book; and a
+    /// rule without a pylon job split.
+    pub fn settle_pylon_hold(
+        &mut self,
+        id: &str,
+        charge_msat: i64,
+        at: i64,
+        provider: &str,
+        receipt: &str,
+    ) -> Result<(Hold, Option<Recorded>)> {
+        if self.shared_retail_outcome(id)?.is_some() {
+            return Err(Error::Invalid(
+                "a shared retail hold never pays a pylon job",
+            ));
+        }
+        self.settle_local_hold(
+            id,
+            charge_msat,
+            at,
+            crate::pylon::RESOURCE,
+            Split::PylonJob {
+                provider: provider.into(),
+                receipt: receipt.into(),
+            },
+        )
+    }
+
+    fn settle_local_hold(
+        &mut self,
+        id: &str,
+        charge_msat: i64,
+        at: i64,
+        resource: &str,
+        split: Split,
+    ) -> Result<(Hold, Option<Recorded>)> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -387,7 +432,7 @@ impl Ledger {
                 &tx,
                 SettlementInput {
                     key: format!("debit:{id}"),
-                    resource: RETAIL_RESOURCE.into(),
+                    resource: resource.into(),
                     plugin_id: None,
                     release_id: None,
                     price_msat: charge_msat,
@@ -395,7 +440,7 @@ impl Ledger {
                     rail: Rail::Balance,
                     payer_alias: None,
                     settled_at: at,
-                    split: Split::OpenAgents,
+                    split,
                 },
             )?)
         } else {

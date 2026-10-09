@@ -16,6 +16,8 @@ coder-lease = { path = "../coder-lease" }
 futures-util = { version = "0.3", optional = true }
 tokio-tungstenite = { version = "0.30.0", optional = true }
 nostr = { path = "../nostr" }
+# The central split ledger brokered pylon sales settle in (P3).
+pay-ledger = { path = "../pay-ledger" }
 nostr-transport = { path = "../nostr-transport" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
@@ -24,9 +26,15 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
 [dev-dependencies]
+# The in-process relay (`fixture`) for this crate's own integration tests.
+pylon = { path = ".", features = ["fixture"] }
 futures-util = "0.3"
 tempfile = "3"
 tokio-tungstenite = "0.30.0"
 
 [lints]
 workspace = true
+
+[[example]]
+name = "paid_field"
+required-features = ["fixture"]

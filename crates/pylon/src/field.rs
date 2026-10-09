@@ -142,6 +142,32 @@ pub struct Pylon {
     pub observed_at: u64,
     /// From trusted verdicts: `Passing` draws the sigil.
     pub standing: Standing,
+    /// The newest paid receipt for this pylon, which lights its coin. Only
+    /// a receipt whose preimage hashes to its payment hash ever verifies,
+    /// so nothing else can.
+    pub coin: Option<Coin>,
+}
+
+/// A pylon's newest paid receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Coin {
+    /// When the paid job finished, Unix seconds.
+    pub finished_at: u64,
+    pub amount_msat: u64,
+    /// Paid in test sats: drawn with the **TEST** mark.
+    pub test: bool,
+}
+
+/// Add `amount_msat` on `network` to `paid`, keeping test networks apart
+/// from `bitcoin`.
+fn add_paid(paid: &mut pylon::PaidMsat, network: &str, amount_msat: u64) {
+    let slot = match network {
+        "bitcoin" => &mut paid.bitcoin,
+        "testnet" => &mut paid.testnet,
+        "signet" => &mut paid.signet,
+        _ => &mut paid.regtest,
+    };
+    *slot = slot.saturating_add(amount_msat);
 }
 
 /// A receipt as a live field remembers it.
@@ -150,6 +176,8 @@ struct Counted {
     finished_at: u64,
     address: String,
     accepted: bool,
+    /// `(network, amount_msat)` for a paid receipt.
+    paid: Option<(String, u64)>,
 }
 
 /// The newest pool aggregate and whether it recomputed.
@@ -248,6 +276,10 @@ impl Live {
                         finished_at: receipt.finished_at,
                         address: receipt.address(),
                         accepted: receipt.outcome == Outcome::Accepted,
+                        paid: receipt
+                            .payment
+                            .as_ref()
+                            .map(|p| (p.network.clone(), p.amount_msat)),
                     },
                 );
                 if receipt.finished_at + MAX_WINDOW_SECS >= now
@@ -336,12 +368,36 @@ impl Live {
     #[must_use]
     pub fn pylons(&self, now: u64) -> Vec<Pylon> {
         let mut jobs: BTreeMap<&str, u64> = BTreeMap::new();
+        let mut paid: BTreeMap<&str, pylon::PaidMsat> = BTreeMap::new();
+        let mut coins: BTreeMap<&str, Coin> = BTreeMap::new();
         for ((buyer, _), counted) in &self.receipts {
-            if counted.accepted
-                && counted.finished_at + RECEIPT_WINDOW_SECS >= now
-                && !self.book.self_dealt(buyer, &counted.address)
+            if counted.finished_at + RECEIPT_WINDOW_SECS < now
+                || self.book.self_dealt(buyer, &counted.address)
             {
+                continue;
+            }
+            if counted.accepted {
                 *jobs.entry(counted.address.as_str()).or_default() += 1;
+            }
+            if let Some((network, amount_msat)) = &counted.paid {
+                add_paid(
+                    paid.entry(counted.address.as_str()).or_default(),
+                    network,
+                    *amount_msat,
+                );
+                let coin = Coin {
+                    finished_at: counted.finished_at,
+                    amount_msat: *amount_msat,
+                    test: network != "bitcoin",
+                };
+                coins
+                    .entry(counted.address.as_str())
+                    .and_modify(|c| {
+                        if coin.finished_at > c.finished_at {
+                            *c = coin;
+                        }
+                    })
+                    .or_insert(coin);
             }
         }
         let standings = pylon::standings(
@@ -358,8 +414,11 @@ impl Live {
             .filter(|(_, b)| self.pool.as_ref().is_none_or(|p| b.pools.contains(p)))
             .map(|(_, b)| {
                 let address = b.address();
+                let mut state = project(b, now, jobs.get(address.as_str()).copied().unwrap_or(0));
+                state.paid_msat = paid.get(address.as_str()).cloned().unwrap_or_default();
                 Pylon {
-                    state: project(b, now, jobs.get(address.as_str()).copied().unwrap_or(0)),
+                    coin: coins.get(address.as_str()).copied(),
+                    state,
                     memory_gb: b.class.memory_gb,
                     observed_at: b.observed_at,
                     standing: standings

@@ -725,6 +725,32 @@ through balance sweeps with ledger rows matching receipts; a failed check
 forfeits the unpaid share; the coin-light flares only for receipts with a
 valid preimage; capture `pylon-field-paid-test.png`.
 
+**Built (2026-10-08), on test sats.** See [Paid jobs](pylon.md#paid-jobs-p3-test-sats).
+
+- `pay-ledger` rule v2 (`rules/v2.toml`) gives the `provider` role 8,500
+  bps of a brokered pylon sale (open question 3 is still the owner's to
+  settle at the next rule version); `Split::PylonJob` binds each provider
+  share to its `3201` receipt, one settlement per receipt, by x402 payment
+  hash or compute balance debit (`settle_pylon_hold`).
+- `pylon::broker` settles brokered sales, forfeits the unpaid share of a
+  job a trusted checker failed, and sweeps provider balances through the
+  existing payout worker under `Policy::pylon_sweeps`; a mainnet sweep
+  needs the owner's grant and stays under its ceilings.
+- `pylon::paid`: priced pylons send `payment-required` terms and run a job
+  only once its invoice settled; buyers pay under a ceiling and publish
+  the preimage in the receipt. `TestLightning` is the in-memory regtest
+  network.
+- `crates/pylon/tests/paid.rs`: 1,000 brokered jobs across three pylons on
+  the in-process relay settle through six sweeps with every ledger row
+  matching its receipt; ten failed jobs swept already are recorded losses
+  and ten unswept ones are forfeited.
+- Everglade lights a pylon's coin for 15 seconds after a receipt with a
+  valid preimage, pale and marked TEST on test networks.
+
+Not yet: a real wallet adapter (pylons and `openagents pylon` stay free
+outside fixtures), NIP-X402 native `3188` records for direct jobs, and
+mainnet, which waits on the owner (`NEEDS_OWNER.md`).
+
 ### P4: the agent market
 
 Issue: #10924.

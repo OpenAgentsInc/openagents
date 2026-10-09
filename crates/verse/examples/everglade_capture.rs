@@ -557,7 +557,8 @@ fn compute(
 /// from its real lease table, read without changing it, beside the relay's
 /// pylons from their verified beacons. Waits until the relay subscription
 /// has caught up, and while `VERSE_CAPTURE_COMPUTE_WAIT` names `busy`, until a
-/// relay pylon is busy, and `job`, until one of this computer's jobs is in flight, for at
+/// relay pylon is busy, `job`, until one of this computer's jobs is in flight, and
+/// `coin`, until a paid receipt lights a pylon's coin (P3), for at
 /// most `VERSE_CAPTURE_COMPUTE_TIMEOUT` seconds (90 by default). Prints
 /// what the relay showed.
 #[cfg(feature = "pylon-relay")]
@@ -568,7 +569,11 @@ fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSou
     let local = LocalSource::from_env()?;
     let mut relay = RelaySource::from_env().ok_or("VERSE_PYLON_RELAY is off")?;
     let wait = std::env::var("VERSE_CAPTURE_COMPUTE_WAIT").unwrap_or_default();
-    let (busy, job) = (wait.contains("busy"), wait.contains("job"));
+    let (busy, job, coin) = (
+        wait.contains("busy"),
+        wait.contains("job"),
+        wait.contains("coin"),
+    );
     let timeout = std::env::var("VERSE_CAPTURE_COMPUTE_TIMEOUT")
         .ok()
         .and_then(|t| t.parse::<u64>().ok())
@@ -581,17 +586,20 @@ fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSou
         let sample = relay.sample(now);
         let ready = relay.synced()
             && (!busy || sample.pylons.iter().any(|p| p.busy > 0))
-            && (!job || !sample.in_flight.is_empty());
+            && (!job || !sample.in_flight.is_empty())
+            && (!coin || sample.pylons.iter().any(|p| p.coin.is_some()));
         if ready || started.elapsed().as_secs() >= timeout {
             for p in &sample.pylons {
                 println!(
-                    "relay pylon {} ({}): {:?}, {} of {} busy, {} jobs, observed {} s ago",
+                    "relay pylon {} ({}): {:?}, {} of {} busy, {} jobs, paid {:?}, coin {:?}, observed {} s ago",
                     p.label,
                     p.id,
                     p.status,
                     p.busy,
                     p.total,
                     p.jobs,
+                    p.paid_msat,
+                    p.coin,
                     now.saturating_sub(p.observed_at)
                 );
             }

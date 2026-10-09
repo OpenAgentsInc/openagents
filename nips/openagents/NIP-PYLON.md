@@ -356,7 +356,16 @@ admission; both fields are omitted when empty, so an open policy's digest
 is unchanged. `crates/pylon` runs the checker (`openagents pylon check`),
 the per-class league, and `pylon-check` XP awards (NIP-XP).
 
-Not implemented: paid receipts in practice, a `wellspring` projection from an
+Phase P3 (2026-10-08, test networks): a pylon that advertises
+`lightning-bolt11` answers an admitted CJ request with `status` feedback
+`payment-required` carrying `profile`, `network`, `amount_msat`, `bolt11`,
+and `payment_hash`, and runs the job only after that invoice settles. The
+buyer's receipt then carries the payment with its preimage. Brokered sales
+carry the customer's `x402-exact` payment in the broker's receipt. Readers
+sum paid amounts per network and light a pylon's coin only for receipts
+that verify.
+
+Not implemented: mainnet paid receipts, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 

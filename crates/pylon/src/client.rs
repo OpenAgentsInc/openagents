@@ -4,13 +4,14 @@
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use nostr::domain::Event;
 use nostr::domain::Tag;
 use nostr::pylon::{
-    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, RECEIPT_V, Receipt, Status,
-    UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
+    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, Payment, RECEIPT_V, Receipt,
+    Status, UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -18,6 +19,7 @@ use serde_json::{Value, json};
 use crate::identity::Identity;
 use crate::job;
 use crate::now;
+use crate::paid::Payer;
 use crate::relay::{self, Frame, LIFETIME};
 
 /// Fetch and verify the beacons on a relay, keeping the newest per pylon.
@@ -85,6 +87,8 @@ pub struct Answer {
     /// The signed receipt, for a checker to label.
     #[serde(skip)]
     pub receipt_event: Option<Event>,
+    /// What the job's receipt says was paid, msat; `None` for free work.
+    pub paid_msat: Option<u64>,
 }
 
 /// How to ask.
@@ -101,6 +105,32 @@ pub struct Ask {
     /// Checkers whose `check-fail` keeps a pylon out of the choice; empty
     /// chooses among every pylon.
     pub checkers: BTreeSet<String>,
+    /// How this job is paid; `None` for free work.
+    pub pay: Option<Pay>,
+}
+
+/// How a buyer pays for a job.
+#[derive(Clone)]
+pub enum Pay {
+    /// Directly: pay the pylon's per-job invoice from this wallet, up to
+    /// `max_msat` a job.
+    Wallet {
+        payer: Arc<dyn Payer>,
+        max_msat: u64,
+    },
+    /// Brokered: the customer already paid OpenAgents (an x402 payment);
+    /// the broker, which is the buyer here, records that payment in the
+    /// receipt, and the pylon serves the broker without terms.
+    Brokered(Payment),
+}
+
+impl std::fmt::Debug for Pay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Wallet { max_msat, .. } => write!(f, "Pay::Wallet {{ max_msat: {max_msat} }}"),
+            Self::Brokered(payment) => write!(f, "Pay::Brokered({})", payment.payment_hash),
+        }
+    }
 }
 
 /// Find a pylon, run one job, and publish its receipt.
@@ -172,6 +202,10 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     let mut error = None;
     let mut result_plain = None;
     let mut outcome = Outcome::Timeout;
+    let mut payment = match &ask.pay {
+        Some(Pay::Brokered(payment)) => Some(payment.clone()),
+        _ => None,
+    };
     let deadline = tokio::time::Instant::now() + ask.wait;
     while text.is_none() && error.is_none() {
         let frame = match tokio::time::timeout_at(deadline, conn.next()).await {
@@ -213,6 +247,14 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
                         }
                         result_plain = Some(plain);
                         outcome = Outcome::Accepted;
+                    }
+                } else if value["status"] == crate::paid::PAYMENT_REQUIRED {
+                    match pay_terms(ask.pay.as_ref(), &value, payment.is_some()).await {
+                        Ok(paid) => payment = Some(paid),
+                        Err(why) => {
+                            error = Some(format!("payment: {why}"));
+                            outcome = Outcome::Failed;
+                        }
                     }
                 } else if value["status"] == "error" {
                     error = Some(format!(
@@ -259,7 +301,9 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
             },
         },
         outcome,
-        payment: None,
+        // A direct payment the job never earned (it failed after paying)
+        // still settled, so its receipt still names it.
+        payment,
     };
     let mut receipt_id = None;
     let mut receipt_error = None;
@@ -298,7 +342,24 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
         receipt: receipt_id,
         receipt_error,
         receipt_event: signed,
+        paid_msat: receipt.payment.as_ref().map(|p| p.amount_msat),
     })
+}
+
+/// Pay a pylon's `payment-required` terms from the buyer's wallet.
+async fn pay_terms(pay: Option<&Pay>, body: &Value, paid: bool) -> Result<Payment, String> {
+    let terms = crate::paid::parse_terms(body)?.ok_or("not payment terms")?;
+    if paid {
+        return Err("the pylon asked for a second payment".into());
+    }
+    let Some(Pay::Wallet { payer, max_msat }) = pay else {
+        return Err("the pylon asks for payment and this buyer has no wallet".into());
+    };
+    let payer = Arc::clone(payer);
+    let max = *max_msat;
+    tokio::task::spawn_blocking(move || crate::paid::pay(payer.as_ref(), &terms, max))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Append the receipt to `receipts.jsonl` in `home`. Best effort: a buyer

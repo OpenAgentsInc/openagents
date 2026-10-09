@@ -119,7 +119,7 @@ impl ComputeSource for RelaySource {
                 live.aggregate(now).is_some_and(|(_, verified)| verified),
             )
         };
-        let mut pylons: Vec<PylonSample> = pylons.into_iter().map(sample).collect();
+        let mut pylons: Vec<PylonSample> = pylons.into_iter().map(|p| sample(p, now)).collect();
         // By address, so a pylon keeps its site as its beacon updates.
         pylons.sort_by(|a, b| a.id.cmp(&b.id));
         let in_flight = self
@@ -142,10 +142,21 @@ impl ComputeSource for RelaySource {
     }
 }
 
-/// One verified pylon as the field samples it.
+/// One verified pylon as the field samples it at `now`.
 #[must_use]
-pub fn sample(pylon: pylon::field::Pylon) -> PylonSample {
+pub fn sample(pylon: pylon::field::Pylon, now: u64) -> PylonSample {
     let state = pylon.state;
+    let paid = &state.paid_msat;
+    let paid_msat = [
+        ("bitcoin", paid.bitcoin),
+        ("testnet", paid.testnet),
+        ("signet", paid.signet),
+        ("regtest", paid.regtest),
+    ]
+    .into_iter()
+    .filter(|(_, msat)| *msat > 0)
+    .map(|(network, msat)| (network.to_string(), msat))
+    .collect();
     let status = match state.status.as_str() {
         "online" => PylonStatus::Online,
         "draining" => PylonStatus::Draining,
@@ -175,5 +186,9 @@ pub fn sample(pylon: pylon::field::Pylon) -> PylonSample {
         observed_at: pylon.observed_at,
         owner: false,
         sigil: pylon.standing == nostr::pylon::Standing::Passing,
+        paid_msat,
+        coin: pylon
+            .coin
+            .and_then(|c| super::coin(c.finished_at, c.test, now)),
     }
 }

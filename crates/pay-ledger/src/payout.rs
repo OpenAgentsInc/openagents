@@ -315,6 +315,19 @@ impl Default for Policy {
 }
 
 impl Policy {
+    /// Pylon provider sweeps (`docs/compute/verse-compute.md`, Payments):
+    /// a provider is paid once 1,000 sats are owed on either rail, or once
+    /// its oldest owed share is ten minutes old. Never per job.
+    #[must_use]
+    pub fn pylon_sweeps() -> Self {
+        Self {
+            spark_threshold_msat: 1_000_000,
+            lightning_threshold_msat: 1_000_000,
+            daily_after_secs: 600,
+            ..Self::default()
+        }
+    }
+
     /// Seconds to wait after the `failures`-th consecutive failure.
     #[must_use]
     pub fn backoff_secs(&self, failures: i64) -> i64 {

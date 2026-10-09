@@ -688,8 +688,10 @@ fn read_refund(c: &Connection, id: &str) -> Result<Option<Refund>> {
         .transpose()
 }
 
+/// A pylon forfeit that came too late (`role='provider'`, the share was
+/// already swept) leaves nothing unbacked, so it never holds payouts.
 pub(crate) fn payouts_held_in(c: &Connection) -> Result<bool> {
-    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment WHERE loss_msat>0) OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown')) OR EXISTS(SELECT 1 FROM commission_admission a JOIN settlement s ON s.payment_hash=a.payment_hash WHERE NOT EXISTS(SELECT 1 FROM commission_obligation o WHERE o.id=a.id))",[],|r|r.get(0))?)
+    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment WHERE loss_msat>0 AND role!='provider') OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown')) OR EXISTS(SELECT 1 FROM commission_admission a JOIN settlement s ON s.payment_hash=a.payment_hash WHERE NOT EXISTS(SELECT 1 FROM commission_obligation o WHERE o.id=a.id))",[],|r|r.get(0))?)
 }
 impl Ledger {
     /// Unobserved admitted collections, losses, and unresolved native refund

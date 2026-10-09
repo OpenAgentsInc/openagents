@@ -27,6 +27,7 @@ use crate::identity::Identity;
 use crate::job::{self, Refusal};
 use crate::lease::{Dedicated, Machine};
 use crate::now;
+use crate::paid::{self, Invoicer, Price, Terms};
 use crate::relay::{self, Frame, LIFETIME};
 
 /// How a pylon is set up.
@@ -52,6 +53,11 @@ pub struct Config {
     /// The NIP-OA credential by which the owner authorized this pylon key;
     /// every beacon carries it.
     pub owner: Option<MintedOwnerAttestation>,
+    /// A posted price per job; `None` serves free (`free-v1`). A priced
+    /// pylon needs an invoicer ([`Provider::priced`]).
+    pub price: Option<Price>,
+    /// How long a priced pylon waits for a job's invoice to settle.
+    pub payment_wait: Duration,
 }
 
 impl Config {
@@ -75,6 +81,8 @@ impl Config {
             home,
             job_timeout: Duration::from_secs(90),
             owner: None,
+            price: None,
+            payment_wait: Duration::from_secs(30),
         }
     }
 
@@ -118,6 +126,7 @@ pub struct Provider {
     identity: Identity,
     engine: Arc<dyn Engine>,
     machine: Arc<dyn Machine>,
+    invoicer: Option<Arc<dyn Invoicer>>,
     generation: u64,
     since: u64,
     state: Mutex<State>,
@@ -157,6 +166,44 @@ impl Provider {
         engine: Arc<dyn Engine>,
         machine: Arc<dyn Machine>,
     ) -> Result<Arc<Self>, String> {
+        Self::build(config, identity, engine, machine, None)
+    }
+
+    /// A priced pylon: every job is paid first through an invoice from
+    /// `invoicer`, on the price's network.
+    ///
+    /// # Errors
+    ///
+    /// As [`Provider::on`], and when the config has no price, the invoicer
+    /// is on another network, or the price is on `bitcoin` (mainnet sales
+    /// wait for the owner's grant and a real wallet adapter).
+    pub fn priced(
+        config: Config,
+        identity: Identity,
+        engine: Arc<dyn Engine>,
+        machine: Arc<dyn Machine>,
+        invoicer: Arc<dyn Invoicer>,
+    ) -> Result<Arc<Self>, String> {
+        let price = config.price.ok_or("a priced pylon needs a price")?;
+        if invoicer.network() != price.network {
+            return Err("the invoicer is on another network than the price".into());
+        }
+        if !price.network.is_test() {
+            return Err("mainnet pylon sales are off until the owner turns them on".into());
+        }
+        Self::build(config, identity, engine, machine, Some(invoicer))
+    }
+
+    fn build(
+        config: Config,
+        identity: Identity,
+        engine: Arc<dyn Engine>,
+        machine: Arc<dyn Machine>,
+        invoicer: Option<Arc<dyn Invoicer>>,
+    ) -> Result<Arc<Self>, String> {
+        if config.price.is_some() && invoicer.is_none() {
+            return Err("a priced pylon needs an invoicer".into());
+        }
         if let Some(owner) = &config.owner {
             crate::identity::check_owner(&identity, owner)?;
         }
@@ -184,6 +231,7 @@ impl Provider {
             identity,
             engine,
             machine,
+            invoicer,
             generation,
             since: now(),
             outbound,
@@ -238,9 +286,13 @@ impl Provider {
                 model: self.engine.model().chars().take(128).collect(),
                 lanes: vec![Lane::CjConversation],
                 offering: None,
-                price_hint_msat: None,
+                price_hint_msat: self.config.price.map(|p| p.msat),
             }],
-            settlement: vec!["free-v1".into()],
+            settlement: vec![if self.config.price.is_some() {
+                paid::PROFILE.into()
+            } else {
+                "free-v1".into()
+            }],
             pools: self.config.pools.clone(),
         }
     }
@@ -457,6 +509,19 @@ impl Provider {
             }
         };
         self.changed.notify_one();
+        if let Err(refusal) = self.collect(&event, request.version).await {
+            let mut state = self.state.lock().await;
+            state.counters.refused += 1;
+            state.free += 1;
+            drop(state);
+            self.changed.notify_one();
+            self.answer(
+                &event,
+                job::FEEDBACK_KIND,
+                &job::refusal_body(request.version, &refusal),
+            );
+            return;
+        }
         self.answer(
             &event,
             job::FEEDBACK_KIND,
@@ -515,6 +580,53 @@ impl Provider {
         }
         self.state.lock().await.free += 1;
         self.changed.notify_one();
+    }
+
+    /// For a priced pylon, send the job's terms and wait until its invoice
+    /// settles; a free pylon collects nothing.
+    async fn collect(&self, request: &Event, version: u64) -> Result<(), Refusal> {
+        let (Some(price), Some(invoicer)) = (self.config.price, self.invoicer.as_ref()) else {
+            return Ok(());
+        };
+        let memo = format!("pylon job {}", request.id);
+        let invoice = {
+            let invoicer = Arc::clone(invoicer);
+            tokio::task::spawn_blocking(move || invoicer.invoice(price.msat, &memo))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r)
+                .map_err(|e| Refusal::new("unavailable", format!("no invoice: {e}")))?
+        };
+        let hash = invoice.payment_hash.clone();
+        self.answer(
+            request,
+            job::FEEDBACK_KIND,
+            &paid::terms_body(
+                version,
+                &Terms {
+                    network: price.network,
+                    invoice,
+                },
+            ),
+        );
+        let until = Instant::now() + self.config.payment_wait;
+        loop {
+            let invoicer = Arc::clone(invoicer);
+            let hash = hash.clone();
+            let settled = tokio::task::spawn_blocking(move || invoicer.settled(&hash))
+                .await
+                .unwrap_or(false);
+            if settled {
+                return Ok(());
+            }
+            if Instant::now() >= until {
+                return Err(Refusal::new(
+                    "payment_required",
+                    "the job's invoice was not paid in time",
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 
     /// The allowlist, the buyer's rate limit, and a slot. Takes the slot.

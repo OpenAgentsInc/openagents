@@ -48,10 +48,18 @@ pub(crate) fn reduce_in(
         || evidence.len() > 256
         || requested_msat <= 0
         || at < 0
-        || !matches!(role, "openagents" | "resource")
+        || !matches!(role, "openagents" | "resource" | "provider")
         || role == "openagents" && party != crate::OPENAGENTS
+        || role == "provider" && party == crate::OPENAGENTS
     {
         return Err(Error::Invalid("payable adjustment"));
+    }
+    // Only a brokered pylon job's provider share is forfeitable; a worker's
+    // earned share is an accepted obligation.
+    if role == "provider" && crate::pylon::job_in(c, settlement)?.is_none() {
+        return Err(Error::Invalid(
+            "only a pylon job's provider share is forfeitable",
+        ));
     }
     if let Some(old) = read(c, id)? {
         if old.settlement != settlement

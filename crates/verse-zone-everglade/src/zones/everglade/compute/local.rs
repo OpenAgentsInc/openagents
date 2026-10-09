@@ -10,6 +10,7 @@
 //! pylon's status is unknown, never online; a source that stops being
 //! asked goes stale and turns unknown too (`super::project`).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -169,6 +170,8 @@ impl ComputeSource for LocalSource {
                     observed_at: now,
                     owner: true,
                     sigil: false,
+                    paid_msat: BTreeMap::new(),
+                    coin: None,
                 };
                 self.last = Some(pylon.clone());
                 pylon
@@ -193,6 +196,8 @@ impl ComputeSource for LocalSource {
                     observed_at: now,
                     owner: true,
                     sigil: false,
+                    paid_msat: BTreeMap::new(),
+                    coin: None,
                 })
             },
         };

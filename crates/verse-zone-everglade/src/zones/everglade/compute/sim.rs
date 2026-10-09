@@ -3,6 +3,8 @@
 //! clock. Its sample says `demo`, so the field draws the DEMO mark over the
 //! basin and the inspect panel leads with it. Nothing else reads it.
 
+use std::collections::BTreeMap;
+
 use world_tree::{Family, PylonStatus, Tier};
 
 use super::{ComputeSource, PylonSample, Sample, WellSample};
@@ -53,6 +55,15 @@ impl ComputeSource for Sim {
                     owner: false,
                     // The busiest towers have passing checks.
                     sigil: !stale && matches!(i, 1 | 3 | 6),
+                    // Demo sats are never real: the paying towers show
+                    // TEST coins.
+                    paid_msat: if matches!(i, 1 | 3 | 6) {
+                        BTreeMap::from([("regtest".to_string(), 2_000 * (phase % 50 + 1))])
+                    } else {
+                        BTreeMap::new()
+                    },
+                    coin: (!stale && matches!(i, 1 | 3 | 6) && (phase + k) % 2 == 0)
+                        .then_some(super::Coin { test: true }),
                 }
             })
             .collect();

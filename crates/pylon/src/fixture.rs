@@ -307,6 +307,7 @@ impl League {
                         publish_receipt: true,
                         home: home.clone(),
                         checkers: BTreeSet::new(),
+                        pay: None,
                     },
                 )
                 .await?;

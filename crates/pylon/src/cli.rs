@@ -401,6 +401,7 @@ async fn ask(
             publish_receipt,
             home: home(),
             checkers,
+            pay: None,
         },
     )
     .await?;

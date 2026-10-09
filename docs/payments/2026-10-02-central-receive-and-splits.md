@@ -185,7 +185,7 @@ exclusive invoice authority and one replay store per `payTo`
 | **Plugin author** | The plugin's whole per-call fee, every paid call that used the plugin (per-call x402 or a prepaid balance debit). | API decisions D7 and D9; Episode 289. The fee and payout destination ride in the signed EXT release (API gap G9: `fee_msat`, `payout`). |
 | **OpenAgents** | The endpoint price (model, routing, hosting), minus the LSP fee, minus any bonus it funds. | API section 5.5. |
 | **Author of a hosted paid resource** (an HTTP service an author runs, sold through our receiver) | The resource's price, minus the OpenAgents take set in the rule. | Replaces the author running `openagents x402 serve` with their own wallet (#9791 advertised such resources). |
-| **Computer provider** | Nothing yet. API D4 runs Coder only on computers the caller's own user granted, so the provider is the payer. The rule reserves a `provider` role for runs on someone else's computer under [NIP-LAB](../../nips/openagents/NIP-LAB.md), at a later rule version. | API D4. |
+| **Computer provider** | Under rule v2, a brokered pylon compute job pays the pylon's provider 8,500 bps of the net receipts, bound to the job's NIP-PYLON receipt (`pay_ledger::pylon`, [Paid jobs](../compute/pylon.md#paid-jobs-p3-test-sats)). API D4 still runs Coder only on computers the caller's own user granted, so the provider is the payer there. | API D4; Verse compute P3. |
 | **XP** | Never sats. XP is evidence of accepted work and never converts ([NIP-XP](../../nips/openagents/NIP-XP.md)). The live view may show XP awards beside payments, as `routes-plugin` does, but the ledger never reads them. | NIP-XP. |
 
 ### Short-term bonus (launch bonus, rule `v1`)
