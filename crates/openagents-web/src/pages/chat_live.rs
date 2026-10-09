@@ -96,7 +96,8 @@ async fn events(
     headers: HeaderMap,
     Query(resume): Query<Resume>,
 ) -> Response {
-    let Some(owner) = crate::ask::visitor(&headers) else {
+    let who = crate::chat_owner::who(&app, &headers).await;
+    let Some(owner) = who.reader().map(str::to_owned) else {
         // No chats to follow; 204 tells the browser not to reconnect.
         return crate::chat_html::protect(StatusCode::NO_CONTENT.into_response());
     };

@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@e316d71977c2",
+  "bank": "chat-answers-v1@b2cf60f5dee9",
   "routes": [
     {
       "id": "meta",
@@ -284,6 +284,21 @@
       ]
     },
     {
+      "id": "meta.tools",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What tools do you have?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-mobile/src/basic_coder.rs",
+        "docs/plugins/README.md"
+      ]
+    },
+    {
       "id": "meta.capabilities.here",
       "version": 3,
       "routes": [
@@ -445,7 +460,7 @@
     },
     {
       "id": "meta.privacy",
-      "version": 3,
+      "version": 4,
       "routes": [
         "meta"
       ],
@@ -461,7 +476,7 @@
     },
     {
       "id": "meta.data_retention",
-      "version": 1,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -472,6 +487,7 @@
       "sources": [
         "crates/coder/src/bin/coder-worker.rs",
         "crates/openagents-mobile/src/basic_chats.rs",
+        "crates/openagents-web/src/chat_store.rs",
         "INVARIANTS.md"
       ]
     },
@@ -493,7 +509,7 @@
     },
     {
       "id": "meta.memory",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -1336,7 +1352,7 @@
     },
     {
       "id": "clarify.generic",
-      "version": 1,
+      "version": 2,
       "routes": [
         "clarify"
       ],
@@ -3311,6 +3327,23 @@
     "routes.map"
   ],
   "plugins": [
+    {
+      "dir": "crates/plugin-action-items",
+      "slug": "action-items",
+      "name": "Action items",
+      "summary": "Reads meeting notes and lists the action items: who does what, and by when, each citing the line it came from.",
+      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+      "version": "0.1.0",
+      "wasm": [
+        "plugin-action-items"
+      ],
+      "workflows": [
+        "action-items"
+      ],
+      "skills": [],
+      "knowledge": [],
+      "tests": []
+    },
     {
       "dir": "crates/plugin-code-search",
       "slug": "code-finder",

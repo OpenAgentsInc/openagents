@@ -544,7 +544,8 @@ async fn pin_rename_search_and_archive_work_end_to_end() {
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(
-        body.contains(&row) && body.contains("Search chats"),
+        // The search box is hidden until people have more chats.
+        body.contains(&row) && !body.contains("Search chats"),
         "{body}"
     );
     assert!(body.contains(">Pin<") && body.contains(">Rename<") && body.contains(">Archive<"));

@@ -10,7 +10,7 @@
 
 use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, ControlSize};
 use openagents_ui::icons::Icon;
-use openagents_ui::shell::{ChatSearch, HxGet, NavItem, RowAction, RowMenu, RowRename};
+use openagents_ui::shell::{HxGet, NavItem, RowAction, RowMenu, RowRename};
 
 use super::*;
 
@@ -96,13 +96,16 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 .map(|chat| row(chat, csrf, view)),
         );
     let open = rows.iter().any(|chat| chat.archived_unix.is_none());
-    if open || !q.is_empty() {
-        list = list.search(
-            ChatSearch::new(LIST, ROWS)
-                .value(q)
-                .field("current", view.current.unwrap_or_default()),
-        );
-    }
+    // The search box waits until people have more chats (owner,
+    // 2026-10-09); `/chat/list?q=` and its keyboard shortcuts stay.
+    // if open || !q.is_empty() {
+    //     list = list.search(
+    //         ChatSearch::new(LIST, ROWS)
+    //             .value(q)
+    //             .field("current", view.current.unwrap_or_default()),
+    //     );
+    // }
+    let _ = open;
     if !q.is_empty() {
         list = list.empty("No chats found");
     }
