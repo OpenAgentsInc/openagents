@@ -495,9 +495,14 @@ async fn when_every_attempt_is_slow_the_last_runs_to_its_ceiling_and_answers() {
     let told = Arc::new(AtomicUsize::new(0));
     let seen = told.clone();
     let routed = gateway
-        .send_observed(&request("openagents/chat"), &caller(), prepared, &move |_| {
-            seen.fetch_add(1, Ordering::SeqCst);
-        })
+        .send_observed(
+            &request("openagents/chat"),
+            &caller(),
+            prepared,
+            &move |_| {
+                seen.fetch_add(1, Ordering::SeqCst);
+            },
+        )
         .await
         .expect("the last attempt waits past its 200 ms deadline");
     assert_eq!(routed.upstream, "b");
@@ -533,4 +538,53 @@ async fn the_default_chat_class_has_a_fifteen_second_budget_and_an_eight_second_
     for entry in table.classes.values() {
         assert!(entry.last_ms >= entry.first_token_ms);
     }
+}
+
+#[tokio::test]
+async fn pay_mine_uses_only_the_callers_own_keys_and_ours_never_answer_it() {
+    let ours = Stub::new("shared", Script::Answer);
+    let mine = Stub::new("shared", Script::Answer);
+    let (gateway, meter) = gateway(&[ours.clone()]);
+    let pay_mine: CreateResponse = serde_json::from_value(
+        json!({"model": MODEL, "input": "hi", "stream": true, "openagents": {"pay": "mine"}}),
+    )
+    .unwrap();
+
+    // No keys of their own: refused plainly, and ours is never tried.
+    let refusal = gateway.run(&pay_mine, &caller()).await.unwrap_err();
+    assert_eq!(refusal.kind.status(), 400, "{refusal:?}");
+    assert_eq!(refusal.param.as_deref(), Some("openagents.pay"));
+    assert_eq!(ours.calls(), 0);
+
+    // With their key: their adapter answers, billed to no account of ours.
+    let own = Caller {
+        own: inference::run::OwnUpstreams(vec![mine.clone() as Arc<dyn Upstream>]),
+        ..caller()
+    };
+    let routed = gateway.run(&pay_mine, &own).await.unwrap();
+    drain(routed.events).await;
+    assert_eq!((mine.calls(), ours.calls()), (1, 0));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    assert!(
+        meter
+            .status(now)
+            .unwrap()
+            .accounts
+            .iter()
+            .all(|a| a.spent_today == 0)
+    );
+    let attempts = meter.request("req_1");
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(
+        attempts[0].account.as_deref(),
+        Some(inference::run::CALLER_KEY)
+    );
+
+    // Without `pay: mine`, their keys stay unused.
+    let routed = gateway.run(&request(MODEL), &own).await.unwrap();
+    drain(routed.events).await;
+    assert_eq!((mine.calls(), ours.calls()), (1, 1));
 }

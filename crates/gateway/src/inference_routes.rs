@@ -318,6 +318,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
             },
         )))
     });
+    let own = crate::inference_byok::own(state, &authenticated.tenant);
     Ok(Caller {
         request_id: request_id(),
         tenant: Some(authenticated.tenant),
@@ -325,6 +326,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         api: Api::Responses,
         limits: inference::router::PriceLimit::default(),
         admission,
+        own,
     })
 }
 

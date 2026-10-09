@@ -610,6 +610,8 @@ pub(crate) struct Ticket {
 
 enum Kind {
     Free,
+    /// Every attempt is on the caller's own key: no fee in P1.
+    Mine,
     Paid {
         /// The answering model's hold settles; the rest are released.
         holds: Vec<(String, money::Hold)>,
@@ -766,6 +768,23 @@ pub(crate) async fn admit(
         key_id: public.key_id.clone(),
         kind,
     };
+    if !prepared.attempts().is_empty()
+        && prepared
+            .attempts()
+            .iter()
+            .all(|attempt| attempt.payer == inference::openagents::Payer::Mine)
+    {
+        book.lock().await.record_charge(
+            request_id,
+            Charge {
+                tenant: public.tenant.clone(),
+                free: false,
+                micros: Some(0),
+                settlement: "your_key",
+            },
+        );
+        return Ok(ticket(Kind::Mine));
+    }
     let free_tier = state
         .config
         .inference
@@ -912,6 +931,7 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
                 book.lock().await.give_back_free(&ticket.tenant, today());
             }
         }
+        Kind::Mine => {}
         Kind::Paid { holds } => {
             if let Some(mut ledger) = state.money_lock().await {
                 for (_, hold) in holds {
@@ -1021,7 +1041,7 @@ fn usage_of(response: &inference::response::Response) -> Option<Usage> {
 
 /// The committed stream, settling the ticket at its terminal event.
 pub(crate) fn settle_on_end(state: Arc<ServeState>, ticket: Ticket, events: Events) -> Events {
-    if matches!(ticket.kind, Kind::Free) {
+    if matches!(ticket.kind, Kind::Free | Kind::Mine) {
         return events;
     }
     let settler = Settler {
@@ -1304,6 +1324,14 @@ async fn usage_view(
         "model": answered.map(|attempt| attempt.model.clone()),
         "upstream": answered.map(|attempt| attempt.upstream.clone()),
         "api": answered.map(|attempt| attempt.api),
+        "payer": if answered
+            .and_then(|attempt| attempt.account.as_deref())
+            .is_some_and(|account| account == inference::run::CALLER_KEY)
+        {
+            "mine"
+        } else {
+            "ours"
+        },
         "tokens": tokens,
         "cost": cost,
         "charged": charge.map(|charge| json!({

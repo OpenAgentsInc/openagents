@@ -741,7 +741,33 @@ P1 public API as built (#11065), local only until deployed:
   alias.
 - Not yet: keyless `402` through `crates/x402` (pay per request with no
   key), and hierarchical team budgets on inference holds (a shared-spend
-  workspace is refused with a plain message).
+  workspace is refused with a plain message) (#11077).
+
+P1 bring your own key as built (#11067):
+
+- `inference.byok.keyring` names an `oa-seal` keyring (a private file
+  outside the registry). A workspace's own OpenRouter and Vercel AI
+  Gateway keys are sealed with it (AES-256-GCM, bound to the tenant and
+  provider) in `inference-provider-keys.json` beside the registry
+  (`crates/gateway/src/inference_byok.rs`). Routes, for a signed-in owner
+  or admin and never an API key: `GET /v1/workspaces/{ws}/provider-keys`,
+  `PUT` (`{"key": "..."}`) and `DELETE
+  /v1/workspaces/{ws}/provider-keys/{openrouter|vercel}`. Answers carry
+  the provider and `model_access::fingerprint` only; the key is never
+  logged or answered back.
+- Every caller's `run::Caller::own` holds adapters on its tenant's keys,
+  offered with payer `mine` only. `openagents.pay: "mine"` is routed to
+  them alone and never falls back to ours; with no key it is `400` naming
+  `openagents.pay`. The router keeps our OpenRouter and the caller's apart
+  (same model and upstream name, different payer).
+- No fee in P1: no free request, no hold. Attempts are metered as usual,
+  recorded under the account `caller-key` (no credit ledger of ours is
+  debited), and `GET /v1/usage/{id}` says `payer: "mine"`.
+- Web Settings, API keys: add, replace, or remove your own OpenRouter and
+  Vercel AI Gateway keys (shown when the account service keeps them).
+- Not yet: Anthropic, OpenAI, and Google keys, which need their own
+  adapters (#11111); the desktop's locally stored keys are separate and
+  stay on the person's computer.
 
 Issues, in build order:
 

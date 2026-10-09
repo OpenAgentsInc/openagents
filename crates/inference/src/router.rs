@@ -649,10 +649,16 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
             }
         }
     }
-    // The same (model, upstream) once, at its first position.
+    // The same (model, upstream, payer) once, at its first position: our
+    // OpenRouter and the caller's own OpenRouter are different offerings.
     let mut seen = std::collections::BTreeSet::new();
-    considered
-        .retain(|(offering, _)| seen.insert((offering.model.clone(), offering.upstream.clone())));
+    considered.retain(|(offering, _)| {
+        seen.insert((
+            offering.model.clone(),
+            offering.upstream.clone(),
+            offering.payer.as_str().to_owned(),
+        ))
+    });
 
     // 2. Hard filters.
     let mut dropped = Vec::new();

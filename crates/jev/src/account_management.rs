@@ -44,6 +44,15 @@ pub struct KeyRecord {
     pub created: Option<String>,
 }
 
+/// One of a workspace's own provider keys, as the gateway lists it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderKeyRecord {
+    pub provider: String,
+    pub fingerprint: String,
+    #[serde(default)]
+    pub added_at: u64,
+}
+
 /// A recovery or rotation result. The credential belongs in private storage.
 #[derive(Debug)]
 pub struct KeyGrant {
@@ -474,6 +483,62 @@ impl Account<'_> {
                 Method::PUT,
                 &format!("/v1/workspaces/{workspace}/keys/{key}/limits"),
                 Some(body),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// The workspace's own provider keys for the model API (bring your own
+    /// key): provider and fingerprint only, never the key.
+    pub async fn provider_keys(&self, workspace: &str) -> Result<Vec<ProviderKeyRecord>> {
+        #[derive(Deserialize)]
+        struct Wire {
+            keys: Vec<ProviderKeyRecord>,
+        }
+        identifier(workspace)?;
+        let raw = self
+            .client
+            .request_private_bounded(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/provider-keys"),
+                None,
+                64 * 1024,
+            )
+            .await?;
+        decode::<Wire>(&raw).map(|wire| wire.keys)
+    }
+
+    /// Seal and keep the workspace's own key for `provider` (`openrouter`
+    /// or `vercel`), replacing any it held.
+    pub async fn set_provider_key(
+        &self,
+        workspace: &str,
+        provider: &str,
+        key: &ApiKey,
+    ) -> Result<()> {
+        identifier(workspace)?;
+        identifier(provider)?;
+        let body = serde_json::to_vec(&serde_json::json!({"key": key.expose()}))
+            .map_err(|_| Error::Config("Key request encoding failed.".into()))?;
+        self.client
+            .request_private(
+                Method::PUT,
+                &format!("/v1/workspaces/{workspace}/provider-keys/{provider}"),
+                Some(body),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Forget the workspace's own key for `provider`.
+    pub async fn remove_provider_key(&self, workspace: &str, provider: &str) -> Result<()> {
+        identifier(workspace)?;
+        identifier(provider)?;
+        self.client
+            .request_private(
+                Method::DELETE,
+                &format!("/v1/workspaces/{workspace}/provider-keys/{provider}"),
+                None,
             )
             .await?;
         Ok(())

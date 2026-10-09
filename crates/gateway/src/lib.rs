@@ -53,6 +53,7 @@ pub mod earnings;
 pub mod feedback;
 pub mod funding;
 mod github_repos;
+pub mod inference_byok;
 pub mod inference_public;
 pub mod inference_pylon;
 pub mod inference_rates;

@@ -5917,8 +5917,10 @@ dependencies = [
  "inference",
  "jev",
  "libc",
+ "model-access",
  "nostr",
  "oa-auth",
+ "oa-seal",
  "openagents-wallet",
  "paper-mono",
  "pay-ledger",
@@ -5935,6 +5937,7 @@ dependencies = [
  "tenancy",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "zeroize",
 ]
 
 [[package]]

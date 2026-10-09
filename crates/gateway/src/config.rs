@@ -245,6 +245,11 @@ pub struct Inference {
     /// `service_tenants` only.
     #[serde(default)]
     pub public: Option<PublicInference>,
+    /// Bring your own key (#11067): where the keyring that seals
+    /// workspaces' own provider keys is. Absent, `pay: "mine"` has no keys
+    /// to use and the provider-key routes are not mounted.
+    #[serde(default)]
+    pub byok: Option<crate::inference_byok::Config>,
     /// Pylon providers registered as upstreams (`pylon:<pylon>`), each
     /// with its models, its own price, and its stated data policy. They
     /// are mounted only with `earnings.ledger` and `sats_rate`, so their

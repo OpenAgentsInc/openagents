@@ -154,6 +154,9 @@ pub struct ServeState {
     /// Public inference keys' limits, spend, and free counts, present when
     /// `inference` is configured.
     pub(crate) inference_book: Option<Mutex<crate::inference_public::Book>>,
+    /// Workspaces' own provider keys, sealed, present when `inference.byok`
+    /// is configured.
+    pub(crate) provider_keys: Option<Arc<crate::inference_byok::Keys>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -345,6 +348,14 @@ impl ServeState {
             .transpose()
             .map_err(Trouble::Money)?
             .map(Mutex::new);
+        let provider_keys = config
+            .inference
+            .as_ref()
+            .and_then(|inference| inference.byok.as_ref())
+            .map(|byok| crate::inference_byok::Keys::open(&config.registry, byok))
+            .transpose()
+            .map_err(Trouble::Money)?
+            .map(Arc::new);
         let sessions = match (&config.inference, &gateway) {
             (Some(inference), Some(gateway)) => Some(Arc::new(
                 crate::inference_state::sessions(inference, gateway.clone(), &config.registry)
@@ -357,6 +368,7 @@ impl ServeState {
             inference: gateway,
             sessions,
             inference_book,
+            provider_keys,
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
@@ -651,6 +663,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         routes.extend(crate::inference_routes::routes());
         routes.extend(crate::inference_rates::routes());
         routes.extend(crate::inference_public::routes(state));
+        if state.provider_keys.is_some() && state.config.accounts.is_some() {
+            routes.extend(crate::inference_byok::routes());
+        }
     }
     routes
 }

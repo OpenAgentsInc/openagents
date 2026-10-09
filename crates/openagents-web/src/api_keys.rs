@@ -24,6 +24,16 @@ use crate::ui_page::action_link;
 
 pub(crate) const KEYS: &str = "/settings/api-keys";
 pub(crate) const REVOKE: &str = "/settings/api-keys/revoke";
+pub(crate) const OWN: &str = "/settings/api-keys/own";
+pub(crate) const OWN_REMOVE: &str = "/settings/api-keys/own/remove";
+const OWN_SCOPE: &str = "api-key-own";
+
+/// The providers whose keys the API can use for `pay: "mine"`: the word
+/// the account service takes, and the name a person reads.
+const PROVIDERS: [(&str, &str); 2] = [
+    ("openrouter", "OpenRouter"),
+    ("vercel", "Vercel AI Gateway"),
+];
 const MAKE_SCOPE: &str = "api-key-make";
 const REVOKE_SCOPE: &str = "api-key-revoke";
 
@@ -99,8 +109,21 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
             id: key.id,
         })
         .collect();
+    // Absent when this server keeps no provider keys: the section hides.
+    let own = viewer
+        .client()
+        .account()
+        .provider_keys(&workspace)
+        .await
+        .ok()
+        .map(|saved| {
+            PROVIDERS
+                .iter()
+                .map(|(word, _)| saved.iter().any(|key| key.provider == *word))
+                .collect::<Vec<bool>>()
+        });
     let mut tickets = Vec::new();
-    for scope in [MAKE_SCOPE, REVOKE_SCOPE] {
+    for scope in [MAKE_SCOPE, REVOKE_SCOPE, OWN_SCOPE] {
         let request = fresh_request();
         match service.csrf(
             &headers,
@@ -112,11 +135,16 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
             Err(error) => return crate::cloud::refused(error),
         }
     }
-    let body = keys_content(
-        &rows,
-        (&tickets[0].0, &tickets[0].1),
-        (&tickets[1].0, &tickets[1].1),
-    );
+    let body = html! {
+        (keys_content(
+            &rows,
+            (&tickets[0].0, &tickets[0].1),
+            (&tickets[1].0, &tickets[1].1),
+        ))
+        @if let Some(saved) = &own {
+            (own_content(saved, (&tickets[2].0, &tickets[2].1)))
+        }
+    };
     page(&headers, service, &viewer, "API keys", KEYS, body)
 }
 
@@ -185,6 +213,148 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
                 p { (Button::new("Make key").kind(ButtonType::Submit)) }
             }
         }
+    }
+}
+
+/// Your own provider keys: requests that ask to pay with them
+/// (`"openagents": {"pay": "mine"}`) use only these, and cost nothing here.
+fn own_content(saved: &[bool], ticket: (&str, &str)) -> Markup {
+    html! {
+        section class="oa-settings-group" aria-labelledby="api-keys-own" {
+            h2 #api-keys-own { "Your own provider keys" }
+            p {
+                "Add your own OpenRouter or Vercel AI Gateway key, then send "
+                code { "\"openagents\": {\"pay\": \"mine\"}" }
+                " in a request to run it on your key only. We don't charge for those requests; your provider bills you."
+            }
+            @for ((word, label), present) in PROVIDERS.iter().zip(saved) {
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { (label) }
+                        span class="oa-settings-hint" { @if *present { "Saved" } @else { "Not added" } }
+                    }
+                    @if *present {
+                        div class="oa-settings-control" {
+                            form method="post" action=(OWN_REMOVE) {
+                                input type="hidden" name="csrf" value=(ticket.0);
+                                input type="hidden" name="request" value=(ticket.1);
+                                input type="hidden" name="provider" value=(word);
+                                (Button::new("Remove")
+                                    .kind(ButtonType::Submit)
+                                    .variant(ButtonVariant::Soft)
+                                    .color(Color::Secondary))
+                            }
+                        }
+                    }
+                }
+                @let field = Field::new(format!("api-key-own-{word}"), format!("{label} key"));
+                form method="post" action=(OWN) autocomplete="off" {
+                    input type="hidden" name="csrf" value=(ticket.0);
+                    input type="hidden" name="request" value=(ticket.1);
+                    input type="hidden" name="provider" value=(word);
+                    (field.clone().control(
+                        Input::new("key")
+                            .input_type(InputType::Password)
+                            .aria(field.aria()),
+                    ))
+                    p { (Button::new(if *present { "Replace" } else { "Save" }).kind(ButtonType::Submit)) }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OwnForm {
+    csrf: String,
+    request: String,
+    provider: String,
+    #[serde(default)]
+    key: String,
+}
+
+/// The checked viewer, workspace, and provider word of an own-key form.
+async fn own_request<'a>(
+    app: &'a App,
+    headers: &HeaderMap,
+    form: &OwnForm,
+) -> Result<(Viewer, String, &'static str), Response> {
+    let (service, viewer) = viewer(app, headers, KEYS).await?;
+    let Some(workspace) = own_workspace(&viewer) else {
+        return Err(problem(
+            StatusCode::CONFLICT,
+            "Your account has no workspace of its own yet.",
+        ));
+    };
+    service
+        .verify_csrf(
+            headers,
+            Some(&viewer),
+            OWN_SCOPE,
+            &target(&viewer, &workspace, &form.request),
+            &form.csrf,
+        )
+        .map_err(crate::cloud::refused)?;
+    let Some((word, _)) = PROVIDERS.iter().find(|(word, _)| *word == form.provider) else {
+        return Err(problem(
+            StatusCode::BAD_REQUEST,
+            "Pick OpenRouter or Vercel AI Gateway.",
+        ));
+    };
+    Ok((viewer, workspace, word))
+}
+
+pub(crate) async fn own_save(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<OwnForm>, FormRejection>,
+) -> Response {
+    let Ok(Form(mut form)) = form else {
+        return crate::cloud::refused(SessionError::InvalidRequest);
+    };
+    let (viewer, workspace, word) = match own_request(&app, &headers, &form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let key = jev::ApiKey::new(std::mem::take(&mut form.key).trim().to_owned());
+    if key.expose().is_empty() {
+        return problem(StatusCode::BAD_REQUEST, "Paste the key to save it.");
+    }
+    match viewer
+        .client()
+        .account()
+        .set_provider_key(&workspace, word, &key)
+        .await
+    {
+        Ok(()) => protect(Redirect::to(KEYS).into_response()),
+        Err(_) => problem(
+            StatusCode::BAD_REQUEST,
+            "That key couldn't be saved. Check that it's the whole key, with no spaces.",
+        ),
+    }
+}
+
+pub(crate) async fn own_remove(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<OwnForm>, FormRejection>,
+) -> Response {
+    let Ok(Form(form)) = form else {
+        return crate::cloud::refused(SessionError::InvalidRequest);
+    };
+    let (viewer, workspace, word) = match own_request(&app, &headers, &form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match viewer
+        .client()
+        .account()
+        .remove_provider_key(&workspace, word)
+        .await
+    {
+        Ok(()) => protect(Redirect::to(KEYS).into_response()),
+        Err(_) => unreachable_service(),
     }
 }
 
@@ -391,6 +561,14 @@ mod tests {
             )
         );
         crate::copy_guard::assert_plain(KEYS, &html);
+        let own = own_content(&[true, false], ("t3", "r3")).into_string();
+        crate::copy_guard::assert_plain(KEYS, &own);
+        assert!(own.contains("pay"));
+        assert!(own.contains(">Remove<"), "the saved one can be removed");
+        assert!(
+            own.contains("type=\"password\""),
+            "a key is never shown as typed"
+        );
         let made = made_content("oak_abc.def", "laptop").into_string();
         crate::copy_guard::assert_plain(KEYS, &made);
         assert!(made.contains("oak_abc.def"));

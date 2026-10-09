@@ -23,6 +23,10 @@ hmac = "0.12.1"
 nostr = { path = "../nostr" }
 oa-auth = { path = "../oa-auth" }
 inference = { path = "../inference" }
+# Bring your own key on the inference API: who pays, and sealed keys.
+model-access = { path = "../model-access" }
+oa-seal = { path = "../oa-seal" }
+zeroize = "1"
 pay-ledger = { path = "../pay-ledger" }
 # Pylon providers as inference upstreams: NIP-CJ jobs through its buyer.
 pylon = { path = "../pylon" }

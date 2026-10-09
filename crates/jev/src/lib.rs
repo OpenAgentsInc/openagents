@@ -289,7 +289,7 @@ pub use account::{
     CardFundingSnapshot, CardFundingView, CommissionAcceptance, CommissionAgreement,
     CommissionInput, CommissionPublication, CommissionView, GatewaySession, InvitationGrant,
     JoinedCustomerStatement, JoinedStatementQuery, JoinedStatementView, KeyGrant, KeyIdentity,
-    KeyRecord, Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt,
+    KeyRecord, Position, ProviderKeyRecord, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt,
     RecoveryGrant, ReferralCapture, ReferralEvidence, ReferralIdentity, ReferralIntroduction,
     ReferralKind, ReferralLink, ReferralRecord, ReferralSource, ReferralSuccessor, SessionBudget,
     SessionGrant, SessionInfo, SessionView, Team, TeamAccess, TeamInvitation,

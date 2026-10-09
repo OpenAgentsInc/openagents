@@ -80,6 +80,21 @@ pub struct Caller {
     /// path that runs a request (stored turns, compaction, hosted tool
     /// loops, the WebSocket) goes through it.
     pub admission: Option<Admission>,
+    /// Adapters on the caller's own provider keys (bring your own key).
+    /// They are offered only to `pay: "mine"`, which is offered nothing
+    /// else, so a caller's key never pays for us and ours never for them.
+    pub own: OwnUpstreams,
+}
+
+/// The caller's own adapters ([`Caller::own`]).
+#[derive(Clone, Default)]
+pub struct OwnUpstreams(pub Vec<Arc<dyn Upstream>>);
+
+impl std::fmt::Debug for OwnUpstreams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.0.iter().map(|upstream| upstream.name()).collect();
+        f.debug_tuple("OwnUpstreams").field(&names).finish()
+    }
 }
 
 /// A caller's admission ([`Admit`]), cloneable with the caller.
@@ -280,33 +295,14 @@ impl Gateway {
     /// an attempt.
     #[must_use]
     pub fn offerings(&self) -> Vec<Offering> {
-        let mut offerings = Vec::new();
-        for upstream in self
-            .upstreams
-            .iter()
-            .filter(|upstream| upstream.configured())
-        {
-            let zero_retention = upstream.privacy().allows(&Privacy::Strict);
-            for row in upstream.models() {
-                let caps = row.capabilities;
-                offerings.push(Offering {
-                    upstream: upstream.name().to_owned(),
-                    model: row.id.clone(),
-                    capabilities: Capabilities {
-                        tools: caps.tools,
-                        json_schema: caps.json_schema,
-                        images: caps.images,
-                        files: false,
-                        reasoning: caps.reasoning,
-                        context: caps.context,
-                        max_output: caps.max_output,
-                    },
-                    zero_retention,
-                    payer: ext::Payer::Ours,
-                    account: Some(upstream.account().id.clone()),
-                });
-            }
-        }
+        offerings_of(&self.upstreams, &ext::Payer::Ours)
+    }
+
+    /// What `caller` may be routed to: ours, and the adapters on its own
+    /// keys, marked `mine` and billed to no account of ours.
+    fn offerings_for(&self, caller: &Caller) -> Vec<Offering> {
+        let mut offerings = self.offerings();
+        offerings.extend(offerings_of(&caller.own.0, &ext::Payer::Mine));
         offerings
     }
 
@@ -315,7 +311,39 @@ impl Gateway {
             .iter()
             .find(|upstream| upstream.name() == name)
     }
+}
 
+/// The offerings of every configured adapter in `upstreams`, paid by
+/// `payer`. An adapter without its key is left out, so it never costs a
+/// request an attempt.
+fn offerings_of(upstreams: &[Arc<dyn Upstream>], payer: &ext::Payer) -> Vec<Offering> {
+    let mut offerings = Vec::new();
+    for upstream in upstreams.iter().filter(|upstream| upstream.configured()) {
+        let zero_retention = upstream.privacy().allows(&Privacy::Strict);
+        for row in upstream.models() {
+            let caps = row.capabilities;
+            offerings.push(Offering {
+                upstream: upstream.name().to_owned(),
+                model: row.id.clone(),
+                capabilities: Capabilities {
+                    tools: caps.tools,
+                    json_schema: caps.json_schema,
+                    images: caps.images,
+                    files: false,
+                    reasoning: caps.reasoning,
+                    context: caps.context,
+                    max_output: caps.max_output,
+                },
+                zero_retention,
+                payer: payer.clone(),
+                account: (*payer == ext::Payer::Ours).then(|| upstream.account().id.clone()),
+            });
+        }
+    }
+    offerings
+}
+
+impl Gateway {
     /// Routes and sends `request`, answering once an attempt has its first
     /// output token.
     ///
@@ -363,6 +391,17 @@ impl Gateway {
         caller: &Caller,
     ) -> Result<Prepared, ApiError> {
         let arrived = Instant::now();
+        let pays_own = request
+            .openagents
+            .as_ref()
+            .and_then(|options| options.pay.as_ref())
+            .is_some_and(|payer| *payer == ext::Payer::Mine);
+        if pays_own && caller.own.0.iter().all(|upstream| !upstream.configured()) {
+            return Err(ApiError::invalid_request(
+                "openagents.pay",
+                "To pay with your own keys, add an OpenRouter or Vercel AI Gateway key to your account first.",
+            ));
+        }
         let requested = request.model.clone().unwrap_or_default();
         let picked = if requested == AUTO {
             match &self.judge {
@@ -376,7 +415,7 @@ impl Gateway {
             None
         };
         let now_ms = unix_ms();
-        let offerings = self.offerings();
+        let offerings = self.offerings_for(caller);
         let (card, ledger) = self.meter.snapshot();
         let rates = self.meter.rates(RATE_WINDOW_MS, now_ms);
         let bench = self
@@ -470,7 +509,16 @@ impl Gateway {
             .rposition(|candidate| self.upstream(&candidate.upstream).is_some());
         let mut tried: Vec<ext::Attempt> = Vec::new();
         for (index, candidate) in planned.attempts.iter().enumerate() {
-            let Some(upstream) = self.upstream(&candidate.upstream).cloned() else {
+            let found = if candidate.payer == ext::Payer::Mine {
+                caller
+                    .own
+                    .0
+                    .iter()
+                    .find(|upstream| upstream.name() == candidate.upstream)
+            } else {
+                self.upstream(&candidate.upstream)
+            };
+            let Some(upstream) = found.cloned() else {
                 continue;
             };
             let number = u8::try_from(index + 1).unwrap_or(u8::MAX);
@@ -509,7 +557,11 @@ impl Gateway {
                         reason: None,
                         extra: Extra::new(),
                     });
-                    let recorder: Arc<dyn Recorder> = self.meter.clone();
+                    let recorder: Arc<dyn Recorder> = if candidate.payer == ext::Payer::Mine {
+                        Arc::new(TheirAccount(self.meter.clone()))
+                    } else {
+                        self.meter.clone()
+                    };
                     open.meter.report_to(recorder, template);
                     let info = ResponseInfo {
                         model: candidate.model.clone(),
@@ -546,6 +598,9 @@ impl Gateway {
                             record
                         }
                     };
+                    if candidate.payer == ext::Payer::Mine {
+                        record.account = Some(CALLER_KEY.to_owned());
+                    }
                     if failure.deadline {
                         record.error = Some(meter::ErrorClass::FirstTokenDeadline);
                     }
@@ -611,6 +666,21 @@ impl Gateway {
             ErrorType::UpstreamFailed,
             format!("No model answered before its first words ({summary})."),
         ))
+    }
+}
+
+/// The account an attempt on the caller's own key is recorded under: none
+/// of our credit accounts, so no ledger is debited, and usage can say the
+/// caller paid.
+pub const CALLER_KEY: &str = "caller-key";
+
+/// Records an attempt on the caller's own key under [`CALLER_KEY`].
+struct TheirAccount(Arc<Meter>);
+
+impl Recorder for TheirAccount {
+    fn record(&self, mut attempt: Attempt) {
+        attempt.account = Some(CALLER_KEY.to_owned());
+        self.0.record(attempt);
     }
 }
 
