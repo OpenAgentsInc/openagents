@@ -28,7 +28,7 @@ COPY --from=builder /build/target/release/gateway /usr/local/bin/gateway
 COPY --from=builder /build/target/release/coder-worker /usr/local/bin/coder-worker
 COPY --from=builder /build/target/release/examples/bootstrap_registry /usr/local/bin/bootstrap_registry
 COPY --from=builder /build/knowledge/openagents /srv/knowledge/openagents
-COPY --chmod=755 deploy/staging/gateway.sh deploy/staging/worker.sh /usr/local/bin/
+COPY deploy/staging/gateway.sh deploy/staging/worker.sh /usr/local/bin/
 
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/gateway.sh"]
