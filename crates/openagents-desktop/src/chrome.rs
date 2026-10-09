@@ -134,6 +134,8 @@ pub struct Update {
 #[derive(Clone, Debug)]
 pub struct State {
     pub live: bool,
+    /// Whether the screens still in development show (`crate::preview`).
+    pub preview: bool,
     pub page: Page,
     pub sidebar_width: f32,
     pub collapsed: bool,
@@ -238,6 +240,7 @@ impl Default for State {
         ];
         Self {
             live: false,
+            preview: crate::preview::ON,
             total_chats: 0,
             search: String::new(),
             projects: std::collections::BTreeMap::new(),
@@ -436,8 +439,14 @@ fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
             role,
         },
     );
-    node.style.text_size = Some(if role == TextRole::Heading { 11 } else { 12 });
-    node.style.line_height = Some(if role == TextRole::Heading { 14 } else { 16 });
+    // The web's type scale (#11120).
+    let step = match role {
+        TextRole::Heading => oa_tokens::typography::heading::LG,
+        TextRole::Status => oa_tokens::typography::text::XS,
+        _ => oa_tokens::typography::text::SM,
+    };
+    node.style.text_size = Some(step.size as u16);
+    node.style.line_height = Some(step.line_height as u16);
     node
 }
 
@@ -478,11 +487,11 @@ fn action(
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
         radius: Some(8),
-        text_size: Some(if multiline { 13 } else { 12 }),
-        line_height: Some(if multiline { 17 } else { 16 }),
+        text_size: Some(14),
+        line_height: Some(20),
         button_detail: multiline.then_some(rust_native::style::ButtonDetail {
-            text_size: 11,
-            line_height: 16,
+            text_size: 12,
+            line_height: 18,
             color: muted_color(),
             leading: true,
         }),
@@ -547,13 +556,185 @@ fn gap(key: &str, width: u16) -> Node<Intent> {
     node
 }
 
+/// The web's left-panel row (`.oa-nav-item`, #11120): a glyph in the
+/// secondary ink, then the visible label, text-sm on a 36-point row with
+/// the large radius; the current page is filled and medium weight.
+fn nav_row(key: &str, label: &str, glyph: Glyph, intent: Intent, current: bool) -> Node<Intent> {
+    let mut node = node(
+        key,
+        Element::Button {
+            shortcut: None,
+            label: label.into(),
+            enabled: true,
+            icon: Some(Icon {
+                glyph,
+                circular: false,
+                pill: false,
+            }),
+            intent,
+        },
+    );
+    node.style = row_style(current);
+    node.style.glyph_size = Some(16);
+    node.style.glyph_gap = Some(8);
+    node.style.glyph_color = Some(muted_color());
+    node
+}
+
+/// The sidebar rows' shared look, from the web's tokens.
+fn row_style(current: bool) -> Style {
+    let sm = oa_tokens::typography::text::SM;
+    Style {
+        background: Some(if current {
+            selected_color()
+        } else {
+            sidebar_color()
+        }),
+        foreground: Some(text_color()),
+        hover_background: Some(selected_color()),
+        hover_foreground: Some(text_color()),
+        align: Some(TextAlign::Start),
+        weight: Some(if current {
+            TextWeight::Medium
+        } else {
+            TextWeight::Normal
+        }),
+        // --radius-lg.
+        radius: Some(10),
+        text_size: Some(sm.size as u16),
+        line_height: Some(sm.line_height as u16),
+        // --padding-row-x and --padding-row-y.
+        button_padding: Some([10, 6]),
+        // --height-token-nav-row.
+        min_height: Some(36),
+        ..Style::default()
+    }
+}
+
+/// A section's title (`.oa-sidebar-section-title`): text-xs, medium, in
+/// the tertiary ink.
+fn section_title(key: &str, label: &str) -> Node<Intent> {
+    let xs = oa_tokens::typography::text::XS;
+    let mut title = text(key, label, TextRole::Body);
+    title.style.text_size = Some(xs.size as u16);
+    title.style.line_height = Some(xs.line_height as u16);
+    title.style.weight = Some(TextWeight::Medium);
+    title.style.foreground = Some(openagents_chat_app::visual::current().faint);
+    title.style.padding_points = Some([0, 10, 0, 10]);
+    title
+}
+
+/// One chat in the list: its title, and under it what the chat's Coder
+/// work asks of the person, when it asks something.
+fn chat_row(state: &State, chat: &Chat) -> Node<Intent> {
+    let label = match chat.indicator.label() {
+        Some(asks) => format!("{}\n{asks}", chat.title),
+        None => chat.title.clone(),
+    };
+    let current = state.page == Page::Chat(chat.id);
+    let mut row = action(
+        &format!("sidebar-chat-{}", chat.id),
+        label,
+        Action::SelectChat { id: chat.id },
+        None,
+        current,
+    );
+    let multiline = chat.indicator.label().is_some();
+    row.style = Style {
+        // What the chat asks of the person reads under its title.
+        button_detail: row
+            .style
+            .button_detail
+            .map(|detail| rust_native::style::ButtonDetail {
+                leading: false,
+                ..detail
+            }),
+        min_height: Some(if multiline { 48 } else { 36 }),
+        ..row_style(current)
+    };
+    row
+}
+
+/// The project a chat belongs to, if any: the host's project for a
+/// Coder chat, or an example chat's project section.
+fn project_of<'a>(state: &'a State, chat: &Chat) -> Option<&'a str> {
+    if let Some(project) = state.projects.get(&chat.id) {
+        return Some(project.as_str());
+    }
+    match chat.section {
+        Section::OpenAgents => Some("OpenAgents"),
+        Section::Website => Some("Website"),
+        _ => None,
+    }
+}
+
 fn sidebar(state: &State, model: &Model) -> Node<Intent> {
-    let header_rows = if state.shows_search() {
-        vec![node(
+    // The web's left panel (#11120): New chat and the destinations as
+    // labelled rows, then the chats, then the account row with the theme
+    // toggle in its corner. No control is a glyph alone.
+    // The wordmark heads the panel, as on the web (`.oa-sidebar-brand`).
+    let mut brand = text("shell-brand", "OpenAgents", TextRole::Body);
+    brand.style.text_size = Some(oa_tokens::typography::text::MD.size as u16);
+    brand.style.line_height = Some(oa_tokens::typography::text::MD.line_height as u16);
+    brand.style.weight = Some(TextWeight::Semibold);
+    brand.style.foreground = Some(text_color());
+    brand.style.padding_points = Some([4, 10, 8, 4]);
+    let mut header_rows = vec![
+        brand,
+        nav_row(
+            "sidebar-new-chat",
+            "New chat",
+            Glyph::Compose,
+            Intent::Navigate {
+                action: Action::NewChat,
+            },
+            false,
+        ),
+    ];
+    header_rows.push(nav_row(
+        "sidebar-computers",
+        "Connect a phone",
+        Glyph::Computer,
+        Intent::Navigate {
+            action: Action::Computers,
+        },
+        state.page == Page::Computers,
+    ));
+    if state.preview {
+        header_rows.push(nav_row(
+            "sidebar-verse",
+            "Verse",
+            Glyph::Cloud,
+            Intent::Navigate {
+                action: Action::Grid,
+            },
+            state.page == Page::Grid,
+        ));
+        header_rows.push(nav_row(
+            "sidebar-map",
+            "Map",
+            Glyph::Map,
+            Intent::Navigate {
+                action: Action::Map,
+            },
+            state.page == Page::Map,
+        ));
+    }
+    header_rows.push(nav_row(
+        "sidebar-settings",
+        "Settings",
+        Glyph::Settings,
+        Intent::Navigate {
+            action: Action::Settings,
+        },
+        state.page == Page::Settings,
+    ));
+    if state.shows_search() {
+        header_rows.push(node(
             "chat-search",
             Element::Composer {
                 token: "chat-search".into(),
-                placeholder: "Filter sessions…".into(),
+                placeholder: "Search chats".into(),
                 max_bytes: 128,
                 enabled: true,
                 busy: false,
@@ -562,161 +743,165 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
                 draft: Some(state.search.clone()),
                 focus: false,
             },
-        )]
-    } else if state.live {
-        vec![]
-    } else {
-        vec![text("shell-brand", "OpenAgents", TextRole::Body)]
-    };
-    let header = stack("sidebar-header", Axis::Vertical, Space::None, header_rows);
+        ));
+    }
+    let mut header = stack("sidebar-header", Axis::Vertical, Space::None, header_rows);
+    header.style.gap_points = Some(1);
+    header.style.padding_points = Some([4, 8, 8, 8]);
     let mut groups = vec![];
-    for section in [
-        Section::Pinned,
-        Section::OpenAgents,
-        Section::Website,
-        Section::Recent,
-        Section::Archived,
-    ] {
-        if state.live && matches!(section, Section::OpenAgents | Section::Website) {
-            continue;
-        }
-        let closed = state.closed_sections.contains(&section);
-        let count = state
-            .chats
-            .iter()
-            .filter(|chat| chat.section == section)
-            .count();
-        let label = format!(
-            "{}  {}  {count}",
-            if closed { "+" } else { "−" },
-            section.label()
-        );
-        if count == 0 && matches!(section, Section::Pinned | Section::Archived) {
-            continue;
-        }
-        let mut rows = if state.live && section == Section::Recent {
-            vec![]
-        } else {
-            vec![action(
-                &format!("sidebar-section-{}", section.key()),
-                label,
-                Action::ToggleSection { section },
-                matches!(section, Section::OpenAgents | Section::Website).then_some(Glyph::Folder),
-                false,
-            )]
-        };
-        if !closed {
-            rows.extend(
-                state
-                    .chats
-                    .iter()
-                    .filter(|chat| chat.section == section)
-                    .map(|chat| {
-                        // One newest-first list (#10100): a Coder chat's
-                        // project is its row's context line, not a header
-                        // that would sort its old chats above a new one.
-                        let mut detail = state.projects.get(&chat.id).map_or_else(
-                            || chat.detail.to_owned(),
-                            |project| format!("Coder · {project}"),
-                        );
-                        if let Some(label) = chat.indicator.label() {
-                            detail = format!("{label} · {detail}");
-                        }
-                        action(
-                            &format!("sidebar-chat-{}", chat.id),
-                            format!("{}\n{detail}", chat.title),
-                            Action::SelectChat { id: chat.id },
-                            None,
-                            state.page == Page::Chat(chat.id),
-                        )
-                    }),
-            );
-        }
+    let pinned: Vec<&Chat> = state
+        .chats
+        .iter()
+        .filter(|chat| chat.section == Section::Pinned)
+        .collect();
+    if !pinned.is_empty() {
+        let mut rows = vec![section_title("sidebar-section-pinned", "Pinned")];
+        rows.extend(pinned.iter().map(|chat| chat_row(state, chat)));
         groups.push(stack(
-            &format!("sidebar-group-{}", section.key()),
+            "sidebar-group-pinned",
             Axis::Vertical,
             Space::Xs,
             rows,
         ));
     }
-    let body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
-    let mut profile = action(
-        "sidebar-profile",
-        "Local",
-        Action::NewChat,
-        None,
-        state.profile_open,
-    );
+    // The chats first, so a new chat is the top row (#10100), then the
+    // projects, as the web lists them.
+    let chats: Vec<&Chat> = state
+        .chats
+        .iter()
+        .filter(|chat| chat.section == Section::Recent && project_of(state, chat).is_none())
+        .collect();
+    let mut rows = vec![section_title("sidebar-section-recent", "Chats")];
+    if chats.is_empty() {
+        let mut empty = section_title("sidebar-chats-empty", "No chats yet");
+        empty.style.text_size = Some(oa_tokens::typography::text::SM.size as u16);
+        empty.style.weight = Some(TextWeight::Normal);
+        empty.style.line_height = Some(oa_tokens::typography::text::SM.line_height as u16);
+        rows.push(empty);
+    }
+    rows.extend(chats.iter().map(|chat| chat_row(state, chat)));
+    groups.push(stack(
+        "sidebar-group-recent",
+        Axis::Vertical,
+        Space::Xs,
+        rows,
+    ));
+    // Projects: each project's chats under its name, newest first.
+    let mut projects: Vec<(&str, Vec<&Chat>)> = vec![];
+    for chat in state
+        .chats
+        .iter()
+        .filter(|chat| !matches!(chat.section, Section::Pinned | Section::Archived))
+    {
+        if let Some(project) = project_of(state, chat) {
+            match projects.iter_mut().find(|(name, _)| *name == project) {
+                Some((_, chats)) => chats.push(chat),
+                None => projects.push((project, vec![chat])),
+            }
+        }
+    }
+    if !projects.is_empty() {
+        let mut rows = vec![section_title("sidebar-section-projects", "Projects")];
+        for (index, (project, chats)) in projects.iter().enumerate() {
+            let mut name = text(
+                &format!("sidebar-project-{index}"),
+                *project,
+                TextRole::Body,
+            );
+            let sm = oa_tokens::typography::text::SM;
+            name.style.text_size = Some(sm.size as u16);
+            name.style.line_height = Some(sm.line_height as u16);
+            name.style.weight = Some(TextWeight::Semibold);
+            name.style.foreground = Some(text_color());
+            name.style.padding_points = Some([4, 10, 0, 10]);
+            rows.push(name);
+            rows.extend(chats.iter().map(|chat| chat_row(state, chat)));
+        }
+        groups.push(stack(
+            "sidebar-group-projects",
+            Axis::Vertical,
+            Space::Xs,
+            rows,
+        ));
+    }
+    let archived = state
+        .chats
+        .iter()
+        .filter(|chat| chat.section == Section::Archived)
+        .count();
+    if archived > 0 {
+        let closed = state.closed_sections.contains(&Section::Archived);
+        let mut rows = vec![{
+            let mut toggle = action(
+                "sidebar-section-archived",
+                if closed {
+                    format!("Show archived ({archived})")
+                } else {
+                    "Hide archived".to_string()
+                },
+                Action::ToggleSection {
+                    section: Section::Archived,
+                },
+                Some(Glyph::Archive),
+                false,
+            );
+            toggle.style = row_style(false);
+            toggle.style.foreground = Some(muted_color());
+            toggle.style.glyph_size = Some(16);
+            toggle.style.glyph_gap = Some(8);
+            toggle.style.glyph_color = Some(muted_color());
+            toggle
+        }];
+        if !closed {
+            rows.extend(
+                state
+                    .chats
+                    .iter()
+                    .filter(|chat| chat.section == Section::Archived)
+                    .map(|chat| chat_row(state, chat)),
+            );
+        }
+        groups.push(stack(
+            "sidebar-group-archived",
+            Axis::Vertical,
+            Space::Xs,
+            rows,
+        ));
+    }
+    let mut body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
+    body.style.gap_points = Some(16);
+    // The account row: this computer, whose menu holds its other places.
+    let name = model
+        .host
+        .as_ref()
+        .map(|host| host.status.label.trim().to_string())
+        .filter(|label| !label.is_empty())
+        .unwrap_or_else(|| "This computer".to_string());
+    let initial = name
+        .chars()
+        .next()
+        .map_or('O', |ch| ch.to_ascii_uppercase());
+    let mut profile = action("sidebar-profile", name, Action::NewChat, None, false);
     if let Element::Button { intent, .. } = &mut profile.element {
         *intent = Intent::Chat {
             action: crate::chat_action::Action::Profile,
         };
     }
-    profile.style.align = Some(TextAlign::Center);
-    profile.style.intrinsic_width = Some(true);
-    profile.style.text_size = Some(13);
-    profile.style.line_height = Some(17);
+    profile.style = row_style(state.profile_open);
     profile.style.weight = Some(TextWeight::Medium);
-    profile.style.button_padding = Some([8, 0]);
-    profile.style.foreground = Some(if state.profile_open {
-        text_color()
-    } else {
-        Color {
-            alpha: 204,
-            ..text_color()
-        }
-    });
-    profile.style.hover_foreground = Some(text_color());
-    profile.style.hover_background = Some(if state.profile_open {
-        selected_color()
-    } else {
-        Color {
-            alpha: 22,
-            ..selected_color()
-        }
-    });
+    profile.style.intrinsic_width = Some(true);
+    // A start-aligned button fills its row; centered, it keeps its own
+    // width and leaves the corner to the theme toggle.
+    profile.style.align = Some(TextAlign::Center);
+    profile.style.button_padding = Some([8, 6]);
     profile.style.button_avatar = Some(rust_native::style::ButtonAvatar {
-        initial: 'L',
-        size: 16,
-        text_size: 10,
+        initial,
+        size: 20,
+        text_size: 12,
         weight: TextWeight::Semibold,
         background: text_color(),
         foreground: sidebar_color(),
     });
-    let mut settings = icon_button(
-        "sidebar-settings",
-        "Settings",
-        Action::Settings,
-        Glyph::Settings,
-    );
-    settings.style.radius = Some(8);
-    settings.style.glyph_size = Some(15);
-    settings.style.hover_background = Some(selected_color());
-    settings.style.hover_foreground = Some(text_color());
-    if state.page == Page::Settings {
-        settings.style.background = Some(selected_color());
-        settings.style.foreground = Some(text_color());
-    }
-    // The Verse page (#10071): the Grid lives there and nowhere else.
-    let mut verse = icon_button("sidebar-verse", "Verse", Action::Grid, Glyph::Cloud);
-    verse.style.radius = Some(8);
-    verse.style.glyph_size = Some(15);
-    verse.style.hover_background = Some(selected_color());
-    verse.style.hover_foreground = Some(text_color());
-    if state.page == Page::Grid {
-        verse.style.background = Some(selected_color());
-        verse.style.foreground = Some(text_color());
-    }
-    // The Map page (#10085), beside Verse.
-    let mut map = icon_button("sidebar-map", "Map", Action::Map, Glyph::Map);
-    map.style.radius = Some(8);
-    map.style.glyph_size = Some(15);
-    map.style.hover_background = Some(selected_color());
-    map.style.hover_foreground = Some(text_color());
-    if state.page == Page::Map {
-        map.style.background = Some(selected_color());
-        map.style.foreground = Some(text_color());
-    }
     let mut spacer = stack(
         "sidebar-footer-spacer",
         Axis::Horizontal,
@@ -724,11 +909,41 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         vec![],
     );
     spacer.style.fill_height = Some(false);
+    // The theme toggle in the account row's corner, as on the web: it names
+    // the look it switches to.
+    let dark =
+        openagents_chat_app::visual::current().scheme == openagents_chat_app::visual::Scheme::Dark;
+    let mut theme = node(
+        "sidebar-theme",
+        Element::Button {
+            shortcut: None,
+            label: if dark { "Light" } else { "Dark" }.into(),
+            enabled: true,
+            icon: None,
+            intent: Intent::Settings {
+                action: crate::settings::Action::Theme {
+                    choice: if dark {
+                        oa_tokens::ThemeChoice::Light
+                    } else {
+                        oa_tokens::ThemeChoice::Dark
+                    },
+                },
+            },
+        },
+    );
+    theme.style = row_style(false);
+    theme.style.foreground = Some(muted_color());
+    theme.style.align = Some(TextAlign::Center);
+    theme.style.intrinsic_width = Some(true);
+    theme.style.text_size = Some(oa_tokens::typography::text::XS.size as u16);
+    theme.style.line_height = Some(oa_tokens::typography::text::XS.line_height as u16);
+    theme.style.min_height = Some(28);
+    theme.style.button_padding = Some([8, 4]);
     let mut footer = stack(
         "sidebar-footer",
         Axis::Horizontal,
         Space::None,
-        vec![profile, spacer, map, verse, settings],
+        vec![profile, spacer, theme],
     );
     footer.style.gap_points = Some(4);
     let mut bottom = vec![];
@@ -740,9 +955,10 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         // The background watchers running on this computer (#10172): one
         // quiet line, shown from the host's first answer at every start.
         let mut line = text("sidebar-watchers", line, TextRole::Status);
-        line.style.text_size = Some(11);
+        line.style.text_size = Some(oa_tokens::typography::text::XS.size as u16);
+        line.style.line_height = Some(oa_tokens::typography::text::XS.line_height as u16);
         line.style.foreground = Some(muted_color());
-        line.style.padding_points = Some([0, 8, 0, 8]);
+        line.style.padding_points = Some([0, 10, 0, 10]);
         bottom.push(line);
     }
     if state.live
@@ -822,7 +1038,7 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
     }
     if let Some(note) = &model.engine_note {
         let mut line = text("sidebar-engine-note", note.clone(), TextRole::Status);
-        line.style.text_size = Some(11);
+        line.style.text_size = Some(12);
         line.style.foreground = Some(muted_color());
         line.style.padding_points = Some([0, 8, 0, 8]);
         rows.push(line);
@@ -870,8 +1086,8 @@ fn engine_row(
     meter: Option<(&str, u8)>,
 ) -> Node<Intent> {
     // One line: the model is shortened to the row's room, and the hover
-    // text has it whole. Rows draw in Paper Mono, whose every character
-    // advances 0.606 em (about 7.3 points at 12 points).
+    // text has it whole. The estimate allows 0.606 em a character (about
+    // 7.3 points at 12 points), wider than the system face's average.
     const ADVANCE: f32 = 12.0 * 0.606;
     let room = sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX)
         - 16.0
@@ -908,7 +1124,7 @@ fn engine_row(
         weight: Some(TextWeight::Normal),
         radius: Some(8),
         text_size: Some(12),
-        line_height: Some(16),
+        line_height: Some(18),
         button_padding: Some([8, 6]),
         min_height: Some(28),
         ..Style::default()
@@ -932,7 +1148,7 @@ fn engine_row(
             format!("{percent}%"),
             TextRole::Status,
         );
-        share.style.text_size = Some(11);
+        share.style.text_size = Some(12);
         share.style.foreground = Some(muted_color());
         share.style.intrinsic_width = Some(true);
         share.style.padding_points = Some([5, 8, 0, 0]);
@@ -1005,12 +1221,12 @@ fn placeholder(state: &State) -> Node<Intent> {
         false,
     );
     grid.style.align = None;
-    let mut buttons = stack(
-        "shell-welcome-actions",
-        Axis::Wrap,
-        Space::Sm,
-        vec![new_chat, grid],
-    );
+    let mut actions = vec![new_chat];
+    // The Verse shows only in a preview build (#11120).
+    if state.preview {
+        actions.push(grid);
+    }
+    let mut buttons = stack("shell-welcome-actions", Axis::Wrap, Space::Sm, actions);
     buttons.style.align = Some(TextAlign::Center);
     let mut body = stack(
         "shell-welcome",
@@ -1058,6 +1274,9 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     // apart. The title starts past the sidebar's 16-point gutter.
     let chat_page = matches!(state.page, Page::Chat(_)) && !prompt;
     let session = chat_page && state.selected().is_some();
+    // Every titlebar control says what it does (#11120): the sidebar
+    // toggle carries its label. New chat is the sidebar's first row; Back
+    // and Forward stay on the keyboard (Cmd/Ctrl+[ and ]).
     let mut toggle = cluster_button(
         "shell-toggle-sidebar",
         if state.collapsed {
@@ -1069,46 +1288,25 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         Glyph::Menu,
         true,
     );
+    if let Element::Button {
+        icon: Some(icon), ..
+    } = &mut toggle.element
+    {
+        icon.circular = false;
+    }
     toggle.style.glyph_size = Some(16);
+    toggle.style.glyph_gap = Some(6);
+    toggle.style.intrinsic_width = Some(true);
+    toggle.style.button_padding = Some([8, 2]);
+    toggle.style.text_size = Some(oa_tokens::typography::text::XS.size as u16);
+    toggle.style.line_height = Some(oa_tokens::typography::text::XS.line_height as u16);
     let cluster_start: u16 = if cfg!(target_os = "macos") {
         if state.fullscreen { 12 } else { 88 }
     } else {
         10
     };
-    let mut cluster = vec![
-        toggle,
-        gap("shell-titlebar-group-gap", 8),
-        cluster_button(
-            "shell-back",
-            "Back",
-            Action::Back,
-            Glyph::Back,
-            state.can_step(false),
-        ),
-        gap("shell-titlebar-history-gap", 2),
-        cluster_button(
-            "shell-forward",
-            "Forward",
-            Action::Forward,
-            Glyph::Forward,
-            state.can_step(true),
-        ),
-    ];
-    let mut cluster_end = f32::from(cluster_start) + 24.0 * 3.0 + 8.0 + 2.0;
-    // Zeron hides the plus on its blank new-session canvas and outside
-    // chats. OpenAgents keeps it, so New chat stays one visible,
-    // accessible control on every page.
-    {
-        cluster.push(gap("shell-titlebar-new-gap", 8));
-        cluster.push(cluster_button(
-            "shell-new-chat",
-            "New chat",
-            Action::NewChat,
-            Glyph::Plus,
-            true,
-        ));
-        cluster_end += 32.0;
-    }
+    let mut cluster = vec![toggle];
+    let cluster_end = f32::from(cluster_start) + 112.0;
     let sidebar_width = if state.collapsed {
         0.0
     } else {
@@ -1129,8 +1327,8 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         part += 1;
     }
     let mut heading = text("shell-page-title", title, TextRole::Body);
-    heading.style.text_size = Some(12);
-    heading.style.line_height = Some(18);
+    heading.style.text_size = Some(oa_tokens::typography::text::SM.size as u16);
+    heading.style.line_height = Some(oa_tokens::typography::text::SM.line_height as u16);
     heading.style.weight = Some(TextWeight::Medium);
     heading.style.foreground = Some(Color {
         alpha: 217,
@@ -1143,8 +1341,8 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
             .and_then(|chat| state.projects.get(&chat.id))
     {
         let mut target = text("shell-page-target", project.clone(), TextRole::Body);
-        target.style.text_size = Some(12);
-        target.style.line_height = Some(18);
+        target.style.text_size = Some(oa_tokens::typography::text::SM.size as u16);
+        target.style.line_height = Some(oa_tokens::typography::text::SM.line_height as u16);
         target.style.weight = Some(TextWeight::Normal);
         target.style.foreground = Some(Color {
             alpha: 128,
@@ -1173,11 +1371,20 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         // OpenAgents keeps its chat actions in one trailing 28-point header
         // control, drawn as Zeron's header icon buttons.
         let mut menu = icon_button("chat-menu", "Chat actions", Action::NewChat, Glyph::More);
-        if let Element::Button { intent, .. } = &mut menu.element {
+        if let Element::Button { intent, icon, .. } = &mut menu.element {
             *intent = Intent::Chat {
                 action: crate::chat_action::Action::Menu,
             };
+            // A visible label, not a glyph alone (#11120).
+            if let Some(icon) = icon {
+                icon.circular = false;
+            }
         }
+        menu.style.intrinsic_width = Some(true);
+        menu.style.button_padding = Some([8, 2]);
+        menu.style.glyph_gap = Some(6);
+        menu.style.text_size = Some(oa_tokens::typography::text::XS.size as u16);
+        menu.style.line_height = Some(oa_tokens::typography::text::XS.line_height as u16);
         menu.style.min_height = Some(28);
         menu.style.radius = Some(6);
         menu.style.glyph_size = Some(16);
@@ -1438,12 +1645,33 @@ mod tests {
         }
     }
 
+    /// Every sidebar control carries a visible label (#11120): New chat,
+    /// Connect a phone, and Settings as rows, the account row, and the
+    /// theme toggle in its corner. The Verse and the Map show only in a
+    /// preview build.
     #[test]
-    fn the_map_and_the_verse_open_from_the_footer_beside_settings() {
+    fn the_sidebar_is_labelled_rows_like_the_web() {
         use crate::model::{Agent, Screen};
         let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
         let mut state = State::empty();
+        state.preview = false;
         let view = root(&state, &model, 0);
+        let header = find(&view, "sidebar-header").expect("the header");
+        let Element::Stack { children, .. } = &header.element else {
+            panic!("a stack")
+        };
+        assert_eq!(children[0].key, "shell-brand");
+        let rows: Vec<_> = children[1..]
+            .iter()
+            .map(|child| match &child.element {
+                Element::Button { label, icon, .. } => {
+                    assert!(icon.is_none_or(|icon| !icon.circular), "{}", child.key);
+                    label.as_str()
+                }
+                _ => panic!("{} is not a row", child.key),
+            })
+            .collect();
+        assert_eq!(rows, ["New chat", "Connect a phone", "Settings"]);
         let footer = find(&view, "sidebar-footer").expect("the footer");
         let Element::Stack { children, .. } = &footer.element else {
             panic!("a stack")
@@ -1451,51 +1679,25 @@ mod tests {
         let keys: Vec<_> = children.iter().map(|child| child.key.as_str()).collect();
         assert_eq!(
             keys,
-            [
-                "sidebar-profile",
-                "sidebar-footer-spacer",
-                "sidebar-map",
-                "sidebar-verse",
-                "sidebar-settings"
-            ]
+            ["sidebar-profile", "sidebar-footer-spacer", "sidebar-theme"]
         );
-        // The Map page (#10085) sits beside Verse.
         let Element::Button { label, intent, .. } = &children[2].element else {
             panic!("a button")
         };
-        assert_eq!(label, "Map");
-        assert_eq!(
-            *intent,
-            Intent::Navigate {
-                action: Action::Map
-            }
-        );
-        let Element::Button { label, intent, .. } = &children[3].element else {
-            panic!("a button")
-        };
-        assert_eq!(label, "Verse");
-        assert_eq!(
-            *intent,
-            Intent::Navigate {
-                action: Action::Grid
-            }
-        );
-        state.activate(Action::Grid);
-        let view = root(&state, &model, 0);
-        let verse = find(&view, "sidebar-verse").unwrap();
-        assert_eq!(verse.style.background, Some(selected_color()));
-        let Some(Node {
-            element: Element::Text { value, .. },
-            ..
-        }) = find(&view, "shell-page-title")
-        else {
-            panic!("a title")
-        };
-        assert_eq!(value, "Verse");
+        assert!(label == "Light" || label == "Dark", "{label}");
+        assert!(matches!(intent, Intent::Settings { .. }));
+        assert!(!contains(&view, "sidebar-verse"));
+        assert!(!contains(&view, "sidebar-map"));
+        // A preview build adds the Verse and the Map, labelled.
+        state.preview = true;
         state.activate(Action::Map);
         let view = root(&state, &model, 0);
         let map = find(&view, "sidebar-map").unwrap();
         assert_eq!(map.style.background, Some(selected_color()));
+        let Element::Button { label, .. } = &find(&view, "sidebar-verse").unwrap().element else {
+            panic!("a button")
+        };
+        assert_eq!(label, "Verse");
         let Some(Node {
             element: Element::Text { value, .. },
             ..
@@ -1504,6 +1706,27 @@ mod tests {
             panic!("a title")
         };
         assert_eq!(value, "Map");
+    }
+
+    /// The sidebar's text sits on the web's type scale.
+    #[test]
+    fn the_sidebar_text_is_on_the_type_scale() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let view = root(&State::default(), &model, 0);
+        fn walk(node: &Node<Intent>) {
+            if let Some(size) = node.style.text_size {
+                assert!(
+                    oa_tokens::typography::on_scale(f32::from(size)),
+                    "{} is {size} points",
+                    node.key
+                );
+            }
+            if let Element::Stack { children, .. } = &node.element {
+                children.iter().for_each(walk);
+            }
+        }
+        walk(find(&view, "shell-sidebar").expect("the sidebar"));
     }
 
     fn contains(node: &Node<Intent>, key: &str) -> bool {

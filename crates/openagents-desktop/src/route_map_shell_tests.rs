@@ -49,12 +49,14 @@ fn surface(app: &mut DesktopApp) -> Option<rust_native_desktop::layout::Rect> {
     })
 }
 
-/// The footer's Map button sits beside Verse and opens the page; the
-/// page exists only while it shows, so leaving releases it and no other
-/// page pays for it.
+/// In a preview build the sidebar's Map row sits under Verse and opens the
+/// page; the page exists only while it shows, so leaving releases it and
+/// no other page pays for it.
 #[test]
 fn the_footer_opens_the_map_and_leaving_releases_it() {
     let (mut app, now) = shell();
+    app.navigation.as_mut().unwrap().preview = true;
+    app.present();
     let (_, scene) = rust_native_desktop::capture(&mut app, WIDTH, HEIGHT, 1.0);
     let footer: Vec<&str> = scene
         .bounds
@@ -65,16 +67,12 @@ fn the_footer_opens_the_map_and_leaving_releases_it() {
         })
         .map(String::as_str)
         .collect();
-    assert_eq!(
-        footer.len(),
-        3,
-        "Map, Verse, and Settings are in the footer"
-    );
+    assert_eq!(footer.len(), 3, "Map, Verse, and Settings are sidebar rows");
     let map = scene.bounds["sidebar-map"];
     let verse = scene.bounds["sidebar-verse"];
     assert!(
-        map.x < verse.x && (map.y - verse.y).abs() < 1.0,
-        "Map sits beside Verse"
+        map.y > verse.y && (map.x - verse.x).abs() < 1.0,
+        "Map sits under Verse"
     );
     assert!(app.map_view().is_none());
     assert_eq!(App::surface_version(&app, RESOURCE), None);
@@ -113,6 +111,8 @@ fn the_palette_opens_the_map() {
     assert_eq!(entry.label, "Open the map");
     assert_eq!(entry.action, openagents_chat_app::commands::Action::Map);
     let (mut app, now) = chat_fixture(2);
+    // The Map shows only in a preview build (#11120).
+    app.chat.as_mut().unwrap().preview = true;
     app.activate(
         Intent::Chat {
             action: openagents_desktop::chat_action::Action::Command { key: "map".into() },

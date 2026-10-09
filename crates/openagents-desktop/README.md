@@ -240,6 +240,13 @@ cargo run --release -p openagents-desktop -- --no-login-agent
 # Every screen as PNG files (without the Verse world).
 cargo run -p openagents-desktop -- --capture /tmp/openagents-desktop
 
+# The 1.0 screens in the light and dark looks (#11120).
+cargo run -p openagents-desktop -- --capture-kept /tmp/openagents-desktop-kept
+
+# A preview build: the Verse, the Map, the Gym's hosted runs, and Give
+# feedback come back (the 1.0 window hides them).
+OPENAGENTS_DESKTOP_PREVIEW=on cargo run -p openagents-desktop
+
 # The Verse page with simulated players: an in-process relay and three
 # walkers, then the window watching that relay (open Verse in the sidebar).
 cargo run -p verse --no-default-features --example grid_walkers -- 3

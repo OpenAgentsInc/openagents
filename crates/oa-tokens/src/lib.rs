@@ -10,6 +10,7 @@
 //! - [`noir`] holds **Coder Noir**: every Noir value, and the roles whose
 //!   dark value it replaces. Every other dark value is Apps SDK UI's.
 //! - [`product`] holds our own roles in the same naming scheme.
+//! - [`typography`] holds the font stacks and type scale in points.
 //! - [`palette`] resolves the table into the native role palettes, Coder
 //!   Light and Coder Noir, that GUI surfaces paint with.
 //! - [`ThemeChoice`] is the person's choice (follow the system, Light, or
@@ -22,6 +23,7 @@ pub mod apps_sdk;
 pub mod noir;
 pub mod palette;
 pub mod product;
+pub mod typography;
 
 use std::collections::HashMap;
 

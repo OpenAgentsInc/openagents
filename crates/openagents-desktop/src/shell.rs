@@ -953,11 +953,12 @@ impl App for DesktopApp {
             focus: visual.accent,
             button: visual.selected,
             button_text: visual.text,
-            button_radius: 7.0,
+            // The web's type scale and control radius (#11120).
+            button_radius: 8.0,
             icon_size: 28.0,
-            body: size.scale(14.0),
-            heading: size.scale(26.0),
-            status: size.scale(12.0),
+            body: size.scale(oa_tokens::typography::text::SM.size),
+            heading: size.scale(oa_tokens::typography::heading::LG.size),
+            status: size.scale(oa_tokens::typography::text::XS.size),
             column: 768.0,
             ..Theme::openagents()
         }
@@ -990,7 +991,8 @@ impl App for DesktopApp {
                     collapsed: state.collapsed || self.verse_full(),
                     // The Map and Verse pages take the whole pane (#10085,
                     // #10116).
-                    center_content: !matches!(state.page, Page::Map | Page::Grid),
+                    // Settings starts at the top, as on the web (#11120).
+                    center_content: !matches!(state.page, Page::Map | Page::Grid | Page::Settings),
                     center_footer: matches!(state.page, Page::Chat(_))
                         && self.model.nearby().is_none()
                         && self
@@ -2297,7 +2299,7 @@ mod tests {
             assert!(scene.bounds["grid-watch"].x < page.x + 20.0);
             let hint = scene.bounds["grid-controls"];
             assert!(hint.y + hint.h > page.y + page.h - 30.0, "{hint:?}");
-            assert!(!scene.texts().contains(&"OpenAgents"));
+            assert!(!scene.bounds.contains_key("shell-content-note"));
         }
         assert_eq!(app.fullscreen_request(false), None);
         // The toggle: the window goes full screen and the Verse covers it.
@@ -4361,10 +4363,9 @@ mod chat_management {
             let scene = save(&mut app, "sidebar-few-chats", width, height);
             assert!(!scene.bounds.contains_key("chat-search"));
             let footer = scene.bounds["sidebar-footer"];
-            let verse = scene.bounds["sidebar-verse"];
-            let settings = scene.bounds["sidebar-settings"];
-            assert_eq!((verse.w, verse.h), (28.0, 28.0));
-            assert!(verse.x + verse.w <= settings.x && verse.y == settings.y);
+            // The theme toggle sits in the account row's corner (#11120).
+            let theme = scene.bounds["sidebar-theme"];
+            assert!(theme.y >= footer.y && theme.y + theme.h <= footer.y + footer.h);
             for index in 0..2 {
                 let row = scene.bounds[&format!("sidebar-engine-row-{index}")];
                 assert!(row.h <= 32.0, "one condensed line: {row:?}");
@@ -4407,13 +4408,14 @@ mod chat_management {
         }
     }
     #[test]
-    fn sidebar_context_precedes_the_title_without_wrapping_the_row() {
+    fn a_sidebar_chat_row_is_one_unwrapped_line() {
         let (mut app, _) = DesktopApp::performance_fixture(0, 1, Instant::now());
         let row = app.navigation.as_ref().unwrap().chats[0].clone();
         for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
             let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
             let bounds = scene.bounds[&format!("sidebar-chat-{}", row.id)];
-            assert_eq!(bounds.h, 45.0);
+            // One line on the web's 36-point row (#11120).
+            assert_eq!(bounds.h, 36.0);
             let runs: Vec<_> = scene
                 .ops
                 .iter()
@@ -4432,14 +4434,10 @@ mod chat_management {
                     }
                 })
                 .collect();
-            assert_eq!(runs.len(), 2);
-            assert_eq!(runs[0].0.text, row.detail);
-            assert_eq!(runs[0].0.font.size, 11.0);
-            assert_eq!(runs[0].0.line_height, 16.0);
-            assert_eq!(runs[1].0.text, row.title);
-            assert_eq!(runs[1].0.font.size, 13.0);
-            assert_eq!(runs[1].0.line_height, 17.0);
-            assert_eq!(runs[1].1 - runs[0].1, 16.0);
+            assert_eq!(runs.len(), 1);
+            assert_eq!(runs[0].0.text, row.title);
+            assert_eq!(runs[0].0.font.size, 14.0);
+            assert_eq!(runs[0].0.line_height, 20.0);
             assert!(runs.iter().all(|(paragraph, _)| paragraph.lines.len() == 1));
             if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
                 let path = std::path::PathBuf::from(path);
@@ -4471,7 +4469,8 @@ mod chat_management {
                     .iter()
                     .find(|hit| hit.key == "shell-toggle-sidebar")
                     .unwrap();
-                assert_eq!(toggle.rect.y + toggle.rect.h / 2.0, 21.0);
+                // Centered on the traffic lights, within a point.
+                assert!((toggle.rect.y + toggle.rect.h / 2.0 - 21.0).abs() <= 1.0);
                 assert!(
                     toggle.rect.x
                         >= if cfg!(target_os = "macos") {
@@ -4488,7 +4487,7 @@ mod chat_management {
     }
 
     #[test]
-    fn titlebar_matches_zeron_controls_and_steps_through_visited_chats() {
+    fn titlebar_labels_its_controls_and_steps_through_visited_chats() {
         let now = Instant::now();
         let (mut app, _) = DesktopApp::performance_fixture(0, 3, now);
         let start = if cfg!(target_os = "macos") {
@@ -4524,30 +4523,26 @@ mod chat_management {
                 )
                 .unwrap();
             }
-            // Zeron: a 24-point sidebar toggle, Back and Forward two points
-            // apart, and the plus, groups eight points apart, centered 21
-            // points down the 38-point titlebar.
-            let expected = [
-                ("shell-toggle-sidebar", start),
-                ("shell-back", start + 32.0),
-                ("shell-forward", start + 58.0),
-                ("shell-new-chat", start + 90.0),
-            ];
-            for (key, x) in expected {
-                let control = hit(&scene, key);
-                assert_eq!(
-                    (control.rect.x, control.rect.w, control.rect.h),
-                    (x, 24.0, 24.0),
-                    "{key}"
-                );
-                assert_eq!(control.rect.y + 12.0, 21.0, "{key}");
+            // The sidebar toggle carries its label (#11120), 24 points tall
+            // and centered 21 points down the 38-point titlebar; Back,
+            // Forward, and the plus are not drawn (New chat is the sidebar's
+            // first row).
+            let control = hit(&scene, "shell-toggle-sidebar");
+            assert_eq!(control.rect.x, start);
+            assert!(control.rect.h >= 22.0 && control.rect.h <= 24.0);
+            assert!(control.rect.w > 24.0, "a visible label");
+            assert!((control.rect.y + control.rect.h / 2.0 - 21.0).abs() <= 1.0);
+            for key in ["shell-back", "shell-forward", "shell-new-chat"] {
+                assert!(scene.hits.iter().all(|hit| hit.key != key), "{key}");
             }
             // The title begins 16 points past the 256-point sidebar.
             let title = scene.bounds["shell-page-title"];
-            assert_eq!(title.x, (256.0_f32 + 16.0).max(start + 126.0));
+            // The labelled toggle's width follows the system face, so the
+            // title lands within a few points of that line.
+            assert!((title.x - (256.0_f32 + 16.0).max(start + 124.0)).abs() < 4.0);
             let menu = hit(&scene, "chat-menu");
-            assert_eq!((menu.rect.w, menu.rect.h), (28.0, 28.0));
-            assert_eq!(menu.rect.x + 28.0 + 6.0, width);
+            assert!(menu.rect.w > 28.0, "a visible label");
+            assert!((menu.rect.x + menu.rect.w + 6.0 - width).abs() < 0.01);
             let heading = scene
                 .ops
                 .iter()
@@ -4564,7 +4559,7 @@ mod chat_management {
                 .expect("title text");
             assert_eq!(
                 heading,
-                (12.0, rust_native::layout::display::Weight::Medium, 217)
+                (14.0, rust_native::layout::display::Weight::Medium, 217)
             );
         }
         let visit = |app: &mut DesktopApp, id: u64| {
@@ -4576,16 +4571,10 @@ mod chat_management {
             );
         };
         let page = |app: &DesktopApp| app.navigation.as_ref().unwrap().page;
-        let enabled = |app: &mut DesktopApp, key: &str| {
-            let (_, scene) = rust_native_desktop::capture(app, 1200.0, 840.0, 1.0);
-            scene.hits.iter().any(|hit| hit.key == key && hit.enabled)
-        };
         visit(&mut app, ids[0]);
         visit(&mut app, ids[1]);
         visit(&mut app, ids[2]);
         assert_eq!(page(&app), Page::Chat(ids[2]));
-        assert!(enabled(&mut app, "shell-back"));
-        assert!(!enabled(&mut app, "shell-forward"));
         let step = |app: &mut DesktopApp, action| {
             app.activate(Intent::Navigate { action }, now);
         };
@@ -4593,13 +4582,11 @@ mod chat_management {
         assert_eq!(page(&app), Page::Chat(ids[1]));
         step(&mut app, chrome::Action::Back);
         assert_eq!(page(&app), Page::Chat(ids[0]));
-        assert!(enabled(&mut app, "shell-forward"));
         step(&mut app, chrome::Action::Forward);
         assert_eq!(page(&app), Page::Chat(ids[1]));
         // Pages join the same history; a new visit drops the forward pages.
         step(&mut app, chrome::Action::Settings);
         assert_eq!(page(&app), Page::Settings);
-        assert!(!enabled(&mut app, "shell-forward"));
         step(&mut app, chrome::Action::Back);
         assert_eq!(page(&app), Page::Chat(ids[1]));
         step(&mut app, chrome::Action::Forward);
@@ -4608,8 +4595,8 @@ mod chat_management {
 
     /// #10100: old Coder issue-flow chats in projects ("work on #10058")
     /// and a new chat with no project: the new chat is the sidebar's top
-    /// row and selected, and every row below is newest first, each Coder row
-    /// naming its project instead of sitting under a project header.
+    /// row and selected; the chats come newest first, then the Coder chats
+    /// under their project's name, as the web lists them (#11120).
     #[test]
     fn a_new_chat_is_the_top_sidebar_row_above_older_project_chats() {
         let now = Instant::now();
@@ -4656,11 +4643,11 @@ mod chat_management {
             titles,
             [
                 "New chat",
+                "plain old",
                 "work on #10061",
                 "work on #10060",
                 "work on #10058",
                 "work on #10057",
-                "plain old",
             ]
         );
         assert_eq!(state.selected().map(|chat| chat.id), Some(rows[0].1.id));
@@ -4670,20 +4657,16 @@ mod chat_management {
                 .keys()
                 .any(|key| key.starts_with("project-group-"))
         );
-        // The project is the Coder row's context line, above its title.
-        let bounds = scene.bounds[&format!("sidebar-chat-{}", rows[1].1.id)];
-        let context = scene.ops.iter().any(|op| {
+        // The project names its group, above its chats.
+        let project = scene.ops.iter().any(|op| {
             matches!(
                 op,
-                rust_native_desktop::layout::Op::Text { paragraph, x, y, .. }
-                    if paragraph.text == "Coder · openagents-host-tasks"
-                        && *x >= bounds.x
-                        && *x < bounds.x + bounds.w
-                        && *y >= bounds.y
-                        && *y < bounds.y + bounds.h
+                rust_native_desktop::layout::Op::Text { paragraph, y, .. }
+                    if paragraph.text == "openagents-host-tasks"
+                        && *y < scene.bounds[&format!("sidebar-chat-{}", rows[2].1.id)].y
             )
         });
-        assert!(context, "the Coder row does not name its project");
+        assert!(project, "the project does not name its group");
     }
 
     #[test]
@@ -4984,26 +4967,28 @@ mod command_fixtures {
         for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
             for scale in [1.0, 2.0] {
                 let (mut app, now) = super::tests::chat_fixture(0);
+                // The Verse entry shows only in a preview build (#11120).
+                app.chat.as_mut().unwrap().preview = true;
                 key(&mut app, now, "n", true, false);
                 app.text_input(TextInput::Commit("Keep this draft  "), now);
                 let (_, closed) = rust_native_desktop::capture(&mut app, width, height, scale);
                 let footer = closed.bounds["sidebar-footer"];
                 let profile = closed.bounds["sidebar-profile"];
-                let settings = closed.bounds["sidebar-settings"];
-                assert_eq!(profile.h, 28.0);
-                assert!(profile.w < 100.0);
-                assert_eq!(settings.w, 28.0);
-                assert_eq!(settings.h, 28.0);
-                assert!((settings.x + settings.w - footer.x - footer.w).abs() < 0.5);
+                let theme = closed.bounds["sidebar-theme"];
+                // The web's 36-point account row, with the theme toggle in
+                // its corner (#11120).
+                assert_eq!(profile.h, 36.0);
+                assert!(profile.w < 200.0);
+                assert!((theme.x + theme.w - footer.x - footer.w).abs() < 0.5);
                 assert!(
                     closed
                         .ops
                         .iter()
                         .any(|op| matches!(op, Op::Text { paragraph, .. }
-                    if paragraph.font.weight == Weight::Medium && paragraph.font.size == 13.0))
+                    if paragraph.font.weight == Weight::Medium && paragraph.font.size == 14.0))
                 );
                 assert!(closed.ops.iter().any(|op| matches!(op, Op::Text { paragraph, .. }
-                    if paragraph.font.weight == Weight::Semibold && paragraph.font.size == 10.0 && paragraph.font.mono)));
+                    if paragraph.font.weight == Weight::Semibold && paragraph.font.size == 12.0 && paragraph.font.mono)));
                 for key in ["computers", "grid", "saved", "commands"] {
                     app.activate(
                         Intent::Chat {
@@ -5138,10 +5123,12 @@ mod command_fixtures {
                     }
                 })
                 .collect();
-            assert_eq!(runs.len(), 2);
-            assert_eq!(runs[0].font.size, 11.0);
-            assert_eq!(runs[1].font.size, 13.0);
-            assert_eq!(runs[1].text, title);
+            // A starter chip under the palette can share the row's band;
+            // the row itself is its detail line and its title.
+            let detail = runs.iter().position(|run| run.font.size == 11.0);
+            let named = runs.iter().position(|run| run.text == title);
+            assert!(detail.is_some() && named.is_some() && detail < named);
+            assert_eq!(runs[named.unwrap()].font.size, 13.0);
             let view = app.view().view();
             let intent = app
                 .view()
@@ -5412,6 +5399,10 @@ mod command_fixtures {
             let (mut app, now) = super::tests::chat_fixture(0);
             key(&mut app, now, "n", true, false);
             app.text_input(TextInput::Commit("Keep this draft  "), now);
+            // The host's first answer names the account row; let it land
+            // before the idle ticks this test watches.
+            let now = now + std::time::Duration::from_secs(1);
+            app.tick(now);
             app.activate(
                 Intent::Chat {
                     action: ChatAction::Menu,

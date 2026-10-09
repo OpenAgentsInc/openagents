@@ -23,6 +23,8 @@ fn a_selection_becomes_feedback_the_triage_key_reads() {
         Ok(playtest::feedback::SENT.into())
     }));
     // Without a selection the context menu offers no feedback.
+    // Give feedback shows only in a preview build (#11120).
+    app.chat.as_mut().unwrap().preview = true;
     assert!(app.context_menu_at(None, (400.0, 300.0), now));
     let view = serde_json::to_string(app.view().view()).unwrap();
     assert!(!view.contains("Give feedback"));

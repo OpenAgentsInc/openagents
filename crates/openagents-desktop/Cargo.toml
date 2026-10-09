@@ -73,6 +73,8 @@ base64 = "0.22"
 # The control protocol's messages.
 openagents-connect = { path = "../openagents-connect" }
 qrcodegen = "1.8.0"
+# The web's font stacks and type scale (#11120).
+oa-tokens = { path = "../oa-tokens" }
 rust-native = { path = "../rust-native" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -137,6 +139,8 @@ background = { path = "../background" }
 # The machine-talk guard over the copy people see (#11031).
 oa-copy = { path = "../oa-copy" }
 pollster = "0.4"
+# Reads the chosen system faces in the typeface test.
+swash = "0.2.10"
 # The seeded pylon league on an in-process relay, for the Gym's league capture.
 pylon = { path = "../pylon", features = ["fixture"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }

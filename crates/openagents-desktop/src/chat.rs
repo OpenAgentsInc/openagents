@@ -60,6 +60,8 @@ pub struct Panel {
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
     rename_focus: usize,
+    /// Whether the screens still in development show (`crate::preview`).
+    pub preview: bool,
     /// The selection the context menu offers **Give feedback** on (#10127):
     /// its text and the transcript row it starts in.
     feedback_offer: Option<(String, Option<String>)>,
@@ -203,6 +205,7 @@ impl Panel {
             rename: None,
             rename_pending: None,
             rename_focus: 0,
+            preview: crate::preview::ON,
             feedback_offer: None,
             feedback: None,
             feedback_sender: if cfg!(test) {
@@ -425,8 +428,9 @@ impl Panel {
         self.transcript.start(Arc::new(move || wake.wake()));
         // The Gym's hosted runner, in the real window only. Its trainer key
         // is read when a hosted run first needs it, never here (#10096).
+        // The Gym shows only in a preview build (#11120).
         #[cfg(not(windows))]
-        {
+        if self.preview {
             let wake = waker.clone();
             if let Some((gym, trainer)) = crate::chat_gym::launch(Arc::new(move || wake.wake())) {
                 self.use_gym_trainer(gym, trainer);
@@ -2090,6 +2094,13 @@ impl Panel {
         self.session.selected.as_deref()
     }
     fn registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
+        let mut entries = self.full_registry();
+        // The Verse, the Map, and Give feedback show only in a preview
+        // build (#11120).
+        entries.retain(|entry| crate::preview::shows_entry(&entry.key, self.preview));
+        entries
+    }
+    fn full_registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
         if self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile) {
             return openagents_chat_app::commands::profile_registry();
         }
@@ -4380,7 +4391,7 @@ fn composer_metrics(compact: bool) -> rust_native_desktop::composer::field::Metr
 }
 
 fn search_field() -> Field {
-    let mut field = chat_field("Filter sessions…");
+    let mut field = chat_field("Search chats");
     field.set_unframed(true);
     field
         .set_metrics(rust_native_desktop::composer::field::Metrics {

@@ -63,6 +63,8 @@ Usage: openagents-desktop [options]
   --benchmark-scale N   render the benchmark at 1x or 2x
   --capture DIR        paint pairing and shell screens, against the in-process host, to
                        PNG files in DIR
+  --capture-kept DIR   paint the 1.0 screens (chat, Connect a phone, Settings, the
+                       account menu) in the light and dark looks to PNG files in DIR
   --check-update       say whether a newer release is published (Linux, Windows)
   --update             install a newer release now: an AppImage replaces itself,
                        the Windows MSI installs after exit (Linux, Windows)
@@ -83,6 +85,7 @@ struct Options {
     fake_phones: usize,
     no_login_agent: bool,
     capture: Option<PathBuf>,
+    capture_kept: Option<PathBuf>,
     verse_relay: Option<String>,
     no_backdrop: bool,
     help: bool,
@@ -142,6 +145,11 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                     args.next().ok_or("--capture takes a directory")?,
                 ))
             }
+            "--capture-kept" => {
+                options.capture_kept = Some(PathBuf::from(
+                    args.next().ok_or("--capture-kept takes a directory")?,
+                ))
+            }
             "--check-update" => options.check_update = true,
             "--update" => options.update = true,
             "--notify-test" => options.notify_test = true,
@@ -194,6 +202,11 @@ fn main() -> ExitCode {
     #[cfg(feature = "app")]
     coder::task::targets::enable_lease_shims();
     reduce_motion();
+    // The web's fonts and dark tokens (#11120), before any text is measured
+    // or painted.
+    #[cfg(feature = "app")]
+    openagents_desktop::typeface::install();
+    openagents_chat_app::visual::use_noir();
     #[cfg(windows)]
     if platform::wants_start_host(&args) {
         return match platform::start_host() {
@@ -258,6 +271,18 @@ fn main() -> ExitCode {
             Err(complaint) => {
                 eprintln!("{complaint}");
                 ExitCode::from(2)
+            }
+        };
+    }
+    if let Some(directory) = &options.capture_kept {
+        return match capture_kept(directory) {
+            Ok(count) => {
+                println!("wrote {count} files to {}", directory.display());
+                ExitCode::SUCCESS
+            }
+            Err(complaint) => {
+                eprintln!("{complaint}");
+                ExitCode::FAILURE
             }
         };
     }
@@ -470,6 +495,74 @@ fn capture(directory: &PathBuf) -> Result<usize, String> {
     app.click(Intent::AskRemove { device }, start + Duration::from_secs(8));
     write(&mut app, "dsk-03-remove")?;
     Ok(count + capture_shell(directory)?)
+}
+
+/// The 1.0 window's screens (#11120) in both looks, as the owner sees them:
+/// a new chat, a conversation, Connect a phone, Settings' Appearance and
+/// Coder pages, and the account menu, at 1200 by 840 points and 2x.
+fn capture_kept(directory: &std::path::Path) -> Result<usize, String> {
+    use openagents_chat_app::visual::ThemeChoice;
+    use openagents_desktop::chrome::Action;
+    use openagents_desktop::settings::{Action as Settings, Pane};
+    std::fs::create_dir_all(directory)
+        .map_err(|error| format!("cannot create {}: {error}", directory.display()))?;
+    let mut count = 0;
+    for (look, choice) in [("dark", ThemeChoice::Dark), ("light", ThemeChoice::Light)] {
+        let now = Instant::now();
+        let mut write = |app: &mut DesktopApp, name: &str| -> Result<(), String> {
+            let _ = rust_native_desktop::capture(app, 1200.0, 840.0, 2.0);
+            let (frame, _) = rust_native_desktop::capture(app, 1200.0, 840.0, 2.0);
+            let path = directory.join(format!("{name}-{look}.png"));
+            std::fs::write(&path, frame.png()?)
+                .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+            count += 1;
+            Ok(())
+        };
+        let theme = Intent::Settings {
+            action: Settings::Theme { choice },
+        };
+        let (mut app, _) = DesktopApp::performance_fixture(0, 6, now);
+        app.activate(theme.clone(), now);
+        write(&mut app, "chat-new")?;
+        let (mut app, _) = DesktopApp::performance_fixture(6, 6, now);
+        app.activate(theme.clone(), now);
+        write(&mut app, "chat-conversation")?;
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Profile,
+            },
+            now,
+        );
+        write(&mut app, "account-menu")?;
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Profile,
+            },
+            now,
+        );
+        app.activate(
+            Intent::Navigate {
+                action: Action::Computers,
+            },
+            now,
+        );
+        write(&mut app, "connect-phone")?;
+        app.activate(
+            Intent::Navigate {
+                action: Action::Settings,
+            },
+            now,
+        );
+        write(&mut app, "settings-appearance")?;
+        app.activate(
+            Intent::Settings {
+                action: Settings::Pane { pane: Pane::Coder },
+            },
+            now,
+        );
+        write(&mut app, "settings-coder")?;
+    }
+    Ok(count)
 }
 
 fn capture_shell(directory: &std::path::Path) -> Result<usize, String> {

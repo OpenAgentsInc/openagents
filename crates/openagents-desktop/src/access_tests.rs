@@ -231,7 +231,7 @@ fn a_screen_reader_writes_and_sends_a_message() {
                 node.role() == Role::Button
                     && node
                         .label()
-                        .is_some_and(|label| label.starts_with("Is the build green?\n"))
+                        .is_some_and(|label| label.starts_with("Is the build green?"))
             })
             .map(|(id, _)| *id)
             .unwrap_or_else(|| panic!("a sidebar row in\n{dump}"))

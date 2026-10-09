@@ -460,7 +460,12 @@ fn appearance(settings: &Settings) -> Vec<Node<Intent>> {
         ),
         text(
             "settings-motion-line",
-            "Keeps the Grid on the Verse page still. Your computer's own Reduce motion setting also does.",
+            // The Verse shows only in a preview build (#11120).
+            if crate::preview::ON {
+                "Keeps the Grid on the Verse page still. Your computer's own Reduce motion setting also does."
+            } else {
+                "Fewer animations. Your computer's own Reduce motion setting also does."
+            },
             TextRole::Status,
         ),
     ]

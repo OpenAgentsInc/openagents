@@ -29,7 +29,9 @@
 //! - [`model`]: the window's state, clicks, and requests.
 //! - [`screens`]: the screens as Rust Native views.
 //! - [`settings`]: the Settings pages and the preferences they show.
+//! - [`typeface`]: the web's fonts, from the token stacks.
 //! - [`words`]: the words no screen may show.
+//! - [`preview`]: the screens only a preview build shows.
 //! - [`qr`]: the code's QR modules.
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
 //! - [`folder`]: choosing a folder, and the order Linux tries choosers in.
@@ -70,6 +72,7 @@ pub mod map_action;
 pub mod migrate;
 pub mod model;
 pub mod notices;
+pub mod preview;
 pub mod qr;
 #[cfg(feature = "app")]
 pub mod route_chat;
@@ -87,14 +90,15 @@ pub mod settings;
 pub mod slide_embeds;
 #[cfg(feature = "app")]
 pub mod slides;
+pub mod typeface;
 #[cfg(feature = "app")]
 pub mod update;
 pub mod words;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod copy_guard_tests;
+#[cfg(test)]
+mod tests;
 
 #[cfg(feature = "app")]
 pub mod chat;

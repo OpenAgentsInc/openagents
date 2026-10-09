@@ -5,13 +5,15 @@
 //! the iOS transcript is checked against, and [`Fonts::draw`] shapes and
 //! rasterizes each line with the face and variations
 //! [`FontSpec`](rust_native::layout::shape::FontSpec) names, so the adapter
-//! paints exactly the outlines it measured. A character Paper Mono lacks is
+//! paints exactly the outlines it measured, in the faces
+//! [`faces`](rust_native::layout::shape::faces) names (Paper Mono unless
+//! the app installed its own). A character those faces lack is
 //! painted from one of this computer's fonts ([`crate::fallback`]), centered
 //! in the width the shaper measured for it.
 
 use crate::canvas::Frame;
 use rust_native::layout::display::{Font, Weight};
-use rust_native::layout::shape::{FACES, FontSpec, ShapingMeasurer, fallback_em};
+use rust_native::layout::shape::{FontSpec, ShapingMeasurer, faces, fallback_em};
 use rust_native::layout::{MeasureRun, Measurer};
 use rust_native::style::{Color, TextAlign};
 use std::collections::HashMap;
@@ -72,7 +74,7 @@ pub struct Fonts {
     measurer: ShapingMeasurer,
     shape: ShapeContext,
     scale: ScaleContext,
-    faces: [FontRef<'static>; FACES.len()],
+    faces: Vec<FontRef<'static>>,
     paragraphs: HashMap<(String, u64, u32, u32), Rc<Paragraph>>,
     paragraph_bytes: usize,
     advances: HashMap<(String, u64), f32>,
@@ -112,7 +114,10 @@ impl Fonts {
             measurer: ShapingMeasurer::new(),
             shape: ShapeContext::new(),
             scale: ScaleContext::new(),
-            faces: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
+            faces: faces()
+                .iter()
+                .map(|data| FontRef::from_index(data, 0).expect("a checked face"))
+                .collect(),
             paragraphs: HashMap::new(),
             paragraph_bytes: 0,
             advances: HashMap::new(),
@@ -492,7 +497,7 @@ impl Fonts {
                 let quarter = ((gx - whole) * 4.0).round() as u8 % 4;
                 let (key_face, face) = match fallback {
                     Some(index) => (
-                        FACES.len() + index,
+                        self.faces.len() + index,
                         crate::fallback::face_for_index(index).unwrap_or(face),
                     ),
                     None => (spec.face, face),

@@ -17,6 +17,12 @@
 //! measured as a platform fallback would roughly draw it: a full em for wide
 //! characters and emoji, else 0.6 em. The ground-truth test in
 //! `shape::tests` checks the breaks against CoreText's for the same fonts.
+//!
+//! An app may instead draw with faces of its own, such as the computer's
+//! system fonts, by calling [`install_faces`] once at start: a face for text
+//! and a face for code. Measuring ([`ShapingMeasurer`]) and painting then
+//! use [`faces`], and [`FontSpec::of`] sends code to the second face and
+//! sets the text face's optical size when it has an `opsz` axis.
 
 use super::display::{Font, FontFamily, Weight};
 use super::measure::{Line, MeasureRun, Measured, Measurer};
@@ -27,18 +33,58 @@ use swash::{FontRef, Metrics};
 /// The bundled faces, by [`FontSpec::face`]: Paper Mono's variable font.
 pub const FACES: [&[u8]; 1] = [paper_mono::VARIABLE];
 
+/// Faces an app installed with [`install_faces`].
+struct Installed {
+    faces: [&'static [u8]; 2],
+    /// Whether each face has an `opsz` axis.
+    optical: [bool; 2],
+}
+
+static INSTALLED: std::sync::OnceLock<Installed> = std::sync::OnceLock::new();
+
+/// The faces this process measures and paints with, by [`FontSpec::face`]:
+/// the bundled [`FACES`], or the text and code faces an app installed.
+#[must_use]
+pub fn faces() -> &'static [&'static [u8]] {
+    INSTALLED
+        .get()
+        .map_or(&FACES[..], |installed| &installed.faces[..])
+}
+
+/// Draws every font in this process with `text` (prose) and `code`
+/// (monospace) instead of the bundled faces. Call once at start, before
+/// the first measurer or painter. Fails when a face is not a font this
+/// shaper reads, or when faces were already installed.
+pub fn install_faces(text: &'static [u8], code: &'static [u8]) -> Result<(), &'static str> {
+    let mut optical = [false; 2];
+    for (index, data) in [text, code].into_iter().enumerate() {
+        let face = FontRef::from_index(data, 0).ok_or("not a font")?;
+        optical[index] = face
+            .variations()
+            .any(|axis| axis.tag() == swash::tag_from_bytes(b"opsz"));
+    }
+    INSTALLED
+        .set(Installed {
+            faces: [text, code],
+            optical,
+        })
+        .map_err(|_| "faces are already installed")
+}
+
 /// Distance between default tab stops, in points.
 pub const TAB_INTERVAL: f64 = 28.0;
 
 /// How to draw a display-list font with the bundled faces.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FontSpec {
-    /// Index into [`FACES`]; always 0, Paper Mono.
+    /// Index into [`faces`]: 0 for text, 1 for code when an app installed
+    /// its own faces.
     pub face: usize,
     pub size: f32,
     /// The `wght` axis value.
     pub weight: f32,
-    /// The `opsz` axis value; zero, because Paper Mono has no such axis.
+    /// The `opsz` axis value: the size, for an installed face with that
+    /// axis; zero otherwise (Paper Mono has none).
     pub optical: f32,
     /// Whether contextual alternates (`calt`) are on.
     pub calt: bool,
@@ -52,14 +98,19 @@ impl FontSpec {
             Weight::Semibold => 600.0,
             Weight::Bold => 700.0,
         };
-        let face = match font.family {
-            FontFamily::PaperMono => 0,
-        };
+        let FontFamily::PaperMono = font.family;
+        // Installed faces: code draws from the second; the bundled face
+        // draws both.
+        let face = usize::from(font.mono && faces().len() > 1);
+        let optical = INSTALLED
+            .get()
+            .filter(|installed| installed.optical[face])
+            .map_or(0.0, |_| font.size);
         Self {
             face,
             size: font.size,
             weight,
-            optical: 0.0,
+            optical,
             calt: !font.mono,
         }
     }
@@ -68,7 +119,7 @@ impl FontSpec {
 /// A [`Measurer`] that shapes with the bundled faces. Keep one per thread.
 pub struct ShapingMeasurer {
     context: ShapeContext,
-    fonts: [FontRef<'static>; FACES.len()],
+    fonts: Vec<FontRef<'static>>,
 }
 
 impl Default for ShapingMeasurer {
@@ -95,7 +146,10 @@ impl ShapingMeasurer {
     pub fn new() -> Self {
         Self {
             context: ShapeContext::new(),
-            fonts: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
+            fonts: faces()
+                .iter()
+                .map(|data| FontRef::from_index(data, 0).expect("a checked face"))
+                .collect(),
         }
     }
 

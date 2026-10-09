@@ -203,6 +203,48 @@ const LIGHT_SYNTAX: rust_native::syntax::Palette = {
         .with(Kind::Comment, token_bytes(LIGHT_TOKENS.content_secondary))
 };
 
+const NOIR_TOKENS: oa_tokens::Palette = oa_tokens::Palette::NOIR;
+
+/// Coder Noir's syntax colors: Noir's intent text roles.
+const NOIR_SYNTAX: rust_native::syntax::Palette = {
+    use rust_native::syntax::Kind;
+    let info = token_bytes(NOIR_TOKENS.info);
+    let discovery = token_bytes(NOIR_TOKENS.discovery);
+    let success = token_bytes(NOIR_TOKENS.success);
+    let warning = token_bytes(NOIR_TOKENS.warning);
+    rust_native::syntax::Palette::plain(token_bytes(NOIR_TOKENS.content))
+        .with(Kind::Keyword, info)
+        .with(Kind::Function, info)
+        .with(Kind::MarkupHeading, info)
+        .with(Kind::MarkupStrong, info)
+        .with(Kind::StringSpecial, discovery)
+        .with(Kind::Escape, discovery)
+        .with(Kind::FunctionBuiltin, discovery)
+        .with(Kind::Macro, discovery)
+        .with(Kind::VariableSpecial, discovery)
+        .with(Kind::Tag, discovery)
+        .with(Kind::MarkupLink, discovery)
+        .with(Kind::MarkupEmphasis, discovery)
+        .with(Kind::String, success)
+        .with(Kind::TypeBuiltin, success)
+        .with(Kind::Constant, success)
+        .with(Kind::MarkupRaw, success)
+        .with(Kind::Number, warning)
+        .with(Kind::Boolean, warning)
+        .with(Kind::Type, warning)
+        .with(Kind::Constructor, warning)
+        .with(Kind::Property, warning)
+        .with(Kind::Attribute, warning)
+        .with(Kind::Label, warning)
+        .with(Kind::MarkupReference, warning)
+        .with(Kind::Invalid, token_bytes(NOIR_TOKENS.danger))
+        .with(Kind::Comment, token_bytes(NOIR_TOKENS.content_secondary))
+};
+
+/// The web's dark ghost wash (`--color-background-primary-ghost-hover`,
+/// `--alpha-12` of the text), the fill of a hovered or current row.
+const NOIR_WASH: Color = token(NOIR_TOKENS.content.with_alpha(31));
+
 /// The dark transcript metrics with the inline-code ink in `color`.
 const fn transcript_inked(color: Color) -> Metrics {
     let mut metrics = TRANSCRIPT;
@@ -286,6 +328,48 @@ impl Visual {
         transcript: transcript_inked(token(LIGHT_TOKENS.accent)),
     };
 
+    /// Coder Noir: the web's dark values from the shared token table, the
+    /// desktop's dark look (#11120, [`use_noir`]).
+    pub const NOIR: Visual = Visual {
+        scheme: Scheme::Dark,
+        canvas: token(NOIR_TOKENS.canvas),
+        sidebar: token(NOIR_TOKENS.surface_subtle),
+        composer: token(NOIR_TOKENS.surface_raised),
+        text: token(NOIR_TOKENS.content),
+        muted: token(NOIR_TOKENS.content_secondary),
+        faint: token(NOIR_TOKENS.content_tertiary),
+        selected: NOIR_WASH,
+        border: token(NOIR_TOKENS.stroke_subtle),
+        composer_border: token(NOIR_TOKENS.stroke),
+        accent: token(NOIR_TOKENS.accent),
+        raised: token(NOIR_TOKENS.surface_raised),
+        panel: token(NOIR_TOKENS.surface_raised),
+        ink: token(NOIR_TOKENS.content),
+        on_text: token(NOIR_TOKENS.accent_on_solid),
+        text_hover: token(NOIR_TOKENS.content_secondary),
+        warning: token(NOIR_TOKENS.warning),
+        diff_add: token(NOIR_TOKENS.success),
+        diff_remove: token(NOIR_TOKENS.danger),
+        diff_add_bg: token(NOIR_TOKENS.success_container),
+        diff_remove_bg: token(NOIR_TOKENS.danger_container),
+        colors: [
+            (ColorRole::Primary, token(NOIR_TOKENS.content)),
+            (ColorRole::Secondary, token(NOIR_TOKENS.content_secondary)),
+            (ColorRole::Tertiary, token(NOIR_TOKENS.content_tertiary)),
+            (ColorRole::Link, token(NOIR_TOKENS.content)),
+            (ColorRole::Bubble, NOIR_WASH),
+            (ColorRole::Surface, token(NOIR_TOKENS.surface)),
+            (ColorRole::Raised, token(NOIR_TOKENS.surface_raised)),
+            (ColorRole::Border, token(NOIR_TOKENS.stroke_subtle)),
+            (
+                ColorRole::InlineCode,
+                token(NOIR_TOKENS.content.with_alpha(31)),
+            ),
+        ],
+        syntax: NOIR_SYNTAX,
+        transcript: transcript_inked(token(NOIR_TOKENS.content)),
+    };
+
     /// The look for `scheme`.
     #[must_use]
     pub const fn of(scheme: Scheme) -> &'static Visual {
@@ -353,10 +437,23 @@ pub fn scoped<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
+/// Whether the dark look is [`Visual::NOIR`] ([`use_noir`]).
+static NOIR_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Paints the dark scheme in [`Visual::NOIR`], the web's dark tokens,
+/// instead of [`Visual::DARK`]. The desktop calls it once at start
+/// (#11120); the phones keep their dark look.
+pub fn use_noir() {
+    NOIR_ACTIVE.store(true, Ordering::Relaxed);
+}
+
 /// The look for the scheme the app paints with.
 #[must_use]
 pub fn current() -> &'static Visual {
-    Visual::of(scheme())
+    match scheme() {
+        Scheme::Dark if NOIR_ACTIVE.load(Ordering::Relaxed) => &Visual::NOIR,
+        scheme => Visual::of(scheme),
+    }
 }
 
 /// `dark` in the dark look and `light` in Coder Light, for a surface's own
@@ -464,6 +561,29 @@ mod tests {
 
     /// The shared views' inks: the dark set is what the phones always
     /// painted, the light set Coder Light's roles.
+    #[test]
+    fn the_noir_look_is_the_webs_dark_tokens() {
+        let resolver = oa_tokens::Resolver::new();
+        let dark = |name: &str| {
+            resolver
+                .color(name, Scheme::Dark)
+                .map(oa_tokens::Rgba::to_8bit)
+                .unwrap_or_else(|| panic!("{name}"))
+        };
+        let rgb = |color: Color| (color.red, color.green, color.blue);
+        for (color, name) in [
+            (Visual::NOIR.canvas, "--color-surface"),
+            (Visual::NOIR.sidebar, "--color-surface-secondary"),
+            (Visual::NOIR.text, "--color-text"),
+            (Visual::NOIR.muted, "--color-text-secondary"),
+            (Visual::NOIR.faint, "--color-text-tertiary"),
+        ] {
+            let token = dark(name);
+            assert_eq!(rgb(color), (token.r, token.g, token.b), "{name}");
+        }
+        assert_eq!(Visual::NOIR.scheme, Scheme::Dark);
+    }
+
     #[test]
     fn the_inks_follow_the_scheme() {
         assert_eq!(Inks::of(Scheme::Dark), &Inks::DARK);
