@@ -32,6 +32,10 @@ A person makes the key; there is no sign-up endpoint for agents.
 OpenAgents has no OAuth sign-in for agents yet
 ([#11084](https://github.com/OpenAgentsInc/openagents/issues/11084)).
 
+Agents can also call the API with no key and pay for each request. Every
+way to find, sign in to, and pay OpenAgents is in
+[For agents](https://openagents.com/docs/api/for-agents.md).
+
 ## Use the key
 
 Send it as a bearer token on every call:
@@ -50,7 +54,9 @@ the key as the API key. See the [quickstart](https://openagents.com/docs/api/qui
 
 - `401`: the key is missing, wrong, or revoked. Check the
   `Authorization` header.
-- `402`: the balance can't cover the request. Top up, then retry.
+- `402`: the balance can't cover the request. Top up, then retry. With
+  no key, `402` means the call can be paid per request: see
+  [Pay per request](https://openagents.com/docs/api/pay-per-request.md).
 - `403`: a limit the key's owner set was reached.
 - `429`: too many requests. Wait for the time in `Retry-After`, then retry.
 

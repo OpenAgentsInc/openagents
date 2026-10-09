@@ -9,6 +9,8 @@ first real payments are the owner's.
 | Document | What it covers |
 | --- | --- |
 | [Central receive, splits, payouts, and the live flow view (design, 2026-10-02)](2026-10-02-central-receive-and-splits.md) | The owner's direction; why the receiver is our own `crates/wallet` node on MoneyDevKit's LSPS4 liquidity and not the MDK treasury container; the architecture; who gets paid and the launch bonus; the ledger, split rules, and reconciliation; payout destinations and rails; the public flow stream, `/stats`, `/live`, and the `routes-live` deck scene; the end-to-end demo; risks; phases; the issues. |
+| [Agent payments: pay any way (design, 2026-10-09)](agent-payments.md) | The owner's direction to support every agent payment protocol (x402, MPP, L402, Cashu, ACP, UCP, AP2, Lightning, Nostr zaps and NWC, card, stablecoins): one payment router in front of the API, one receipt, discovery generated from what is live, identity and budgets, custodial and non-custodial side by side, the plan and issues. |
+| [Non-custodial agent commerce (proposal, PR #11088)](proposal/README.md) | A contributor's proposal, adopted as the merchant-settlement profile for third-party sellers: merchant-hosted x402 receivers, BuyerAttestation and its test vectors, agent ownership and phone approval. |
 | [End-to-end demo, the agent run (2026-10-03)](2026-10-03-end-to-end-demo.md) | `scripts/payments-demo.sh`, what was set up for it (the pay front behind `api.openagents.com`, the relay update, the check plugin), what was verified without owner funds, and the table for the owner's paid run. |
 
 Related: [the OpenAgents API](../api/README.md) (x402 payment, plugin fees),
