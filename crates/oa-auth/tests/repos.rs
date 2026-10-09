@@ -455,7 +455,9 @@ async fn a_502_is_retried_and_hidden_organizations_are_reported() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(names(&body).len(), 29);
     assert_eq!(world.fake.api_calls() - before, 2);
-    // Two 502s in a row are GitHub's problem, said as such.
+    // Two 502s in a row are GitHub's problem, said as such (once the
+    // kept page is past its hour).
+    forget_pages(&world);
     world
         .fake
         .fail("/user/repos", fake::Fault::ServerError(502), 2);
@@ -468,4 +470,187 @@ async fn a_502_is_retried_and_hidden_organizations_are_reported() {
     world.fake.sso_partial();
     let (_, body) = list(&world, &session, 1).await;
     assert_eq!(body["sso_hidden"], true);
+}
+
+/// Step every kept page of this world past the hour it is kept.
+fn forget_pages(world: &World) {
+    oa_auth::repos::age_cached_lists(world.dir.path(), None, oa_auth::cache::KEEP);
+}
+
+/// Make this world's kept pages stale (past five minutes, within the hour).
+fn stale_pages(world: &World) {
+    oa_auth::repos::age_cached_lists(world.dir.path(), None, oa_auth::cache::FRESH);
+}
+
+/// Wait until the fake has answered `count` reads in all.
+async fn reads_reach(world: &World, count: usize) {
+    for _ in 0..400 {
+        if world.fake.api_calls() >= count {
+            // Let the refresh put its answer away.
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!(
+        "the fake reached {} reads, not {count}",
+        world.fake.api_calls()
+    );
+}
+
+/// Many renders of /projects cost one GitHub read per freshness window;
+/// a stale page is served at once while one read refreshes it; past the
+/// hour it is read again.
+#[tokio::test]
+async fn repository_pages_are_read_once_per_five_minutes() {
+    let (world, session) = busy(60).await;
+    let before = world.fake.api_calls();
+    for _ in 0..10 {
+        let (status, body) = list(&world, &session, 1).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(names(&body).len(), 29);
+    }
+    let (status, _) = list(&world, &session, 2).await;
+    assert_eq!(status, 200);
+    assert_eq!(world.fake.api_calls() - before, 2, "one read per page");
+
+    // Stale: served from the cache, with one refresh behind it.
+    world.fake.sso_partial();
+    stale_pages(&world);
+    let at = world.fake.api_calls();
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["sso_hidden"], false, "the kept page, at once");
+    reads_reach(&world, at + 1).await;
+    let (_, body) = list(&world, &session, 1).await;
+    assert_eq!(body["sso_hidden"], true, "the refreshed page");
+    assert_eq!(world.fake.api_calls(), at + 1, "one refresh");
+
+    // GitHub limiting the refresh keeps the stale page.
+    stale_pages(&world);
+    world.fake.fail("/user/repos", fake::Fault::RateLimited, 1);
+    let at = world.fake.api_calls();
+    let (status, _) = list(&world, &session, 1).await;
+    assert_eq!(status, 200);
+    reads_reach(&world, at + 1).await;
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(names(&body).len(), 29);
+
+    // Past the hour it is read before answering, and a limit then shows.
+    forget_pages(&world);
+    world.fake.fail("/user/repos", fake::Fault::RateLimited, 1);
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (429, json!("github_rate_limited"))
+    );
+    let (status, _) = list(&world, &session, 1).await;
+    assert_eq!(status, 200);
+}
+
+/// Adding or removing a project, disconnecting and connecting drop the
+/// account's pages; a GitHub 401 on a refresh drops them too, and the next
+/// listing reads GitHub again.
+#[tokio::test]
+async fn changes_and_a_401_drop_kept_pages() {
+    let (world, session) = busy(40).await;
+    let at = world.fake.api_calls();
+    list(&world, &session, 1).await;
+    list(&world, &session, 1).await;
+    assert_eq!(world.fake.api_calls() - at, 1);
+
+    let (status, body) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/account/projects",
+        json!({"repository": "acme-corp/project-0001"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let id = body["project"]["id"].as_str().unwrap().to_string();
+    let at = world.fake.api_calls();
+    list(&world, &session, 1).await;
+    assert_eq!(world.fake.api_calls() - at, 1, "read again after adding");
+
+    call(
+        &world,
+        "DELETE",
+        &session,
+        &format!("/v1/account/projects/{id}"),
+        json!({}),
+    )
+    .await;
+    let at = world.fake.api_calls();
+    list(&world, &session, 1).await;
+    assert_eq!(world.fake.api_calls() - at, 1, "read again after removing");
+
+    // Another account's pages are its own.
+    let other = sign_in(&world, "octo-local").await;
+    grant(&world, &other, true, "octo-local").await;
+    let (_, theirs) = list(&world, &other, 1).await;
+    assert_eq!(names(&theirs).len(), 3);
+    let at = world.fake.api_calls();
+    list(&world, &session, 1).await;
+    assert_eq!(world.fake.api_calls(), at, "still kept");
+
+    // Revoked on GitHub: the stale page is served once, its refresh gets
+    // the 401, and then the listing says to reconnect.
+    world.fake.revoke("busy-local");
+    stale_pages(&world);
+    let at = world.fake.api_calls();
+    let (status, _) = list(&world, &session, 1).await;
+    assert_eq!(status, 200);
+    reads_reach(&world, at + 1).await;
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (409, json!("github_reconnect"))
+    );
+
+    // Connecting again reads GitHub again.
+    let (status, body) = grant(&world, &session, true, "busy-local").await;
+    assert_eq!(status, 200, "{body}");
+    let at = world.fake.api_calls();
+    let (status, _) = list(&world, &session, 1).await;
+    assert_eq!(status, 200);
+    assert_eq!(world.fake.api_calls() - at, 1);
+
+    // Disconnecting: nothing kept is served.
+    call(
+        &world,
+        "DELETE",
+        &session,
+        "/v1/account/github/grant",
+        json!({}),
+    )
+    .await;
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (409, json!("github_not_connected"))
+    );
+}
+
+/// While the token's hourly budget is nearly spent, kept pages are served
+/// without reading GitHub again.
+#[tokio::test]
+async fn a_nearly_spent_budget_serves_kept_pages() {
+    let (world, session) = busy(40).await;
+    world.fake.limit(world.fake.api_calls() + 50);
+    let (status, _) = list(&world, &session, 1).await;
+    assert_eq!(status, 200);
+    stale_pages(&world);
+    let at = world.fake.api_calls();
+    for _ in 0..5 {
+        let (status, _) = list(&world, &session, 1).await;
+        assert_eq!(status, 200);
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(
+        world.fake.api_calls(),
+        at,
+        "no refresh while the budget is low"
+    );
 }

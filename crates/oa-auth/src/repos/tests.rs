@@ -110,6 +110,8 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
         next: None,
         sso: None,
         rate_limited: false,
+        remaining: None,
+        reset: None,
     };
     assert_eq!(
         checked(dir.path(), "acct_a", revoked).err(),

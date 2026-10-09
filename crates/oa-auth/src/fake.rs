@@ -5,8 +5,13 @@
 //! `/repos/{owner}/{name}` with whole, real-sized repository objects
 //! (private ones only for a token granted `repo`). [`Fake::fail`] makes
 //! reads fail the ways github.com does (rate limits, single sign-on,
-//! organization restrictions, 5xx, an HTML page). Nothing here talks to
-//! github.com.
+//! organization restrictions, 5xx, an HTML page). Reads without a token
+//! see public repositories and their branches
+//! (`/repos/{owner}/{name}/branches[/{branch}]`) under GitHub's anonymous
+//! limit of 60 an hour for the whole server ([`ANONYMOUS_LIMIT`]); reads
+//! with a token get 5,000 ([`Fake::limit`] lowers it). A read naming an
+//! `X-GitHub-Api-Version` GitHub doesn't know is refused with 400, as
+//! GitHub does. Nothing here talks to github.com.
 //!
 //! `GET /login/oauth/authorize` shows a small page listing the fake people
 //! (click one to approve as them) and a Cancel link. Tests skip the page
@@ -103,7 +108,12 @@ struct Inner {
     faults: Vec<(String, Fault, usize, usize)>,
     sso_partial: bool,
     api_calls: usize,
+    anonymous_calls: usize,
+    token_limit: usize,
 }
+
+/// GitHub's hourly limit for reads without a token, per address.
+pub const ANONYMOUS_LIMIT: usize = 60;
 
 /// A running fake GitHub's shared state.
 #[derive(Clone)]
@@ -125,6 +135,8 @@ impl Fake {
             faults: Vec::new(),
             sso_partial: false,
             api_calls: 0,
+            anonymous_calls: 0,
+            token_limit: 5000,
         })))
     }
 
@@ -180,6 +192,18 @@ impl Fake {
         self.0.lock().expect("fake GitHub state").api_calls
     }
 
+    /// How many of those were read without a token.
+    #[must_use]
+    pub fn anonymous_calls(&self) -> usize {
+        self.0.lock().expect("fake GitHub state").anonymous_calls
+    }
+
+    /// Set the hourly limit for reads with a token (`x-ratelimit-limit`;
+    /// `x-ratelimit-remaining` counts down from it).
+    pub fn limit(&self, limit: usize) {
+        self.0.lock().expect("fake GitHub state").token_limit = limit;
+    }
+
     /// The router (mount it at the origin's root).
     pub fn router(&self) -> Router {
         Router::new()
@@ -189,6 +213,8 @@ impl Fake {
             .route("/user/emails", get(emails))
             .route("/user/repos", get(repos))
             .route("/repos/{owner}/{name}", get(repo))
+            .route("/repos/{owner}/{name}/branches", get(branches))
+            .route("/repos/{owner}/{name}/branches/{*branch}", get(branch))
             .layer(axum::middleware::from_fn_with_state(
                 self.clone(),
                 api_layer,
@@ -488,27 +514,115 @@ async fn repos(
     response
 }
 
+/// The repository `owner/name` the caller can see: any public one without
+/// a token, the token holder's visible ones with one. `Err` is the answer
+/// GitHub gives instead (401 for a token it doesn't know, else 404).
+fn reachable(
+    fake: &Fake,
+    headers: &HeaderMap,
+    owner: &str,
+    name: &str,
+) -> Result<Value, Box<Response>> {
+    let full = format!("{owner}/{name}");
+    let found = if headers.contains_key(header::AUTHORIZATION) {
+        let Some((user, scopes)) = holder(fake, headers) else {
+            return Err(Box::new(bad_credentials()));
+        };
+        visible(&user, &scopes)
+            .into_iter()
+            .find(|r| r["full_name"] == full.as_str())
+    } else {
+        let inner = fake.0.lock().expect("fake GitHub state");
+        inner
+            .users
+            .iter()
+            .flat_map(|u| u.repos.iter())
+            .find(|r| r["full_name"] == full.as_str() && !r["private"].as_bool().unwrap_or(false))
+            .cloned()
+    };
+    found.ok_or_else(|| {
+        Box::new(
+            (
+                StatusCode::NOT_FOUND,
+                axum::Json(json!({
+                    "message": "Not Found",
+                    "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository",
+                    "status": "404"
+                })),
+            )
+                .into_response(),
+        )
+    })
+}
+
 async fn repo(
     State(fake): State<Fake>,
     headers: HeaderMap,
     axum::extract::Path((owner, name)): axum::extract::Path<(String, String)>,
 ) -> Response {
-    let Some((user, scopes)) = holder(&fake, &headers) else {
-        return bad_credentials();
-    };
-    let full = format!("{owner}/{name}");
-    match visible(&user, &scopes)
+    match reachable(&fake, &headers, &owner, &name) {
+        Ok(found) => axum::Json(inflate(&found)).into_response(),
+        Err(response) => *response,
+    }
+}
+
+/// A repository's branches: its default branch, then any it names under
+/// `"branches"`, each with a commit sha made from its names.
+fn branch_rows(repo: &Value) -> Vec<Value> {
+    let full = repo["full_name"].as_str().unwrap_or_default();
+    let mut names = vec![
+        repo["default_branch"]
+            .as_str()
+            .unwrap_or("main")
+            .to_string(),
+    ];
+    if let Some(more) = repo["branches"].as_array() {
+        names.extend(more.iter().filter_map(Value::as_str).map(str::to_string));
+    }
+    names
         .into_iter()
-        .find(|r| r["full_name"] == full.as_str())
+        .map(|name| {
+            let sha: String = Sha256::digest(format!("{full}/{name}").as_bytes())[..20]
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            json!({
+                "name": name,
+                "commit": {"sha": sha, "url": format!("https://api.github.com/repos/{full}/commits/{sha}")},
+                "protected": false
+            })
+        })
+        .collect()
+}
+
+async fn branches(
+    State(fake): State<Fake>,
+    headers: HeaderMap,
+    axum::extract::Path((owner, name)): axum::extract::Path<(String, String)>,
+) -> Response {
+    match reachable(&fake, &headers, &owner, &name) {
+        Ok(found) => axum::Json(branch_rows(&found)).into_response(),
+        Err(response) => *response,
+    }
+}
+
+async fn branch(
+    State(fake): State<Fake>,
+    headers: HeaderMap,
+    axum::extract::Path((owner, name, wanted)): axum::extract::Path<(String, String, String)>,
+) -> Response {
+    let found = match reachable(&fake, &headers, &owner, &name) {
+        Ok(found) => found,
+        Err(response) => return *response,
+    };
+    match branch_rows(&found)
+        .into_iter()
+        .find(|b| b["name"] == wanted.as_str())
     {
-        Some(found) => axum::Json(inflate(&found)).into_response(),
+        Some(row) => axum::Json(row).into_response(),
         None => (
             StatusCode::NOT_FOUND,
-            axum::Json(json!({
-                "message": "Not Found",
-                "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository",
-                "status": "404"
-            })),
+            axum::Json(json!({"message": "Branch not found", "status": "404"})),
         )
             .into_response(),
     }
@@ -606,8 +720,9 @@ impl Fault {
     }
 }
 
-/// Every API read: counted, failed when a [`Fault`] is due, and answered
-/// with GitHub's rate-limit headers.
+/// Every API read: counted, refused when it names an API version GitHub
+/// doesn't know, failed when a [`Fault`] is due or the caller's hourly
+/// limit is spent, and answered with GitHub's rate-limit headers.
 async fn api_layer(
     State(fake): State<Fake>,
     request: axum::extract::Request,
@@ -617,10 +732,30 @@ async fn api_layer(
     if !(path.starts_with("/user") || path.starts_with("/repos/")) {
         return next.run(request).await;
     }
-    let (fault, used) = {
+    if let Some(version) = request.headers().get("x-github-api-version")
+        && version.as_bytes() != crate::github::API_VERSION.as_bytes()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({
+                "message": "Unsupported 'X-GitHub-Api-Version' header. The fake GitHub supports 2022-11-28.",
+                "status": "400"
+            })),
+        )
+            .into_response();
+    }
+    let anonymous = !request.headers().contains_key(header::AUTHORIZATION);
+    let (fault, used, limit) = {
         let mut inner = fake.0.lock().expect("fake GitHub state");
         inner.api_calls += 1;
-        let used = inner.api_calls;
+        if anonymous {
+            inner.anonymous_calls += 1;
+        }
+        let (used, limit) = if anonymous {
+            (inner.anonymous_calls, ANONYMOUS_LIMIT)
+        } else {
+            (inner.api_calls - inner.anonymous_calls, inner.token_limit)
+        };
         let mut fault = None;
         for (prefix, due, skip, times) in &mut inner.faults {
             if *times == 0 || !path.starts_with(prefix.as_str()) {
@@ -634,20 +769,51 @@ async fn api_layer(
             }
             break;
         }
-        (fault, used)
+        (fault, used, limit)
     };
+    let reset = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+        + 3600)
+        .to_string();
+    if used > limit {
+        let mut response = if anonymous {
+            (
+                StatusCode::FORBIDDEN,
+                axum::Json(json!({
+                    "message": "API rate limit exceeded for 127.0.0.1. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)",
+                    "documentation_url": "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"
+                })),
+            )
+                .into_response()
+        } else {
+            Fault::RateLimited.response()
+        };
+        for (name, value) in [
+            ("x-ratelimit-limit", limit.to_string()),
+            ("x-ratelimit-remaining", "0".to_string()),
+            ("x-ratelimit-used", limit.to_string()),
+            ("x-ratelimit-reset", reset),
+        ] {
+            if let Ok(value) = axum::http::HeaderValue::from_str(&value) {
+                response.headers_mut().insert(name, value);
+            }
+        }
+        return response;
+    }
     let mut response = match fault {
         Some(fault) => return fault.response(),
         None => next.run(request).await,
     };
     let headers = response.headers_mut();
     for (name, value) in [
-        ("x-ratelimit-limit", "5000".to_string()),
+        ("x-ratelimit-limit", limit.to_string()),
         (
             "x-ratelimit-remaining",
-            5000usize.saturating_sub(used).to_string(),
+            limit.saturating_sub(used).to_string(),
         ),
         ("x-ratelimit-used", used.to_string()),
+        ("x-ratelimit-reset", reset),
         ("x-ratelimit-resource", "core".to_string()),
         ("x-github-media-type", "github.v3; format=json".to_string()),
     ] {

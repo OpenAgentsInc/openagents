@@ -133,13 +133,30 @@ Account-service routes (session bearer), served by the gateway and by
 | `GET /v1/account/github` | `{github: {state: none\|connected\|reconnect, login, private}, projects}` |
 | `POST /v1/account/github/grant` `{code, code_verifier}` | the status |
 | `DELETE /v1/account/github/grant` | the status; the token is forgotten |
-| `GET /v1/account/github/repositories?page=N` | `{repositories, more, sso_hidden}`: one GitHub page of 30, most recently pushed first (pages 1–20); `more` when GitHub's `Link` names a next page; disabled repositories left out, archived ones marked `archived`; `sso_hidden` when GitHub's `X-GitHub-SSO: partial-results` says an organization hid some |
+| `GET /v1/account/github/repositories?page=N` | `{repositories, more, sso_hidden}`: one GitHub page of 30, most recently pushed first (pages 1–20); `more` when GitHub's `Link` names a next page; disabled repositories left out, archived ones marked `archived`; `sso_hidden` when GitHub's `X-GitHub-SSO: partial-results` says an organization hid some; cached per account (below) |
 | `POST /v1/account/github/token` | `{token, private}` for this deployment's web server to read GitHub as the person (`/environments`); never stored there |
 | `POST /v1/account/projects` `{repository}` | `{project}`: id, name, repository id and full name, default branch, private, created time; one per repository |
 | `DELETE /v1/account/projects/{id}` | `{removed}` |
 
-Every GitHub read (`oa_auth::github`) sends `Accept:
-application/vnd.github+json` and `X-GitHub-Api-Version: 2022-11-28`, takes
+Repository pages are cached per account and grant (`oa_auth::cache`,
+#11057): fresh for 5 minutes, kept for an hour and served at once while one
+background read refreshes them; a failed refresh keeps the kept page.
+Connecting, disconnecting, adding or removing a project, and a GitHub 401
+drop the account's pages. While `x-ratelimit-remaining` is under 100, kept
+pages are served without reading GitHub again.
+
+The chat composer's repository and branch pickers read GitHub as the
+signed-in person when they connected GitHub (the token comes from
+`POST /v1/account/github/token` for that request and is not kept), and
+without a token otherwise. Reads without a token share GitHub's 60 an hour
+for the whole server; past it the composer says "GitHub is limiting requests
+without a sign-in. Connect GitHub, or try again later." Branch lists are
+cached the same way, per token digest (or shared when read without one).
+
+Every GitHub read (`oa_auth::github`, the composer, the environments studio)
+sends `Accept: application/vnd.github+json` and `X-GitHub-Api-Version:
+2022-11-28` (`oa_auth::github::API_VERSION`; the fake refuses any other with
+400). `oa_auth::github` takes
 bodies up to 8 MB (a page of 100 whole repositories is about 600 KB), waits
 at most 15 seconds, and tries a dropped connection or a 502/503/504 once more
 after half a second. Errors say what GitHub said, with these codes:

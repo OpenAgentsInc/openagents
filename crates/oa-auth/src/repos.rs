@@ -19,8 +19,11 @@
 //! stores, written whole with a rename under a per-account lock. The
 //! account service's routes call [`answer`].
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
@@ -34,6 +37,7 @@ use tenancy::Accounts;
 use tenancy::accounts::identities::github_principal;
 
 use crate::AuthError;
+use crate::cache::Lists;
 use crate::github::{Api, ApiFault, Github, Secret, Sso};
 use crate::service::CodeRequest;
 
@@ -406,6 +410,7 @@ pub async fn grant(
         });
         Ok(())
     })?;
+    forget(dir, account);
     status(dir, account)
 }
 
@@ -415,6 +420,7 @@ pub fn disconnect(dir: &Path, account: &str) -> Result<Status, RepoError> {
         record.grant = None;
         Ok(())
     })?;
+    forget(dir, account);
     status(dir, account)
 }
 
@@ -428,6 +434,12 @@ pub const MAX_PAGE: u32 = 20;
 /// recently pushed first, and whether GitHub names a page after it (its
 /// `Link: rel="next"`). One call to GitHub, so the page shows quickly; the
 /// next page loads on request.
+///
+/// Pages are cached per account and grant ([`crate::cache`]: fresh for 5
+/// minutes, kept for an hour and served while one read refreshes them).
+/// Connecting, disconnecting, adding or removing a project, and a GitHub
+/// 401 drop the account's pages. While the token's hourly budget is nearly
+/// spent, kept pages are served without reading GitHub again.
 pub async fn repositories(
     dir: &Path,
     github: &Github,
@@ -435,6 +447,29 @@ pub async fn repositories(
     page: u32,
 ) -> Result<Listing, RepoError> {
     let page = page.clamp(1, MAX_PAGE);
+    let grant = current(dir, account)?;
+    let group = (dir.to_path_buf(), account.to_string());
+    let item = (grant.github_id, grant.granted_unix, page);
+    let may_refresh = !budget_low(dir, account);
+    let (github, dir, account) = (github.clone(), dir.to_path_buf(), account.to_string());
+    LISTS
+        .get(
+            group,
+            item,
+            may_refresh,
+            move || async move { read_page(&dir, &github, &account, page).await },
+            RepoError::Unavailable,
+        )
+        .await
+}
+
+/// One page straight from GitHub (no cache).
+async fn read_page(
+    dir: &Path,
+    github: &Github,
+    account: &str,
+    page: u32,
+) -> Result<Listing, RepoError> {
     let (token, _) = token(dir, github, account)?;
     let answer = github
         .api(
@@ -444,6 +479,7 @@ pub async fn repositories(
             ),
         )
         .await?;
+    note_budget(dir, account, &answer);
     let answer = checked(dir, account, answer)?;
     let rows = answer.body.as_array().ok_or(RepoError::BadAnswer)?;
     Ok(Listing {
@@ -453,17 +489,74 @@ pub async fn repositories(
     })
 }
 
+/// Pages by account (the stores directory and account id), then by grant
+/// (GitHub user id and when it was granted) and page.
+type PageCache = Lists<(PathBuf, String), (u64, u64, u32), Listing>;
+
+static LISTS: LazyLock<PageCache> = LazyLock::new(Lists::new);
+
+/// Below this many reads left in the hour, kept pages are served instead
+/// of reading GitHub again.
+const LOW_BUDGET: u64 = 100;
+
+/// The last `x-ratelimit-remaining` and `x-ratelimit-reset` per account.
+static BUDGETS: LazyLock<Mutex<HashMap<(PathBuf, String), (u64, u64)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn budgets() -> std::sync::MutexGuard<'static, HashMap<(PathBuf, String), (u64, u64)>> {
+    BUDGETS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn note_budget(dir: &Path, account: &str, answer: &Api) {
+    if let (Some(remaining), Some(reset)) = (answer.remaining, answer.reset) {
+        let mut budgets = budgets();
+        if budgets.len() >= 4096 {
+            let now = now();
+            budgets.retain(|_, (_, reset)| *reset > now);
+        }
+        budgets.insert((dir.to_path_buf(), account.to_string()), (remaining, reset));
+    }
+}
+
+fn budget_low(dir: &Path, account: &str) -> bool {
+    budgets()
+        .get(&(dir.to_path_buf(), account.to_string()))
+        .is_some_and(|(remaining, reset)| *remaining < LOW_BUDGET && *reset > now())
+}
+
+/// Drop the account's cached pages.
+fn forget(dir: &Path, account: &str) {
+    LISTS.remove(&(dir.to_path_buf(), account.to_string()));
+}
+
+/// Make the account's cached pages `by` older (tests: step past the
+/// freshness window or the hour they are kept without waiting).
+#[doc(hidden)]
+pub fn age_cached_lists(dir: &Path, account: Option<&str>, by: Duration) {
+    LISTS.age_where(by, |(stores, owner)| {
+        stores == dir && account.is_none_or(|account| owner == account)
+    });
+}
+
+/// The account's grant, when it is connected and not revoked.
+fn current(dir: &Path, account: &str) -> Result<Grant, RepoError> {
+    let record = load(dir, account)?;
+    let grant = record.grant.ok_or(RepoError::NotConnected)?;
+    if grant.revoked_unix.is_some() {
+        return Err(RepoError::Reconnect);
+    }
+    Ok(grant)
+}
+
 /// The stored token and whether it reaches private repositories.
 pub(crate) fn token(
     dir: &Path,
     github: &Github,
     account: &str,
 ) -> Result<(Secret, bool), RepoError> {
-    let record = load(dir, account)?;
-    let grant = record.grant.as_ref().ok_or(RepoError::NotConnected)?;
-    if grant.revoked_unix.is_some() {
-        return Err(RepoError::Reconnect);
-    }
+    let grant = current(dir, account)?;
     let token = open(github, account, grant.github_id, &grant.sealed)?;
     Ok((token, grant.private()))
 }
@@ -503,6 +596,7 @@ pub async fn add_project(
         private: found.private,
         created_unix: now(),
     };
+    forget(dir, account);
     mutate(dir, account, |record| {
         if let Some(existing) = record
             .projects
@@ -529,6 +623,7 @@ pub fn remove_project(dir: &Path, account: &str, id: &str) -> Result<(), RepoErr
     if !project_id(id) {
         return Err(RepoError::Invalid);
     }
+    forget(dir, account);
     mutate(dir, account, |record| {
         record.projects.retain(|p| p.id != id);
         Ok(())
@@ -571,6 +666,7 @@ fn checked(dir: &Path, account: &str, answer: Api) -> Result<Api, RepoError> {
             }
             Ok(())
         })?;
+        forget(dir, account);
         return Err(RepoError::Reconnect);
     }
     answered(answer)

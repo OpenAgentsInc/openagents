@@ -13,6 +13,7 @@
 //! - `fake` (feature): an in-process fake GitHub for tests and fixtures.
 //! - `local` (feature): a small account service for local fixtures.
 
+pub mod cache;
 pub mod config;
 pub mod device;
 #[cfg(feature = "fake")]

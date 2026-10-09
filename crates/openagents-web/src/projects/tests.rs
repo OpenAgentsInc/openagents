@@ -585,3 +585,135 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         "{html}"
     );
 }
+
+/// Connect GitHub (public repositories) for a signed-in browser.
+async fn connect_public(browser: &mut Browser, world: &World, login: &str) {
+    let callback = browser
+        .through_github(world, "/auth/github/repos?access=public", login)
+        .await;
+    assert_eq!(callback.status, StatusCode::OK, "{}", callback.body);
+    let next = callback.body[callback.body.find(FINISH).unwrap()..]
+        .split('"')
+        .next()
+        .unwrap()
+        .replace("&amp;", "&");
+    let finished = browser.get(world, &next).await;
+    assert_eq!(finished.status, StatusCode::SEE_OTHER, "{}", finished.body);
+}
+
+/// The sealed composer selection after a pick (`#composer-state`).
+fn composer_state(html: &str) -> String {
+    let from = html
+        .find(r#"id="composer-state""#)
+        .unwrap_or_else(|| panic!("no composer state: {html}"));
+    let rest = &html[from..];
+    let at = rest.find(r#"value=""#).unwrap() + 7;
+    rest[at..at + rest[at..].find('"').unwrap()].to_string()
+}
+
+/// Pick `repository` in the composer: the panel's form, then its post.
+async fn pick(browser: &mut Browser, world: &World, repository: &str) -> Answer {
+    let panel = browser.get(world, "/composer/repository").await;
+    assert_eq!(panel.status, StatusCode::OK, "{}", panel.body);
+    let marker = r#"<form action="/composer/repository""#;
+    let selection = hidden(&panel.body, marker, "selection");
+    let csrf = hidden(&panel.body, marker, "csrf");
+    browser
+        .post(
+            world,
+            "/composer/repository",
+            &[
+                ("selection", &selection),
+                ("csrf", &csrf),
+                ("value", repository),
+            ],
+        )
+        .await
+}
+
+/// The composer reads GitHub as the signed-in person when they connected
+/// it, and without a token otherwise. Reads without a token share one
+/// small hourly limit for the whole server; past it, those visitors are
+/// told so plainly, while connected people are unaffected. Branch lists
+/// are kept, so opening the panel again doesn't read GitHub.
+#[tokio::test]
+async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
+    let world = world().await;
+    let mut visitor = Browser::default();
+    visitor.get(&world, "/").await;
+    let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains("Selection updated."),
+        "{}",
+        picked.body
+    );
+    assert_eq!(world.fake.anonymous_calls(), 2, "repository and branch");
+    let state = composer_state(&picked.body);
+    let branches = format!(
+        "/composer/branch?selection={}",
+        url::form_urlencoded::byte_serialize(state.as_bytes()).collect::<String>()
+    );
+    for _ in 0..5 {
+        let panel = visitor.get(&world, &branches).await;
+        assert!(panel.body.contains(">main<"), "{}", panel.body);
+    }
+    assert_eq!(world.fake.anonymous_calls(), 3, "one branch list read");
+
+    // Spend the shared limit; then visitors without a connection hear why.
+    let mut limited = None;
+    for _ in 0..40 {
+        let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
+        if picked.body.contains(crate::composer::LIMITED_ANONYMOUS) {
+            limited = Some(picked.body);
+            break;
+        }
+    }
+    let limited = limited.expect("the anonymous limit was reached");
+    assert!(!limited.contains("busy"), "{limited}");
+    crate::copy_guard::assert_plain("/composer/repository", &limited);
+    assert!(world.fake.anonymous_calls() > oa_auth::fake::ANONYMOUS_LIMIT);
+    // The kept branch list is still served, stale ones too.
+    let panel = visitor.get(&world, &branches).await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+    crate::composer::age_branch_lists(oa_auth::cache::FRESH);
+    let panel = visitor.get(&world, &branches).await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+
+    // Signed in without GitHub connected: still without a token.
+    let mut quiet = Browser::default();
+    quiet.sign_in(&world, "quiet-local").await;
+    let picked = pick(&mut quiet, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains(crate::composer::LIMITED_ANONYMOUS),
+        "{}",
+        picked.body
+    );
+
+    // Connected: GitHub is read with the person's own access.
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    connect_public(&mut browser, &world, "octo-local").await;
+    let anonymous = world.fake.anonymous_calls();
+    let picked = pick(&mut browser, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains("Selection updated."),
+        "{}",
+        picked.body
+    );
+    let state = composer_state(&picked.body);
+    let panel = browser
+        .get(
+            &world,
+            &format!(
+                "/composer/branch?selection={}",
+                url::form_urlencoded::byte_serialize(state.as_bytes()).collect::<String>()
+            ),
+        )
+        .await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+    assert_eq!(
+        world.fake.anonymous_calls(),
+        anonymous,
+        "none without a token"
+    );
+}

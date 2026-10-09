@@ -25,6 +25,10 @@ use crate::config::GithubCredentials;
 /// ("GitHub isn't answering"); 8 MB leaves room for the largest pages.
 const BODY_MAX: usize = 8 * 1024 * 1024;
 
+/// The `X-GitHub-Api-Version` every OpenAgents GitHub read sends (one
+/// version everywhere; GitHub refuses a version it doesn't know with 400).
+pub const API_VERSION: &str = "2022-11-28";
+
 /// A GitHub OAuth client with its secret.
 #[derive(Clone, Debug)]
 pub struct Github {
@@ -165,7 +169,7 @@ impl Github {
             .get(format!("{base}{path}"))
             .bearer_auth(bearer)
             .header("accept", "application/vnd.github+json")
-            .header("x-github-api-version", "2022-11-28")
+            .header("x-github-api-version", API_VERSION)
             .timeout(limit)
             .send()
             .await
@@ -199,6 +203,7 @@ impl Github {
         });
         let next = text("link").and_then(|value| next_page(value, base));
         let remaining = number("x-ratelimit-remaining");
+        let reset = number("x-ratelimit-reset");
         let retry_after = number("retry-after");
         if response
             .content_length()
@@ -232,6 +237,8 @@ impl Github {
             next,
             sso,
             rate_limited: limited,
+            remaining,
+            reset,
         })
     }
 }
@@ -328,6 +335,10 @@ pub(crate) struct Api {
     pub sso: Option<Sso>,
     /// GitHub said the token is over a rate limit.
     pub rate_limited: bool,
+    /// `x-ratelimit-remaining`: reads left in this hour's budget.
+    pub remaining: Option<u64>,
+    /// `x-ratelimit-reset`: when the budget refills (Unix seconds).
+    pub reset: Option<u64>,
 }
 
 /// GitHub's `/user`, tolerant of any extra fields.
