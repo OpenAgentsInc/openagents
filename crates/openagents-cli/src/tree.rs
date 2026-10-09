@@ -24,6 +24,11 @@ const HOST: &[Declared] = &[
     Declared::screen("spend show", Effect::ReadOnly, "wallet"),
     Declared::computer("adopt", Effect::LocalWrite),
     Declared::computer("adopt detect", Effect::ReadOnly),
+    // Sharing changes this computer's setting, and the host's supervisor
+    // then publishes the pylon's beacons (an offline one when it stops).
+    Declared::computer("share on", Effect::Publishes),
+    Declared::computer("share off", Effect::Publishes),
+    Declared::computer("share status", Effect::ReadOnly),
     Declared::computer("serve", Effect::LongRunning),
 ];
 
@@ -82,7 +87,16 @@ const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const PYLON: &[Declared] = &[
     Declared::computer("whoami", Effect::LocalWrite),
     Declared::computer("serve", Effect::LongRunning),
+    Declared::computer("link", Effect::LocalWrite),
+    Declared::computer("route on", Effect::LocalWrite),
+    Declared::computer("route off", Effect::LocalWrite),
+    Declared::computer("route status", Effect::ReadOnly),
     Declared::computer("ask", Effect::Spends),
+    // Sends known-answer or repeated jobs and publishes signed verdicts
+    // (and, with --award, NIP-XP).
+    Declared::computer("check canary", Effect::Publishes),
+    Declared::computer("check redundant", Effect::Publishes),
+    Declared::computer("league", Effect::LocalWrite),
     Declared::computer("status", Effect::LocalWrite),
     Declared::computer("pool", Effect::Publishes),
     Declared::computer("pool verify", Effect::LocalWrite),

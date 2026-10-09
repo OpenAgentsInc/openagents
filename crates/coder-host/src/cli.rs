@@ -38,7 +38,7 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
   spend request|list|show ...   ask the owner's phone to pay (`openagents host spend help`)
   adopt [--keys DIR]  move a host set up the old way under the desktop app
   adopt detect        report whether there is such a host to move, changing nothing
-  share on|off|status share this computer's model with the pool as a pylon
+  share on|off|status  share this computer's model with the pool as a pylon
                       (`openagents host share help`)
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]

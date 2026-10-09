@@ -54,8 +54,8 @@ Commands:
   link                      Show the owner's NIP-OA link on this pylon's beacons.
       --owner-secret FILE   Mint the link with the owner key in FILE (hex or
                             nsec); the key is read once, never stored.
-      --credential JSON     Store a link minted elsewhere: the auth tag
-                            [\"auth\", owner, \"kind=30200\", signature].
+      --credential JSON     Store a link minted elsewhere: the auth
+                            tag [\"auth\", owner, \"kind=30200\", signature].
       --remove              Remove the link.
   route on|off|status       Send Alice's and the crew's low-risk text jobs (day
                             plans) to the pool, falling back to their own model.

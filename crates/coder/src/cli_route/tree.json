@@ -474,6 +474,101 @@
           ]
         },
         {
+          "name": "share",
+          "children": [
+            {
+              "name": "on",
+              "leaf": {
+                "path": [
+                  "host",
+                  "share",
+                  "on"
+                ],
+                "usage": [
+                  "share on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "share"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "on"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "share this computer's model with the pool as a pylon (`openagents host share help`)",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "off",
+              "leaf": {
+                "path": [
+                  "host",
+                  "share",
+                  "off"
+                ],
+                "usage": [
+                  "share on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "share"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "off"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "share this computer's model with the pool as a pylon (`openagents host share help`)",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "host",
+                  "share",
+                  "status"
+                ],
+                "usage": [
+                  "share on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "share"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "share this computer's model with the pool as a pylon (`openagents host share help`)",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "serve",
           "leaf": {
             "path": [
@@ -28433,10 +28528,130 @@
                 ]
               }
             ],
-            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade).",
+            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade). --dedicated           Ignore this computer's lease table (a box that runs no owner work); otherwise each job takes a background `pylon` lease and the pylon drains while the owner's work needs the computer. --price-msat N        Sell each job for N msat under NIP-X402, with invoices from this computer's Lightning node. --network NAME        The price's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "link",
+          "leaf": {
+            "path": [
+              "pylon",
+              "link"
+            ],
+            "usage": [
+              "link"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "link"
+                  }
+                ]
+              }
+            ],
+            "summary": "Show the owner's NIP-OA link on this pylon's beacons. --owner-secret FILE   Mint the link with the owner key in FILE (hex or nsec); the key is read once, never stored. --credential JSON     Store a link minted elsewhere: the auth tag [\"auth\", owner, \"kind=30200\", signature]. --remove              Remove the link.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "route",
+          "children": [
+            {
+              "name": "on",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "route",
+                  "on"
+                ],
+                "usage": [
+                  "route on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "route"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "on"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send Alice's and the crew's low-risk text jobs (day plans) to the pool, falling back to their own model. --pylon NPUB          Only this pylon (default: the best fresh one). --wait SECS           How long a job waits (default 90).",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "off",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "route",
+                  "off"
+                ],
+                "usage": [
+                  "route on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "route"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "off"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send Alice's and the crew's low-risk text jobs (day plans) to the pool, falling back to their own model. --pylon NPUB          Only this pylon (default: the best fresh one). --wait SECS           How long a job waits (default 90).",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "route",
+                  "status"
+                ],
+                "usage": [
+                  "route on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "route"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send Alice's and the crew's low-risk text jobs (day plans) to the pool, falling back to their own model. --pylon NPUB          Only this pylon (default: the best fresh one). --wait SECS           How long a job waits (default 90).",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         },
         {
           "name": "ask",
@@ -28462,8 +28677,127 @@
                 ]
               }
             ],
-            "summary": "Find a pylon, run one job, and publish a receipt. --pylon NPUB          Use this pylon instead of the best fresh one. --wait SECS           How long to wait for the answer (default 90). --no-receipt          Do not publish a receipt.",
+            "summary": "Find a pylon, run one job, and publish a receipt. Skips pylons a trusted checker failed. --pylon NPUB          Use this pylon instead of the best fresh one. --wait SECS           How long to wait for the answer (default 90). --no-receipt          Do not publish a receipt. --max-msat N          Pay a priced pylon up to N msat for the job, from this computer's wallet (see `openagents x402`); its policy's ceilings also apply. --network NAME        The wallet's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
             "effect": "spends",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "check",
+          "children": [
+            {
+              "name": "canary",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "check",
+                  "canary"
+                ],
+                "usage": [
+                  "check canary --pylon NPUB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "canary"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send the pylon its class's pinned Gym suite of known-answer jobs as the buyer key, and sign a check verdict on each receipt with the checker key. --award               Also award NIP-XP (pylon-check) for a passing canary.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "redundant",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "check",
+                  "redundant"
+                ],
+                "usage": [
+                  "check redundant PROMPT --pylon NPUB --pylon NPUB [--pylon NPUB]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "redundant"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROMPT"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send one prompt to several pylons and sign verdicts from the majority answer.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "league",
+          "leaf": {
+            "path": [
+              "pylon",
+              "league"
+            ],
+            "usage": [
+              "league"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "league"
+                  }
+                ]
+              }
+            ],
+            "summary": "The pylon league: per class, pass rates on the pinned suites, jobs, median time, and cost.",
+            "effect": "local_write",
             "runs_on": "connected_computer"
           }
         },
@@ -28512,7 +28846,7 @@
                 ]
               }
             ],
-            "summary": "Compute a pool aggregate over the last window. --pool SLUG           The pool (default everglade). --minutes N           Window length, 1 to 60 (default 60). --publish             Sign and publish it as the aggregator.",
+            "summary": "Compute a pool aggregate over the last window. --pool SLUG           The pool (default everglade). --minutes N           Window length, 1 to 60 (default 60). --publish             Sign and publish it as the aggregator. --checked             Count the trusted checkers' verdicts and drop pylons they failed from admission.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           },
@@ -28526,7 +28860,7 @@
                   "verify"
                 ],
                 "usage": [
-                  "pool verify --aggregator NPUB"
+                  "pool verify --aggregator NPUB [--checked]"
                 ],
                 "forms": [
                   {
@@ -28544,6 +28878,11 @@
                         "name": "aggregator",
                         "value": "NPUB",
                         "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "checked",
+                        "optional": true
                       }
                     ]
                   }
@@ -28645,6 +28984,50 @@
         },
         {
           "kind": "option",
+          "name": "dedicated",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "price-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "network",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "owner-secret",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential",
+          "value": "JSON",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "remove",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "wait",
           "value": "SECS",
           "open": true,
@@ -28654,6 +29037,20 @@
         {
           "kind": "option",
           "name": "no-receipt",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "award",
           "optional": true,
           "repeated": true
         },
@@ -28673,6 +29070,12 @@
         },
         {
           "kind": "option",
+          "name": "checked",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "aggregator",
           "value": "NPUB",
           "open": true,
@@ -28683,6 +29086,14 @@
           "kind": "option",
           "name": "relay",
           "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "checker",
+          "value": "NPUB",
           "open": true,
           "optional": true,
           "repeated": true
