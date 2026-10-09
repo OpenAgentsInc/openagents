@@ -414,7 +414,10 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|name| name.to_str())
         .unwrap_or("openagents");
     let branch = app.branch.as_deref().unwrap_or("main");
-    let suffix = format!(" / {branch}");
+    let suffix = match &app.account {
+        Some(name) => format!(" / {branch} · {name}"),
+        None => format!(" / {branch}"),
+    };
     let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
     let spans = if suffix_width < area.width {
         vec![

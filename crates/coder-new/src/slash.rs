@@ -20,6 +20,8 @@ pub enum Command {
     Export,
     Resume,
     Brainstorm,
+    Login,
+    Logout,
     Help,
 }
 
@@ -33,6 +35,8 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Export,
         Command::Resume,
         Command::Brainstorm,
+        Command::Login,
+        Command::Logout,
         Command::Help,
     ]
 } else {
@@ -43,6 +47,8 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Export,
         Command::Resume,
         Command::Brainstorm,
+        Command::Login,
+        Command::Logout,
         Command::Help,
     ]
 };
@@ -60,6 +66,8 @@ impl Command {
             Self::Export => "export",
             Self::Resume => "resume",
             Self::Brainstorm => "brainstorm",
+            Self::Login => "login",
+            Self::Logout => "logout",
             Self::Help => "help",
         }
     }
@@ -75,6 +83,8 @@ impl Command {
             Self::Export => "Export this conversation as ATIF",
             Self::Resume => "Resume a saved conversation",
             Self::Brainstorm => "Explicit public profile or reputation lookup",
+            Self::Login => "Sign in to your openagents.com account",
+            Self::Logout => "Sign out of your openagents.com account",
             Self::Help => "Show commands and keys",
         }
     }
@@ -106,7 +116,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
     text.push_str("\n/brainstorm search <public query>  Search public profiles\n/brainstorm rank <hex-or-npub>  Look up raw influence\nBrainstorm sends only explicit queries and public keys to its configured HTTPS origin.");
     text
 }

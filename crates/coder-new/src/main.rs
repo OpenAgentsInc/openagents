@@ -31,6 +31,12 @@ fn main() -> io::Result<()> {
         );
         return Ok(());
     }
+    if let Some(command) = args
+        .first()
+        .filter(|command| matches!(command.as_str(), "login" | "logout"))
+    {
+        return account_command(command, &args[1..]);
+    }
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
@@ -94,6 +100,8 @@ fn main() -> io::Result<()> {
         .clone()
         .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
     {
+        app.account = coder_new::account::signed_in(&store);
+        app.account_dir = Some(store.clone());
         app.attach_session_store(coder_new::sessions::Store::under(&store));
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(&store))
         {
@@ -241,6 +249,28 @@ fn main() -> io::Result<()> {
     result.and(extra_restore)
 }
 
+/// `coder-new login` and `coder-new logout [--state DIR]`.
+fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
+    let dir = match rest {
+        [] => model_access::store::openagents_dir().map(|root| root.join("coder-new")),
+        [flag, dir] if flag == "--state" => Some(dir.into()),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Usage: coder {command} [--state DIR]"),
+            ));
+        }
+    }
+    .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    let mut out = io::stdout();
+    if command == "login" {
+        coder_new::account::login_command(&dir, &mut out)
+    } else {
+        coder_new::account::logout_command(&dir, &mut out)
+    }
+    .map_err(io::Error::other)
+}
+
 fn help() -> String {
     let modes = if DEMO_AVAILABLE {
         "[--live | --demo]"
@@ -259,7 +289,7 @@ fn help() -> String {
         ""
     };
     format!(
-        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--follow ID] [--state DIR] [--in DIR] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--follow ID        Watch a conversation another process holds, such as an agent's; any key takes it over.\n--state DIR        Use DIR as the Coder store instead of ~/.openagents/coder-new.\n--in DIR           Work in DIR.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+        "Coder terminal\n\nUsage: coder login | logout\n       coder {modes} [--plugins | --plugin-settings | --models] [--follow ID] [--state DIR] [--in DIR] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--follow ID        Watch a conversation another process holds, such as an agent's; any key takes it over.\n--state DIR        Use DIR as the Coder store instead of ~/.openagents/coder-new.\n--in DIR           Work in DIR.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\nlogin              Sign in to your openagents.com account with a code you approve on the website.\nlogout             Sign this computer out of it.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
     )
 }
 

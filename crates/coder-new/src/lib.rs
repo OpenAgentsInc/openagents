@@ -1,5 +1,6 @@
 //! A Coder terminal with bundled plugins, live chat, and demo fixtures.
 
+pub mod account;
 pub mod acp_discovery;
 pub mod agents;
 pub mod appearance;
@@ -84,6 +85,11 @@ pub struct App {
     pub delegations: Vec<live::Delegation>,
     pub cwd: Option<std::path::PathBuf>,
     pub branch: Option<String>,
+    /// The signed-in openagents.com account's name (#11045).
+    pub account: Option<String>,
+    /// Where the account sign-in is kept (`~/.openagents/coder-new`).
+    pub account_dir: Option<std::path::PathBuf>,
+    pub(crate) login: Option<account::Login>,
     pub request: Option<live::Request>,
     pub request_id: u64,
     pub checking_key: bool,
@@ -674,6 +680,8 @@ impl App {
             slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
             slash::Command::Brainstorm => self.notice = Some(brainstorm::USAGE.into()),
             slash::Command::Help => self.notice = Some(slash::help()),
+            slash::Command::Login => self.login(),
+            slash::Command::Logout => self.logout(),
         }
     }
 
@@ -1126,6 +1134,7 @@ impl App {
     }
 
     pub fn tick(&mut self) {
+        self.poll_login();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
         self.cursor_blink_frame = self.cursor_blink_frame.wrapping_add(1) % 8;
     }
