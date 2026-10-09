@@ -14,6 +14,7 @@
 
 pub mod account;
 mod agent_ready;
+mod api_alias;
 mod api_keys;
 pub mod ask;
 mod auth;
@@ -111,6 +112,10 @@ pub struct Config {
     /// Without it, `/api/v1/` answers `404`, and the models page shows the
     /// card the gateway's own adapters publish.
     pub inference: Option<Arc<upstream::Upstream>>,
+    /// Staging only (`OPENAGENTS_WEB_API_OPERATOR_SIGNUP=1`): the
+    /// `/api/v1` alias also forwards `POST /v1/accounts` with a bearer, for
+    /// the smoke suite's operator test account ([`api_alias`]).
+    pub api_operator_signup: bool,
     /// The Everglade web build and its pack (`--everglade DIR`), served
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
     /// unavailable.
@@ -171,6 +176,7 @@ impl Config {
             upstream: None,
             pay_upstream: None,
             inference: None,
+            api_operator_signup: false,
             everglade: None,
             bunny: None,
             components_build: None,
@@ -558,10 +564,16 @@ async fn api_proxy(
         .uri()
         .path_and_query()
         .and_then(|path| path.as_str().strip_prefix("/api"))
-        .and_then(|path| path.parse().ok())
+        .and_then(|path| path.parse::<axum::http::Uri>().ok())
     else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    // A public front: only the PUBLIC routes (#11155).
+    let operator =
+        app.config.api_operator_signup && request.headers().contains_key(header::AUTHORIZATION);
+    if !api_alias::forwards(request.method(), path.path(), operator) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     *request.uri_mut() = path;
     request.headers_mut().remove(header::COOKIE);
     upstream.forward(request).await

@@ -205,6 +205,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         println!("Paths this site doesn't own are proxied to {url}");
     }
+    // Staging's smoke suite makes its test account through the alias.
+    config.api_operator_signup =
+        std::env::var("OPENAGENTS_WEB_API_OPERATOR_SIGNUP").is_ok_and(|value| value == "1");
     // The inference gateway: `/api/v1/...` and the API docs' rate card.
     if let Some(url) = inference.filter(|url| !url.is_empty()) {
         config.inference = Some(std::sync::Arc::new(

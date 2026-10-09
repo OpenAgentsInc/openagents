@@ -2937,6 +2937,133 @@ async fn the_api_alias_goes_to_the_gateway_without_cookies() {
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
+/// Every route path the gateway source mounts (string literals that look
+/// like one), with `{param}` segments filled in.
+fn gateway_route_paths() -> Vec<String> {
+    let mut files = vec![];
+    let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../gateway/src")];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    let prefixes = [
+        "/v1/",
+        "/admin",
+        "/dashboard",
+        "/playground",
+        "/healthz",
+        "/join",
+    ];
+    let mut paths = std::collections::BTreeSet::new();
+    for file in files {
+        let text = std::fs::read_to_string(&file).unwrap();
+        for literal in text.split('"').skip(1).step_by(2) {
+            if !prefixes.iter().any(|p| literal.starts_with(p))
+                || literal.contains(' ')
+                || literal.len() > 120
+            {
+                continue;
+            }
+            let path = literal.split('?').next().unwrap();
+            let filled: Vec<String> = path
+                .split('/')
+                .map(|segment| {
+                    if segment.starts_with('{') {
+                        "x1".to_string()
+                    } else {
+                        segment.to_string()
+                    }
+                })
+                .collect();
+            paths.insert(filled.join("/"));
+        }
+    }
+    paths.into_iter().collect()
+}
+
+/// The `/api/v1` alias forwards only the PUBLIC gateway routes (#11155):
+/// every route the gateway mounts is tried with every method, and only the
+/// allowlist reaches the gateway; the rest answer 404.
+#[tokio::test]
+async fn the_api_alias_forwards_only_the_public_gateway_routes() {
+    let paths = gateway_route_paths();
+    for internal in [
+        "/v1/admin/inference/status",
+        "/admin/inference",
+        "/v1/accounts",
+        "/v1/account/github/token",
+        "/v1/sessions/device/lookup",
+        "/v1/sessions/device/decide",
+        "/v1/sessions/device/paired",
+        "/dashboard",
+        "/playground",
+    ] {
+        assert!(
+            paths.iter().any(|p| p == internal),
+            "the scan finds {internal}"
+        );
+    }
+    let root = tempfile::tempdir().unwrap();
+    let (legacy, legacy_hits) = echo_upstream().await;
+    let (gateway, gateway_hits) = echo_upstream().await;
+    let mut config = proxying(root.path(), &legacy);
+    config.inference = Some(Arc::new(upstream::Upstream::new(&gateway).unwrap()));
+    let site = router(config);
+    let mut forwarded = 0;
+    let mut tried: Vec<(String, String)> = paths
+        .iter()
+        .flat_map(|path| {
+            ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                .into_iter()
+                .map(move |m| (m.to_string(), path.clone()))
+        })
+        .collect();
+    tried.extend(
+        crate::api_alias::tests::REFUSED
+            .iter()
+            .chain(crate::api_alias::tests::PUBLIC)
+            .map(|(m, p)| (m.to_string(), p.to_string())),
+    );
+    // Only `/v1/...` is under the alias (`/api/v1/...`); the gateway's
+    // other paths (`/admin`, `/dashboard`, ...) have no way through it.
+    tried.retain(|(_, path)| path.starts_with("/v1/"));
+    for (method, path) in tried {
+        let before = gateway_hits.load(std::sync::atomic::Ordering::SeqCst);
+        let response = site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.as_str())
+                    .uri(format!("/api{path}"))
+                    .header(header::HOST, "openagents.com")
+                    .header(header::AUTHORIZATION, "Bearer oak_1.secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let reached = gateway_hits.load(std::sync::atomic::Ordering::SeqCst) > before;
+        let public = crate::api_alias::forwards(&method.parse().unwrap(), &path, false);
+        assert_eq!(reached, public, "{method} {path}");
+        if public {
+            forwarded += 1;
+        } else {
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method} {path}");
+        }
+    }
+    assert!(
+        forwarded > 20,
+        "public routes still go through ({forwarded})"
+    );
+    assert_eq!(legacy_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
 /// `security.txt` names the security contact and an expiry at least a
 /// month away (RFC 9116), at both the well-known and the legacy path.
 #[tokio::test]
