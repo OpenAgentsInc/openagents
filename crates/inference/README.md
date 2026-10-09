@@ -21,6 +21,11 @@ does I/O. The router and the HTTP routes build on all three.
 | `sse` | `SseDecoder` (bytes in, frames out, split anywhere), `ResponsesDecoder`, `encode_event`, `DONE_FRAME` |
 | `stream` | `Sequencer`, `Accumulator` (events folded into a response), `StreamCheck` (a stream checked against the spec's order) |
 | `chat` | Chat Completions request, reply, and chunk types; translation both ways; `ChunkWriter` (events to chunks), `EventWriter` (chunks to events), `CompletionBuilder` |
+| `session` | The stateful layer (P2): `Sessions::create` (our `resp_` ids, `previous_response_id`, `store`, the hosted tool loop), `Sessions::compact`, `Local` (a WebSocket connection's memory), `Owner` |
+| `store` | Stored responses: `Record`, the `ResponseStore` trait, `MemoryStore`, `DirStore`; sealed, owner-scoped, expiring |
+| `seal` | AES-256-GCM sealing bound to owner and purpose; the key from the environment or a 0600 key file; `random_id` |
+| `ws` | The WebSocket transport's messages: `parse_create`, the `error` envelope, the 60-minute limit |
+| `hosted` | Hosted tools: `openagents:web_search` as a function the model calls, the `WebSearch` trait, the Exa provider |
 | `upstream` | The `Upstream` trait (capabilities, privacy terms, price rows, billed account, `send`) and adapters for Vertex AI (native Gemini, prepaid Google credit), Z.ai (`glm-5.3-flash`, prepaid credit), the Pro door's proxy, OpenRouter, and the Vercel AI Gateway; key lookup (env, mounted file, Secret Manager); Google tokens; the first-token `Gate`; `AttemptMeter`, which reports each attempt as a `meter::Attempt` |
 
 ## Router
@@ -81,6 +86,31 @@ order (`tests/run.rs` covers each rule with stub adapters):
 `run::collect` folds a committed stream into one response for a caller
 that did not ask for a stream.
 
+## Stateful layer
+
+`session::Sessions` sits on `run::Gateway` (`tests/session.rs` covers each
+rule with a stub upstream and a stub search provider):
+
+- Upstreams always get a stateless request: the whole context as items,
+  `store: false`, no `previous_response_id`, compaction items opened.
+- Every lifecycle response carries our id (`resp_` and 32 hex), the
+  request's `previous_response_id` and `store`, and the caller's tools.
+- `previous_response_id` looks in the connection's `Local` memory, then
+  the owner's store; otherwise `400 previous_response_not_found`. A
+  continuation's `function_call_output` must answer an earlier call. A
+  failed continuation evicts its id from `Local`.
+- `store: true` needs a configured store and an owner that is not
+  zero-retention (`400 store_not_allowed`). Records are sealed to owner
+  and id before they are kept, expire after the retention, and delete at
+  once.
+- Compaction returns the user's messages plus a `compaction` item holding
+  the model's summary sealed to the owner; it opens into a developer
+  message, and only for that owner.
+- Hosted web search: the turns stream as one response (one
+  `response.created`, items renumbered, the hosted function's calls
+  hidden, an `openagents:web_search_call` item per search, summed usage and
+  cost, one terminal event).
+
 ## Strict and lenient
 
 - **Strict where the spec is strict.** A known item, part, or event `type`
@@ -132,7 +162,7 @@ has a round-trip test per row.
 | `n` | none | `n > 1` is `400`; `n: 1` is accepted |
 | `stream`, `stream_options.include_usage` | `stream`; `ChatShape.include_usage` | 1:1; usage chunk (no choices) before `[DONE]` |
 | `openagents`, unknown provider fields (`provider`, `top_k`) | `openagents`, `extra` | Passed through |
-| `previous_response_id`, item references, compaction items | none | `400` toward a Chat-only upstream |
+| `previous_response_id`, item references, compaction items | none | The stateful layer resolves the first and opens the last before routing; an item reference is `400` toward a Chat-only upstream |
 | reply `finish_reason` | `status`: `completed` gives `stop` or `tool_calls`; `incomplete` gives `length` or `content_filter`; `failed` gives `error` | 1:1 |
 | reply `usage` (prompt, completion, cached, reasoning) | `usage` | 1:1; the `openagents` cost object rides alongside |
 | several output items | one message: text concatenated, tool calls in order, reasoning text joined | Flattened, order kept |

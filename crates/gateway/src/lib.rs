@@ -55,6 +55,7 @@ pub mod funding;
 mod github_repos;
 pub mod inference_rates;
 pub mod inference_routes;
+pub mod inference_state;
 pub mod inference_status;
 pub mod jobs;
 pub mod money;

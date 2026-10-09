@@ -17,7 +17,7 @@ libc = "0.2"
 openagents-wallet = { path = "../wallet", default-features = false }
 discovery = { path = "../discovery" }
 jev = { path = "../jev" }
-axum = { version = "0.8", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hmac = "0.12.1"
 nostr = { path = "../nostr" }

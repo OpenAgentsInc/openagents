@@ -147,6 +147,10 @@ pub struct ServeState {
     /// The inference router and adapters over that meter, present when
     /// `inference` is configured.
     pub inference: Option<Arc<inference::run::Gateway>>,
+    /// The stateful layer over that router (stored responses, compaction,
+    /// the WebSocket transport, hosted tools), present when `inference`
+    /// is configured.
+    pub sessions: Option<Arc<inference::session::Sessions>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -327,9 +331,17 @@ impl ServeState {
                     inference, meter, upstreams,
                 ))
             });
+        let sessions = match (&config.inference, &gateway) {
+            (Some(inference), Some(gateway)) => Some(Arc::new(
+                crate::inference_state::sessions(inference, gateway.clone(), &config.registry)
+                    .map_err(|error| Trouble::Io(std::io::Error::other(error)))?,
+            )),
+            _ => None,
+        };
         let state = Arc::new(Self {
             meter,
             inference: gateway,
+            sessions,
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),

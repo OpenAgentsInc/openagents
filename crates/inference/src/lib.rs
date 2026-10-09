@@ -22,8 +22,13 @@
 //! - [`upstream`]: the adapters (section 4) for Vertex AI, Z.ai, the Pro
 //!   door, OpenRouter, and the Vercel AI Gateway, behind one
 //!   [`upstream::Upstream`] trait.
+//! - [`session`]: the stateful layer (P2): `previous_response_id`, stored
+//!   responses ([`store`], sealed with [`seal`]), compaction, a WebSocket
+//!   connection's memory ([`ws`] has its messages), and hosted tools
+//!   ([`hosted`]).
 //!
-//! The wire modules do no I/O; [`upstream`] is the only module that does. `docs/inference/gateway.md` is the spec; the
+//! The wire modules do no I/O; [`upstream`], [`hosted`], and [`store`] do.
+//! `docs/inference/gateway.md` is the spec; the
 //! crate README lists what maps 1:1 between the two APIs and what degrades.
 
 mod wire;
@@ -31,6 +36,7 @@ mod wire;
 pub mod chat;
 pub mod error;
 pub mod event;
+pub mod hosted;
 pub mod item;
 pub mod meter;
 pub mod openagents;
@@ -39,9 +45,13 @@ pub mod request;
 pub mod response;
 pub mod router;
 pub mod run;
+pub mod seal;
+pub mod session;
 pub mod sse;
+pub mod store;
 pub mod stream;
 pub mod upstream;
+pub mod ws;
 
 /// The Open Responses specification version these types implement.
 pub const SPEC_VERSION: &str = "2026-04-24";

@@ -48,7 +48,15 @@ pub const RESPONSES: &str = "/v1/responses";
 pub const CHAT: &str = "/v1/chat/completions";
 
 pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
-    vec![(RESPONSES, post(responses)), (CHAT, post(chat))]
+    let mut routes = vec![
+        (
+            RESPONSES,
+            post(responses).get(crate::inference_state::socket),
+        ),
+        (CHAT, post(chat)),
+    ];
+    routes.extend(crate::inference_state::routes());
+    routes
 }
 
 /// The adapters the gateway holds, keys from the environment or mounted
@@ -183,7 +191,7 @@ impl PickClass for JevClass {
 
 static REQUESTS: AtomicU64 = AtomicU64::new(0);
 
-fn request_id() -> String {
+pub(crate) fn request_id() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|span| span.as_micros())
@@ -194,7 +202,7 @@ fn request_id() -> String {
     )
 }
 
-fn error(error: &ApiError, request_id: &str) -> Response {
+pub(crate) fn error(error: &ApiError, request_id: &str) -> Response {
     let status = StatusCode::from_u16(error.kind.status()).unwrap_or(StatusCode::BAD_GATEWAY);
     let mut response = (status, axum::Json(json!({"error": error}))).into_response();
     if let Ok(value) = HeaderValue::from_str(request_id) {
@@ -204,7 +212,7 @@ fn error(error: &ApiError, request_id: &str) -> Response {
 }
 
 /// The service caller, or the refusal.
-fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, ApiError> {
+pub(crate) fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, ApiError> {
     let unauthorized = |message: &str| ApiError::new(ErrorType::Unauthorized, message);
     let Some(config) = &state.config.inference else {
         return Err(ApiError::new(
@@ -258,11 +266,20 @@ fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, ApiError> {
 }
 
 fn headers(response: &mut Response, request_id: &str, routed: &Routed) {
+    route_headers(response, request_id, &routed.model, &routed.upstream);
+}
+
+pub(crate) fn route_headers(
+    response: &mut Response,
+    request_id: &str,
+    model: &str,
+    upstream: &str,
+) {
     let headers = response.headers_mut();
     for (name, value) in [
         ("x-request-id", request_id),
-        ("x-openagents-model", routed.model.as_str()),
-        ("x-openagents-upstream", routed.upstream.as_str()),
+        ("x-openagents-model", model),
+        ("x-openagents-upstream", upstream),
     ] {
         if let Ok(value) = HeaderValue::from_str(value) {
             headers.insert(name, value);
@@ -270,7 +287,10 @@ fn headers(response: &mut Response, request_id: &str, routed: &Routed) {
     }
 }
 
-fn cost_header(response: &mut Response, info: Option<&inference::openagents::ResponseInfo>) {
+pub(crate) fn cost_header(
+    response: &mut Response,
+    info: Option<&inference::openagents::ResponseInfo>,
+) {
     if let Some(cost) = info.and_then(|info| info.cost.as_ref())
         && let Ok(value) = HeaderValue::from_str(&cost.price_usd)
     {
@@ -280,7 +300,7 @@ fn cost_header(response: &mut Response, info: Option<&inference::openagents::Res
     }
 }
 
-fn sse(body: impl futures_util::Stream<Item = String> + Send + 'static) -> Response {
+pub(crate) fn sse(body: impl futures_util::Stream<Item = String> + Send + 'static) -> Response {
     let stream = body.map(|frame| Ok::<_, Infallible>(Bytes::from(frame)));
     let mut response = Response::new(Body::from_stream(stream));
     let headers = response.headers_mut();
@@ -321,34 +341,33 @@ async fn responses(
             );
         }
     };
-    if let Err(refusal) = request.require_stateless() {
-        return error(&refusal, &id);
-    }
-    let gateway = match engine(&state) {
-        Ok(gateway) => gateway.clone(),
+    let sessions = match crate::inference_state::engine(&state) {
+        Ok(sessions) => sessions.clone(),
         Err(refusal) => return error(&refusal, &id),
     };
-    let mut routed = match gateway.run(&request, &caller).await {
-        Ok(routed) => routed,
+    let owner = crate::inference_state::owner(&state, &caller);
+    let stream = request.stream == Some(true);
+    let turn = match sessions.create(request, &owner, &caller, None).await {
+        Ok(turn) => turn,
         Err(refusal) => return error(&refusal, &id),
     };
-    let events = std::mem::replace(&mut routed.events, Box::pin(futures_util::stream::empty()));
-    if request.stream == Some(true) {
-        let frames = events
+    if stream {
+        let frames = turn
+            .events
             .map(|event| encode_event(&event))
             .chain(futures_util::stream::once(async { DONE_FRAME.to_owned() }));
         let mut response = sse(frames);
-        headers(&mut response, &id, &routed);
+        route_headers(&mut response, &id, &turn.model, &turn.upstream);
         return response;
     }
-    let Some(folded) = collect(events).await else {
+    let Some(folded) = collect(turn.events).await else {
         return error(
             &ApiError::new(ErrorType::UpstreamFailed, "The model sent no answer."),
             &id,
         );
     };
     let mut response = axum::Json(&folded).into_response();
-    headers(&mut response, &id, &routed);
+    route_headers(&mut response, &id, &turn.model, &turn.upstream);
     cost_header(&mut response, folded.openagents.as_ref());
     response
 }

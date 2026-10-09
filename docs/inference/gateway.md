@@ -95,8 +95,9 @@ balances, and error shapes. The agent is one more model id there
 | `GET /v1/rates` | The rate card as JSON, one row per model and upstream, with cost, margin, and price. | P1 |
 | `GET /v1/usage/{request_id}` | Tokens, cost, upstream, attempts, and timings for one finished request. | P1 |
 | `GET /v1/key` | The calling key's balance, spend, and the limits its owner set. | P1 |
-| `POST /v1/responses/compact` | Open Responses compaction. | P2 |
-| WebSocket `/v1/responses` | Open Responses WebSocket transport (optional in the spec). | P2 |
+| `POST /v1/responses/compact` | Open Responses compaction. | P2 (built) |
+| WebSocket `/v1/responses` | Open Responses WebSocket transport (optional in the spec). | P2 (built) |
+| `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` | The caller's stored response (`store: true`), read or deleted at once. Not in the spec; OpenAI's shape. | P2 (built) |
 
 ### Open Responses
 
@@ -121,11 +122,12 @@ We implement the specification at version 2026-04-24
   first, so the codec and every adapter accept both.
 - **Tools.** Function tools and `tool_choice` (`auto`, `required`, `none`,
   a named function, and `allowed_tools`, enforced as a hard constraint).
-  Hosted tools (web search and the like) are P2, each as its own prefixed
-  item type.
-- **State.** P1 is stateless, as OpenRouter's Responses route is: a request
-  with `store: true` or `previous_response_id` gets `400 invalid_request`.
-  P2 adds `store: true` with encrypted retention the caller can delete.
+  Hosted tools are P2, each as its own prefixed type: web search is
+  built (see "Stored responses, compaction, WebSocket, hosted tools"
+  below).
+- **State.** P1 was stateless, as OpenRouter's Responses route is. P2 adds
+  `store: true` with encrypted retention the caller can delete, and
+  `previous_response_id` (below).
 - **Errors.** The spec's object (`type`, `code`, `param`, `message`) and
   statuses: `invalid_request` 400, `not_found` 404, `too_many_requests` 429,
   `server_error` and `model_error` 500. Our additions use the same shape:
@@ -138,7 +140,70 @@ We implement the specification at version 2026-04-24
   body.
 - **Compliance.** The acceptance suite (10 HTTP tests, 7 WebSocket tests)
   runs against staging before each release and against production in P1.
-  The WebSocket tests wait for P2.
+  The WebSocket tests' flows pass locally against stub upstreams
+  (`crates/gateway/tests/inference_state.rs`); the suite itself runs
+  against staging once it is deployed.
+
+### Stored responses, compaction, WebSocket, hosted tools
+
+Built for #11071 in `crates/inference/src/session.rs` (with `store.rs`,
+`seal.rs`, `ws.rs`, `hosted.rs`) and mounted by `crates/gateway`
+(`inference_state`). Upstreams never see state: every request leaves the
+gateway as the whole context in `input`, with `store: false` and no
+`previous_response_id`.
+
+- **Ids.** Every response gets our id, `resp_` and 32 hex characters, on
+  every lifecycle event; the upstream's id is not shown.
+- **`store: true` is opt-in per request.** The default is `false`: nothing
+  is kept. A stored response is the response plus the context it answered,
+  sealed with AES-256-GCM to its owner and id, under the gateway's state
+  directory (`inference/responses/<sha256(tenant)>/<id>.json`). It belongs
+  to the tenant whose key made it: another tenant's read, delete, or
+  `previous_response_id` gets "not found". It expires after
+  `inference.store.retention_days` (30 by default) and
+  `DELETE /v1/responses/{id}` removes it at once. Without
+  `inference.store` configured, `store: true` is `400`.
+- **Zero retention.** A tenant in `inference.zero_retention_tenants` keeps
+  nothing with us: `store: true` is `400 store_not_allowed`. Its responses
+  can still be continued on the same WebSocket connection, from that
+  connection's memory, which ends with the connection.
+- **`previous_response_id`** puts the new input after the earlier
+  response's context and output, as the spec orders them. The id is looked
+  up in the connection's memory (WebSocket), then in the owner's stored
+  responses; otherwise `400 previous_response_not_found`. A continuation
+  whose `function_call_output` answers no earlier call is `400`.
+  `instructions` are not carried over (OpenAI's rule).
+- **Compaction.** `POST /v1/responses/compact` (`model` required) asks the
+  model for a summary of the conversation and returns the user's messages
+  plus one `compaction` item whose `encrypted_content` is the summary
+  sealed to the caller's tenant. Sent back as input, the item opens into a
+  developer message holding the summary; for another tenant, or another
+  gateway's key, it is `400 invalid_compaction`. The summary pass is
+  metered and priced like any request.
+- **WebSocket.** `GET /v1/responses` upgraded, with the same key in
+  `Authorization`. Each `response.create` message runs one response, one at
+  a time; events come back one JSON message each; failures come back as
+  `{"type": "error", "status", "error": {"code", "message", "param"}}`.
+  `stream`, `stream_options`, and `background` are refused. The connection
+  remembers its most recent response (so `store: false` turns continue on
+  the same socket), forgets it when a continuation of it fails, and closes
+  after 60 minutes with `websocket_connection_limit_reached`.
+- **Hosted tools.** `{"type": "openagents:web_search"}` in `tools`
+  (`max_results` 1 to 10, default 5). The model sees a function
+  (`openagents_web_search`); when it calls it, the gateway searches, hands
+  back the results, and runs the next model turn, until the model answers
+  without searching or `max_tool_calls` (default 8) is spent. Each search
+  is an `openagents:web_search_call` item (`action.query`, `results` with
+  `title`, `url`, `snippet`); the turns stream as one response with one
+  sequence, summed usage, and a cost that adds the search provider's list
+  price plus the margin. The provider is Exa (`EXA_API_KEY`), unverified
+  for `strict` until `EXA_TERMS_VERIFIED=zero-retention`, so the default
+  `strict` request is refused web search until then. Chat Completions has
+  no hosted tools.
+- **Sealing key.** `INFERENCE_STORE_KEY` (base64 of 32 bytes; the name is
+  `inference.store.key_env`) or its `_FILE`; without either, the gateway
+  makes `inference/seal.key` (mode 0600) in its state directory. Changing
+  the key makes every stored response and compaction item unreadable.
 
 Our extensions follow the spec's rules: optional fields, and prefixed names
 for any new item or event type.
@@ -184,7 +249,7 @@ differently because of which API a caller used.
 | `usage` (prompt, completion, cached, reasoning tokens) | `usage` | 1:1, plus the `openagents` cost object |
 | Reasoning items | not in the format | Degrades: summary text goes in a `reasoning` delta field (OpenRouter's convention); `encrypted_content` is dropped, so a reasoning model cannot carry hidden reasoning across turns |
 | Hosted tools, MCP tools, annotations and citations | not in the format | Degrades: function tools only; citations dropped |
-| `store`, `previous_response_id` | not in the format | Not available; send the whole conversation |
+| `store`, `previous_response_id` | not in the format | Not available on Chat Completions; send the whole conversation (Open Responses has both) |
 | `n` greater than 1, `logprobs` | no equivalent | `n > 1` is `400`; `logprobs` only where the upstream supports it, otherwise `400` |
 | Several output items in one turn | one `message` with `tool_calls` | Flattened, order kept |
 
@@ -398,8 +463,10 @@ or the adapters' published card when it has none; tests hold the page and
   verified is not eligible under `strict`. The Pro door and Z.ai need that
   check before they carry default traffic (section 14).
 - **We keep no prompt or completion text.** Attempt records hold counts and
-  timings. `store: true` (P2) is the only way a response is kept, encrypted,
-  and the caller can delete it.
+  timings. `store: true` (P2, built) is the only way a response is kept:
+  only when the request asks, sealed to its owner, for 30 days unless the
+  caller deletes it first, and never for a zero-retention tenant. A
+  compaction item is the caller's to hold; we keep no copy.
 - **User-key-only mode.** `pay: "mine"` uses only the caller's own keys and
   never falls back to ours: the gateway form of the desktop's "Use my keys
   for everything".
@@ -415,7 +482,7 @@ provider selection, BYOK, errors, and FAQ pages on 2026-10-09.
 | OpenRouter | Us |
 | --- | --- |
 | Chat Completions at `/api/v1/chat/completions` | Match, as the backup surface |
-| Responses API, stateless | Match, as our primary API, held to the Open Responses spec and its acceptance tests; stateful in P2 |
+| Responses API, stateless | Match, as our primary API, held to the Open Responses spec and its acceptance tests; stateful in P2 (built: `store`, `previous_response_id`, compaction, WebSocket) |
 | `model` as `publisher/model`; a `models` fallback list | Match (`openagents.fallbacks`) |
 | `provider`: `order`, `only`, `ignore`, `sort`, `allow_fallbacks`, `max_price` | Match, in `openagents.route` |
 | `provider.zdr`, `data_collection` | Match as one `privacy` level, `strict` by default (opt-in there) |
@@ -432,7 +499,7 @@ provider selection, BYOK, errors, and FAQ pages on 2026-10-09.
 | BYOK at 5% after a monthly allowance | Different: no fee in P1 |
 | Free models with daily request caps | Different: a free tier on free-capacity models; no other caps |
 | App attribution headers and rankings | Leave out for now |
-| Plugins (web search, file parser, response healing) | Leave out; hosted tools come in P2 as Open Responses item types |
+| Plugins (web search, file parser, response healing) | Hosted tools as Open Responses item types instead: web search built in P2 (`openagents:web_search`) |
 | — | Ours only: prepaid Google and Z.ai credit, the Pro door, Pylon providers, a rate card that shows its margin |
 
 ## 11. Public docs
@@ -525,6 +592,12 @@ P0 as built (#11060 to #11064):
 - `scripts/dev/inference-local.sh` runs the gateway, a chat worker on it,
   and the website on one machine.
 
+P2 as built so far:
+
+- #11071: stored responses, `previous_response_id`, compaction, the
+  WebSocket transport, and hosted web search (section 3, "Stored
+  responses, compaction, WebSocket, hosted tools").
+
 Issues, in build order:
 
 | Issue | Piece | Blocked by |
@@ -562,7 +635,7 @@ These are also in the workspace `NEEDS_OWNER.md`.
 | 2 | Rate card currency | Dollars per million tokens, as every upstream prices, with sats beside it; charge in sats from the balance. This refines the OpenAgents API's "prices always in sats" (D15) for the rate card only |
 | 3 | Price of credit-funded models | List price plus margin; run promotions as separate, labeled rows |
 | 4 | BYOK fee | None in P1; revisit if BYOK traffic costs us real money |
-| 5 | Stateful Responses (`store: true`) | Stateless in P1, like OpenRouter; encrypted storage in P2 |
+| 5 | Stateful Responses (`store: true`) | Stateless in P1, like OpenRouter; encrypted storage in P2 (built: opt-in, owner-scoped, 30 days, deletable) |
 | 6 | Code home | New `crates/inference` library, mounted in `crates/gateway` (section 12) |
 | 7 | The private Pro door service | Fold it into an adapter and retire `pro.openagents.com` after P1 |
 | 8 | Credit routes whose data terms are unverified | Keep them out of `strict` until verified, even though it slows credit burn |

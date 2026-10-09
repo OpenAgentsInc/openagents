@@ -229,6 +229,17 @@ pub struct Inference {
     /// (`GET /v1/rates`); without it the card shows dollars only.
     #[serde(default)]
     pub sats_rate: Option<inference::rates::SatsRate>,
+    /// Stored responses (`store: true`): how long they are kept and where
+    /// the sealing key comes from. Absent, `store: true` is refused; the
+    /// key for compaction items still comes from the default variable or
+    /// the key file in the registry directory.
+    #[serde(default)]
+    pub store: Option<inference::store::Config>,
+    /// Tenants that keep nothing with us: `store: true` is refused for
+    /// their keys, and their responses live only in a WebSocket
+    /// connection's memory while it is open.
+    #[serde(default)]
+    pub zero_retention_tenants: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
