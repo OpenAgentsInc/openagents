@@ -62,6 +62,8 @@ pub struct SyncProfile {
     pub total_ms: f64,
 }
 static SLOW: Mutex<Vec<SyncProfile>> = Mutex::new(Vec::new());
+/// Threads that sync one publication's nodes together.
+const SYNC_WORKERS: usize = 16;
 const SLOW_KEPT: usize = 8;
 fn record_sync(mut profile: SyncProfile) {
     profile.unix_ms = std::time::SystemTime::now()
@@ -295,9 +297,9 @@ impl History {
         self.publish(digest, &bytes)?;
         Ok(digest)
     }
-    /// Publishes staged nodes in three passes: write every new node, sync each,
-    /// then rename. One node at a time paid a full journal commit per sync,
-    /// which stalled a battle's commit for 0.6-0.7 s on a busy disk (#10559).
+    /// Publishes staged nodes in three passes: write every new node, sync them
+    /// together, then rename. One node at a time paid a full journal commit
+    /// per sync, which stalled a battle's commit for 0.6-0.7 s (#10559).
     /// A node still becomes visible only after its own bytes are durable.
     fn publish_all(
         &self,
@@ -341,10 +343,23 @@ impl History {
             }
             profile.write_ms = phase.elapsed().as_secs_f64() * 1e3;
             phase = std::time::Instant::now();
-            for (_, _, file) in &written {
-                file.sync_all()
-                    .map_err(|_| "Cannot write and sync reward history node")?;
-            }
+            // Concurrent syncs share journal commits; one at a time, a
+            // 130-node publication spent 0.65 s in 130 separate commits.
+            let workers = written.len().clamp(1, SYNC_WORKERS);
+            let chunk = written.len().div_ceil(workers).max(1);
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = written
+                    .chunks(chunk)
+                    .map(|files| {
+                        scope.spawn(move || files.iter().try_for_each(|(_, _, f)| f.sync_all()))
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| h.join().map_err(|_| ()).and_then(|r| r.map_err(|_| ())))
+                    .collect::<Result<Vec<_>, ()>>()
+            })
+            .map_err(|_| "Cannot write and sync reward history node")?;
             profile.sync_ms = phase.elapsed().as_secs_f64() * 1e3;
             phase = std::time::Instant::now();
             while let Some((pending, path, _)) = written.first() {
