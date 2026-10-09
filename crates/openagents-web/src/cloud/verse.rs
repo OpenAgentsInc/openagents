@@ -5,8 +5,9 @@
 use super::hosts::Binding;
 use super::private::ProtectedFile;
 use super::session::{SessionError, Viewer, now};
+use super::ui;
 use super::{protect, refused, render, service, workspace_shell};
-use crate::{App, layout::escape};
+use crate::App;
 use axum::extract::rejection::QueryRejection;
 use axum::{
     Router,
@@ -17,6 +18,7 @@ use axum::{
 };
 use coder_access::Right;
 use coder_ui::workspace;
+use maud::{Markup, html};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -205,7 +207,7 @@ fn private_rights(binding: &Binding) -> Vec<&'static str> {
     .collect()
 }
 
-fn card(key: &str, label: &str, state: &str, reason: &str) -> Result<String, Response> {
+fn card(key: &str, label: &str, state: &str, reason: &str) -> Result<Markup, Response> {
     render(&workspace::connection_state(
         key,
         label,
@@ -213,7 +215,7 @@ fn card(key: &str, label: &str, state: &str, reason: &str) -> Result<String, Res
         reason,
         super::colors(),
     ))
-    .map(|value| format!("<section class=\"cloud-card\">{value}</section>"))
+    .map(|value| ui::card(ui::native(&value)))
 }
 
 /// The world state for one binding, independent of the other connections.
@@ -261,9 +263,10 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         }
         Err(error) => return refused(error),
     };
-    let mut content = String::from(
-        "<h2>Verse connections</h2><p>World, computer, and private work are separate connections. Joining a world grants no task, terminal, review, typist, or sales right, and the 3D view is never required to submit or supervise work.</p>",
-    );
+    let mut content = vec![html! {
+        h2 { "Verse connections" }
+        p { "World, computer, and private work are separate connections. Joining a world grants no task, terminal, review, typist, or sales right, and the 3D view is never required to submit or supervise work." }
+    }];
     let bindings = app
         .config
         .cloud_hosts
@@ -288,16 +291,13 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             ),
         ] {
             match card(key, label, "Unavailable", reason) {
-                Ok(value) => content.push_str(&value),
+                Ok(value) => content.push(value),
                 Err(response) => return response,
             }
         }
     }
     for binding in bindings {
-        content.push_str(&format!(
-            "<h3>Host connection {}</h3>",
-            escape(binding.id())
-        ));
+        content.push(html! { h3 { "Host connection " (binding.id()) } });
         let (state, reason, joinable) = world_state(binding, &viewer);
         let checked = super::workbench::qualify(binding, &viewer).await;
         let capabilities = binding.capabilities();
@@ -349,37 +349,48 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             ("private-work", "Private work", private),
         ] {
             match card(key, label, state, &reason) {
-                Ok(value) => content.push_str(&value),
+                Ok(value) => content.push(value),
                 Err(response) => return response,
             }
         }
-        let id = escape(binding.id());
+        let id = binding.id();
         let mut actions = Vec::new();
         if joinable {
-            actions.push(format!("<a href=\"/cloud/app/hosts/{id}/verse\">Join</a>"));
+            actions.push((format!("/cloud/app/hosts/{id}/verse"), "Join"));
         }
         if checked.is_ok() {
-            actions.push(format!(
-                "<a href=\"/cloud/app/hosts/{id}/tasks\">Open associated work</a>"
+            actions.push((
+                format!("/cloud/app/hosts/{id}/tasks"),
+                "Open associated work",
             ));
             if super::workbench::assets_ready(&app) && binding.browser_config(&viewer).is_ok() {
-                actions.push(format!(
-                    "<a href=\"/cloud/app/hosts/{id}/workbench\">Open workbench</a>"
-                ));
+                actions.push((format!("/cloud/app/hosts/{id}/workbench"), "Open workbench"));
             }
         }
         if !actions.is_empty() {
-            content.push_str(&format!("<p>{}</p>", actions.join(" · ")));
+            content.push(ui::links(
+                actions.iter().map(|(href, label)| (href.as_str(), *label)),
+            ));
         }
     }
-    content.push_str("<h2>Public worlds</h2><p>These worlds are open without an account. They supply no host, Studio, or private-work connection, and nothing you do there reaches your work.</p><p><a href=\"/grid\">Open Verse</a> · <a href=\"/everglade\">Everglade</a> · <a href=\"/druid\">The Grove</a></p><p>A world station opens the same canonical work reference as this app. Reaching a desk never authorizes or starts a task.</p>");
+    content.push(html! {
+        h2 { "Public worlds" }
+        p { "These worlds are open without an account. They supply no host, Studio, or private-work connection, and nothing you do there reaches your work." }
+        (ui::links([
+            ("/grid", "Open Verse"),
+            ("/everglade", "Everglade"),
+            ("/druid", "The Grove"),
+        ]))
+        p { "A world station opens the same canonical work reference as this app. Reaching a desk never authorizes or starts a task." }
+    });
+    let content = html! { @for part in &content { (part) } };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "verse",
-        Some(&content),
+        Some(&content.into_string()),
         None,
     )
 }
@@ -612,18 +623,23 @@ async fn open(
             Redirect::to(&format!("/cloud/app/hosts/{id}/tasks/{}", resource.id)).into_response(),
         ),
         _ => {
-            let content = format!(
-                "<h2>Associated work</h2><pre>{}</pre><p>This reference needs its own admitted owner viewer. This page offers no action for it.</p><p><a href=\"/cloud/app/hosts/{}/tasks\">Open associated work</a> · <a href=\"/cloud/app/verse\">Verse connections</a></p>",
-                escape(&serde_json::to_string_pretty(&resource).expect("reference serializes")),
-                escape(id)
-            );
+            let tasks = format!("/cloud/app/hosts/{id}/tasks");
+            let content = html! {
+                h2 { "Associated work" }
+                pre { (serde_json::to_string_pretty(&resource).expect("reference serializes")) }
+                p { "This reference needs its own admitted owner viewer. This page offers no action for it." }
+                (ui::links([
+                    (tasks.as_str(), "Open associated work"),
+                    ("/cloud/app/verse", "Verse connections"),
+                ]))
+            };
             workspace_shell(
                 &app,
                 &headers,
                 service,
                 &viewer,
                 "verse",
-                Some(&content),
+                Some(&content.into_string()),
                 None,
             )
         }

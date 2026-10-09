@@ -3,7 +3,7 @@
 use super::hosts::Binding;
 use super::session::{SessionError, Viewer};
 use super::{POLICY, refused, service, workspace_shell};
-use crate::{App, layout::escape};
+use crate::App;
 use axum::extract::rejection::QueryRejection;
 use axum::{
     Router,
@@ -14,6 +14,7 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use coder_access::{Operation, Outcome, task_read::ListQuery};
+use maud::{Markup, html};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -50,37 +51,39 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let mut content = String::from(
-        "<h2>Native workbench</h2><p>Enroll this page as a separate host device, then open an existing native session. Account sign-in grants no terminal access.</p><ul>",
-    );
     let bindings = app
         .config
         .cloud_hosts
         .as_ref()
         .map_or_else(Vec::new, |hosts| hosts.current(&viewer));
-    let mut count = 0;
-    if assets_ready(&app) {
-        for binding in bindings {
-            if binding.browser_config(&viewer).is_ok() {
-                count += 1;
-                content.push_str(&format!(
-                    "<li><a href=\"/cloud/app/hosts/{}/workbench\">Open workbench on {}</a> · <a href=\"/cloud/app/hosts/{}/workbench?sign_in=claude\">Sign in to Claude</a></li>",
-                    escape(binding.id()),
-                    escape(binding.id()),
-                    escape(binding.id())
-                ));
+    let ready: Vec<&str> = if assets_ready(&app) {
+        bindings
+            .iter()
+            .filter(|binding| binding.browser_config(&viewer).is_ok())
+            .map(|binding| binding.id())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let content = html! {
+        h2 { "Native workbench" }
+        p { "Enroll this page as a separate host device, then open an existing native session. Account sign-in grants no terminal access." }
+        ul {
+            @for id in &ready {
+                li {
+                    a href=(format!("/cloud/app/hosts/{id}/workbench")) { "Open workbench on " (id) }
+                    " \u{b7} "
+                    a href=(format!("/cloud/app/hosts/{id}/workbench?sign_in=claude")) { "Sign in to Claude" }
+                }
+            }
+            @if ready.is_empty() {
+                li { "No qualified browser terminal connection is configured for this workspace." }
             }
         }
+        p { "Retail Cloud tasks offer no customer shell." }
+        @if !ready.is_empty() { (claude_sign_in()) }
     }
-    if count == 0 {
-        content.push_str(
-            "<li>No qualified browser terminal connection is configured for this workspace.</li>",
-        );
-    }
-    content.push_str("</ul><p>Retail Cloud tasks offer no customer shell.</p>");
-    if count > 0 {
-        content.push_str(CLAUDE_SIGN_IN);
-    }
+    .into_string();
     workspace_shell(
         &app,
         &headers,
@@ -101,7 +104,12 @@ struct Input {
 }
 
 /// Plain-text engine copy: no logos, and no OpenAgents Claude login form.
-const CLAUDE_SIGN_IN: &str = "<p>A computer with the Claude Code engine runs Claude Code. Sign in to Claude opens a terminal on your computer and runs <code>claude</code>; you finish Anthropic's own sign-in there, with your own plan or API key. OpenAgents never asks for, receives, or stores your Claude login, and it stays only in your computer.</p><p>Each workbench shows whether that computer's Claude Code is signed in, its plan or key type, when the login expires, and any usage-limit reset Claude Code reports, read by running <code>claude auth status</code> inside the computer. Only that status leaves it, and OpenAgents keeps no usage ledger for your plan. When the login is expiring or expired, Renew Claude sign-in opens the same terminal sign-in.</p>";
+fn claude_sign_in() -> Markup {
+    html! {
+        p { "A computer with the Claude Code engine runs Claude Code. Sign in to Claude opens a terminal on your computer and runs " code { "claude" } "; you finish Anthropic's own sign-in there, with your own plan or API key. OpenAgents never asks for, receives, or stores your Claude login, and it stays only in your computer." }
+        p { "Each workbench shows whether that computer's Claude Code is signed in, its plan or key type, when the login expires, and any usage-limit reset Claude Code reports, read by running " code { "claude auth status" } " inside the computer. Only that status leaves it, and OpenAgents keeps no usage ledger for your plan. When the login is expiring or expired, Renew Claude sign-in opens the same terminal sign-in." }
+    }
+}
 
 /// The engine sign-in a workbench page may run: only Claude Code's own
 /// program, from the runtime image, with no arguments.
@@ -207,16 +215,16 @@ async fn host(
     if super::work::authority_value(&current) != super::work::authority_value(&viewer) {
         return refused(SessionError::Conflict);
     }
-    let mut identity = String::new();
+    let mut identity: Vec<Markup> = Vec::new();
     if let Some(encoded) = &input.resource {
         let resource = match reference(encoded) {
             Ok(value) => value,
             Err(error) => return refused(error),
         };
-        identity = format!(
-            "<h3>Original work reference</h3><pre>{}</pre>",
-            escape(&serde_json::to_string_pretty(&resource).expect("reference serializes"))
-        );
+        identity.push(html! {
+            h3 { "Original work reference" }
+            pre { (serde_json::to_string_pretty(&resource).expect("reference serializes")) }
+        });
         if resource.kind == workbench::Kind::Terminal {
             if resource.host
                 != (workbench::Host::Paired {
@@ -236,7 +244,7 @@ async fn host(
             config["terminal"] =
                 serde_json::json!({"generation":resource.generation,"terminal":resource.id});
         } else {
-            identity.push_str("<p>This reference needs its own admitted owner viewer. This terminal page offers no action for it.</p>");
+            identity.push(html! { p { "This reference needs its own admitted owner viewer. This terminal page offers no action for it." } });
         }
     }
     if let Some(engine) = &input.sign_in {
@@ -247,7 +255,7 @@ async fn host(
             Ok(value) => value,
             Err(error) => return refused(error),
         };
-        identity.push_str(CLAUDE_SIGN_IN);
+        identity.push(claude_sign_in());
     }
     if let Some(session) = input.session {
         if session.len() != 64
@@ -267,13 +275,23 @@ async fn host(
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let content = format!(
-        "<h2>Native workbench</h2><p>Host <code>{}</code> · Generation {} · Workspace context <code>{}</code></p><p>A host invitation grants host-wide terminal access under its native rights and expiry. The selected account workspace is navigation context; it does not narrow that grant. This page holds its own device key in memory.</p>{identity}<pre id=\"cloud-workbench-config\" hidden>{}</pre><section id=\"cloud-workbench\" aria-label=\"Granted native workbench\"><p>Starting the shared terminal renderer. Enrollment is required before reading native sessions.</p></section><p>Closing this page detaches the viewer and leaves the host terminal alive. Reconnect requires fresh enrollment and a retained snapshot. Clipboard controls require a gesture. Retail Cloud tasks offer no customer shell.</p>",
-        escape(binding.host()),
-        binding.generation(),
-        escape(binding.workspace()),
-        escape(&config.to_string())
-    );
+    let content = html! {
+        h2 { "Native workbench" }
+        p {
+            "Host " code { (binding.host()) }
+            " \u{b7} Generation " (binding.generation())
+            " \u{b7} Workspace context " code { (binding.workspace()) }
+        }
+        p { "A host invitation grants host-wide terminal access under its native rights and expiry. The selected account workspace is navigation context; it does not narrow that grant. This page holds its own device key in memory." }
+        @for part in &identity { (part) }
+        pre id="cloud-workbench-config" hidden { (config.to_string()) }
+        // The terminal renderer mounts here; it stays a dark panel in both themes.
+        section id="cloud-workbench" aria-label="Granted native workbench" data-theme="dark" {
+            p { "Starting the shared terminal renderer. Enrollment is required before reading native sessions." }
+        }
+        p { "Closing this page detaches the viewer and leaves the host terminal alive. Reconnect requires fresh enrollment and a retained snapshot. Clipboard controls require a gesture. Retail Cloud tasks offer no customer shell." }
+    }
+    .into_string();
     let mut response = workspace_shell(
         &app,
         &headers,
