@@ -66,7 +66,7 @@ const PLUGINS: [Plugin; 8] = [
     Plugin {
         id: "boat-cloud",
         name: "Boat Cloud",
-        description: "Delegate through Boat integrated agents or headless Coder, with retained workspaces and usage.",
+        description: "Delegate through Boat integrated agents or headless Coder, with saved workspaces and usage.",
         enabled: false,
     },
     Plugin {
@@ -149,7 +149,7 @@ pub(super) fn entries() -> Vec<CatalogEntry> {
             "settings.actions",
             "Settings",
             "Settings actions",
-            "Unframed source actions with selection, action role, and disabled admission.",
+            "Unframed source actions with selection, action role, and disabled state.",
             "ui/plugins.rs",
             "action",
             &[
@@ -203,7 +203,7 @@ pub(super) fn entries() -> Vec<CatalogEntry> {
         entry(
             "sessions.row",
             "Sessions",
-            "Retained conversation row",
+            "Saved conversation row",
             "A numbered selected row with bounded age, entry count, ID, and working folder.",
             "ui/resume.rs",
             "render",
@@ -386,7 +386,7 @@ pub(super) fn entries() -> Vec<CatalogEntry> {
             "settings.boat",
             "Settings",
             "Boat Cloud settings",
-            "Integrated or Coder mode, machine size, optional template, named credentials, and retained workspace paths.",
+            "Integrated or Coder mode, machine size, optional template, named credentials, and saved workspace paths.",
             "ui/plugins.rs",
             "cloud_settings",
             &[
@@ -418,7 +418,7 @@ pub(super) fn entries() -> Vec<CatalogEntry> {
             "settings.gce",
             "Settings",
             "GCE Cloud settings",
-            "Fixed Coder runtime and granted pool shape with credential names and retained workspace paths.",
+            "Fixed Coder runtime and granted pool shape with credential names and saved workspace paths.",
             "ui/plugins.rs",
             "cloud_settings",
             &[
@@ -617,8 +617,8 @@ fn source_branch(id: &str, variant: &str) -> String {
         "following" | "scrolled" => "passive follow; stick controls newest-entry tracking without execution authority".into(),
         "pending-takeover" | "acquired" => "follow_key requests takeover; follow_tick acquires only after the holder releases its lease".into(),
         "agent-reclaim" | "busy-reclaim" => "idle holder yields and preserves draft; busy holder finishes its current reply before yielding".into(),
-        "search" | "rank" | "long" | "unreviewed" | "reviewed" if id == "approvals.disclosure" => "render exact recipient and input; confirmation is admitted only after complete review".into(),
-        "confirmed" | "rejected" | "cancelled" | "closed" => "disclosure or picker closes after its explicit answer; inert retained result fixture".into(),
+        "search" | "rank" | "long" | "unreviewed" | "reviewed" if id == "approvals.disclosure" => "render exact recipient and input; confirmation is allowed only after complete review".into(),
+        "confirmed" | "rejected" | "cancelled" | "closed" => "disclosure or picker closes after its explicit answer; inert saved result fixture".into(),
         _ if variant.starts_with("focus-") => format!("focus is {}; keep that native field or action visible after resize", variant.trim_start_matches("focus-")),
         _ if PLUGINS.iter().any(|plugin| plugin.id == variant) => format!("selected plugin is {variant}; render its registered detail branch"),
         _ => format!("{id} renders the {variant} source configuration with synthetic values"),
@@ -700,7 +700,7 @@ fn supporting_sources(id: &str) -> Vec<SourceRef> {
         "sessions.resume" => &[(
             "resume.rs",
             "App::resume",
-            "busy, writer, snapshot, child restoration, and current folder admission",
+            "busy, writer, snapshot, child restoration, and current folder check",
         )],
         "sessions.follow" => &[(
             "resume.rs",
@@ -1891,7 +1891,7 @@ fn brainstorm_settings(state: &FixtureState) -> Node<CatalogIntent> {
         children.push(detail(
             "brainstorm-time",
             "Discovered",
-            format!("{} ms since Unix epoch", get(state, "discovered-at")),
+            format!("{} ms (Unix time)", get(state, "discovered-at")),
             state.width,
         ));
         children.push(text(
@@ -2449,7 +2449,7 @@ fn resume_picker(state: &FixtureState) -> Node<CatalogIntent> {
         "Build the shared Coder components",
         "Review the cloud handoff",
         "Investigate model capability refresh",
-        "Restore the retained conversation",
+        "Restore the saved conversation",
         "Write the release notes",
     ];
     let ages = ["just now", "4m ago", "2h ago", "1d ago", "4d ago"];
@@ -2457,7 +2457,7 @@ fn resume_picker(state: &FixtureState) -> Node<CatalogIntent> {
         let title = if index < titles.len() {
             titles[index].to_string()
         } else {
-            format!("Retained fixture conversation {}", index + 1)
+            format!("Saved fixture conversation {}", index + 1)
         };
         let mut session = choice(
             &format!("resume-session-{index}"),
@@ -2568,7 +2568,7 @@ fn session_row(state: &FixtureState) -> Node<CatalogIntent> {
         _ => "just now",
     };
     let title = if state.variant == "long-title" {
-        "A retained fixture conversation with a title that exceeds the available row width and stays clipped"
+        "A saved fixture conversation with a title that exceeds the available row width and stays clipped"
     } else {
         "Build the shared Coder components"
     };
@@ -2625,7 +2625,7 @@ fn follow_screen(state: &FixtureState) -> Node<CatalogIntent> {
         ),
         text(
             "follow-assistant",
-            "The agent is reviewing model settings and retained conversations.",
+            "The agent is reviewing model settings and saved conversations.",
             SECONDARY,
         ),
         text(
@@ -2653,9 +2653,9 @@ fn follow_screen(state: &FixtureState) -> Node<CatalogIntent> {
     children.push(text(
         "follow-position",
         if flag(state, "stick-to-end") {
-            "Following the newest retained entry"
+            "Following the newest entry"
         } else {
-            "Reviewing earlier retained entries"
+            "Reviewing earlier entries"
         },
         GRAY,
     ));
@@ -2750,7 +2750,7 @@ fn disclosure_input(state: &FixtureState) -> String {
             "long" | "unreviewed" | "reviewed" | "short" | "narrow"
         );
         let query = if long {
-            "Public synthetic component research across model settings, retained conversations, and explicit public lookup review. ".repeat(30)
+            "Public synthetic component research across model settings, saved conversations, and explicit public lookup review. ".repeat(30)
         } else {
             "Public synthetic component research".into()
         };

@@ -1269,7 +1269,7 @@ fn evidence(variant: &str, state: &FixtureState) -> Component {
     let w = usize::from(state.width);
     let mut children = vec![chat::prompt(
         "evidence-prompt",
-        "Review the retained conversation fixture.",
+        "Review the saved conversation fixture.",
         w,
     )];
     if matches!(variant, "pending" | "partial") {
@@ -1293,7 +1293,7 @@ fn evidence(variant: &str, state: &FixtureState) -> Component {
     } else {
         children.push(chat::reply(
             "evidence-reply",
-            "Retained conversation restored with actual served-model attribution.",
+            "Saved conversation restored, showing the model that answered.",
             Some("grok-build"),
             Some(1250),
             w,
@@ -1301,8 +1301,8 @@ fn evidence(variant: &str, state: &FixtureState) -> Component {
     }
     let notice = match variant {
         "child" => "Selected child export: linked to its parent delegation.",
-        "pending" => "Pending command retains its recorded arguments and no result.",
-        "partial" => "Partial reply retained before interruption.",
+        "pending" => "Pending command keeps its arguments and has no result yet.",
+        "partial" => "Partial reply saved before interruption.",
         "redacted" => "Export omits credentials and private values.",
         "validation-error" => "Could not read this ATIF document: invalid trajectory.",
         "restored" => "Resumed conversation. Saved folder differs from the current folder.",
@@ -1713,7 +1713,7 @@ fn demo_child(selected: usize, phase: u8, width: usize) -> Vec<Component> {
             "conversation-audit",
             "state.check",
             "Main and four agents · multiline drafts",
-            "5 independent drafts · cursor, messages, and scroll retained",
+            "5 independent drafts · cursor, messages, and scroll kept",
             "Each conversation keeps its own draft, messages, and scroll position. Switching restores the cursor where you left it.",
             "Exercise a switch away from a multiline draft.",
             "cargo test -p coder-new switching_restores_each_conversations_draft_cursor_messages_and_scroll",

@@ -105,12 +105,9 @@ pub fn session(session: &Session<'_>, palette: Palette) -> View<WorkspaceIntent>
         children.push(text(
             "workspace-standing",
             format!(
-                "Workspace: {} · Role: {} · Membership revision: {}",
+                "Workspace: {} · Role: {}",
                 session.workspace_id.unwrap_or("Unavailable"),
                 session.role.unwrap_or("Unavailable"),
-                session
-                    .members_epoch
-                    .map_or_else(|| "Unavailable".into(), |v| v.to_string()),
             ),
             TextRole::Body,
             palette.text,
@@ -118,17 +115,14 @@ pub fn session(session: &Session<'_>, palette: Palette) -> View<WorkspaceIntent>
     } else {
         children.push(text(
             "workspace-empty",
-            "Choose a workspace to inspect its current connections.",
+            "Choose a workspace to see its connections.",
             TextRole::Status,
             palette.text,
         ));
     }
     children.push(text(
         "session-expiry",
-        format!(
-            "Native session expires at Unix second {}.",
-            session.expires_at
-        ),
+        format!("Signed in until {} (Unix time).", session.expires_at),
         TextRole::Body,
         palette.secondary,
     ));

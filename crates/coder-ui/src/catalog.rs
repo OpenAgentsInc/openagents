@@ -20,8 +20,8 @@ pub struct TranscriptFixtureStats {
 /// Original synthetic records remain addressable without an oversized view.
 pub fn retained_fixture_turn(index: usize) -> Option<(String, String)> {
     (index<LARGE_TRANSCRIPT_TURNS).then(||(
-        format!("Synthetic retained turn {index:05}. Review the shared Rust Native components, preserving their independent presentation, stable keys, and bounded original records."),
-        format!("Synthetic retained reply {index:05}. The shared components preserve selectable original text, actual model attribution, and whole graphemes while projecting a bounded viewport. This record remains available when its display row is outside the current page.")
+        format!("Synthetic saved turn {index:05}. Review the shared Rust Native components, keeping their presentation, stable keys, and records intact."),
+        format!("Synthetic saved reply {index:05}. The shared components keep text selectable, show the model that answered, and keep whole characters in a bounded viewport. You can scroll back to this reply when it is off screen.")
     ))
 }
 

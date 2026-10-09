@@ -106,7 +106,7 @@ fn source(source: Source<'_>, key: &str, palette: Palette) -> Vec<Node<Observati
             "Attempt",
             source.attempt.unwrap_or("Not recorded"),
         ),
-        ("revision", "Displayed revision", source.revision),
+        ("revision", "Revision", source.revision),
     ]
     .into_iter()
     .map(|(suffix, label, value)| {
@@ -168,7 +168,7 @@ pub fn tasks(values: &[Task<'_>], palette: Palette) -> View<ObservationIntent> {
                 ..Style::default()
             },
             element: Element::List {
-                label: "Canonical tasks".into(),
+                label: "Tasks".into(),
                 children: values
                     .iter()
                     .map(|value| task_node(value, palette))
@@ -215,8 +215,7 @@ pub fn file(value: &File<'_>, palette: Palette) -> View<ObservationIntent> {
         [
             ("media", "Media type", value.media_type),
             ("bytes", "Bytes", value.bytes),
-            ("digest", "Digest", value.digest),
-            ("retention", "Retention", value.retention),
+            ("retention", "Kept", value.retention),
         ]
         .into_iter()
         .map(|(suffix, label, value)| {
@@ -230,9 +229,7 @@ pub fn file(value: &File<'_>, palette: Palette) -> View<ObservationIntent> {
     );
     children.push(text(
         format!("{key}:content"),
-        value
-            .content
-            .unwrap_or("Content is not included in this view."),
+        value.content.unwrap_or("Contents not shown."),
         TextRole::Code,
         palette.text,
     ));
@@ -461,7 +458,7 @@ pub fn step(value: &Step<'_>, palette: Palette) -> View<ObservationIntent> {
         if !associated {
             children.push(text(
                 format!("{key}:unassociated-{index}"),
-                format!("Unassociated observation: {result}"),
+                format!("Other result: {result}"),
                 TextRole::Code,
                 palette.text,
             ));
@@ -520,7 +517,7 @@ mod tests {
             "Cleanup: Unknown",
             "Cost: Unknown",
             "Attempt: attempt-2",
-            "Displayed revision: revision-7",
+            "Revision: revision-7",
         ] {
             assert!(value.contains(original));
         }
@@ -582,7 +579,7 @@ mod tests {
         let value = serde_json::to_value(render(&unknown).view()).unwrap();
         assert!(!value.to_string().contains("\"kind\":\"tool\""));
         assert!(value.to_string().contains("Outcome not recorded"));
-        assert!(value.to_string().contains("Unassociated observation"));
+        assert!(value.to_string().contains("Other result"));
         let mut ambiguous = record.clone();
         let call = ambiguous["tool_calls"][0].clone();
         ambiguous["tool_calls"].as_array_mut().unwrap().push(call);

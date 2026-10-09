@@ -188,7 +188,7 @@ fn target(value: Target<'_>, key: &str, palette: Palette) -> Vec<Node<ControlInt
         fact(key, "workspace", "Host workspace", value.workspace, palette),
     ];
     if let Some(task) = value.task {
-        rows.push(fact(key, "task", "Canonical task", task, palette));
+        rows.push(fact(key, "task", "Task", task, palette));
         rows.push(fact(
             key,
             "revision",
@@ -257,7 +257,7 @@ pub fn computer(value: &Host<'_>, palette: Palette) -> View<ControlIntent> {
     let key = value.key;
     let mut rows = vec![text(
         format!("{key}:title"),
-        "Granted computer",
+        "Computer",
         TextRole::Heading,
         palette.heading,
     )];
@@ -273,7 +273,7 @@ pub fn computer(value: &Host<'_>, palette: Palette) -> View<ControlIntent> {
         key,
         palette,
     ));
-    rows.push(fact(key, "route", "Admitted route", value.route, palette));
+    rows.push(fact(key, "route", "Route", value.route, palette));
     rows.push(fact(
         key,
         "version",
@@ -299,7 +299,7 @@ pub fn computer(value: &Host<'_>, palette: Palette) -> View<ControlIntent> {
             rows.push(fact(
                 key,
                 "capacity",
-                "Reported available capacity",
+                "Available capacity",
                 available,
                 palette,
             ));
@@ -319,7 +319,7 @@ pub fn computer(value: &Host<'_>, palette: Palette) -> View<ControlIntent> {
     rows.push(fact(
         key,
         "observed",
-        "Standing read at Unix second",
+        "Last checked (Unix time)",
         &value
             .observed_at
             .map_or_else(|| "Unknown".into(), |value| value.to_string()),
@@ -332,7 +332,7 @@ fn grant_node(value: &Grant<'_>, palette: Palette) -> Node<ControlIntent> {
     let key = value.key;
     let mut rows = vec![text(
         format!("{key}:title"),
-        "Native device grant",
+        "Device access",
         TextRole::Heading,
         palette.heading,
     )];
@@ -351,30 +351,23 @@ fn grant_node(value: &Grant<'_>, palette: Palette) -> Node<ControlIntent> {
     for (suffix, label, value) in [
         ("id", "Grant", value.id),
         ("device", "Device", value.device),
-        ("scope", "Admitted scope", value.scope),
-        ("custody", "Device custody", value.custody),
-        ("consent", "Custody consent", value.consent),
+        ("scope", "Scope", value.scope),
+        ("custody", "Keys held by", value.custody),
+        ("consent", "Consent", value.consent),
     ] {
         rows.push(fact(key, suffix, label, value, palette));
     }
     rows.push(fact(
         key,
-        "epoch",
-        "Revocation epoch",
-        &value.epoch.to_string(),
-        palette,
-    ));
-    rows.push(fact(
-        key,
         "expiry",
-        "Grant expires at Unix second",
+        "Access expires (Unix time)",
         &value.expires_at.to_string(),
         palette,
     ));
     rows.push(fact(
         key,
         "rights",
-        "Issued rights",
+        "Allowed actions",
         &if value.rights.is_empty() {
             "None reported".into()
         } else {
@@ -394,7 +387,7 @@ pub fn enrollment_review(value: &EnrollmentReview<'_>, palette: Palette) -> View
     let rows = vec![
         text(
             format!("{key}:title"),
-            "Review account and host binding",
+            "Review this connection",
             TextRole::Heading,
             palette.heading,
         ),
@@ -415,7 +408,7 @@ pub fn enrollment_review(value: &EnrollmentReview<'_>, palette: Palette) -> View
         ),
         action(
             &format!("{key}:confirm"),
-            "Confirm server custody and this binding",
+            "Confirm and connect",
             value.confirm,
             ControlIntent::ConfirmEnrollment,
             palette,
@@ -434,9 +427,9 @@ pub fn invitation(key: &str, gate: Gate<'_>, palette: Palette) -> View<ControlIn
             ..Style::default()
         },
         element: Element::Field {
-            label: "Native host invitation".into(),
+            label: "Host invitation".into(),
             value: String::new(),
-            placeholder: "Paste an explicitly issued invitation".into(),
+            placeholder: "Paste the invitation".into(),
             secret: true,
             multiline: false,
             enabled: gate.enabled,
@@ -468,7 +461,7 @@ pub fn composer(value: &Composer<'_>, palette: Palette) -> View<ControlIntent> {
         key,
         "engine",
         "Requested engine",
-        value.engine.unwrap_or("Choose an executor"),
+        value.engine.unwrap_or("Choose an engine"),
         palette,
     ));
     rows.push(fact(
@@ -486,9 +479,9 @@ pub fn composer(value: &Composer<'_>, palette: Palette) -> View<ControlIntent> {
             ..Style::default()
         },
         element: Element::Field {
-            label: "Original task request".into(),
+            label: "Task".into(),
             value: String::new(),
-            placeholder: "Describe the work for the selected host and executor".into(),
+            placeholder: "Describe the work".into(),
             secret: false,
             multiline: true,
             enabled: value.enabled,
@@ -511,7 +504,7 @@ pub fn controls(value: &Controls<'_>, palette: Palette) -> View<ControlIntent> {
     let key = value.key;
     let mut rows = vec![text(
         format!("{key}:title"),
-        "Current task controls",
+        "Task controls",
         TextRole::Heading,
         palette.heading,
     )];
@@ -523,17 +516,22 @@ pub fn controls(value: &Controls<'_>, palette: Palette) -> View<ControlIntent> {
         ("cancel", "Cancel task", value.cancel, ControlIntent::Cancel),
         (
             "review",
-            "Review candidate",
+            "Review changes",
             value.review,
             ControlIntent::Review,
         ),
         (
             "publish",
-            "Publish candidate",
+            "Publish changes",
             value.publish,
             ControlIntent::Publish,
         ),
-        ("detach", "Detach view", value.detach, ControlIntent::Detach),
+        (
+            "detach",
+            "Stop watching",
+            value.detach,
+            ControlIntent::Detach,
+        ),
     ] {
         rows.push(action(
             &format!("{key}:{suffix}"),
@@ -543,12 +541,6 @@ pub fn controls(value: &Controls<'_>, palette: Palette) -> View<ControlIntent> {
             palette,
         ));
     }
-    rows.push(text(
-        format!("{key}:stop-evidence"),
-        "Cancellation requests, host stop acknowledgment, and cleanup have separate evidence. Detaching leaves the task under its resident owner's lifecycle.",
-        TextRole::Body,
-        palette.secondary,
-    ));
     View::new_v3("cloud-task-controls", 1, stack(key, rows))
 }
 
@@ -556,15 +548,14 @@ pub fn receipt(value: &Receipt<'_>, palette: Palette) -> View<ControlIntent> {
     let key = value.key;
     let mut rows = vec![text(
         format!("{key}:title"),
-        "Durable request receipt",
+        "Request",
         TextRole::Heading,
         palette.heading,
     )];
     rows.extend(target(value.target, key, palette));
     for (suffix, label, value) in [
-        ("request", "Request identity", value.request),
-        ("digest", "Original request digest", value.request_digest),
-        ("principal", "Native principal", value.principal),
+        ("request", "Request ID", value.request),
+        ("principal", "Requested by", value.principal),
         ("operation", "Requested operation", value.operation),
     ] {
         rows.push(fact(key, suffix, label, value, palette));
@@ -583,18 +574,11 @@ pub fn receipt(value: &Receipt<'_>, palette: Palette) -> View<ControlIntent> {
     ));
     rows.push(text(
         format!("{key}:outcome"),
-        value.outcome.map_or_else(
-            || "Native outcome is not recorded.".into(),
-            Value::to_string,
-        ),
+        value
+            .outcome
+            .map_or_else(|| "No result yet.".into(), Value::to_string),
         TextRole::Code,
         palette.text,
-    ));
-    rows.push(text(
-        format!("{key}:evidence"),
-        "Task execution, checks, recipients, exact candidate, publication, stop acknowledgment, and cleanup retain their own original evidence.",
-        TextRole::Body,
-        palette.secondary,
     ));
     View::new_v3("cloud-request-receipt", 1, stack(key, rows))
 }
@@ -690,8 +674,8 @@ mod tests {
             "Send task",
             "Steer task",
             "Cancel task",
-            "Review candidate",
-            "Publish candidate",
+            "Review changes",
+            "Publish changes",
             "Task revision: 12",
             "Host generation: 7",
         ] {
@@ -721,10 +705,9 @@ mod tests {
         for label in [
             "native-grant-a",
             "Device: device-a",
-            "Revocation epoch: 4",
-            "Grant expires at Unix second: 2000",
-            "Issued rights: Observe",
-            "Custody consent: Pending review",
+            "Access expires (Unix time): 2000",
+            "Allowed actions: Observe",
+            "Consent: Pending review",
             "Explicit server custody",
         ] {
             assert!(json.contains(label));
@@ -783,7 +766,7 @@ mod tests {
         .validate()
         .unwrap();
         let json = serde_json::to_string(view.view()).unwrap();
-        assert!(json.contains("Requested engine: Choose an executor"));
+        assert!(json.contains("Requested engine: Choose an engine"));
         let Element::Stack { children, .. } = &view.view().root.element else {
             panic!("expected composer")
         };

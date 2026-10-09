@@ -213,9 +213,8 @@ fn source(value: Source<'_>, palette: Palette) -> Vec<Node<CoordinationIntent>> 
             &value.generation.to_string(),
         ),
         ("workspace", "Workspace", value.workspace),
-        ("record", "Native record", value.record),
-        ("revision", "Displayed source revision", value.revision),
-        ("source", "Source digest", value.source_digest),
+        ("record", "Record", value.record),
+        ("revision", "Revision", value.revision),
     ]
     .into_iter()
     .map(|(suffix, label, value)| fact(key, suffix, label, value, palette))
@@ -235,7 +234,7 @@ fn goal_node(value: &Goal<'_>, palette: Palette) -> Node<CoordinationIntent> {
             ),
             fact(key, "id", "Goal", value.id, palette),
             fact(key, "state", "Goal state", value.state, palette),
-            list_fact(key, "tasks", "Linked native tasks", value.tasks, palette),
+            list_fact(key, "tasks", "Linked tasks", value.tasks, palette),
             list_fact(key, "blockers", "Goal blockers", value.blockers, palette),
         ],
     )
@@ -261,22 +260,10 @@ fn issue_node(value: &Issue<'_>, palette: Palette) -> Node<CoordinationIntent> {
             &format!("#{}", value.number),
             palette,
         ),
-        fact(key, "state", "Tracker evidence", value.state, palette),
-        fact(
-            key,
-            "status",
-            "Native supervision state",
-            value.status,
-            palette,
-        ),
+        fact(key, "state", "Tracker state", value.state, palette),
+        fact(key, "status", "Status", value.status, palette),
         fact(key, "version", "Issue version", value.version, palette),
-        fact(
-            key,
-            "claim",
-            "Native claim observation",
-            value.claim,
-            palette,
-        ),
+        fact(key, "claim", "Claimed by", value.claim, palette),
         list_fact(key, "blockers", "Issue blockers", value.blockers, palette),
         list_fact(
             key,
@@ -290,7 +277,7 @@ fn issue_node(value: &Issue<'_>, palette: Palette) -> Node<CoordinationIntent> {
         children.push(fact(
             key,
             "dependencies",
-            "Dependency observation",
+            "Dependencies",
             "Unknown",
             palette,
         ));
@@ -299,7 +286,7 @@ fn issue_node(value: &Issue<'_>, palette: Palette) -> Node<CoordinationIntent> {
             children.push(fact(
                 key,
                 &format!("dependency-{index}"),
-                "Declared dependency",
+                "Dependency",
                 &format!(
                     "{} #{} · {}",
                     optional(dependency.repository),
@@ -329,11 +316,12 @@ pub fn project(value: &Project<'_>, palette: Palette) -> View<CoordinationIntent
     children.extend([
         fact(key, "repository", "Repository", value.repository, palette),
         fact(key, "capacity", "Current capacity", value.capacity, palette),
-        fact(key, "review", "Review backpressure", value.review_backpressure, palette),
-        text(
-            format!("{key}:authority"),
-            "Goals and issue dependencies are navigation context. A graph does not start work; the native owner admits each separately reviewed operation.",
-            TextRole::Body, palette.secondary,
+        fact(
+            key,
+            "review",
+            "Review queue",
+            value.review_backpressure,
+            palette,
         ),
     ]);
     children.extend(value.goals.iter().map(|value| goal_node(value, palette)));
@@ -363,11 +351,7 @@ fn execution_facts(
         ),
         ("served-model", "Served model", optional(served_model)),
         ("cost", "Cost", optional(cost)),
-        (
-            "continuation",
-            "Native continuation",
-            optional(continuation),
-        ),
+        ("continuation", "Session", optional(continuation)),
         ("stop", "Stop request", stop_request),
         ("delivery", "Delivery", delivery),
         ("publish", "Publication", publish),
@@ -379,8 +363,8 @@ fn execution_facts(
     children.push(text(
         format!("{key}:usage"),
         usage.map_or_else(
-            || "Original usage: Unknown".into(),
-            |usage| format!("Original usage: {usage}"),
+            || "Usage: Unknown".into(),
+            |usage| format!("Usage: {usage}"),
         ),
         TextRole::Code,
         palette.text,
@@ -393,7 +377,7 @@ fn attempt_node(value: &Attempt<'_>, palette: Palette) -> Node<CoordinationInten
     let mut children = vec![
         text(
             format!("{key}:title"),
-            "Original native attempt",
+            "Earlier attempt",
             TextRole::Heading,
             palette.heading,
         ),
@@ -432,20 +416,7 @@ fn artifact_node(value: &Artifact<'_>, palette: Palette) -> Node<CoordinationInt
                 TextRole::Heading,
                 palette.heading,
             ),
-            fact(
-                key,
-                "digest",
-                "Original artifact digest",
-                value.digest,
-                palette,
-            ),
-            fact(
-                key,
-                "retention",
-                "Artifact retention",
-                value.retention,
-                palette,
-            ),
+            fact(key, "retention", "Kept", value.retention, palette),
             fact(key, "state", "Artifact state", value.state, palette),
         ],
     )
@@ -475,15 +446,9 @@ pub fn job(value: &Job<'_>, palette: Palette) -> View<CoordinationIntent> {
     )];
     children.extend(source(value.source, palette));
     children.extend([
-        fact(key, "state", "Native job state", value.state, palette),
-        fact(key, "executor", "Native executor", value.executor, palette),
-        fact(
-            key,
-            "placement",
-            "Admitted placement",
-            value.placement,
-            palette,
-        ),
+        fact(key, "state", "Status", value.state, palette),
+        fact(key, "executor", "Engine", value.executor, palette),
+        fact(key, "placement", "Runs on", value.placement, palette),
     ]);
     children.extend(execution_facts(
         key,
@@ -510,11 +475,6 @@ pub fn job(value: &Job<'_>, palette: Palette) -> View<CoordinationIntent> {
             .iter()
             .map(|value| artifact_node(value, palette)),
     );
-    children.push(text(
-        format!("{key}:evidence"),
-        "Job completion, stop requests, delivery, publication, artifact retention, and cleanup retain separate native evidence. Missing cost remains unknown.",
-        TextRole::Body, palette.secondary,
-    ));
     View::new_v3("operator-job", 1, stack(key, children))
 }
 
@@ -524,43 +484,38 @@ pub fn controls(value: &Controls<'_>, palette: Palette) -> View<CoordinationInte
     for (suffix, label, gate, intent) in [
         (
             "submit",
-            "Review operator submission",
+            "Review submission",
             value.submission,
             CoordinationIntent::ReviewSubmission,
         ),
         (
             "continue",
-            "Review native continuation",
+            "Review next turn",
             value.continuation,
             CoordinationIntent::ContinueJob,
         ),
-        (
-            "stop",
-            "Request native stop",
-            value.stop,
-            CoordinationIntent::RequestStop,
-        ),
+        ("stop", "Stop", value.stop, CoordinationIntent::RequestStop),
         (
             "review",
-            "Review exact candidate",
+            "Review changes",
             value.review,
             CoordinationIntent::ReviewCandidate,
         ),
         (
             "apply",
-            "Apply exact artifacts",
+            "Apply changes",
             value.apply,
             CoordinationIntent::ApplyArtifacts,
         ),
         (
             "publish",
-            "Publish exact candidate",
+            "Publish changes",
             value.publish,
             CoordinationIntent::PublishCandidate,
         ),
         (
             "detach",
-            "Detach observation",
+            "Stop watching",
             value.detach,
             CoordinationIntent::Detach,
         ),
@@ -665,9 +620,7 @@ mod tests {
             "org/repository #12 · Unknown",
             "Worktree ownership: Unknown",
             "Current capacity: Unknown",
-            "Review backpressure: Review lane full",
-            "original-source-digest",
-            "A graph does not start work",
+            "Review queue: Review lane full",
         ] {
             assert!(json.contains(label), "{label}");
         }
@@ -701,7 +654,7 @@ mod tests {
         .unwrap();
         let json = serde_json::to_string(view.view()).unwrap();
         for label in [
-            "Native job state: Completed",
+            "Status: Completed",
             "Requested model: requested-model",
             "Served model: Unknown",
             "Cost: Unknown",
@@ -768,9 +721,8 @@ mod tests {
             "Attempt state: Failed",
             "Attempt executor: Original executor",
             "Served model: served",
-            "Native continuation: original-session",
-            "Original artifact digest: original-digest",
-            "Artifact retention: Retained by native job owner",
+            "Session: original-session",
+            "Kept: Retained by native job owner",
             "Cleanup: Incomplete",
         ] {
             assert!(json.contains(label), "{label}");
