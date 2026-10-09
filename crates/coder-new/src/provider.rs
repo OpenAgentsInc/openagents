@@ -237,6 +237,22 @@ impl Provider {
         {
             history.push(json!({"role":"system","content":standing}));
         }
+        // AGENTS.md/CLAUDE.md and saved memory, read fresh each turn (#11176).
+        if let Some(context) = execution
+            .memory
+            .as_ref()
+            .map(|memory| {
+                memory.context(
+                    definitions
+                        .iter()
+                        .any(|tool| tool["function"]["name"] == "remember"),
+                    crate::memory::PROVIDER_BUDGET,
+                )
+            })
+            .filter(|text| !text.trim().is_empty())
+        {
+            history.push(json!({"role":"system","content":context}));
+        }
         if !definitions.is_empty() {
             history.push(json!({"role":"system","content":execution.instructions()}));
         }
@@ -1147,6 +1163,7 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            memory: None,
         }
     }
 
@@ -2317,5 +2334,85 @@ mod tests {
         assert!(error.contains("429"));
         assert!(!error.contains(FIXTURE_TOKEN));
         server.join().unwrap();
+    }
+
+    /// #11176: a repository's AGENTS.md reaches the model as a system
+    /// message, a `remember` call saves a note, and the next session's
+    /// first request carries that note.
+    #[test]
+    fn instructions_and_a_remembered_note_reach_the_next_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().canonicalize().unwrap();
+        let repo = home.join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join("AGENTS.md"), "Sign every reply with -- fixture.").unwrap();
+        let memory =
+            crate::memory::Memory::at(home.join("memory"), None, Some(home.clone()), &repo);
+        let mut settings = jev_settings("http://127.0.0.1:9".into(), None);
+        settings.jev_enabled = false;
+        settings.cwd = repo.clone();
+        settings.memory = Some(memory.clone());
+        let call = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"fixture/first","choices":[{"delta":{"tool_calls":[{"index":0,"id":"save","function":{"name":"remember","arguments":json!({"name":"Favorite color","type":"user","body":"The user's favorite color is teal."}).to_string()}}]},"finish_reason":"tool_calls"}]})
+        );
+        let done = |text: &str| {
+            format!(
+                "data: {}\n\ndata: [DONE]\n\n",
+                json!({"model":"fixture/first","choices":[{"delta":{"content":text},"finish_reason":"stop"}]})
+            )
+        };
+        let (base, server) = sequence(vec![
+            call,
+            done("Saved. -- fixture"),
+            done("Teal. -- fixture"),
+        ]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        for prompt in [
+            "Remember my favorite color is teal.",
+            "What is my favorite color?",
+        ] {
+            runtime()
+                .block_on(provider.chat_with_plugins(
+                    "openrouter/free",
+                    &crate::models::GenerationOptions::default(),
+                    vec![Message::user(prompt)],
+                    &settings,
+                    &mut |_| {},
+                    &mut |_| {},
+                    &mut |_| {},
+                    &Arc::new(AtomicBool::new(false)),
+                ))
+                .unwrap();
+        }
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 3);
+        let system = |request: &Value| -> String {
+            request["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|message| message["role"] == "system")
+                .filter_map(|message| message["content"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let first = system(&requests[0]);
+        assert!(first.contains("Sign every reply with -- fixture."));
+        assert!(!first.contains("teal"));
+        assert!(
+            requests[0]["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool["function"]["name"] == "remember")
+        );
+        assert_eq!(
+            memory.recall("favorite color").unwrap().body,
+            "The user's favorite color is teal."
+        );
+        let next = system(&requests[2]);
+        assert!(next.contains("Favorite color (user)"));
+        assert!(next.contains("The user's favorite color is teal."));
     }
 }

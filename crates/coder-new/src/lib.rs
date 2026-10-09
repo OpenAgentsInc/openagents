@@ -23,6 +23,7 @@ mod demo;
 pub mod jev_plugin;
 pub mod live;
 pub mod login_choice;
+pub mod memory;
 pub mod model_catalog;
 pub mod models;
 #[cfg(unix)]
@@ -746,7 +747,34 @@ impl App {
             slash::Command::Login => self.login(),
             slash::Command::Logout => self.logout(),
             slash::Command::Sync => self.sync_command(""),
+            slash::Command::Memory => self.memory_command(""),
         }
+    }
+
+    /// `/memory` lists saved notes; `/memory forget NAME` deletes one (#11176).
+    fn memory_command(&mut self, argument: &str) {
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let Some(memory) = memory::Memory::discover(&cwd) else {
+            self.notice = Some("Memory is off on this computer (OPENAGENTS_MEMORY=off).".into());
+            return;
+        };
+        let argument = argument.trim();
+        self.notice = Some(if argument.is_empty() {
+            memory.listing()
+        } else if let Some(name) = argument
+            .strip_prefix("forget ")
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            match memory.forget(name, None) {
+                Ok(entry) => format!("Forgot {}.", entry.name),
+                Err(error) => error,
+            }
+        } else {
+            "Use /memory to list what Coder remembers, or /memory forget NAME.".into()
+        });
     }
 
     fn export(&mut self, path: Option<&std::path::Path>) {
@@ -1756,6 +1784,18 @@ impl App {
                             .map(str::to_owned)
                         {
                             self.sync_command(&argument);
+                            self.draft = Draft::default();
+                            self.composer = Default::default();
+                            self.composer_history.reset();
+                        } else if let Some(argument) = self
+                            .draft
+                            .text
+                            .trim()
+                            .strip_prefix("/memory ")
+                            .map(str::to_owned)
+                        {
+                            self.record_prompt();
+                            self.memory_command(&argument);
                             self.draft = Draft::default();
                             self.composer = Default::default();
                             self.composer_history.reset();

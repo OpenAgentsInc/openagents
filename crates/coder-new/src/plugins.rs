@@ -426,6 +426,7 @@ impl Plugins {
         &self,
         cwd: std::path::PathBuf,
     ) -> crate::plugin_tools::ExecutionSettings {
+        let memory = crate::memory::Memory::discover(&cwd);
         crate::plugin_tools::ExecutionSettings {
             prompt_inbox: None,
             boat: crate::cloud_settings::Configuration {
@@ -456,6 +457,7 @@ impl Plugins {
             shell: true,
             brainstorm: self.bundled.brainstorm.native(),
             disclosure_desk: crate::approval::desk(),
+            memory,
         }
     }
 

@@ -42,6 +42,9 @@ pub struct ExecutionSettings {
     pub shell: bool,
     pub brainstorm: Option<crate::brainstorm::Native>,
     pub disclosure_desk: Option<Arc<crate::approval::Desk>>,
+    /// Project instructions and saved memory for this working directory
+    /// (#11176); `None` turns both off.
+    pub memory: Option<crate::memory::Memory>,
 }
 
 #[derive(Clone)]
@@ -155,6 +158,9 @@ impl ExecutionSettings {
         let mut definitions = Vec::new();
         if self.shell {
             definitions.push(bundled_runtime::run_tool_definition());
+        }
+        if self.memory.is_some() {
+            definitions.extend(crate::memory::Memory::tool_definitions());
         }
         for definition in DEFINITIONS {
             for binding in definition
@@ -307,6 +313,11 @@ impl ExecutionSettings {
             emit(event);
         };
         let result = match name {
+            name if crate::memory::Memory::is_tool(name) && self.memory.is_some() => self
+                .memory
+                .as_ref()
+                .ok_or_else(|| "Memory is off on this computer.".to_string())
+                .and_then(|memory| memory.execute(name, arguments)),
             "brainstorm_search_people" | "brainstorm_rank"
                 if self.registered(ToolBinding::BrainstormSearch) =>
             {
@@ -713,6 +724,7 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            memory: None,
         }
     }
 

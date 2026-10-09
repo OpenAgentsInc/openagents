@@ -63,6 +63,9 @@ macro_rules! command_usage {
   sessions list                       List saved local chats.
   sessions read ID                    Read one saved chat as an ATIF trajectory.
   sessions delete ID                  Remove one saved chat.
+  memory [list | show NAME | forget NAME | instructions]
+                                      Read or delete what Coder remembers, or list
+                                      the AGENTS.md/CLAUDE.md files it loads here.
   export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
   import FILE [--session ID]           Open an ATIF file to view or continue it.
   trace upload [ID | --last | --file FILE] [--share]
@@ -394,6 +397,9 @@ fn execute_with_demo_policy(
     }
     if command == "export" {
         return export(rest, context);
+    }
+    if command == "memory" {
+        return memory(rest, context);
     }
     if command == "import" {
         return import(rest, context);
@@ -1558,6 +1564,46 @@ fn sessions(args: &[String], context: &Context) -> Result<Value, Error> {
             Ok(json!({"deleted":args[1]}))
         }
         _ => Err(usage("Use sessions list, read ID, or delete ID.")),
+    }
+}
+/// `memory list|show NAME|forget NAME|instructions` (#11176).
+fn memory(args: &[String], context: &Context) -> Result<Value, Error> {
+    let memory = crate::memory::Memory::discover(&context.cwd)
+        .ok_or_else(|| Error::from("Memory is off on this computer (OPENAGENTS_MEMORY=off)."))?;
+    let entry_json = |entry: &crate::memory::Entry| {
+        json!({
+            "name": entry.name,
+            "type": entry.kind.word(),
+            "scope": entry.scope.word(),
+            "description": entry.description,
+            "body": entry.body,
+            "updated": entry.updated,
+            "file": entry.file,
+        })
+    };
+    let usage_text = "Use memory list, show NAME, forget NAME, or instructions.";
+    match args.split_first() {
+        None => Ok(json!({"memories": memory.all().iter().map(entry_json).collect::<Vec<_>>()})),
+        Some((word, [])) if word == "list" => {
+            Ok(json!({"memories": memory.all().iter().map(entry_json).collect::<Vec<_>>()}))
+        }
+        Some((word, [])) if word == "instructions" => {
+            let files = memory.instructions();
+            let nested = memory.nested_instructions(&files);
+            Ok(json!({
+                "files": files.iter().map(|file| json!({"path": file.path, "bytes": file.text.len(), "truncated": file.truncated})).collect::<Vec<_>>(),
+                "nested": nested,
+            }))
+        }
+        Some((word, name)) if word == "show" && !name.is_empty() => memory
+            .recall(&name.join(" "))
+            .map(|entry| entry_json(&entry))
+            .ok_or_else(|| Error::from("No memory has that name.")),
+        Some((word, name)) if word == "forget" && !name.is_empty() => memory
+            .forget(&name.join(" "), None)
+            .map(|entry| json!({"forgot": entry.name, "scope": entry.scope.word()}))
+            .map_err(Error::from),
+        _ => Err(usage(usage_text)),
     }
 }
 fn read_document(path: &Path) -> Result<Value, Error> {

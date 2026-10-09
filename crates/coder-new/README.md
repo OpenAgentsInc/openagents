@@ -262,6 +262,19 @@ computer's chats from the account. Messages that look like they hold a
 password or key are left out. Deleting a chat in one place deletes it in the
 other. The setting lives in `~/.openagents/coder-new/sync.json`.
 
+Every turn reads the repository's `AGENTS.md` and `CLAUDE.md` files from the
+working directory up to your home folder, nearest first, plus your own
+`~/.openagents/AGENTS.md`; instruction files in other directories of the
+checkout are named so Coder reads them before working there. Coder also keeps
+memory across sessions: small notes about you (every project) and about this
+project (all its worktrees), saved when you say "remember ..." and deleted
+with "forget ...". `/memory` lists them and `/memory forget NAME` deletes one;
+`coder memory list|show|forget|instructions` does the same from scripts. Notes
+are markdown files under `~/.openagents/memory` with a `MEMORY.md` index, stay
+on this computer, and refuse anything that looks like a password or key.
+`OPENAGENTS_MEMORY=off` turns instructions and memory off
+(`src/memory.rs`, #11176).
+
 Coder Noir uses Superlogical's Static Noir surfaces, content tones, and ANSI
 palette, combined with Coder's neutral accent and cursor. The terminal field is
 `#0e0e0e`; active borders are neutral, models and inline code use cyan, and

@@ -556,6 +556,7 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            memory: None,
         };
         let client = settings.jev_client().unwrap().unwrap();
         assert_eq!(jev_hosted::via(&client), "direct");
@@ -828,6 +829,7 @@ mod tests {
                 shell: false,
                 brainstorm: None,
                 disclosure_desk: None,
+                memory: None,
             };
             let result = if chat_tool {
                 settings
