@@ -24,6 +24,7 @@ pub mod paul;
 pub mod privacy;
 pub mod qualification;
 pub mod referrals;
+pub mod remote;
 pub mod replies;
 pub mod roles;
 pub mod town;

@@ -25,6 +25,7 @@ mod pages;
 pub mod palette;
 pub mod pilot;
 mod purchases;
+pub mod sales_remote;
 mod tasks;
 pub mod upstream;
 mod wellknown;
@@ -96,6 +97,9 @@ pub struct Config {
     pub cloud_build: Option<PathBuf>,
     /// Explicit account/workspace delegations to the retail service.
     pub cloud_retail: Option<Arc<cloud::retail::Delegations>>,
+    /// Explicit account/workspace delegations to the separate sales-owner
+    /// remote adapter; absence leaves Sales unavailable.
+    pub cloud_sales: Option<Arc<cloud::sales::Delegations>>,
     /// Private custody of users' own Claude credentials for their own
     /// computers (BYO-04); absence leaves the page unavailable.
     pub cloud_byo: Option<Arc<cloud::byo::Computers>>,
@@ -130,6 +134,7 @@ impl Config {
             cloud_hosts: None,
             cloud_build: None,
             cloud_retail: None,
+            cloud_sales: None,
             cloud_byo: None,
             cloud_team: None,
             pilot: None,

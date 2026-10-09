@@ -168,6 +168,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
 | `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed Observe grants, device keys, and exact host routes and generations. No host enrollment or task effect comes from sign-in. |
 | `--cloud-retail PRIVATE_JSON` | none | Protected account/workspace/epoch delegations to the retail service through native `retail-client` configurations, plus a private site directory for key custody and request journals. No funding, quote, confirmation, or cancellation right comes from sign-in. |
+| `--cloud-sales PRIVATE_JSON` | none | Protected account/workspace/epoch delegations to the separate sales-owner remote adapter (endpoint, binding, and that binding's bearer file), plus a private site directory for request journals. The site never opens the pipeline; no sales right comes from sign-in or membership. |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
 
@@ -450,6 +451,63 @@ provider loss as an ending that needs a new offer. Artifacts are shown only
 when retention is complete and their SHA-256 matches the retained manifest.
 The stop control on a purchase returns to it; observation-only scopes see no
 control, and other accounts reach none of these pages.
+
+
+## Sales delegation
+
+`/cloud/app/sales` reaches the private sales pipeline only through the
+resident owner adapter ([`coder::task::sales::remote`](../coder/src/task/sales/remote.rs)),
+which runs on the sales-owner host beside the canonical
+[`Store`](../coder/src/task/sales.rs). The site never opens that store and
+retains no contact.
+
+On the owner host, issue the bound human a principal credential with the
+existing pipeline tools, then write a private (`0600`)
+`openagents.sales.remote-bindings.v1` file:
+
+```json
+{"schema":"openagents.sales.remote-bindings.v1","root":"/abs/HOST_TASK_ROOT",
+ "journal":"/abs/private/sales-remote-journal",
+ "bindings":[{"id":"alice-sales","account":"alice","workspace":"alice-personal",
+   "members_epoch":3,"principal":"writer-a","credential":"/abs/private/writer-a",
+   "client_digest":"<sha256 hex of the site bearer>","effects":["update"]}]}
+```
+
+and serve it on numeric loopback behind authenticated TLS:
+
+```sh
+cargo run -p openagents-web --bin sales-remote -- serve PRIVATE_BINDINGS_JSON 127.0.0.1:4410
+```
+
+Each binding pins one browser actor, workspace, and membership epoch to one
+existing sales principal and may only narrow it: `effects` lists the
+operations it admits (`create`, `update`, `propose_handoff`,
+`accept_handoff`, `reject_handoff`, `suppress`, `delete`; empty is
+observation only), and the principal's recorded role still applies. Service
+sales, acquisition, partners, and funnel journeys are not admitted here.
+Every call reopens the store and rereads the credential, so revocation,
+rotation, and revisions are rechecked on each read and effect. Requests with
+an `Origin` or cookie are refused. List answers are summaries without
+contact or record text; refusals are fixed codes.
+
+The site's `--cloud-sales` file is `openagents.cloud.sales-delegations.v1`:
+
+```json
+{"schema":"openagents.cloud.sales-delegations.v1","directory":"/abs/private/site",
+ "delegations":[{"id":"alice-sales","account":"alice","workspace":"alice-personal",
+   "members_epoch":3,"endpoint":"https://sales-owner.example/v1/sales",
+   "binding":"alice-sales","bearer_file":"/abs/private/alice-sales.bearer"}]}
+```
+
+A changed bearer, epoch, or configuration refuses; the bearer never reaches
+the page. A stage change journals its request identity, parameters, and exact
+command digest under `directory/sales-requests` before dispatch; the owner
+adapter journals the exact bytes beside the store before applying them and
+clears them once settled. An exact retry recovers the original receipt,
+changed parameters conflict, a form from an older revision is refused, and a
+lost reply shows **Outcome unknown** with **Retry the same request**, which
+reconciles with the owner by identity and digest. Public pilot intake stays
+create-only and separate.
 
 ## Billing statements and commercial lanes
 

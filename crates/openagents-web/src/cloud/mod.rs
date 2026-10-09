@@ -12,6 +12,7 @@ pub mod hosts;
 mod operator;
 mod private;
 pub mod retail;
+pub mod sales;
 pub mod session;
 pub mod team;
 #[cfg(test)]
@@ -111,6 +112,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(verse::routes())
         .merge(agents::routes())
         .merge(retail::routes())
+        .merge(sales::routes())
         .merge(billing::routes())
         .merge(byo::routes())
         .merge(team::routes())
@@ -118,7 +120,14 @@ pub(crate) fn routes() -> Router<App> {
     for (_, slug, _) in SECTIONS {
         if !matches!(
             slug,
-            "agents" | "computers" | "projects" | "workbench" | "verse" | "billing" | "team"
+            "agents"
+                | "computers"
+                | "projects"
+                | "workbench"
+                | "verse"
+                | "billing"
+                | "team"
+                | "sales"
         ) {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
@@ -486,6 +495,8 @@ fn workspace_shell(
             nav.push_str("<a href=\"/cloud/app/billing\">Billing</a>");
         } else if slug == "team" && team::available(app) {
             nav.push_str("<a href=\"/cloud/app/team\">Team</a>");
+        } else if slug == "sales" && sales::available(app, viewer) {
+            nav.push_str("<a href=\"/cloud/app/sales\">Sales</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else if slug == "verse" {

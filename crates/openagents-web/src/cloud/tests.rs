@@ -36,6 +36,8 @@ mod project_fixture;
 mod projects;
 #[path = "retail_tests.rs"]
 mod retail_web;
+#[path = "sales_tests.rs"]
+mod sales_web;
 #[path = "team_tests.rs"]
 mod team_web;
 #[path = "verse_tests.rs"]
