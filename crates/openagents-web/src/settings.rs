@@ -143,7 +143,11 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
         &crate::chat_store::account_owner(&viewer.account_id),
     )
     .await;
-    let body = settings_content(&viewer.account_label, claude, chats);
+    let computers = crate::device::computers_section(service, &headers, &viewer).await;
+    let body = html! {
+        (settings_content(&viewer.account_label, claude, chats))
+        (computers)
+    };
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }
 

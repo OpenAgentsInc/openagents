@@ -497,3 +497,206 @@ async fn a_session_without_a_workspace_gets_its_own_one_selected() {
     let page = browser.get(&world, "/settings/claude").await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);
 }
+
+/// One request from an app (no cookies): status and JSON body.
+async fn app_call(
+    world: &World,
+    path: &str,
+    body: serde_json::Value,
+    bearer: Option<&str>,
+) -> (StatusCode, serde_json::Value) {
+    let mut request = Request::post(path)
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(token) = bearer {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    let response = world
+        .site
+        .clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+/// Start a device sign-in as Coder on `computer`.
+async fn device_start(world: &World, computer: &str) -> serde_json::Value {
+    let (status, started) = app_call(
+        world,
+        "/device/code",
+        json!({"app": "Coder", "computer": computer}),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{started}");
+    started
+}
+
+async fn device_poll(
+    world: &World,
+    started: &serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    app_call(
+        world,
+        "/device/token",
+        json!({"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": started["device_code"]}),
+        None,
+    )
+    .await
+}
+
+/// Open `/device?code=` and press Approve or Deny.
+async fn device_decide(world: &World, browser: &mut Browser, code: &str, decision: &str) -> Answer {
+    let page = browser.get(world, &format!("/device?code={code}")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    let csrf = form_field(&page.body, "/device", "csrf");
+    browser
+        .post(
+            world,
+            "/device",
+            &[
+                ("csrf", csrf.as_str()),
+                ("code", code),
+                ("decision", decision),
+            ],
+        )
+        .await
+}
+
+fn session_state(world: &World, token: &str) -> tenancy::sessions::SessionState {
+    tenancy::sessions::Sessions::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap()
+        .book
+        .session_of_token(token)
+        .unwrap()
+        .state
+}
+
+#[tokio::test]
+async fn a_computer_signs_in_with_a_code_approved_on_the_website_and_settings_removes_it() {
+    let world = world(true).await;
+    let started = device_start(&world, "octo-mbp").await;
+    let user_code = started["user_code"].as_str().unwrap().to_string();
+    assert_eq!(started["verification_uri"], format!("{ORIGIN}/device"));
+    assert_eq!(
+        started["verification_uri_complete"],
+        format!("{ORIGIN}/device?code={user_code}")
+    );
+    assert_eq!(started["interval"], 5);
+    assert_eq!(started["expires_in"], 600);
+    let (status, pending) = device_poll(&world, &started).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(pending["error"], "authorization_pending");
+
+    // Signed out, the link goes through sign-in and comes back.
+    let mut browser = Browser::default();
+    let link = format!("/device?code={user_code}");
+    let away = browser.get(&world, &link).await;
+    let back = format!("%2Fdevice%3Fcode%3D{user_code}");
+    assert_eq!(away.location(), format!("/login?return_to={back}"));
+    let done = browser
+        .through_github(&world, &back, "login=octo-local")
+        .await;
+    assert!(
+        done.body.contains(&format!("content=\"0;url={link}\"")),
+        "{}",
+        done.body
+    );
+
+    let page = browser.get(&world, &link).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("Sign in to Coder on octo-mbp?"));
+    assert!(page.body.contains(&user_code));
+    crate::copy_guard::assert_plain("/device", &page.body);
+
+    let approved = device_decide(&world, &mut browser, &user_code, "approve").await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.body);
+    assert!(approved.body.contains("Coder on octo-mbp is signed in"));
+
+    // The app picks up its own session, once.
+    let (status, signed) = device_poll(&world, &started).await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+    let token = signed["access_token"].as_str().unwrap().to_string();
+    assert!(token.starts_with("sess_"));
+    assert_eq!(signed["token_type"], "Bearer");
+    assert_eq!(signed["account"]["label"], "Octo Local");
+    assert!(signed["expires_in"].as_u64().unwrap() > 29 * 86_400);
+    let (_, again) = device_poll(&world, &started).await;
+    assert_eq!(again["error"], "invalid_grant");
+
+    // Settings lists it; Remove signs it out.
+    let settings = browser.get(&world, "/settings").await;
+    assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+    assert!(
+        settings.body.contains("Coder on octo-mbp"),
+        "{}",
+        settings.body
+    );
+    crate::copy_guard::assert_plain("/settings", &settings.body);
+    let csrf = form_field(&settings.body, "/settings/computers/remove", "csrf");
+    let id = form_field(&settings.body, "/settings/computers/remove", "session");
+    let removed = browser
+        .post(
+            &world,
+            "/settings/computers/remove",
+            &[("csrf", csrf.as_str()), ("session", id.as_str())],
+        )
+        .await;
+    assert_eq!(removed.status, StatusCode::SEE_OTHER, "{}", removed.body);
+    assert_eq!(
+        session_state(&world, &token),
+        tenancy::sessions::SessionState::Revoked
+    );
+    let settings = browser.get(&world, "/settings").await;
+    assert!(settings.body.contains("No computers are signed in"));
+}
+
+#[tokio::test]
+async fn deny_signs_nothing_in_and_an_app_signs_its_own_token_out() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+
+    let started = device_start(&world, "box").await;
+    let denied = device_decide(
+        &world,
+        &mut browser,
+        started["user_code"].as_str().unwrap(),
+        "deny",
+    )
+    .await;
+    assert!(denied.body.contains("Sign-in denied"), "{}", denied.body);
+    let (status, polled) = device_poll(&world, &started).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(polled["error"], "access_denied");
+
+    // A wrong code is said plainly; there is nothing to approve.
+    let wrong = browser.get(&world, "/device?code=BCDF-GHJK").await;
+    assert_eq!(wrong.status, StatusCode::BAD_REQUEST);
+    assert!(wrong.body.contains("That code isn"));
+
+    // Approve another; the app then signs itself out with its token.
+    let started = device_start(&world, "box").await;
+    device_decide(
+        &world,
+        &mut browser,
+        started["user_code"].as_str().unwrap(),
+        "approve",
+    )
+    .await;
+    let (_, signed) = device_poll(&world, &started).await;
+    let token = signed["access_token"].as_str().unwrap();
+    let (status, out) = app_call(&world, "/device/sign-out", json!({}), Some(token)).await;
+    assert_eq!(status, StatusCode::OK, "{out}");
+    assert_eq!(
+        session_state(&world, token),
+        tenancy::sessions::SessionState::Revoked
+    );
+}

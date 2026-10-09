@@ -1032,5 +1032,7 @@ pub(crate) fn standing_value(viewer: &Viewer) -> serde_json::Value {
     serde_json::json!({"active":true,"session_id":viewer.session_id,"account":viewer.account_id,"workspace":viewer.workspace.as_ref().map(|v|&v.id),"members_epoch":viewer.workspace.as_ref().map(|v|v.members_epoch),"projection_digest":format!("sha256:{digest}"),"expires_at":viewer.expires_at})
 }
 
+pub mod device;
+
 #[cfg(test)]
 mod tests;

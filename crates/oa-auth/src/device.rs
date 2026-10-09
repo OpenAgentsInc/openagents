@@ -26,6 +26,8 @@ use tenancy::sessions::{
 };
 use tenancy::workspaces::UserId;
 
+pub use tenancy::sessions::normalize_user_code;
+
 /// An HTTP answer: status and JSON body.
 #[derive(Debug)]
 pub struct Answer {

@@ -23,6 +23,7 @@ pub mod cloud;
 mod components;
 mod composer;
 mod demo;
+mod device;
 mod environments;
 mod layout;
 mod markdown;
@@ -204,6 +205,7 @@ pub fn router(config: Config) -> Router {
         .merge(environments::routes(&app))
         .merge(cloud::routes())
         .merge(auth::routes())
+        .merge(device::routes())
         .merge(account::routes())
         .merge(settings::routes())
         .merge(pilot::routes())
@@ -261,6 +263,8 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
         || path == "/login"
         || path == "/signup"
         || path.starts_with("/auth/")
+        || path == "/device"
+        || path.starts_with("/device/")
         || matches!(path, "/sign-in" | "/sign-out" | "/settings")
         || path.starts_with("/settings/");
     let chat = path == "/chat"
