@@ -429,19 +429,27 @@ impl ProviderKeys {
             rows,
             mine: inner.mine,
             mine_blocked,
-            status: model_access::status_line(mode, &inner.keys, inner.last.as_ref()),
+            // The shared line names the computer's setting; the phone has
+            // its own switch on this screen.
+            status: match mode {
+                Mode::Ours => OURS_ON_PHONE.to_owned(),
+                Mode::Mine => model_access::status_line(mode, &inner.keys, inner.last.as_ref()),
+            },
             notice: inner.notice.clone(),
             done: std::mem::take(&mut inner.done),
         }
     }
 }
 
+/// The status line while OpenAgents pays for model calls.
+pub const OURS_ON_PHONE: &str = "OpenAgents pays for your model calls. To use your own, add a key and turn on Use my keys for everything.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// The status line while OpenAgents pays for model calls.
-    const OURS: &str = "Model calls are paid by OpenAgents (models.payer ours). To use your keys: openagents settings set models.payer mine";
+    const OURS: &str = OURS_ON_PHONE;
 
     const KEY: &str = "sk-or-v1-0123456789abcdefWXYZ";
 

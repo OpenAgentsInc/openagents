@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "54",
+        title: "OpenAgents 1.0 beta",
+        what_to_test: "No sign-in is needed. In Chat, ask anything or tap a suggested question: the reply should stream in. Open Wallet: it should show your balance, Receive, and Send. In Account, open each row: Computers, Appearance, Your keys, Identity keys, About this device, Changelog, and Report a problem. To reach your own computer, get OpenAgents at https://openagents.com/download, run openagents connect invite there, and scan the code from Account > Computers.",
+        items: &[
+            Item {
+                title: "Three tabs",
+                detail: "The app is Chat, Wallet, and Account; the features still in development are hidden.",
+            },
+            Item {
+                title: "Plainer words",
+                detail: "Your keys and Connect a computer say what to do in plain words, with the download link.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "53",
         title: "The world opens again",
         what_to_test: "Open the Verse tab and check that the world loads instead of an \"Invalid native Verse configuration\" error. Walk through the EVERGLADE arch and check there is no studio banner at the top when no computer is online. Everything from build 52 applies: the town clock, Mira, Tobin, and Wren, swimming and rain, and the Civic Hall and Agora.",

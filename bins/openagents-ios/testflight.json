@@ -1,0 +1,17 @@
+{
+  "description": "OpenAgents on your phone: chat with OpenAgents, a Bitcoin wallet, and the computers you connect, where Coder, our coding agent, does the work. No sign-in is needed.",
+  "feedbackEmail": "chris@openagents.com",
+  "marketingUrl": "https://openagents.com",
+  "privacyPolicyUrl": "https://openagents.com/privacy",
+  "externalGroup": "OpenAgents Beta Testers",
+  "whatToTest": "Welcome to the OpenAgents beta. No sign-in is needed.\n\n1. Chat: ask anything, or tap a suggested question. The answer streams in.\n2. Wallet: your balance, Receive, and Send. It is a real Bitcoin wallet, so keep only small amounts in it during the beta.\n3. Account: open each row. To reach your own computer, get OpenAgents at https://openagents.com/download, run openagents connect invite on it, and scan the code from Account > Computers.\n\nSomething wrong? Account > Report a problem, or take a screenshot and send it as TestFlight feedback.",
+  "review": {
+    "contactFirstName": "Christopher",
+    "contactLastName": "David",
+    "contactEmail": "chris@openagents.com",
+    "demoAccountRequired": false,
+    "demoAccountName": null,
+    "demoAccountPassword": null,
+    "notes": "No sign-in, account, or demo login is needed: the app has no login. On first launch it makes its own device key.\n\n1. Chat tab (opens first): type a question such as \"What is OpenAgents?\" or tap a suggested question. The answer comes from our hosted assistant and streams in.\n2. Wallet tab: a self-custody Bitcoin wallet created on the device. Reviewing it needs no funds; Receive shows a request to be paid.\n3. Account tab: Report a problem, Computers, Appearance, Your keys, Identity keys, About this device, Changelog, Source code, and Follow us on X.\n\nComputers is optional: it pairs the phone with a computer running OpenAgents (https://openagents.com/download, then openagents connect invite shows a code to scan). Nothing else in the app needs a computer.\n\nContact: chris@openagents.com"
+  }
+}
