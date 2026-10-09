@@ -1,16 +1,16 @@
 ---
 id: openagents.chat-privacy
-version: 12
+version: 13
 kind: product
 title: "How chat messages travel, who sees them, and whether we train on them"
 summary: >-
   In the apps, chat messages are signed by the device key, encrypted to the
   chat worker, carried by a relay that keeps nothing, and saved only on the
   device; the web chat saves conversations on our servers. The worker stores
-  no message text and sends the conversation to Jev (TypeSafe, through the
-  Vercel AI Gateway), Space Bunny Alpha (OpenRouter), Gemini (Vercel AI
-  Gateway) when Space Bunny can't answer, and, for product lookups, an
-  embeddings provider. We may train our own models on chats; on a paid plan
+  no message text and sends the conversation to Jev (TypeSafe's model,
+  through the Vercel AI Gateway or OpenRouter), a chat model (Gemini 3.8
+  Flash on OpenRouter first, GLM 5.3 Flash and the Vercel AI Gateway when
+  it can't answer), and, for product lookups, an embeddings provider. We may train our own models on chats; on a paid plan
   you can opt out by arrangement.
 tags: [privacy, encryption, chat, relay, data, training, opt-out]
 applies_when: >-
@@ -22,10 +22,11 @@ applies_when: >-
 answer: >-
   The web chat saves your chats on our servers, and you can delete them.
   In the apps, messages are encrypted to our chat worker and chats stay on
-  your device. To reply, our worker sends the conversation to Jev (Vercel
-  AI Gateway), Space Bunny Alpha (OpenRouter), and Gemini 3.8 Flash when
-  Space Bunny can't answer; we ask those chat models' providers not to
-  keep or train on it. We may use your chats to train our own models; on a
+  your device. To reply, our worker sends the conversation to Jev
+  (TypeSafe's model, through the Vercel AI Gateway or OpenRouter) and to a
+  chat model: Gemini 3.8 Flash on OpenRouter, or GLM 5.3 Flash or the
+  Vercel AI Gateway when it can't answer. We ask those chat models'
+  providers not to keep or train on it. We may use your chats to train our own models; on a
   paid plan you can opt out by arrangement with us.
 status: admitted
 author: openagents
@@ -39,6 +40,7 @@ provenance:
     - crates/openagents-web/src/chat_owner.rs
     - crates/openagents-web/src/analytics/mod.rs
 evidence:
+  - "2026-10-09: v13: OpenRouter retired Space Bunny Alpha (404), so the chat model is Gemini 3.8 Flash on OpenRouter first, then GLM 5.3 Flash on OpenRouter, then the Vercel AI Gateway (crates/coder/src/generate.rs FallbackDoor; docs/deployment/chat-worker.md). The production reply to \"can I opt out of training?\" still named Space Bunny Alpha."
   - "2026-10-09: v12 (#11153): the website's own cookieless analytics (crates/openagents-web/src/analytics/mod.rs) keep hourly totals only, with no IP address, account, or message text, and honor Do Not Track and Global Privacy Control."
   - "2026-10-09: v9 (#11039, #11038): signed in, web chats belong to the account (crates/openagents-web/src/chat_owner.rs; the owner is a digest of the account id that no browser cookie can take), show on any browser where the person signs in, and stay hidden from the browser after sign-out. Signing in moves the browser's signed-out chats to the account once (chat_owner::claim), never replacing a chat already on the account and leaving a chat still being answered. Signed out, chats stay tied to the browser cookie. Delete all chats is in Settings (signed in) and on a chat's delete step and the Archived chats page (signed out), at /chat/delete-all."
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -56,7 +58,7 @@ evidence:
 
 ## Answer
 
-The web chat saves your chats on our servers, and you can delete them. In the apps, messages are encrypted to our chat worker and chats stay on your device. To reply, our worker sends the conversation to Jev (Vercel AI Gateway), Space Bunny Alpha (OpenRouter), and Gemini 3.8 Flash when Space Bunny can't answer; we ask those chat models' providers not to keep or train on it. We may use your chats to train our own models; on a paid plan you can opt out by arrangement with us.
+The web chat saves your chats on our servers, and you can delete them. In the apps, messages are encrypted to our chat worker and chats stay on your device. To reply, our worker sends the conversation to Jev (TypeSafe's model, through the Vercel AI Gateway or OpenRouter) and to a chat model: Gemini 3.8 Flash on OpenRouter, or GLM 5.3 Flash or the Vercel AI Gateway when it can't answer. We ask those chat models' providers not to keep or train on it. We may use your chats to train our own models; on a paid plan you can opt out by arrangement with us.
 
 ## Details
 
@@ -76,7 +78,7 @@ The web chat saves your chats on our servers, and you can delete them. In the ap
 - In the apps there is no account, sign-in, or key to paste: the device key made on first launch signs the request, and the app holds no model key.
 - Jev's doors, in order: the Vercel AI Gateway (`typesafe-ai/jev`), then OpenRouter, then TypeSafe direct.
 - The worker's usage log records each job's time, key, surface, route, model, and timings, never the message text, and deletes each day's records after 30 days.
-- Requests to the chat models (Space Bunny Alpha, Gemini) and to the OpenRouter model that writes personalized lines ask the provider not to keep or train on them; Jev and the embeddings calls don't ask this yet.
+- Requests to the chat models (Gemini, GLM) and to the OpenRouter model that writes personalized lines ask the provider not to keep or train on them; Jev and the embeddings calls don't ask this yet.
 - When Coder runs on your computer, the coding agent sends what it reads to its model provider, under your sign-in there.
 - The website counts its own use with no cookies and no outside analytics: hourly totals of pages opened (the kind of page, never its full address), the referring site's name, phone or computer, person, agent, or crawler, page speed, and a few actions (a chat sent, an answer shown, a download clicked). It never records IP addresses, accounts, or message text, and with Do Not Track or Global Privacy Control on it counts only that a page was opened (#11153).
 
