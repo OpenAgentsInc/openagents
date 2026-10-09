@@ -537,6 +537,7 @@ impl DesktopApp {
                 }
             }
             Action::TextSize { .. }
+            | Action::Theme { .. }
             | Action::ReduceMotion { .. }
             | Action::Notifications { .. }
             | Action::Sounds { .. } => {}
