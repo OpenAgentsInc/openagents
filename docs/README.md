@@ -14,6 +14,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
 | See every UI system and component across platforms | [UI inventory](ui/inventory.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
+| See the whole OpenAgents 1.0 product and every promise from the videos | [Project Kitchen Sink spec](kitchen-sink/README.md), [promise ledger](kitchen-sink/ledger.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
 | See what ships to playtesters and what comes next | [Launch roadmap, 2026-09-29](roadmap/2026-09-29-launch-roadmap.md), [playtesting program](game/playtesting.md) |
 | Design the phone app's screens and user flow | [App wireframe specification](product/2026-09-28-app-wireframe.md) |
