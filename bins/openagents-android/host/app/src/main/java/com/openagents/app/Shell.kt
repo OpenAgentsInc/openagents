@@ -86,7 +86,7 @@ internal class ShellTopBar(private val context: Context, private val bridge: Mob
                 gravity = Gravity.CENTER
                 setPadding(context.dp(18), 0, context.dp(18), 0)
                 if (chosen) {
-                    typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                    typeface = Fonts.typeface(context, Fonts.BOLD)
                     background = context.rounded((Palette.PRIMARY and 0x00FFFFFF) or 0x1F000000, 19f)
                 }
                 isSelected = chosen
@@ -115,7 +115,7 @@ internal class HomeCards(private val context: Context, private val tryIt: (Strin
     private val manager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
     private val snap = LinearSnapHelper()
     private val title = context.text("", 19f).apply {
-        typeface = PaperMono.typeface(context, PaperMono.BOLD); gravity = Gravity.CENTER
+        typeface = Fonts.typeface(context, Fonts.BOLD); gravity = Gravity.CENTER
     }
     private val line = context.text("", 15f, Palette.SECONDARY).apply { gravity = Gravity.CENTER }
     private val tryButton = context.pill("Try it") { current()?.let { tryIt(it.id) } }
@@ -278,7 +278,7 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
     private val search = EditText(context).apply {
         hint = "Search chats"; textSize = 16f; isSingleLine = true
         setTextColor(Palette.PRIMARY); setHintTextColor(Palette.TERTIARY)
-        typeface = PaperMono.typeface(context)
+        typeface = Fonts.typeface(context)
         background = null
         imeOptions = EditorInfo.IME_ACTION_SEARCH
         tag = "shell-search-field"
@@ -332,7 +332,7 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
             })
         } else {
             header.addView(context.text("OpenAgents", 24f).apply {
-                typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                typeface = Fonts.typeface(context, Fonts.BOLD)
                 if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
             }, LinearLayout.LayoutParams(0, -2, 1f))
             header.addView(context.circleButton(R.drawable.ic_glyph_search, "Search chats", "shell-search") {
@@ -360,7 +360,7 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
     private fun footer(): View = context.row().apply {
         gravity = Gravity.CENTER_VERTICAL
         addView(context.text("Chat", 17f, Palette.BACKGROUND).apply {
-            typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            typeface = Fonts.typeface(context, Fonts.BOLD)
             gravity = Gravity.CENTER_VERTICAL
             val icon = context.getDrawable(R.drawable.ic_glyph_compose)?.mutate()?.apply {
                 setBounds(0, 0, context.dp(18), context.dp(18)); setTint(Palette.BACKGROUND)
@@ -478,7 +478,7 @@ internal object LinkCards {
             setPadding(context.dp(14), context.dp(10), context.dp(14), context.dp(10))
         }
         words.addView(context.text(title, 15f).apply {
-            typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            typeface = Fonts.typeface(context, Fonts.BOLD)
             maxLines = if (card.optBoolean("image")) 2 else 1; ellipsize = TextUtils.TruncateAt.END
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         })

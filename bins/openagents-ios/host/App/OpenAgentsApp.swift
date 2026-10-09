@@ -10,8 +10,6 @@ struct OpenAgentsApp: App {
     @StateObject private var bridge = MobileBridge()
     @Environment(\.scenePhase) private var scenePhase
 
-    init() { PaperMono.installAppearance() }
-
     var body: some Scene {
         WindowGroup {
             HomeScreen(bridge: bridge)

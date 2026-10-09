@@ -67,7 +67,7 @@ class ConnectScreen(
             })
         }
         header.addView(activity.text(screen.getString("title"), 17f).apply {
-            typeface = PaperMono.typeface(context, PaperMono.BOLD); gravity = Gravity.CENTER
+            typeface = Fonts.typeface(context, Fonts.BOLD); gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(header)
         when (stage) {
@@ -76,7 +76,7 @@ class ConnectScreen(
                 val code = screen.textOrNull("code")
                 if (code != null) {
                     body.add(activity.text(code, 44f).apply {
-                        typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                        typeface = Fonts.typeface(context, Fonts.BOLD)
                         gravity = Gravity.CENTER; tag = "connect-code"
                     }, 24)
                 } else {
@@ -133,7 +133,7 @@ class ConnectScreen(
      * only starts a pairing the computer approves after the codes match.
      */
     private fun nearby(body: LinearLayout, nearby: JSONObject) {
-        body.add(activity.text(nearby.optString("title"), 17f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD) }, 12)
+        body.add(activity.text(nearby.optString("title"), 17f).apply { typeface = Fonts.typeface(context, Fonts.BOLD) }, 12)
         val computers = nearby.optJSONArray("computers")
         for (index in 0 until (computers?.length() ?: 0)) {
             val row = computers!!.getJSONObject(index)
@@ -152,7 +152,7 @@ class ConnectScreen(
         body.gravity = Gravity.CENTER_HORIZONTAL
         body.add(activity.text("✓", 56f, Palette.SUCCESS).apply { gravity = Gravity.CENTER; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, 32)
         screen.textOrNull("computer")?.let {
-            body.add(activity.text(it, 22f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD); gravity = Gravity.CENTER; tag = "connect-computer" }, 12)
+            body.add(activity.text(it, 22f).apply { typeface = Fonts.typeface(context, Fonts.BOLD); gravity = Gravity.CENTER; tag = "connect-computer" }, 12)
         }
         screen.textOrNull("notice")?.let { body.add(activity.text(it, 15f, Palette.SECONDARY).apply { gravity = Gravity.CENTER }, 12) }
         screen.textOrNull("done")?.let { body.add(activity.pill(it, "connect-done", primary = true) { bridge.connectClose() }, 24, -2) }

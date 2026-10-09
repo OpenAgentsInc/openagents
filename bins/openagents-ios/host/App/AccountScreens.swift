@@ -38,7 +38,7 @@ private struct KeyText: View {
 
     var body: some View {
         Text(verbatim: lines)
-            .font(.paper(.footnote))
+            .font(.code(.footnote))
             .foregroundStyle(value == nil ? .secondary : .primary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(value ?? "Not available yet.")
@@ -359,7 +359,7 @@ struct TrainerScreen: View {
                     ForEach(card.linked_keys, id: \.self) { key in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(String(key.npub.prefix(20)) + "…").font(.paper(.body))
+                                Text(String(key.npub.prefix(20)) + "…").font(.code(.body))
                                 Text(key.status == "linked" ? "Linked both ways: its XP counts here"
                                                             : "Waiting for this key to link back")
                                     .font(.paper(.caption))

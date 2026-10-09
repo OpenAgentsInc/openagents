@@ -1,10 +1,11 @@
-// Paper Mono, the one typeface on every OpenAgents surface. The app bundles
+// Paper Mono, the one typeface on every Coder surface. The app bundles
 // the four static faces from crates/paper-mono/fonts and lists them under
 // UIAppFonts. Every SwiftUI and UIKit font in this host comes from here.
 //
 // Paper Mono has Regular, Medium, SemiBold, and Bold faces and no italic.
 // A lighter weight maps to Regular, a heavier one to Bold, and italic text
-// draws upright. Coder and OpenAgents both compile this file.
+// draws upright. Coder compiles this file; the OpenAgents app draws the
+// system faces instead (bins/openagents-ios/host/App/Typeface.swift).
 import SwiftUI
 import UIKit
 
@@ -86,6 +87,17 @@ extension Font {
         let weight = weight ?? (style == .headline ? .semibold : .regular)
         return .custom(PaperMono.faceName(weight), size: PaperMono.size(style), relativeTo: style)
     }
+
+    /// Code, keys, and identifiers. Paper Mono is already monospaced, so this
+    /// is `paper`; the OpenAgents app, which draws text in the system face,
+    /// answers it with the system monospaced face (its Typeface.swift).
+    static func code(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        paper(size, weight: weight)
+    }
+
+    static func code(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> Font {
+        paper(style, weight: weight)
+    }
 }
 
 extension UIFont {
@@ -102,5 +114,10 @@ extension UIFont {
         let weight = weight ?? (style == .headline ? .semibold : .regular)
         return UIFontMetrics(forTextStyle: style)
             .scaledFont(for: paper(PaperMono.size(style), weight: weight), compatibleWith: traits)
+    }
+
+    /// Code at a fixed point size: Paper Mono, as `paper`.
+    static func code(_ size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
+        paper(size, weight: weight)
     }
 }

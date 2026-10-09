@@ -202,7 +202,8 @@ see the transcript layout section of
 
 - Rust holds each chat's rows in a transcript source, so they never cross
   the view, and lays them out on a worker thread: it shapes text with the
-  bundled Paper Mono font, decides every row's exact height,
+  phone's own fonts (Roboto, and Droid Sans Mono for code: the web's font
+  stacks, #11183), decides every row's exact height,
   and returns display lists with each text run's position. The app draws the
   runs with the same font at those positions.
 - The list is a `RecyclerView` whose rows take Rust's heights, so it follows
@@ -215,7 +216,7 @@ see the transcript layout section of
   a highlight under the text, two handles to drag, and the system's floating
   toolbar with **Copy**, **Select All**, and **Give feedback** (a comment
   on the selection, sent as a playtest report, #10127). Carets sit at Rust's run
-  positions, with stops from the bundled font's advances scaled to each run's
+  positions, with stops from the font's advances scaled to each run's
   width ([`TextSelection.kt`](host/app/src/main/java/com/openagents/app/TextSelection.kt)),
   so a caret never lands inside a surrogate pair or a ligature. A selection
   stays in one row, like iOS's; a tap elsewhere or a new version of the row

@@ -35,22 +35,6 @@ targets:
       # The Gym board's packet types, which Coder's Gym panel also reads.
       - path: ../../coder-ios/host/App/GymBoard.swift
         group: App/Shared
-      # The Paper Mono font helper.
-      - path: ../../coder-ios/host/App/PaperMono.swift
-        group: App/Shared
-      # Paper Mono, the app's one typeface, from the shared copy.
-      - path: ../../../crates/paper-mono/fonts/PaperMono-Regular.ttf
-        group: App/Fonts
-        buildPhase: resources
-      - path: ../../../crates/paper-mono/fonts/PaperMono-Medium.ttf
-        group: App/Fonts
-        buildPhase: resources
-      - path: ../../../crates/paper-mono/fonts/PaperMono-SemiBold.ttf
-        group: App/Fonts
-        buildPhase: resources
-      - path: ../../../crates/paper-mono/fonts/PaperMono-Bold.ttf
-        group: App/Fonts
-        buildPhase: resources
     # Rust Native's conversation fixture for the --rust-native-fixture
     # screen, copied only into builds that compile that screen: debug,
     # simulator, and bench builds. A release build for a device has neither.

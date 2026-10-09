@@ -51,12 +51,5 @@
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
-	<key>UIAppFonts</key>
-	<array>
-		<string>PaperMono-Regular.ttf</string>
-		<string>PaperMono-Medium.ttf</string>
-		<string>PaperMono-SemiBold.ttf</string>
-		<string>PaperMono-Bold.ttf</string>
-	</array>
 </dict>
 </plist>

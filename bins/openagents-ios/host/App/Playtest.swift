@@ -269,7 +269,7 @@ struct ReportSheet: View {
                     Text(row.status == "waiting" ? "Saved on this phone" : "Report filed")
                         .font(.paper(.title2, weight: .bold))
                     if let code = row.code {
-                        Text(code).font(.paper(.title3)).textSelection(.enabled)
+                        Text(code).font(.code(.title3)).textSelection(.enabled)
                             .accessibilityIdentifier("report-code")
                     }
                     Text(row.status == "waiting"
@@ -429,7 +429,7 @@ struct MyReportsScreen: View {
             ForEach(packet?.reports ?? [], id: \.self) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(row.code ?? "No code yet").font(.paper(.body, weight: .semibold))
+                        Text(row.code ?? "No code yet").font(.code(.body, weight: .semibold))
                         Spacer()
                         Text(row.status_label).font(.paper(.caption))
                             .foregroundStyle(row.status == "sent" ? .secondary : Color.yellow)

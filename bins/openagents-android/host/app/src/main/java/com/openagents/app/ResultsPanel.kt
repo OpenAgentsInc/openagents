@@ -465,7 +465,7 @@ private class ProbabilityBar(context: Context, private val p: Double, private va
     private val fill = Paint().apply { color = if (strong) 0xD9FFFFFF.toInt() else 0x66FFFFFF }
     private val line = Paint().apply { color = Palette.PRIMARY }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Palette.PRIMARY; textSize = context.dpf(10f); typeface = PaperMono.typeface(context); textAlign = Paint.Align.RIGHT
+        color = Palette.PRIMARY; textSize = context.dpf(10f); typeface = Fonts.typeface(context); textAlign = Paint.Align.RIGHT
     }
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
     override fun onDraw(canvas: Canvas) {

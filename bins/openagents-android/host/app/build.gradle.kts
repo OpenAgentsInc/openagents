@@ -83,41 +83,6 @@ android {
     }
 }
 
-// Paper Mono's static faces under Android resource names. The repository
-// keeps one copy in crates/paper-mono/fonts; this task copies it into a
-// generated resource directory, and res/font/paper_mono.xml names the faces.
-abstract class PaperMonoFonts : DefaultTask() {
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val source: DirectoryProperty
-
-    @get:OutputDirectory
-    abstract val output: DirectoryProperty
-
-    @TaskAction
-    fun copy() {
-        val font = output.get().dir("font").asFile
-        font.deleteRecursively()
-        font.mkdirs()
-        mapOf(
-            "PaperMono-Regular.ttf" to "paper_mono_regular.ttf",
-            "PaperMono-Medium.ttf" to "paper_mono_medium.ttf",
-            "PaperMono-SemiBold.ttf" to "paper_mono_semibold.ttf",
-            "PaperMono-Bold.ttf" to "paper_mono_bold.ttf",
-        ).forEach { (from, to) -> source.get().file(from).asFile.copyTo(font.resolve(to)) }
-    }
-}
-
-val paperMonoFonts = tasks.register<PaperMonoFonts>("paperMonoFonts") {
-    source.set(rootProject.file("../../../crates/paper-mono/fonts"))
-}
-
-androidComponents {
-    onVariants { variant ->
-        variant.sources.res?.addGeneratedSourceDirectory(paperMonoFonts, PaperMonoFonts::output)
-    }
-}
-
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.10.1")

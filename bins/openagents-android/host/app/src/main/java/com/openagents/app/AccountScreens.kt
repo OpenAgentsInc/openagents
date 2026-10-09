@@ -637,5 +637,5 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         popup.show()
     }
 
-    internal fun TextView.boldText(): TextView { typeface = PaperMono.typeface(context, PaperMono.BOLD); return this }
+    internal fun TextView.boldText(): TextView { typeface = Fonts.typeface(context, Fonts.BOLD); return this }
 }

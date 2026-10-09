@@ -274,7 +274,9 @@ class NativeRenderer(
             text.setTextColor(style.objectOrNull("foreground")?.let { color(it) }
                 ?: if (kind == "text:status") Palette.SECONDARY else Palette.PRIMARY)
             val bold = style.textOrNull("weight") == "bold" || kind == "text:heading"
-            text.typeface = PaperMono.typeface(text.context, if (bold) PaperMono.BOLD else PaperMono.REGULAR)
+            val weight = if (bold) Fonts.BOLD else Fonts.REGULAR
+            val mono = kind == "text:code" || kind == "text:terminal" || style.optBoolean("monospace")
+            text.typeface = if (mono) Fonts.code(text.context, weight) else Fonts.typeface(text.context, weight)
             text.gravity = if (kind == "button") Gravity.CENTER else when (style.textOrNull("align")) {
                 "center" -> Gravity.CENTER_HORIZONTAL; "end" -> Gravity.END; else -> Gravity.START
             }
@@ -451,7 +453,7 @@ object TerminalMetrics {
     const val SIZE_SP = 12f
     fun cell(context: Context): Pair<Float, Float> {
         val paint = android.text.TextPaint().apply {
-            typeface = PaperMono.typeface(context)
+            typeface = Fonts.code(context)
             textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,
                 SIZE_SP, context.resources.displayMetrics)
         }

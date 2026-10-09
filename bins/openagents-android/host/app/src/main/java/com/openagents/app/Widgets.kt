@@ -17,11 +17,12 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** A text label. Every label is already monospaced Paper Mono, so `mono` changes nothing. */
+/** A text label; `mono` draws it in the system monospace face, for keys and identifiers. */
 internal fun Context.label(value: String, size: Float = 14f, color: Int = Palette.PRIMARY, key: String? = null,
                            bold: Boolean = false, mono: Boolean = false, selectable: Boolean = false): TextView =
     text(value, size, color).apply {
-        if (bold) typeface = PaperMono.typeface(context, PaperMono.BOLD)
+        if (mono) typeface = Fonts.code(context, if (bold) Fonts.BOLD else Fonts.REGULAR)
+        else if (bold) typeface = Fonts.typeface(context, Fonts.BOLD)
         if (selectable) setTextIsSelectable(true)
         key?.let { tag = it }
     }
@@ -33,7 +34,7 @@ internal fun Context.pill(value: String, key: String? = null, primary: Boolean =
         minHeight = dp(44)
         setPadding(dp(16), dp(10), dp(16), dp(10))
         background = if (primary) rounded(Palette.PRIMARY, 22f) else rounded(Palette.RAISED, 22f, Palette.BORDER)
-        if (primary) typeface = PaperMono.typeface(context, PaperMono.BOLD)
+        if (primary) typeface = Fonts.typeface(context, Fonts.BOLD)
         isClickable = true; isFocusable = true
         key?.let { tag = it }
         setOnClickListener { if (isEnabled) action() }

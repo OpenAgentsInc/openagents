@@ -211,7 +211,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         // White, or dimmed while the other button's panel is open.
         fun big(title: String, key: String, on: Boolean, action: () -> Unit) = activity.text(title, 17f,
             if (!on && active != Mode.HOME) Palette.PRIMARY else Palette.BACKGROUND).apply {
-            gravity = Gravity.CENTER; typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            gravity = Gravity.CENTER; typeface = Fonts.typeface(context, Fonts.BOLD)
             setPadding(0, activity.dp(16), 0, activity.dp(16))
             background = activity.rounded(if (!on && active != Mode.HOME) 0xFF333333.toInt() else Palette.PRIMARY, 14f)
             tag = key; contentDescription = title; isSelected = on
@@ -348,7 +348,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
             val on = index == selected
             addView(activity.text(title, 14f, if (on) Palette.BACKGROUND else Palette.PRIMARY).apply {
                 gravity = Gravity.CENTER; setPadding(0, activity.dp(8), 0, activity.dp(8))
-                if (on) { background = activity.rounded(Palette.PRIMARY, 8f); typeface = PaperMono.typeface(context, PaperMono.BOLD) }
+                if (on) { background = activity.rounded(Palette.PRIMARY, 8f); typeface = Fonts.typeface(context, Fonts.BOLD) }
                 tag = "$key-${title.lowercase()}"; isSelected = on
                 contentDescription = "$title${if (on) ", selected" else ""}"
                 setOnClickListener { if (!on) choose(index) }

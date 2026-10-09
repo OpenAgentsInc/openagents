@@ -65,7 +65,7 @@ class InputBar(
         token = next.getString("token"); input = next
         root.removeAllViews()
         error.text = ""; error.visibility = View.GONE
-        root.addView(activity.text(next.getString("label"), 17f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD) })
+        root.addView(activity.text(next.getString("label"), 17f).apply { typeface = Fonts.typeface(context, Fonts.BOLD) })
         root.addView(activity.text(next.getString("prompt"), 13f, Palette.SECONDARY), LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = activity.dp(4) })
         root.addView(error)
@@ -170,4 +170,4 @@ internal fun qrBitmap(qr: JSONObject): android.graphics.Bitmap? {
     return bitmap
 }
 
-internal fun TextView.bold(): TextView { typeface = PaperMono.typeface(context, PaperMono.BOLD); return this }
+internal fun TextView.bold(): TextView { typeface = Fonts.typeface(context, Fonts.BOLD); return this }

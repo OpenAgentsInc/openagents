@@ -31,13 +31,13 @@ internal class GymViews(private val context: Context, private val tap: (String) 
 
     private fun title(value: String, size: Float, color: Int = Palette.PRIMARY) =
         context.text(value.uppercase(), size, color).apply {
-            typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            typeface = Fonts.typeface(context, Fonts.BOLD)
             letterSpacing = 0.03f
         }
 
     private fun body(value: String, tone: String = "body") =
         context.text(value, 16f, if (tone == "quiet") Palette.SECONDARY else Palette.PRIMARY).apply {
-            if (tone == "strong") typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            if (tone == "strong") typeface = Fonts.typeface(context, Fonts.BOLD)
         }
 
     private fun primary(button: JSONObject, busy: Boolean = false): TextView =
@@ -70,7 +70,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
     private fun mark(value: String) = context.text(when (value) {
         "check" -> "✓"; "cross" -> "✗"; "wait" -> "…"; "dot" -> "•"; else -> "–"
     }, 16f, if (value == "cross" || value == "none") Palette.TERTIARY else Palette.PRIMARY).apply {
-        typeface = PaperMono.typeface(context, PaperMono.BOLD)
+        typeface = Fonts.typeface(context, Fonts.BOLD)
         minWidth = context.dp(22)
     }
 
@@ -328,7 +328,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         }
         value.textOrNull("indicator")?.let { root.addView(title(it, 13f, Palette.SECONDARY)) }
         root.addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
-        root.gap(context.text(value.getString("title"), 26f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD) })
+        root.gap(context.text(value.getString("title"), 26f).apply { typeface = Fonts.typeface(context, Fonts.BOLD) })
         value.optJSONArray("lines")?.let { lines -> for (i in 0 until lines.length()) root.gap(body(lines.getString(i), "quiet"), 6) }
         value.optJSONArray("agent")?.takeIf { it.length() == 2 }?.let { agent ->
             root.gap(context.column().apply {

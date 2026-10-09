@@ -251,3 +251,5 @@ mod copy_guard_tests;
 mod speed_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod typeface_tests;

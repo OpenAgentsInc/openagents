@@ -23,6 +23,7 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
 import android.view.Gravity
 import android.view.View
@@ -125,8 +126,8 @@ class ChatViews(
             }, color).apply {
                 setTextIsSelectable(true)
                 when (props.getString("role")) {
-                    "code", "terminal" -> typeface = PaperMono.typeface(context)
-                    "heading" -> typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                    "code", "terminal" -> typeface = Fonts.code(context)
+                    "heading" -> typeface = Fonts.typeface(context, Fonts.BOLD)
                 }
             }
             "button" -> context.text(props.getString("label"), 15f).apply {
@@ -203,7 +204,7 @@ class ChatViews(
         "heading" -> {
             val level = block.getInt("level")
             paragraph(block.getJSONArray("spans"), color, when (level) { 1 -> 22f; 2 -> 19f; 3 -> 17f; else -> 16f }).apply {
-                typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                typeface = Fonts.typeface(context, Fonts.BOLD)
                 setPadding(0, context.dp(if (level <= 2) 4 else 2), 0, 0)
                 if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
             }
@@ -243,10 +244,10 @@ class ChatViews(
             val end = builder.length
             if (start == end) continue
             fun mark(what: Any) = builder.setSpan(what, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            // Paper Mono has no italic, so italic text stays upright.
             if (span.optBoolean("bold")) mark(StyleSpan(Typeface.BOLD))
+            if (span.optBoolean("italic")) mark(StyleSpan(Typeface.ITALIC))
             if (span.optBoolean("strike")) mark(StrikethroughSpan())
-            if (span.optBoolean("code")) mark(BackgroundColorSpan(Palette.INLINE_CODE))
+            if (span.optBoolean("code")) { mark(BackgroundColorSpan(Palette.INLINE_CODE)); mark(TypefaceSpan("monospace")) }
             if (span.textOrNull("link") != null || span.has("link")) { mark(ForegroundColorSpan(Palette.LINK)); mark(UnderlineSpan()) }
         }
         return builder
@@ -264,7 +265,7 @@ class ChatViews(
             }
             row.addView(context.text(marker, 16f, if (checked != null) Palette.SECONDARY else color).apply {
                 gravity = Gravity.END
-                if (ordered && checked == null) typeface = PaperMono.typeface(context)
+                if (ordered && checked == null) typeface = Fonts.typeface(context)
             }, LinearLayout.LayoutParams(context.dp(if (ordered) 28 else 18), -2))
             row.addView(markdown(item.getJSONArray("blocks"), color), LinearLayout.LayoutParams(0, -2, 1f).apply {
                 marginStart = context.dp(8) })
@@ -290,7 +291,7 @@ class ChatViews(
         addView(HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(context.text(text.trimEnd('\n'), 13f).apply {
-                typeface = PaperMono.typeface(context)
+                typeface = Fonts.code(context)
                 setTextIsSelectable(true)
                 setHorizontallyScrolling(true)
                 setPadding(context.dp(12), context.dp(12), context.dp(12), context.dp(12))
@@ -309,7 +310,7 @@ class ChatViews(
             for (column in 0 until values.length()) {
                 addView(context.text("", 14f, color).apply {
                     text = styled(values.getJSONArray(column))
-                    if (header) typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                    if (header) typeface = Fonts.typeface(context, Fonts.BOLD)
                     setTextIsSelectable(true)
                     maxWidth = context.dp(280)
                     gravity = when (align.optString(column)) {
@@ -363,7 +364,7 @@ class ChatViews(
                 else -> context.text("✓", 13f, Palette.SUCCESS).apply { gravity = Gravity.CENTER }
             }
             addView(icon, LinearLayout.LayoutParams(context.dp(18), context.dp(18)))
-            addView(context.text(name, 15f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD) },
+            addView(context.text(name, 15f).apply { typeface = Fonts.typeface(context, Fonts.BOLD) },
                 LinearLayout.LayoutParams(-2, -2).apply { marginStart = context.dp(8) })
             addView(context.text(detail, 15f, Palette.SECONDARY).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
@@ -527,7 +528,7 @@ class Composer(private val context: Context, private val send: (String, String) 
         }
         control.apply {
             gravity = Gravity.CENTER
-            typeface = PaperMono.typeface(context, PaperMono.BOLD)
+            typeface = Fonts.typeface(context, Fonts.BOLD)
             background = context.rounded(Palette.PRIMARY, 17f)
             setOnClickListener { if (busy) doStop() else doSend() }
             setOnLongClickListener { offerChoices() }

@@ -1,13 +1,19 @@
 //! Transcript layout for the Android host: the same Rust layout the iOS host
 //! reaches through `rust_native_layout.h`, measured by the Rust shaper with
-//! the bundled fonts, so Android needs no text-engine callback.
+//! the phone's own fonts, so Android needs no text-engine callback.
+//!
+//! The faces are the web's (#11120): text in the first family of the
+//! `--font-sans` stack the phone has, code in the first of `--font-mono`
+//! (`oa_tokens::typography`), which on Android are its system UI face,
+//! Roboto, and its monospace face, Droid Sans Mono. The app bundles no font;
+//! only a phone with neither file keeps the shaper's bundled face.
 //!
 //! A transcript handle is updated on one worker thread at a time; each update
 //! registers the layout's immutable frame under its own ID, which the UI
 //! thread reads until it releases it. IDs are counters, never pointers. The
 //! registry bounds how many transcripts and frames can be live.
 use super::{BridgeError, error};
-use rust_native::layout::shape::{FACES, FontSpec, ShapingMeasurer};
+use rust_native::layout::shape::{FontSpec, ShapingMeasurer, faces};
 use rust_native::layout::{Frame, TranscriptLayout, Update};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -44,7 +50,53 @@ fn next_id() -> i64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Android's font files for a family the token stacks name, in the order
+/// to try. A family with no file here (another platform's face, an emoji
+/// face) is skipped.
+pub(crate) fn system_files(family: &str) -> &'static [&'static str] {
+    match family {
+        // The system UI face, which Android's `sans-serif` also names.
+        "ui-sans-serif" | "system-ui" | "sans-serif" => &[
+            "/system/fonts/Roboto-Regular.ttf",
+            "/system/fonts/RobotoStatic-Regular.ttf",
+        ],
+        "Noto Sans" => &["/system/fonts/NotoSans-Regular.ttf"],
+        "ui-monospace" | "monospace" => &["/system/fonts/DroidSansMono.ttf"],
+        _ => &[],
+    }
+}
+
+/// The first file of `stack`'s families that exists on this phone.
+fn resolve(stack: &[String]) -> Option<&'static str> {
+    stack.iter().find_map(|family| {
+        system_files(family)
+            .iter()
+            .copied()
+            .find(|path| std::path::Path::new(path).is_file())
+    })
+}
+
+/// Installs the phone's faces for every transcript, once, before the first
+/// measurer. Without a text face the shaper keeps its bundled one; without
+/// a code face, code draws in the text face.
+#[cfg(target_os = "android")]
+fn install_system_faces() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let read = |path: Option<&str>| -> Option<&'static [u8]> {
+            let bytes = std::fs::read(path?).ok()?;
+            Some(Box::leak(bytes.into_boxed_slice()))
+        };
+        if let Some(text) = read(resolve(&oa_tokens::typography::sans())) {
+            let code = read(resolve(&oa_tokens::typography::mono())).unwrap_or(text);
+            let _ = rust_native::layout::shape::install_faces(text, code);
+        }
+    });
+}
+
 pub(crate) fn create() -> Result<i64, BridgeError> {
+    #[cfg(target_os = "android")]
+    install_system_faces();
     let mut registry = registry();
     if registry.transcripts.len() >= MAX_TRANSCRIPTS {
         return Err(error("Too many transcript layouts"));
@@ -217,11 +269,12 @@ pub(crate) fn publish(name: &str, node: &str) -> Result<(), BridgeError> {
         .map_err(|problem| BridgeError(problem.to_string()))
 }
 
-/// A bundled face's font file.
+/// A face's font file: the phone's text or code face, or the shaper's
+/// bundled one when the phone had none.
 pub(crate) fn font(face: i32) -> Result<&'static [u8], BridgeError> {
     usize::try_from(face)
         .ok()
-        .and_then(|face| FACES.get(face).copied())
+        .and_then(|face| faces().get(face).copied())
         .ok_or_else(|| error("No such font face"))
 }
 
@@ -277,8 +330,8 @@ mod tests {
         destroy(id);
         assert!(update(id, "{}").is_err());
         assert_eq!(font_spec(14.4, 0, false, true), [0.0, 400.0, 0.0, 0.0]);
-        // The phone draws Paper Mono, the one bundled face, for every weight,
-        // italic, and monospace combination.
+        // A host test process installs no faces, so every weight, italic,
+        // and monospace combination draws the shaper's one bundled face.
         for weight in 0..4 {
             for italic in [false, true] {
                 for mono in [false, true] {
@@ -287,8 +340,39 @@ mod tests {
             }
         }
         assert!(font(0).unwrap().len() > 100_000);
-        assert_eq!(FACES.len(), 1);
+        assert_eq!(faces().len(), 1);
         assert!(font(1).is_err() && font(-1).is_err());
         rust_native::layout::source::retire("android-test:chat");
+    }
+
+    /// Every family the phone resolves is one the web's token stacks name,
+    /// and the stacks pick Roboto for text and Droid Sans Mono for code.
+    #[test]
+    fn the_phone_faces_are_the_token_stacks() {
+        let sans = oa_tokens::typography::sans();
+        let mono = oa_tokens::typography::mono();
+        for family in [
+            "ui-sans-serif",
+            "system-ui",
+            "sans-serif",
+            "Noto Sans",
+            "ui-monospace",
+            "monospace",
+        ] {
+            assert!(!system_files(family).is_empty(), "{family}");
+            assert!(
+                sans.iter().chain(mono.iter()).any(|named| named == family),
+                "{family} is not in the token stacks"
+            );
+        }
+        let first = |stack: &[String]| {
+            stack
+                .iter()
+                .find_map(|family| system_files(family).first().copied())
+        };
+        assert_eq!(first(&sans), Some("/system/fonts/Roboto-Regular.ttf"));
+        assert_eq!(first(&mono), Some("/system/fonts/DroidSansMono.ttf"));
+        assert!(system_files("Paper Mono").is_empty());
+        assert_eq!(resolve(&["Paper Mono".to_string()]), None);
     }
 }

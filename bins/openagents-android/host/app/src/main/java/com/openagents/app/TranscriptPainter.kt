@@ -1,6 +1,6 @@
 // The transcript painter. Rust lays out every row (crates/rust-native,
 // `layout`): exact heights, offsets, and display lists with each text run's
-// position, measured by Rust's shaper with the bundled fonts. This file only
+// position, measured by Rust's shaper with the system fonts. This file only
 // paints the runs at Rust's positions with the same fonts, scrolls, and
 // handles taps. It mirrors bins/coder-ios/host/App/NativeTranscriptPainter.swift.
 package com.openagents.app
@@ -65,7 +65,7 @@ object TranscriptNative {
     @JvmStatic external fun highlight(language: String, text: String, light: Boolean): String
 }
 
-/** The bundled faces at the variations Rust measured with. */
+/** Rust's faces (the system's, `openagents-mobile` `android::typeface`) at the variations Rust measured with. */
 internal object TranscriptFonts {
     private val typefaces = HashMap<String, Pair<Typeface, Boolean>>()
     private val files = HashMap<Int, File>()
@@ -87,7 +87,8 @@ internal object TranscriptFonts {
                 if (spec[2] > 0f) append(", 'opsz' ${spec[2]}")
             }
             val typeface = Typeface.Builder(file(context, spec[0].toInt()))
-                .setFontVariationSettings(variations).build() ?: PaperMono.typeface(context, weight)
+                .setFontVariationSettings(variations).build()
+                ?: (Fonts.REGULAR + 100 * weight).let { if (mono) Fonts.code(context, it) else Fonts.typeface(context, it) }
             typeface to (spec[3] != 0f)
         }
     }

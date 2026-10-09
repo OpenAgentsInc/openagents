@@ -222,7 +222,7 @@ struct NativeView: Decodable {
 /// The cell font for Rust Native's terminal text role. The terminal screen
 /// sizes its grid from these metrics.
 enum TerminalMetrics {
-    static let font = UIFont.paper(12)
+    static let font = UIFont.code(12)
     static var cell: CGSize {
         let width = ("M" as NSString).size(withAttributes: [.font: font]).width
         return CGSize(width: ceil(width * 100) / 100, height: ceil(font.lineHeight))
@@ -443,7 +443,7 @@ private struct NativeText: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             text
-                .font(role == "code" ? .paper(.body) :
+                .font(role == "code" ? .code(.body) :
                       role == "heading" ? .paper(.headline) : role == "status" ? .paper(.caption) : .paper(.body))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

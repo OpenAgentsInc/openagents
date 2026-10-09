@@ -656,7 +656,7 @@ final class NativeMarkdownCache {
         }
         // Paper Mono has no italic face, so italic spans draw upright.
         let font = span.code
-            ? UIFont.paper(size * 0.9, weight: span.bold ? .semibold : weight)
+            ? UIFont.code(size * 0.9, weight: span.bold ? .semibold : weight)
             : UIFont.paper(size, weight: span.bold ? .bold : weight)
         return UIFontMetrics(forTextStyle: textStyle).scaledFont(for: font, compatibleWith: traits)
     }

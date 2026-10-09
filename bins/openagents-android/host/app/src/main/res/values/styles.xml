@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Every view draws in Paper Mono (res/font/paper_mono.xml); code builds
-         typefaces through PaperMono.kt. -->
+    <!-- Every view draws in the system sans-serif face (Roboto), the web's
+         sans stack on Android; code draws in the system monospace
+         face. Code builds typefaces through Fonts.kt. The app bundles no font. -->
     <style name="OpenAgentsTheme" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:textViewStyle">@style/OpenAgentsText</item>
         <item name="android:editTextStyle">@style/OpenAgentsEditText</item>
         <item name="android:buttonStyle">@style/OpenAgentsButton</item>
@@ -17,14 +18,14 @@
     </style>
 
     <style name="OpenAgentsText" parent="android:style/Widget.Material.TextView">
-        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:fontFamily">sans-serif</item>
     </style>
 
     <style name="OpenAgentsEditText" parent="android:style/Widget.Material.EditText">
-        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:fontFamily">sans-serif</item>
     </style>
 
     <style name="OpenAgentsButton" parent="android:style/Widget.Material.Button">
-        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:fontFamily">sans-serif</item>
     </style>
 </resources>
