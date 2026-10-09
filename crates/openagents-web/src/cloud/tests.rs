@@ -1546,7 +1546,15 @@ async fn workspace_shell_keeps_keyboard_and_screen_reader_basics() {
         assert!(body.contains("<a class=\"oa-skip-link\" href=\"#content\">"));
         assert!(body.contains("<main id=\"content\""));
         assert!(body.contains("<nav aria-label=\"Workspace\">"));
-        assert_eq!(body.matches("aria-current=\"page\"").count(), 1, "{path}");
+        // One current section in the nav; the breadcrumb also marks the page.
+        let breadcrumb = body
+            .matches("oa-breadcrumb-current\" aria-current=\"page\"")
+            .count();
+        assert_eq!(
+            body.matches("aria-current=\"page\"").count() - breadcrumb,
+            1,
+            "{path}"
+        );
         assert!(body.contains(current), "{path}");
         assert!(body.contains("id=\"cloud-resume\" aria-live=\"polite\""));
         assert!(body.contains("name=\"viewport\""));

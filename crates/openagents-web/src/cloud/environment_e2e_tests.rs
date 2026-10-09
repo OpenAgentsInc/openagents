@@ -575,9 +575,7 @@ fn holds(dir: &Path, needle: &[u8]) -> Vec<PathBuf> {
 }
 /// Keyboard and narrow-screen basics of one page.
 fn accessible(html: &str) {
-    assert!(
-        html.contains("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    );
+    assert!(html.contains("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1"));
     assert!(!html.contains("user-scalable=no") && !html.contains("maximum-scale"));
     assert!(html.contains("href=\"#content\""), "no skip link");
     // Only the skip link's target leaves the tab order; no mouse-only

@@ -45,7 +45,14 @@ pub fn current() -> Account {
 
 /// Resolves the account for a page request and runs the handler with it.
 pub(crate) async fn scope(State(app): State<App>, request: Request, next: Next) -> Response {
-    let account = resolve(&app, request.method(), request.headers()).await;
+    // Cloud pages authenticate the session themselves; resolving it here too
+    // would read the account service twice per page. Until one sign-in check
+    // per request is shared (docs/auth), they skip this lookup.
+    let account = if request.uri().path().starts_with("/cloud/") {
+        Account::Unknown
+    } else {
+        resolve(&app, request.method(), request.headers()).await
+    };
     ACCOUNT.scope(account, next.run(request)).await
 }
 

@@ -97,7 +97,14 @@ async fn each_chat_has_its_own_page_and_thread_fragment() {
         let (status, _, html) = send(config(root.path()), get(&path, HOST, false)).await;
         assert_eq!(status, StatusCode::OK, "{path}");
         assert!(html.contains(&format!("href=\"{path}\" hx-get")), "{path}");
-        assert_eq!(html.matches("aria-current=\"page\"").count(), 1, "{path}");
+        let breadcrumb = html
+            .matches("oa-breadcrumb-current\" aria-current=\"page\"")
+            .count();
+        assert_eq!(
+            html.matches("aria-current=\"page\"").count() - breadcrumb,
+            1,
+            "{path}"
+        );
         let (status, headers, fragment) = send(
             config(root.path()),
             get(&format!("{path}/thread"), HOST, true),
