@@ -217,6 +217,34 @@ async fn cloud_is_public_but_browser_work_and_purchases_remain_unavailable() {
     );
 }
 
+/// `/ui` serves the openagents-ui component catalog in the page shell,
+/// with scripts from this site only, and is never proxied.
+#[tokio::test]
+async fn the_component_catalog_is_served_at_ui() {
+    let root = tempfile::tempdir().unwrap();
+    let (status, headers, html) = get_with(router(config(root.path().into())), "/ui", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("class=\"oa-catalog\""), "catalog body");
+    assert!(html.contains("data-theme=\"light\""), "light pane");
+    assert!(html.contains("data-theme=\"dark\""), "dark pane");
+    assert!(
+        html.contains("data-catalog-component=\"Button\""),
+        "specimens"
+    );
+    assert!(
+        html.contains("<title>Components \u{b7} OpenAgents</title>"),
+        "title"
+    );
+    assert!(html.contains(crate::theme::STYLESHEET_PATH), "stylesheet");
+    assert!(html.contains(crate::theme::SCRIPT_PATH), "component script");
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("script-src 'self'"), "{policy}");
+    assert!(policy.contains("style-src 'self'"), "{policy}");
+    assert!(!policy.contains("'unsafe-inline'"), "{policy}");
+    assert!(!policy.contains("'unsafe-eval'"), "{policy}");
+    assert!(upstream::owned("/ui"));
+}
+
 #[tokio::test]
 async fn the_legal_pages_carry_the_published_text() {
     let root = tempfile::tempdir().unwrap();

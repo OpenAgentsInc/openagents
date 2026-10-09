@@ -182,6 +182,7 @@ pub fn router(config: Config) -> Router {
         .route("/static/chat.js", get(chat_script))
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
+        .route("/ui", get(ui_catalog))
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
@@ -419,6 +420,24 @@ async fn favicon() -> Response {
         svg,
     )
         .into_response()
+}
+
+/// The policy for `/ui`: the site policy plus scripts from this site, which
+/// the catalog's overlays (Alpine CSP build) and copy buttons need.
+const UI_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
+     script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+/// The `openagents-ui` component catalog (UI-07).
+async fn ui_catalog(headers: axum::http::HeaderMap) -> Response {
+    let mut response = ui_page::UiPage::new("Components")
+        .path("/ui")
+        .content(openagents_ui::catalog::render())
+        .respond(&headers);
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(UI_POLICY),
+    );
+    response
 }
 
 async fn not_found() -> Response {
