@@ -44,6 +44,17 @@ gateway and applied at start under an advisory lock.
 in `OPENAGENTS_ACCOUNTS_DATABASE_URL`) do the same against an export, for
 example through `cloud-sql-proxy`.
 
+**Live, 2026-10-09.** Staging (`openagents-web-1-staging-23232df3b0-220213`,
+22:02 UTC): imported 14 accounts, 14 workspaces, 14 memberships, 14
+sessions, 15 API keys, 1 provider key and 58 archived revisions in 1.4 s,
+verified; handoff 2 s; full smoke 73 passed, 0 failed, 1 skipped; `--only
+durable --restart` 10 passed (a new revision kept the account, session,
+API key, provider key and own-Claude key). Production
+(`coder-web-pg-23232df3b0-220558`, traffic at 22:08 UTC): imported the
+genesis stores (no accounts yet, the `house` key) in 0.4 s; `--production`
+smoke 52 passed, 0 failed, 2 skipped, the same as the NFS revision before
+it.
+
 **Rolling back** (kept possible for a week, to 2026-10-16): render with
 the database left out (`deploy/production/render.py --files`; on staging,
 drop the secret and annotation in `render.py`) and deploy. The gateway

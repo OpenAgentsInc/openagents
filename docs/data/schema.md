@@ -39,9 +39,12 @@ storage](../deployment/account-storage.md)).
    that owns it, except rows that exist before or outside any workspace
    (an account, its principals and sessions, which belong to an account),
    which carry `account_id` instead. Deleting or splitting a workspace is a
-   `WHERE workspace_id = $1` in every schema. Rows that only reference a
-   registry tenant (bearer keys, provider keys) keep `tenant` and resolve
-   `workspace_id` from the workspace bound to that tenant.
+   `WHERE workspace_id = $1` in every schema. Two migrated stores do not
+   yet: a bearer key belongs to the account holding the principal
+   `key:<id>`, and provider keys are keyed by registry tenant, which every
+   personal workspace shares today
+   ([#11186](https://github.com/OpenAgentsInc/openagents/issues/11186));
+   both get `workspace_id` in the migration that fixes that.
 2. **Big payloads live in buckets.** Chat message bodies, trace files,
    artifacts, plugin packages and attachments stay in Cloud Storage. Postgres
    keeps the pointer (`object_key`), the size and the `sha256`, so a read can
@@ -114,7 +117,7 @@ What a person is and how they prove it.
 | `credentials` | A sign-in secret's digest for an account that has one | `account_id` | Digest | With the account |
 | `onboarding_budgets` | The operator-funded anonymous lane's budgets | `id` | Account | 30 days after spent |
 | `bearer_keys` | An `oak_` bearer key: id, tenant, secret digest, status, name, key scope, lineage. **Later:** user-set limits per key (requests and spend per day), which the owner asked for and the user sets | `id` primary key; `digest` unique | Digest | Revoked keys kept, so a revoked key is told apart from an unknown one |
-| `provider_keys` | A workspace's own provider key (OpenRouter, Vercel AI Gateway), sealed under the BYOK keyring | (`tenant`, `provider`) primary key | Sealed | Until removed |
+| `provider_keys` | A workspace's own provider key (OpenRouter, Vercel AI Gateway, Anthropic, OpenAI, Google), sealed under the BYOK keyring | (`tenant`, `provider`) primary key today; (`workspace_id`, `provider`) after #11186 | Sealed | Until removed |
 | `github_access` | An account's GitHub user grant (sealed token, scopes, login), GitHub App installations, credential-broker tickets, and chosen repositories | `account_id` primary key; `account_digest` unique | Sealed | Until disconnected |
 | `stores` | One row per migrated document store (`accounts`, `sessions`, `keys`): its schema tag, revision counter, sequence, digest and the parts of the document that have no table yet | `store` primary key | Account | Current only |
 

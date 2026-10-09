@@ -136,10 +136,18 @@ def main():
         "run.googleapis.com/vpc-access-egress": "private-ranges-only",
         "run.googleapis.com/container-dependencies": json.dumps({"web": ["coder-serve"]}),
     })
-    if args.files:
-        annotations.pop("run.googleapis.com/cloudsql-instances", None)
+    # The service already connects coder-serve to its own instance
+    # (coder-pg): add the account database to the list, never replace it.
+    instances = [
+        name for name in annotations.get("run.googleapis.com/cloudsql-instances", "").split(",")
+        if name.strip() and name.strip() != DATABASE
+    ]
+    if not args.files:
+        instances.append(DATABASE)
+    if instances:
+        annotations["run.googleapis.com/cloudsql-instances"] = ",".join(instances)
     else:
-        annotations["run.googleapis.com/cloudsql-instances"] = DATABASE
+        annotations.pop("run.googleapis.com/cloudsql-instances", None)
 
     traffic = []
     for entry in service["spec"].get("traffic", []):
