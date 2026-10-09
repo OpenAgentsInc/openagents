@@ -7,11 +7,11 @@
 //! retained native packet. A gap in the Studio stream refuses every control
 //! until the page reads a fresh snapshot.
 
-use super::controls::{Context, admitted, hidden, staged, submit};
+use super::controls::{Context, admitted, staged};
 use super::session::{SessionError, now};
-use super::{failure, protect, refused, ticket, workspace_shell};
+use super::ui::{self, Tone};
+use super::{failure, protect, refused, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{Form, Path, State};
@@ -23,6 +23,9 @@ use coder_access::agent::{self as wire, AgentView, Mode};
 use coder_access::protocol::{Operation, Outcome, random_id};
 use coder_access::review::{Completeness, TaskReview};
 use coder_access::studio::{Kind, MergeDecision, Snapshot, Update, Verdict};
+use maud::{Markup, PreEscaped, html};
+use openagents_ui::content::CodeBlock;
+use openagents_ui::forms::{Direction, Field, Input, RadioGroup, Select, Textarea};
 use serde::Deserialize;
 
 /// The host's current request limits for one agent, until the placement
@@ -56,7 +59,7 @@ pub(super) fn routes() -> Router<App> {
 }
 
 fn agents_url(binding: &str) -> String {
-    format!("/cloud/app/hosts/{}/agents", escape(binding))
+    format!("/cloud/app/hosts/{binding}/agents")
 }
 
 fn shell(context: &Context<'_>, headers: &HeaderMap, content: &str) -> Response {
@@ -142,62 +145,56 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         .cloud_hosts
         .as_ref()
         .map_or_else(Vec::new, |hosts| hosts.current(&viewer));
-    let mut content = String::from(
-        "<h2>Agents</h2><p>Alice, crew members, and Agent Studio seats live on their host. Choose an explicitly bound host; each page checks current native Observe authority.</p><ul>",
-    );
-    if bindings.is_empty() {
-        content.push_str(
-            "<li>No agent or Studio host is admitted for this account and workspace.</li>",
-        );
-    }
-    for binding in bindings {
-        content.push_str(&format!(
-            "<li><a href=\"{}\">Agents and Studio on {}</a></li>",
-            agents_url(binding.id()),
-            escape(binding.id())
-        ));
-    }
-    content.push_str("</ul>");
+    let content = html! {
+        h2 { "Agents" }
+        p { "Alice, crew members, and Agent Studio seats live on their host. Choose an explicitly bound host; each page checks current native Observe authority." }
+        ul {
+            @if bindings.is_empty() {
+                li { "No agent or Studio host is admitted for this account and workspace." }
+            }
+            @for binding in &bindings {
+                li { a href=(agents_url(binding.id())) { "Agents and Studio on " (binding.id()) } }
+            }
+        }
+    };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "agents",
-        Some(&content),
+        Some(&content.into_string()),
         None,
     )
 }
 
 /// Owner attestation as the host reports it: identity, not execution rights.
-fn attestation(view: &AgentView, at: u64) -> String {
-    let identity = view.pubkey.as_deref().map_or_else(
-        || "No key of her own; she is unattested.".to_owned(),
-        |key| format!("Key <code>{}</code>.", escape(key)),
-    );
-    let standing = match (&view.pubkey, &view.authorized_by, view.attested_until) {
-        (Some(_), _, Some(until)) if until <= at => format!(
-            "Attestation <strong>expired</strong> at Unix second {until}. {}.",
-            escape(&wire::renewal_warning(until, at).unwrap_or_default())
-        ),
-        (Some(_), Some(owner), Some(until)) => {
-            let mut line = format!(
-                "<strong>Attested</strong>: {} until Unix second {until}.",
-                escape(&wire::authorized_line(owner, until, at))
-            );
-            if wire::renewal_warning(until, at).is_some() {
-                line.push_str(" Renewal is due within 14 days.");
-            }
-            line
+fn attestation(view: &AgentView, at: u64) -> Markup {
+    let identity = html! {
+        @match view.pubkey.as_deref() {
+            Some(key) => { "Key " code { (key) } "." }
+            None => { "No key of her own; she is unattested." }
         }
-        (Some(_), None, Some(until)) => format!(
-            "<strong>Unattested</strong>: no owner attestation verifies now (recorded expiry Unix second {until})."
-        ),
-        _ => "<strong>Unattested</strong>.".to_owned(),
     };
-    format!(
-        "<p>{identity} {standing} An attestation identifies her and supports signed spend evidence; it grants no execution rights.</p>"
-    )
+    let standing = match (&view.pubkey, &view.authorized_by, view.attested_until) {
+        (Some(_), _, Some(until)) if until <= at => html! {
+            "Attestation " strong { "expired" } " at Unix second " (until) ". "
+            (wire::renewal_warning(until, at).unwrap_or_default()) "."
+        },
+        (Some(_), Some(owner), Some(until)) => html! {
+            strong { "Attested" } ": " (wire::authorized_line(owner, until, at))
+            " until Unix second " (until) "."
+            @if wire::renewal_warning(until, at).is_some() { " Renewal is due within 14 days." }
+        },
+        (Some(_), None, Some(until)) => html! {
+            strong { "Unattested" }
+            ": no owner attestation verifies now (recorded expiry Unix second " (until) ")."
+        },
+        _ => html! { strong { "Unattested" } "." },
+    };
+    html! {
+        p { (identity) " " (standing) " An attestation identifies her and supports signed spend evidence; it grants no execution rights." }
+    }
 }
 
 fn word<T: serde::Serialize>(value: &T) -> String {
@@ -207,251 +204,231 @@ fn word<T: serde::Serialize>(value: &T) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-fn agent_card(binding: &str, view: &AgentView, at: u64) -> String {
-    let mut card = format!(
-        "<section class=\"cloud-card\" id=\"agent-{name}\"><h3><a href=\"{base}/{name}\">{name}</a> · {state}</h3>",
-        name = escape(&view.name),
-        base = agents_url(binding),
-        state = escape(&view.state)
-    );
-    if let Some(role) = &view.job_role {
-        card.push_str(&format!(
-            "<p>Crew role: {}. Her charter limits what she may do; it grants nothing more.</p>",
-            escape(&word(role))
-        ));
-    }
-    card.push_str(&attestation(view, at));
-    card.push_str(&format!(
-        "<p>Activity: {}. Last report: {}.</p><p>Engine: <code>{}</code> (her planning route, or the model that answered last). The actual delegate of each request appears in her journal.</p>",
-        escape(&word(&view.activity)),
-        escape(if view.headline.is_empty() { "none" } else { &view.headline }),
-        escape(&view.route)
-    ));
-    card.push_str(&format!(
-        "<p>{}</p>",
-        if view.busy {
-            "A request is under way."
-        } else {
-            "No request is under way."
+fn agent_card(binding: &str, view: &AgentView, at: u64) -> Markup {
+    html! {
+        section class="cloud-card" id=(format!("agent-{}", view.name)) {
+            h3 {
+                a href=(format!("{}/{}", agents_url(binding), view.name)) { (view.name) }
+                " " (ui::status(&view.state, Tone::Neutral))
+            }
+            @if let Some(role) = &view.job_role {
+                p { "Crew role: " (word(role)) ". Her charter limits what she may do; it grants nothing more." }
+            }
+            (attestation(view, at))
+            p {
+                "Activity: " (word(&view.activity)) ". Last report: "
+                (if view.headline.is_empty() { "none" } else { view.headline.as_str() }) "."
+            }
+            p {
+                "Engine: " code { (view.route) }
+                " (her planning route, or the model that answered last). The actual delegate of each request appears in her journal."
+            }
+            p {
+                @if view.busy { "A request is under way." } @else { "No request is under way." }
+            }
+            @if let Some(step) = &view.run {
+                p { "Running step " (step.step) ": " code { (step.command) } " in " code { (step.cwd) } "." }
+            }
+            @if let Some(pending) = &view.pending {
+                p { "Waiting proposal, step " (pending.step) ": " code { (pending.command) } ". " (pending.why) }
+            }
+            @if let Some(change) = &view.change {
+                p { "Coding-task change in Studio task " code { (change.task) } ": " (change.stage) "." }
+            }
+            p {
+                "Requests " (view.service.requests) ", finished " (view.service.finished)
+                ", merged " (view.service.merged) ". Standing jobs on: " (view.jobs[0])
+                " of " (view.jobs[1]) ". Proposed preferences waiting: " (view.candidates) "."
+            }
+            @if let Some(plan) = &view.plan {
+                p {
+                    "Day plan for " (plan.date) ": " (plan.blocks.len()) " blocks"
+                    @if let Some(index) = plan.current { ", block " (index + 1) " under way" }
+                    ". A day plan starts no work."
+                }
+            }
+            p { (LIMITS) }
+            p { (METER) }
         }
-    ));
-    if let Some(step) = &view.run {
-        card.push_str(&format!(
-            "<p>Running step {}: <code>{}</code> in <code>{}</code>.</p>",
-            step.step,
-            escape(&step.command),
-            escape(&step.cwd)
-        ));
     }
-    if let Some(pending) = &view.pending {
-        card.push_str(&format!(
-            "<p>Waiting proposal, step {}: <code>{}</code>. {}</p>",
-            pending.step,
-            escape(&pending.command),
-            escape(&pending.why)
-        ));
-    }
-    if let Some(change) = &view.change {
-        card.push_str(&format!(
-            "<p>Coding-task change in Studio task <code>{}</code>: {}.</p>",
-            escape(&change.task),
-            escape(&change.stage)
-        ));
-    }
-    card.push_str(&format!(
-        "<p>Requests {}, finished {}, merged {}. Standing jobs on: {} of {}. Proposed preferences waiting: {}.</p>",
-        view.service.requests,
-        view.service.finished,
-        view.service.merged,
-        view.jobs[0],
-        view.jobs[1],
-        view.candidates
-    ));
-    if let Some(plan) = &view.plan {
-        card.push_str(&format!(
-            "<p>Day plan for {}: {} blocks{}. A day plan starts no work.</p>",
-            escape(&plan.date),
-            plan.blocks.len(),
-            plan.current.map_or_else(String::new, |index| format!(
-                ", block {} under way",
-                index + 1
-            ))
-        ));
-    }
-    card.push_str(&format!("<p>{LIMITS}</p><p>{METER}</p></section>"));
-    card
+}
+
+/// A form bound to the displayed Studio stream and sequence.
+fn studio_form(action: String, csrf: &str, request: &str, snapshot: &Snapshot) -> ui::BoundForm {
+    ui::BoundForm::new(action)
+        .csrf(csrf)
+        .bind("request", request)
+        .bind("stream", &snapshot.stream)
+        .bind("sequence", &snapshot.sequence.to_string())
 }
 
 fn studio_section(
     context: &Context<'_>,
     headers: &HeaderMap,
     snapshot: &Snapshot,
-) -> Result<String, Response> {
+) -> Result<Markup, Response> {
     let binding = context.binding.id();
     let view = &snapshot.view;
-    let mut html = format!(
-        "<h2>Agent Studio</h2><p>Stream <code>{}</code> at sequence {}. Controls below bind this exact stream and sequence; a gap or a restarted host refuses them until a fresh snapshot.</p>",
-        escape(&snapshot.stream),
-        snapshot.sequence
-    );
-    let bound = |html: &mut String| {
-        html.push_str(&hidden("stream", &snapshot.stream));
-        html.push_str(&hidden("sequence", &snapshot.sequence.to_string()));
-    };
     let operate = gate(context, Right::Operate);
-    html.push_str("<h3>Seats</h3>");
-    if view.seats.is_empty() {
-        html.push_str("<p>No seats.</p>");
-    }
+    let mut seats = Vec::with_capacity(view.seats.len());
     for seat in &view.seats {
-        html.push_str(&format!(
-            "<p><strong>{}</strong> · {} · route <code>{}</code> · {}{}{} · spend {}</p>",
-            escape(&seat.seat),
-            word(&seat.role),
-            escape(&seat.route),
-            word(&seat.activity),
-            seat.task
-                .as_deref()
-                .map_or_else(String::new, |task| format!(
-                    " · task <code>{}</code>",
-                    escape(task)
-                )),
-            if seat.paused { " · paused" } else { "" },
-            escape(&seat.spend.label())
-        ));
-        if operate.is_none() {
+        let form = if operate.is_none() {
             let request = random_id();
             let csrf = context.csrf(headers, "studio-seat", &request)?;
-            let button = submit(&format!("seat-{}", seat.seat), "Send seat action", true)?;
-            html.push_str(&format!(
-                "<form method=\"post\" action=\"/cloud/app/hosts/{}/studio/seats\">{}{}{}",
-                escape(binding),
-                ticket(&csrf),
-                hidden("request", &request),
-                hidden("seat", &seat.seat)
-            ));
-            bound(&mut html);
-            html.push_str(&format!(
-                "<label>Action <select name=\"action\"><option value=\"message\">Message</option><option value=\"pause\">Pause</option><option value=\"resume\">Resume</option><option value=\"stop\">Stop</option></select></label><label>Message <input name=\"text\" maxlength=\"4096\"></label>{button}</form>"
-            ));
-        }
+            let id = format!("seat-{}", seat.seat);
+            let action = Field::new(format!("{id}-action"), "Action");
+            let message = Field::new(format!("{id}-text"), "Message");
+            Some(
+                ui::BoundForm::new(format!("/cloud/app/hosts/{binding}/studio/seats"))
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .bind("seat", &seat.seat)
+                    .bind("stream", &snapshot.stream)
+                    .bind("sequence", &snapshot.sequence.to_string())
+                    .body(html! {
+                        (action.clone().control(
+                            Select::new("action")
+                                .aria(action.aria())
+                                .option("message", "Message")
+                                .option("pause", "Pause")
+                                .option("resume", "Resume")
+                                .option("stop", "Stop"),
+                        ))
+                        (message.clone().control(
+                            Input::new("text").aria(message.aria()).maxlength(4096),
+                        ))
+                    })
+                    .submit("Send seat action"),
+            )
+        } else {
+            None
+        };
+        seats.push((seat, form));
     }
-    html.push_str("<h3>Goals</h3>");
-    if view.goals.is_empty() {
-        html.push_str("<p>No goals.</p>");
-    }
-    for goal in &view.goals {
-        html.push_str(&format!(
-            "<p>{} · on <code>{}</code> · lead {} · {} · {} of {} tasks over · spend {}</p>",
-            escape(&goal.text),
-            escape(&goal.workspace),
-            escape(&goal.lead),
-            word(&goal.status),
-            goal.final_tasks,
-            goal.total_tasks,
-            escape(&goal.spend.label())
-        ));
-    }
-    if operate.is_none() && !view.repositories.is_empty() {
+    let goal_form = if operate.is_none() && !view.repositories.is_empty() {
         let request = random_id();
         let csrf = context.csrf(headers, "studio-goal", &request)?;
-        let button = submit("goal-submit", "Review goal submission", true)?;
-        let options: String = view
-            .repositories
-            .iter()
-            .map(|r| format!("<option value=\"{0}\">{0}</option>", escape(&r.workspace)))
-            .collect();
-        html.push_str(&format!(
-            "<form method=\"post\" action=\"/cloud/app/hosts/{}/studio/goals\">{}{}",
-            escape(binding),
-            ticket(&csrf),
-            hidden("request", &request)
-        ));
-        bound(&mut html);
-        html.push_str(&format!("<label>Repository <select name=\"workspace\">{options}</select></label><label>Goal <textarea name=\"text\" maxlength=\"4096\" required></textarea></label><p>The lead seat plans a submitted goal. Submission records intent; it merges, pushes, and deploys nothing.</p>{button}</form>"));
-    }
-    html.push_str("<h3>Tasks</h3>");
-    if view.tasks.is_empty() {
-        html.push_str("<p>No tasks.</p>");
-    }
-    for task in &view.tasks {
-        html.push_str(&format!(
-            "<p><code>{}</code> {} · seat {} · {}{}</p>",
-            escape(&task.task),
-            escape(&task.title),
-            escape(&task.seat),
-            word(&task.status),
-            if task.status == coder_access::studio::TaskStatus::Done {
-                format!(
-                    " · <a href=\"/cloud/app/hosts/{}/studio/tasks/{}/review?stream={}&amp;sequence={}\">Open review</a>",
-                    escape(binding),
-                    escape(&task.task),
-                    escape(&snapshot.stream),
-                    snapshot.sequence
-                )
-            } else {
-                String::new()
-            }
-        ));
-    }
-    html.push_str("<h3>Decisions and questions</h3>");
-    if view.decisions.is_empty() {
-        html.push_str("<p>No open decisions.</p>");
-    }
+        let repository = Field::new("goal-workspace", "Repository");
+        let text = Field::new("goal-text", "Goal").required(true);
+        let mut select = Select::new("workspace").aria(repository.aria());
+        for r in &view.repositories {
+            select = select.option(r.workspace.clone(), r.workspace.clone());
+        }
+        Some(
+            studio_form(
+                format!("/cloud/app/hosts/{binding}/studio/goals"),
+                &csrf,
+                &request,
+                snapshot,
+            )
+            .body(html! {
+                (repository.clone().control(select))
+                (text.clone().control(Textarea::new("text").aria(text.aria()).maxlength(4096)))
+                p { "The lead seat plans a submitted goal. Submission records intent; it merges, pushes, and deploys nothing." }
+            })
+            .submit("Review goal submission"),
+        )
+    } else {
+        None
+    };
+    let mut decisions = Vec::with_capacity(view.decisions.len());
     for decision in &view.decisions {
-        html.push_str(&format!(
-            "<section class=\"cloud-card\"><p>{} for goal <code>{}</code>{}: {}</p><p>Basis {}.</p>",
-            word(&decision.kind),
-            escape(&decision.goal),
-            decision
-                .seat
-                .as_deref()
-                .map_or_else(String::new, |seat| format!(" from {}", escape(seat))),
-            escape(&decision.text),
-            decision.based_on
-        ));
-        if let Some(approval) = &decision.approval {
-            html.push_str(&format!(
-                "<p>{}: <code>{}</code> runs <code>{}</code> in <code>{}</code>. {}</p>",
-                approval.risk.label(),
-                escape(&approval.tool),
-                escape(&approval.command),
-                escape(&approval.cwd),
-                escape(&approval.reason)
-            ));
+        let form = if operate.is_none() {
+            let request = random_id();
+            let csrf = context.csrf(headers, "studio-decision", &request)?;
+            let answer =
+                Field::new(format!("decision-{}-text", decision.decision), "Answer").required(true);
+            Some(
+                ui::BoundForm::new(format!("/cloud/app/hosts/{binding}/studio/decisions"))
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .bind("decision", &decision.decision)
+                    .bind("based_on", &decision.based_on.to_string())
+                    .bind("command", &random_id())
+                    .bind("issued_at", &now().to_string())
+                    .bind("stream", &snapshot.stream)
+                    .bind("sequence", &snapshot.sequence.to_string())
+                    .body(
+                        answer
+                            .clone()
+                            .control(Textarea::new("text").aria(answer.aria()).maxlength(65536)),
+                    )
+                    .submit("Review this exact answer"),
+            )
+        } else {
+            None
+        };
+        decisions.push((decision, form));
+    }
+    Ok(html! {
+        h2 { "Agent Studio" }
+        p {
+            "Stream " code { (snapshot.stream) } " at sequence " (snapshot.sequence)
+            ". Controls below bind this exact stream and sequence; a gap or a restarted host refuses them until a fresh snapshot."
         }
-        match operate {
-            Some(reason) => html.push_str(&format!("<p>{}</p>", escape(reason))),
-            None => {
-                let request = random_id();
-                let csrf = context.csrf(headers, "studio-decision", &request)?;
-                let button = submit(
-                    &format!("decision-{}", decision.decision),
-                    "Review this exact answer",
-                    true,
-                )?;
-                html.push_str(&format!(
-                    "<form method=\"post\" action=\"/cloud/app/hosts/{}/studio/decisions\">{}{}{}{}{}{}",
-                    escape(binding),
-                    ticket(&csrf),
-                    hidden("request", &request),
-                    hidden("decision", &decision.decision),
-                    hidden("based_on", &decision.based_on.to_string()),
-                    hidden("command", &random_id()),
-                    hidden("issued_at", &now().to_string())
-                ));
-                bound(&mut html);
-                html.push_str(&format!(
-                    "<label>Answer <textarea name=\"text\" maxlength=\"65536\" required></textarea></label>{button}</form>"
-                ));
+        h3 { "Seats" }
+        @if view.seats.is_empty() { p { "No seats." } }
+        @for (seat, form) in &seats {
+            p {
+                strong { (seat.seat) } " \u{b7} " (word(&seat.role)) " \u{b7} route " code { (seat.route) }
+                " \u{b7} " (word(&seat.activity))
+                @if let Some(task) = seat.task.as_deref() { " \u{b7} task " code { (task) } }
+                @if seat.paused { " \u{b7} paused" }
+                " \u{b7} spend " (seat.spend.label())
+            }
+            @if let Some(form) = form { (form) }
+        }
+        h3 { "Goals" }
+        @if view.goals.is_empty() { p { "No goals." } }
+        @for goal in &view.goals {
+            p {
+                (goal.text) " \u{b7} on " code { (goal.workspace) } " \u{b7} lead " (goal.lead)
+                " \u{b7} " (word(&goal.status)) " \u{b7} " (goal.final_tasks) " of " (goal.total_tasks)
+                " tasks over \u{b7} spend " (goal.spend.label())
             }
         }
-        html.push_str("</section>");
-    }
-    if let Some(reason) = operate {
-        html.push_str(&format!("<p>Studio controls: {}</p>", escape(reason)));
-    }
-    Ok(html)
+        @if let Some(form) = &goal_form { (form) }
+        h3 { "Tasks" }
+        @if view.tasks.is_empty() { p { "No tasks." } }
+        @for task in &view.tasks {
+            p {
+                code { (task.task) } " " (task.title) " \u{b7} seat " (task.seat) " \u{b7} " (word(&task.status))
+                @if task.status == coder_access::studio::TaskStatus::Done {
+                    " \u{b7} "
+                    a href=(format!(
+                        "/cloud/app/hosts/{binding}/studio/tasks/{}/review?stream={}&sequence={}",
+                        task.task, snapshot.stream, snapshot.sequence
+                    )) { "Open review" }
+                }
+            }
+        }
+        h3 { "Decisions and questions" }
+        @if view.decisions.is_empty() { p { "No open decisions." } }
+        @for (decision, form) in &decisions {
+            section class="cloud-card" {
+                p {
+                    (word(&decision.kind)) " for goal " code { (decision.goal) }
+                    @if let Some(seat) = decision.seat.as_deref() { " from " (seat) }
+                    ": " (decision.text)
+                }
+                p { "Basis " (decision.based_on) "." }
+                @if let Some(approval) = &decision.approval {
+                    p {
+                        (approval.risk.label()) ": " code { (approval.tool) } " runs " code { (approval.command) }
+                        " in " code { (approval.cwd) } ". " (approval.reason)
+                    }
+                }
+                @match (form, operate) {
+                    (Some(form), _) => { (form) }
+                    (None, Some(reason)) => { p { (reason) } }
+                    (None, None) => {}
+                }
+            }
+        }
+        @if let Some(reason) = operate {
+            (ui::unavailable("Studio controls", html! { "Studio controls: " (reason) }))
+        }
+    })
 }
 
 async fn overview(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -471,34 +448,40 @@ async fn overview(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         return response;
     }
     let at = now();
-    let mut content = format!(
-        "{}<h2>Agents on {}</h2><p>Host <code>{}</code>, generation {}. {CONFIGURATION}</p>",
-        super::controls::link(context.binding),
-        escape(context.binding.id()),
-        escape(context.binding.host()),
-        context.binding.generation()
-    );
-    match agents {
-        Some(list) if list.agents.is_empty() => {
-            content.push_str("<p>This host has no workshop agents.</p>")
-        }
-        Some(list) => {
-            for view in &list.agents {
-                content.push_str(&agent_card(context.binding.id(), view, at));
-            }
-        }
-        None => content.push_str(
-            "<p>Agents: unavailable. The host did not answer an admitted, bounded agent list.</p>",
-        ),
-    }
-    match studio {
+    let studio = match studio {
         Some(snapshot) => match studio_section(&context, &headers, &snapshot) {
-            Ok(html) => content.push_str(&html),
+            Ok(html) => Some(html),
             Err(response) => return response,
         },
-        None => content.push_str("<h2>Agent Studio</h2><p>Unavailable. The host has no Studio, or did not answer an admitted, bounded snapshot. No decision or review control is offered.</p>"),
-    }
-    shell(&context, &headers, &content)
+        None => None,
+    };
+    let content = html! {
+        (PreEscaped(super::controls::link(context.binding)))
+        h2 { "Agents on " (context.binding.id()) }
+        p {
+            "Host " code { (context.binding.host()) } ", generation "
+            (context.binding.generation()) ". " (CONFIGURATION)
+        }
+        @match &agents {
+            Some(list) if list.agents.is_empty() => {
+                (ui::empty("No workshop agents", "This host has no workshop agents."))
+            }
+            Some(list) => {
+                @for view in &list.agents { (agent_card(context.binding.id(), view, at)) }
+            }
+            None => {
+                (ui::unavailable("Agents: unavailable", "Agents: unavailable. The host did not answer an admitted, bounded agent list."))
+            }
+        }
+        @match studio {
+            Some(section) => { (section) }
+            None => {
+                h2 { "Agent Studio" }
+                (ui::unavailable("Agent Studio unavailable", "Unavailable. The host has no Studio, or did not answer an admitted, bounded snapshot. No decision or review control is offered."))
+            }
+        }
+    };
+    shell(&context, &headers, &content.into_string())
 }
 
 async fn agent_page(
@@ -553,92 +536,111 @@ async fn agent_page(
         return response;
     }
     let at = now();
-    let mut content = format!(
-        "<p><a href=\"{}\">All agents and Studio</a></p>{}",
-        agents_url(context.binding.id()),
-        agent_card(context.binding.id(), &view, at)
-    );
-    content.push_str("<h3>Standing jobs</h3>");
-    match jobs {
-        Some(jobs) if jobs.jobs.is_empty() => content.push_str("<p>No standing jobs.</p>"),
-        Some(jobs) => {
-            for job in &jobs.jobs {
-                content.push_str(&format!(
-                    "<p><code>{}</code> {} · trigger {} · {} · {} of {} occurrences · expires Unix second {}{}</p>",
-                    escape(&job.job),
-                    escape(&job.title),
-                    escape(&job.trigger),
-                    if job.enabled { "enabled" } else { "disabled" },
-                    job.occurrences,
-                    job.max_occurrences,
-                    job.expires_at,
-                    job.last.as_deref().map_or_else(String::new, |last| format!(" · last: {}", escape(last)))
-                ));
-            }
-            content.push_str("<p>New jobs start disabled and expire within 90 days; creating or renewing one needs the host's own confirmation.</p>");
-        }
-        None => content.push_str("<p>Unavailable.</p>"),
-    }
-    content.push_str("<h3>Memory</h3>");
-    match memory {
-        Some(memory) if memory.memory.is_empty() => content.push_str("<p>No memory entries.</p>"),
-        Some(memory) => {
-            for row in &memory.memory {
-                content.push_str(&format!(
-                    "<p>{} · {} · {}</p>",
-                    escape(&row.kind),
-                    escape(&row.state),
-                    escape(&row.text)
-                ));
-            }
-            content.push_str("<p>Proposed preferences, engrams, and opt-in sync keep their own privacy and acceptance rules.</p>");
-        }
-        None => content.push_str("<p>Unavailable, or larger than one bounded browser read.</p>"),
-    }
-    match gate(&context, Right::Operate) {
-        Some(reason) => content.push_str(&format!("<h3>Requests</h3><p>{}</p>", escape(reason))),
-        None => {
+    let base = format!("{}/{}", agents_url(context.binding.id()), name);
+    let operate = gate(&context, Right::Operate);
+    let mut ask_form = None;
+    let mut proposal_form = None;
+    if operate.is_none() {
+        let request = random_id();
+        let csrf = match context.csrf(&headers, "agent-ask", &format!("{name}:{request}")) {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let mode = Field::new("agent-ask-mode", "Mode")
+            .group(true)
+            .required(true);
+        let text = Field::new("agent-ask-text", "Request").required(true);
+        ask_form = Some(
+            ui::BoundForm::new(format!("{base}/ask"))
+                .csrf(&csrf)
+                .bind("request", &request)
+                .body(html! {
+                    (mode.clone().control(
+                        RadioGroup::new("mode")
+                            .aria(mode.aria())
+                            .direction(Direction::Col)
+                            .option("task", "Coding task: a change in her own worktree, merged only by a Studio review decision.")
+                            .option("terminal", "Terminal request: commands she plans; anything not read-only waits for your confirmation."),
+                    ))
+                    (text.clone().control(Textarea::new("text").aria(text.aria()).maxlength(16384)))
+                    p { "The request identity is fixed when this form is shown. A retry after a lost reply or a host restart sends the same bytes and starts nothing new; changed text under the same identity is refused." }
+                })
+                .submit("Review this exact request"),
+        );
+        if let Some(pending) = &view.pending {
             let request = random_id();
-            let csrf = match context.csrf(&headers, "agent-ask", &format!("{name}:{request}")) {
+            let csrf = match context.csrf(&headers, "agent-proposal", &format!("{name}:{request}"))
+            {
                 Ok(value) => value,
                 Err(response) => return response,
             };
-            let button = match submit("agent-ask", "Review this exact request", true) {
-                Ok(value) => value,
-                Err(response) => return response,
-            };
-            content.push_str(&format!(
-                "<h3>New request</h3><form method=\"post\" action=\"{}/{}/ask\">{}{}<fieldset><legend>Mode</legend><label><input type=\"radio\" name=\"mode\" value=\"task\" required> Coding task: a change in her own worktree, merged only by a Studio review decision.</label><label><input type=\"radio\" name=\"mode\" value=\"terminal\" required> Terminal request: commands she plans; anything not read-only waits for your confirmation.</label></fieldset><label>Request <textarea name=\"text\" maxlength=\"16384\" required></textarea></label><p>The request identity is fixed when this form is shown. A retry after a lost reply or a host restart sends the same bytes and starts nothing new; changed text under the same identity is refused.</p>{button}</form>",
-                agents_url(context.binding.id()),
-                escape(&name),
-                ticket(&csrf),
-                hidden("request", &request)
-            ));
-            if let Some(pending) = &view.pending {
-                let request = random_id();
-                let csrf =
-                    match context.csrf(&headers, "agent-proposal", &format!("{name}:{request}")) {
-                        Ok(value) => value,
-                        Err(response) => return response,
-                    };
-                let button = match submit("agent-proposal", "Review this exact answer", true) {
-                    Ok(value) => value,
-                    Err(response) => return response,
-                };
-                content.push_str(&format!(
-                    "<h3>Waiting proposal</h3><form method=\"post\" action=\"{}/{}/proposal\">{}{}{}<label><input type=\"radio\" name=\"confirm\" value=\"yes\" required> Confirm step {}</label><label><input type=\"radio\" name=\"confirm\" value=\"no\" required> Reject</label>{button}</form>",
-                    agents_url(context.binding.id()),
-                    escape(&name),
-                    ticket(&csrf),
-                    hidden("request", &request),
-                    hidden("step", &pending.step.to_string()),
-                    pending.step
-                ));
-            }
+            let confirm = Field::new("agent-proposal-confirm", "Answer")
+                .group(true)
+                .required(true);
+            proposal_form = Some(
+                ui::BoundForm::new(format!("{base}/proposal"))
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .bind("step", &pending.step.to_string())
+                    .body(
+                        confirm.clone().control(
+                            RadioGroup::new("confirm")
+                                .aria(confirm.aria())
+                                .direction(Direction::Col)
+                                .option("yes", format!("Confirm step {}", pending.step))
+                                .option("no", "Reject"),
+                        ),
+                    )
+                    .submit("Review this exact answer"),
+            );
         }
     }
-    content.push_str(&format!("<p>{CONFIGURATION}</p>"));
-    shell(&context, &headers, &content)
+    let content = html! {
+        (ui::links([(agents_url(context.binding.id()).as_str(), "All agents and Studio")]))
+        (agent_card(context.binding.id(), &view, at))
+        h3 { "Standing jobs" }
+        @match &jobs {
+            Some(jobs) if jobs.jobs.is_empty() => { p { "No standing jobs." } }
+            Some(jobs) => {
+                @for job in &jobs.jobs {
+                    p {
+                        code { (job.job) } " " (job.title) " \u{b7} trigger " (job.trigger) " \u{b7} "
+                        (if job.enabled { "enabled" } else { "disabled" }) " \u{b7} "
+                        (job.occurrences) " of " (job.max_occurrences)
+                        " occurrences \u{b7} expires Unix second " (job.expires_at)
+                        @if let Some(last) = job.last.as_deref() { " \u{b7} last: " (last) }
+                    }
+                }
+                p { "New jobs start disabled and expire within 90 days; creating or renewing one needs the host's own confirmation." }
+            }
+            None => { p { "Unavailable." } }
+        }
+        h3 { "Memory" }
+        @match &memory {
+            Some(memory) if memory.memory.is_empty() => { p { "No memory entries." } }
+            Some(memory) => {
+                @for row in &memory.memory {
+                    p { (row.kind) " \u{b7} " (row.state) " \u{b7} " (row.text) }
+                }
+                p { "Proposed preferences, engrams, and opt-in sync keep their own privacy and acceptance rules." }
+            }
+            None => { p { "Unavailable, or larger than one bounded browser read." } }
+        }
+        @if let Some(reason) = operate {
+            h3 { "Requests" }
+            p { (reason) }
+        }
+        @if let Some(form) = &ask_form {
+            h3 { "New request" }
+            (form)
+        }
+        @if let Some(form) = &proposal_form {
+            h3 { "Waiting proposal" }
+            (form)
+        }
+        p { (CONFIGURATION) }
+    };
+    shell(&context, &headers, &content.into_string())
 }
 
 #[derive(Deserialize)]
@@ -1005,90 +1007,97 @@ async fn review(
     if let Err(response) = context.current(&headers).await {
         return response;
     }
-    let mut content = format!(
-        "<p><a href=\"{}\">All agents and Studio</a></p><h2>Review of <code>{}</code></h2><p>Base <code>{}</code>, head commit <code>{}</code>, tree <code>{}</code>. A decision binds these three revisions; a changed candidate requires a fresh review.</p><p>{} files changed ({} shown), +{} −{}, {} uncounted.</p><ul>",
-        agents_url(context.binding.id()),
-        escape(&review.task),
-        escape(&review.base),
-        escape(&review.head_commit),
-        escape(&review.head),
-        review.files_total,
-        review.files.len(),
-        review.added,
-        review.removed,
-        review.uncounted
-    );
-    for file in &review.files {
-        content.push_str(&format!(
-            "<li><code>{}</code> {} +{} −{}</li>",
-            escape(&file.path),
-            word(&file.status),
-            file.added.map_or_else(|| "?".into(), |n| n.to_string()),
-            file.removed.map_or_else(|| "?".into(), |n| n.to_string())
-        ));
-    }
-    content.push_str("</ul>");
-    let complete = match &review.completeness {
-        Completeness::Complete => {
-            content.push_str("<p>The diff below is the whole change.</p>");
-            true
-        }
-        Completeness::Truncated { shown, total } => {
-            content.push_str(&format!(
-                "<p>The diff is truncated at {shown} bytes of {}.</p>",
-                total.map_or_else(|| "an unmeasured total".into(), |t| t.to_string())
-            ));
-            true
-        }
-        Completeness::Unknown { reason } => {
-            content.push_str(&format!(
-                "<p>The change could not be read: {}. Merge is not offered for an unread change.</p>",
-                escape(reason)
-            ));
-            false
-        }
-    };
-    content.push_str(&format!("<pre>{}</pre>", escape(&review.diff)));
-    if let Some(publication) = &review.publication {
-        content.push_str(&format!(
-            "<p>Last publication: {} — {}.</p>",
-            word(&publication.state),
-            escape(&publication.note)
-        ));
-    }
-    content.push_str("<p>Merge hands the reviewed tree to the host's landing path, which updates the host checkout. Merge implies no deploy; any push appears only as the host's reported publication state. The host refuses a dirty checkout, a detached head, a conflicting merge, or a changed candidate, and an uncertain result stays unknown. Agent completion and auto-start never approve a merge.</p>");
-    match gate(&context, Right::Review) {
-        Some(reason) => content.push_str(&format!("<p>{}</p>", escape(reason))),
+    let complete = !matches!(review.completeness, Completeness::Unknown { .. });
+    let form = match gate(&context, Right::Review) {
+        Some(_) => None,
         None => {
             let request = random_id();
             let csrf = match context.csrf(&headers, "studio-merge", &format!("{task}:{request}")) {
                 Ok(value) => value,
                 Err(response) => return response,
             };
-            let button = match submit("studio-merge", "Review this exact decision", true) {
-                Ok(value) => value,
-                Err(response) => return response,
-            };
-            let merge = if complete {
-                "<label><input type=\"radio\" name=\"verdict\" value=\"merge\" required> Merge at these revisions</label>"
-            } else {
-                ""
-            };
-            content.push_str(&format!(
-                "<form method=\"post\">{}{}{}{}{}{}{}{}{}<fieldset><legend>Decision</legend>{merge}<label><input type=\"radio\" name=\"verdict\" value=\"request_changes\" required> Request changes</label><label><input type=\"radio\" name=\"verdict\" value=\"reject\" required> Reject</label></fieldset><label>Changes or reason <textarea name=\"text\" maxlength=\"16384\"></textarea></label>{button}</form>",
-                ticket(&csrf),
-                hidden("request", &request),
-                hidden("stream", &displayed.stream),
-                hidden("sequence", &displayed.sequence.to_string()),
-                hidden("base", &review.base),
-                hidden("head_commit", &review.head_commit),
-                hidden("head", &review.head),
-                hidden("command", &random_id()),
-                hidden("issued_at", &now().to_string())
-            ));
+            let decision = Field::new("studio-merge-verdict", "Decision")
+                .group(true)
+                .required(true);
+            let mut verdicts = RadioGroup::new("verdict")
+                .aria(decision.aria())
+                .direction(Direction::Col);
+            if complete {
+                verdicts = verdicts.option("merge", "Merge at these revisions");
+            }
+            verdicts = verdicts
+                .option("request_changes", "Request changes")
+                .option("reject", "Reject");
+            let text = Field::new("studio-merge-text", "Changes or reason");
+            Some(
+                ui::BoundForm::here()
+                    .csrf(&csrf)
+                    .bind("request", &request)
+                    .bind("stream", &displayed.stream)
+                    .bind("sequence", &displayed.sequence.to_string())
+                    .bind("base", &review.base)
+                    .bind("head_commit", &review.head_commit)
+                    .bind("head", &review.head)
+                    .bind("command", &random_id())
+                    .bind("issued_at", &now().to_string())
+                    .body(html! {
+                        (decision.clone().control(verdicts))
+                        (text.clone().control(
+                            Textarea::new("text").aria(text.aria()).maxlength(16384),
+                        ))
+                    })
+                    .submit("Review this exact decision"),
+            )
         }
-    }
-    shell(&context, &headers, &content)
+    };
+    let reason = gate(&context, Right::Review);
+    let files = review.files.iter().fold(
+        ui::table("Changed files").header(["Path", "Status", "Added", "Removed"]),
+        |table, file| {
+            table.row([
+                html! { code { (file.path) } },
+                html! { (word(&file.status)) },
+                html! { "+" (file.added.map_or_else(|| "?".into(), |n| n.to_string())) },
+                html! { "\u{2212}" (file.removed.map_or_else(|| "?".into(), |n| n.to_string())) },
+            ])
+        },
+    );
+    let content = html! {
+        (ui::links([(agents_url(context.binding.id()).as_str(), "All agents and Studio")]))
+        h2 { "Review of " code { (review.task) } }
+        p {
+            "Base " code { (review.base) } ", head commit " code { (review.head_commit) }
+            ", tree " code { (review.head) }
+            ". A decision binds these three revisions; a changed candidate requires a fresh review."
+        }
+        p {
+            (review.files_total) " files changed (" (review.files.len()) " shown), +" (review.added)
+            " \u{2212}" (review.removed) ", " (review.uncounted) " uncounted."
+        }
+        @if !review.files.is_empty() { (files.numeric(2).numeric(3)) }
+        @match &review.completeness {
+            Completeness::Complete => { p { "The diff below is the whole change." } }
+            Completeness::Truncated { shown, total } => {
+                p {
+                    "The diff is truncated at " (shown) " bytes of "
+                    (total.map_or_else(|| "an unmeasured total".into(), |t| t.to_string())) "."
+                }
+            }
+            Completeness::Unknown { reason } => {
+                (ui::unavailable("Change unreadable", html! {
+                    "The change could not be read: " (reason) ". Merge is not offered for an unread change."
+                }))
+            }
+        }
+        (CodeBlock::new(&review.diff))
+        @if let Some(publication) = &review.publication {
+            p { "Last publication: " (word(&publication.state)) " \u{2014} " (publication.note) "." }
+        }
+        p { "Merge hands the reviewed tree to the host's landing path, which updates the host checkout. Merge implies no deploy; any push appears only as the host's reported publication state. The host refuses a dirty checkout, a detached head, a conflicting merge, or a changed candidate, and an uncertain result stays unknown. Agent completion and auto-start never approve a merge." }
+        @if let Some(reason) = reason { p { (reason) } }
+        @if let Some(form) = &form { (form) }
+    };
+    shell(&context, &headers, &content.into_string())
 }
 
 #[derive(Deserialize)]
