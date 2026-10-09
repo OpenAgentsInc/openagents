@@ -71,6 +71,13 @@ RUN cargo build --locked --release --target wasm32-unknown-unknown \
     && test -s /build/cloud/coder_browser_web.js \
     && test -s /build/cloud/coder_browser_web_bg.wasm
 
+# Grow Little Bunny, which /games/grow-little-bunny serves: the glue, the
+# module, the start script, and gzip copies of each.
+RUN scripts/build-bunny-web.sh /build/bunny \
+    && test -s /build/bunny/bunny_web.js \
+    && test -s /build/bunny/bunny_web_bg.wasm \
+    && test -s /build/bunny/start.js
+
 FROM debian:13-slim
 
 RUN apt-get update \
@@ -84,8 +91,9 @@ COPY --from=everglade /build/everglade /srv/everglade
 COPY --from=everglade /build/components /srv/components
 COPY --from=everglade /build/cloud /srv/cloud
 COPY --from=everglade /build/chat /srv/chat
+COPY --from=everglade /build/bunny /srv/bunny
 
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]
-CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud", "--chat-build", "/srv/chat"]
+CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud", "--chat-build", "/srv/chat", "--bunny", "/srv/bunny"]

@@ -1,0 +1,12 @@
+[package]
+name = "bunny-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Grow Little Bunny's rules: the garden graph, growth, carrots, obstacles, and the farmer, as an integer fixed-step simulation."
+
+[dependencies]
+
+[lints]
+workspace = true

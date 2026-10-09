@@ -70,12 +70,13 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 42] = [
+const PAGES: [&str; 43] = [
     "/",
     "/live",
     "/everglade",
     "/druid",
     "/grid",
+    "/games/grow-little-bunny",
     "/stats",
     "/efficiency",
     "/download",
@@ -1007,6 +1008,145 @@ async fn the_everglade_page_says_it_is_unavailable_without_the_build() {
     }
 }
 
+/// The `<main>` element of a page, where its own words are.
+fn main_of(html: &str) -> &str {
+    &html[html.find("<main").unwrap()..html.find("</main>").unwrap()]
+}
+
+/// A server started with `--bunny DIR` holding a stand-in Grow Little
+/// Bunny build.
+fn with_bunny(root: &std::path::Path) -> Config {
+    let build = root.join("bunny");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(
+        build.join(pages::BUNNY_GLUE),
+        "export default async function init() {}",
+    )
+    .unwrap();
+    std::fs::write(build.join(pages::BUNNY_WASM), b"\0asm\x01\0\0\0").unwrap();
+    std::fs::write(
+        build.join(pages::BUNNY_START),
+        "import init from \"./bunny_web.js\";",
+    )
+    .unwrap();
+    std::fs::write(
+        build.join(format!("{}.gz", pages::BUNNY_WASM)),
+        b"gzipped wasm",
+    )
+    .unwrap();
+    std::fs::write(build.join("index.html"), "not served").unwrap();
+    std::fs::write(root.join("secret.js"), "outside the build").unwrap();
+    let mut config = config(root.join("tasks"));
+    config.bunny = Some(build);
+    config
+}
+
+/// `/games/grow-little-bunny`: a full-window canvas, the build's one start
+/// script, the game's policy, and the build's files with their types.
+#[tokio::test]
+async fn the_bunny_page_serves_the_game_build() {
+    let root = tempfile::tempdir().unwrap();
+    let config = with_bunny(root.path());
+    let (status, headers, html) =
+        get_with(router(config.clone()), "/games/grow-little-bunny", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>Grow Little Bunny"), "{html}");
+    assert!(html.contains(&format!("<canvas id=\"{}\"", pages::BUNNY_CANVAS)));
+    assert!(html.contains("<html lang=\"en\" class=\"stage\">"));
+    assert!(html.contains("user-scalable=no"));
+    assert!(html.contains("id=\"bunny-status\""));
+    let lower = html.to_ascii_lowercase();
+    assert_eq!(lower.matches("<script").count(), 1, "one script");
+    assert!(html.contains(&format!(
+        "<script type=\"module\" src=\"/games/grow-little-bunny/{}\"></script>",
+        pages::BUNNY_START
+    )));
+    assert!(!lower.contains(" style=") && !lower.contains("<style"));
+    assert_eq!(
+        headers[header::CONTENT_SECURITY_POLICY],
+        pages::BUNNY_POLICY
+    );
+    let text = oa_copy::visible_text(main_of(&html));
+    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+
+    for (file, content_type) in [
+        (pages::BUNNY_GLUE, "text/javascript; charset=utf-8"),
+        (pages::BUNNY_START, "text/javascript; charset=utf-8"),
+        (pages::BUNNY_WASM, "application/wasm"),
+    ] {
+        let uri = format!("/games/grow-little-bunny/{file}");
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+        assert_eq!(
+            headers[header::CACHE_CONTROL],
+            "public, max-age=300",
+            "{uri}"
+        );
+    }
+    let (_, _, wasm) = get_bytes(
+        router(config.clone()),
+        &format!("/games/grow-little-bunny/{}", pages::BUNNY_WASM),
+    )
+    .await;
+    assert!(wasm.starts_with(b"\0asm"));
+    let response = router(config.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/games/grow-little-bunny/{}", pages::BUNNY_WASM))
+                .header(header::HOST, LOCAL)
+                .header(header::ACCEPT_ENCODING, "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(&bytes[..], b"gzipped wasm");
+
+    for uri in [
+        "/games/grow-little-bunny/index.html",
+        "/games/grow-little-bunny/missing.js",
+        "/games/grow-little-bunny/..%2Fsecret.js",
+        "/games/grow-little-bunny/%2E%2E%2Fsecret.js",
+        "/games/grow-little-bunny/../secret.js",
+        "/games/grow-little-bunny/a/b.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
+/// Without the build directory, or without any of its three files, the
+/// page says the game can't be played here, runs no script, keeps the
+/// site's policy, and serves no build file.
+#[tokio::test]
+async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
+    let root = tempfile::tempdir().unwrap();
+    let mut elsewhere = config(root.path().join("tasks"));
+    elsewhere.bunny = Some(root.path().join("nowhere"));
+    let no_start = with_bunny(root.path());
+    std::fs::remove_file(root.path().join("bunny").join(pages::BUNNY_START)).unwrap();
+    for config in [config(root.path().join("tasks")), elsewhere, no_start] {
+        let (status, headers, html) =
+            get_with(router(config.clone()), "/games/grow-little-bunny", LOCAL).await;
+        assert_eq!(status, StatusCode::OK);
+        let text = oa_copy::visible_text(main_of(&html));
+        assert!(text.contains("be played here right now"), "{text}");
+        assert!(!html.to_ascii_lowercase().contains("<script"));
+        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(!policy.contains("script-src"), "{policy}");
+        assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+        let (status, _, _) = get_bytes(
+            router(config),
+            &format!("/games/grow-little-bunny/{}", pages::BUNNY_WASM),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+}
+
 #[tokio::test]
 async fn the_download_page_links_only_the_coder_release_bundle() {
     let root = tempfile::tempdir().unwrap();
@@ -1671,6 +1811,8 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/everglade",
         "/everglade/everglade_web.js",
         "/everglade/pack/x.vtp",
+        "/games/grow-little-bunny",
+        "/games/grow-little-bunny/bunny_web.js",
         "/ask",
         "/health",
         "/.well-known/apple-app-site-association",

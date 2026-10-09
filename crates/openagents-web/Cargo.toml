@@ -59,6 +59,7 @@ coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
 nostr = { path = "../nostr" }
+oa-copy = { path = "../oa-copy" }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }

@@ -1,6 +1,7 @@
 //! The public pages, one module per section.
 
 mod blue_rush;
+mod bunny;
 pub(crate) mod chat;
 mod cloud;
 mod connect;
@@ -19,6 +20,7 @@ use crate::App;
 
 #[cfg(test)]
 pub(crate) use blue_rush::{ASSETS as BLUE_RUSH_ASSETS, PATH as BLUE_RUSH};
+pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
 #[cfg(test)]
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
@@ -41,6 +43,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(stats::routes())
         .merge(efficiency::routes())
         .merge(everglade::routes())
+        .merge(bunny::routes())
         .merge(content::routes())
         .merge(download::routes())
         .merge(connect::routes())

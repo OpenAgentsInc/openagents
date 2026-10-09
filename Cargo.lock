@@ -2240,6 +2240,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "bunny-rules"
+version = "0.1.0"
+
+[[package]]
+name = "bunny-web"
+version = "0.1.0"
+dependencies = [
+ "bunny-rules",
+ "console_error_panic_hook",
+ "glam",
+ "js-sys",
+ "oa-copy",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "by_address"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,60 @@
+[package]
+name = "bunny-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Grow Little Bunny in a browser: the garden run drawn with WebGL2 in an outline style."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# For captures only: the built-in bot plays the bunny.
+autoplay = []
+
+[dependencies]
+bunny-rules = { path = "../bunny-rules" }
+glam = "0.30.10"
+
+# The page itself is browser-only; natively only the meshes, the scene and
+# the words are built, for their tests.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/build-bunny-web.sh` runs must be the
+# version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3", features = [
+    "AddEventListenerOptions",
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlButtonElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "KeyboardEvent",
+    "MediaQueryList",
+    "MouseEvent",
+    "Node",
+    "Performance",
+    "PointerEvent",
+    "Storage",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+    "Window",
+    "console",
+] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

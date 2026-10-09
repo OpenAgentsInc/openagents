@@ -18,6 +18,7 @@
 !/scripts/
 /scripts/*
 !/scripts/build-everglade-web.sh
+!/scripts/build-bunny-web.sh
 !/scripts/install/
 /scripts/install/*
 !/scripts/install/coder.sh

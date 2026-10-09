@@ -90,6 +90,10 @@ pub struct Config {
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
     /// unavailable.
     pub everglade: Option<PathBuf>,
+    /// The Grow Little Bunny web build (`--bunny DIR`), served under
+    /// `/games/grow-little-bunny/`. Without it, the game's page says it
+    /// can't be played here.
+    pub bunny: Option<PathBuf>,
     /// The independently built Rust/Wasm component catalog assets.
     pub components_build: Option<PathBuf>,
     /// Explicit native account adapter; absence leaves the Cloud workspace unavailable.
@@ -132,6 +136,7 @@ impl Config {
             upstream: None,
             pay_upstream: None,
             everglade: None,
+            bunny: None,
             components_build: None,
             cloud: None,
             cloud_hosts: None,

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-sales PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--cloud-team PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
@@ -33,6 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--pay-host" => pay_host = Some(value),
             "--upstream" => upstream = Some(value),
             "--everglade" => config.everglade = Some(PathBuf::from(value)),
+            "--bunny" => config.bunny = Some(PathBuf::from(value)),
             "--components-build" => config.components_build = Some(PathBuf::from(value)),
             "--cloud-build" => config.cloud_build = Some(PathBuf::from(value)),
             "--cloud-config" => {

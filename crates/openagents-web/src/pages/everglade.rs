@@ -269,9 +269,21 @@ async fn build_file(
     let (Some(directory), Some(content_type)) = (build(&app), build_type(&file)) else {
         return crate::not_found().await;
     };
+    serve_build(directory, &file, content_type, &request).await
+}
+
+/// One build file from `directory`, or its gzip copy beside it when the
+/// request accepts gzip. `file` must already have passed [`build_type`].
+/// `/games/grow-little-bunny` serves its build the same way.
+pub(super) async fn serve_build(
+    directory: &Path,
+    file: &str,
+    content_type: &'static str,
+    request: &HeaderMap,
+) -> Response {
     // The build stage writes a gzip copy beside each file; the wasm is about
     // a third smaller compressed.
-    let gzip = accepts_gzip(&request);
+    let gzip = accepts_gzip(request);
     if gzip {
         let compressed = directory.join(format!("{file}.gz"));
         if tokio::fs::metadata(&compressed)
@@ -287,7 +299,7 @@ async fn build_file(
             return response;
         }
     }
-    let mut response = serve(directory.join(&file), content_type, BUILD_CACHE).await;
+    let mut response = serve(directory.join(file), content_type, BUILD_CACHE).await;
     response
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("accept-encoding"));
