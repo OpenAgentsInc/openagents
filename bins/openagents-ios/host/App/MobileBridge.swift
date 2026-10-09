@@ -183,6 +183,8 @@ struct AppPacket: Decodable {
     let gym: GymSlot?
     /// Account > Your keys (BYOK).
     let provider_keys: ProviderKeysState?
+    /// The theme: the choice, the resolved scheme, and the chrome palette.
+    let appearance: AppearanceState?
 
     /// The Gym's part, when it decodes.
     var gymPacket: GymPacket? { gym?.value }
@@ -607,6 +609,28 @@ final class MobileBridge: ObservableObject {
     }
 
     func lifecycle(_ active: Bool) { send(["op": "lifecycle", "active": active]) }
+
+    /// The theme's chrome colors and scheme, from Rust; the dark look
+    /// until the first packet.
+    var colors: AppColors { packet?.appearance.map(AppColors.init) ?? .dark }
+
+    /// The appearance last reported, so an unchanged one is not sent again.
+    private var reportedDark: Bool?
+
+    /// The phone's own appearance, which the System theme follows: at
+    /// launch, on coming to the front, and when it changes.
+    func reportSystemAppearance() {
+        let dark = SystemAppearance.isDark
+        guard dark != reportedDark else { return }
+        reportedDark = dark
+        send(["op": "system_appearance", "dark": dark])
+    }
+
+    /// Account > Appearance: `system`, `light`, or `dark`. Rust saves it.
+    func chooseTheme(_ id: String) {
+        reportSystemAppearance()
+        send(["op": "theme", "theme": id])
+    }
     func refreshComputers() { send(["op": "computers_refresh"]) }
     func refreshTailnet() { send(["op": "tailnet_refresh"]) }
     func snapshot() { send(["op": "snapshot"]) }

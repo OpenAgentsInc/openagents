@@ -18,6 +18,9 @@ struct OpenAgentsApp: App {
                 .font(.paper(.body))
                 .dismissesKeyboardOnOutsideTap()
                 .onChange(of: scenePhase, initial: true) { _, phase in
+                    // The System theme follows the phone; a change made in
+                    // Settings or Control Center shows on coming back.
+                    if phase == .active { bridge.reportSystemAppearance() }
                     if phase != .inactive { bridge.lifecycle(phase == .active) }
                 }
                 .nativeFixture()
@@ -44,12 +47,18 @@ struct HomeScreen: View {
 
     var body: some View {
         AppTabs(bridge: bridge)
-            .tint(.white)
-            .preferredColorScheme(.dark)
+            // Rust resolves the theme; the scheme sets the status bar and
+            // system chrome, and the palette the host's own chrome.
+            .tint(bridge.colors.primary)
+            .preferredColorScheme(bridge.colors.scheme)
+            .environment(\.appColors, bridge.colors)
+            .background(SystemAppearanceWatcher { bridge.reportSystemAppearance() })
             .fullScreenCover(isPresented: Binding(
                 get: { bridge.packet?.terminal == true && !bridge.gpuTerminalVisible },
                 set: { _ in })) {
+                // A terminal is Coder Noir in both looks.
                 TerminalScreen(bridge: bridge)
+                    .preferredColorScheme(.dark)
             }
     }
 }
@@ -59,6 +68,7 @@ struct HomeScreen: View {
 struct SurfaceView: View {
     let view: NativeView?
     let activate: (NativeView, String) -> Void
+    @Environment(\.appColors) private var appColors
 
     var body: some View {
         ScrollView {
@@ -68,7 +78,7 @@ struct SurfaceView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
     }
 }
 
@@ -77,6 +87,7 @@ struct SurfaceView: View {
 /// every choice.
 struct ComputersTab: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
 
     private var home: ComputersHome? { bridge.packet?.computers_home }
 
@@ -106,7 +117,7 @@ struct ComputersTab: View {
                     .id(input.token)
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .navigationTitle(home == nil ? "" : "Computers")
         .navigationBarTitleDisplayMode(.inline)
         // Past the list, back returns to it rather than to Account.
@@ -177,6 +188,7 @@ struct ComputersTab: View {
 private struct ComputersList: View {
     let home: ComputersHome
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @State private var confirming: (row: ComputersHome.Row, item: ComputersHome.Item)?
 
     var body: some View {
@@ -194,8 +206,8 @@ private struct ComputersList: View {
                         Button(home.connect) { bridge.connectOpen() }
                             .accessibilityIdentifier("computers-connect")
                             .buttonStyle(.borderedProminent)
-                            .tint(.white)
-                            .foregroundStyle(.black)
+                            .tint(appColors.primary)
+                            .foregroundStyle(appColors.background)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
@@ -231,7 +243,7 @@ private struct ComputersList: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .confirmationDialog(confirming?.item.confirm ?? "", isPresented: Binding(
             get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
             titleVisibility: .visible) {
@@ -254,6 +266,7 @@ private struct ComputersList: View {
 
 private struct ComputerRow: View {
     let row: ComputersHome.Row
+    @Environment(\.appColors) private var appColors
 
     private var tone: Color {
         switch row.tone {
@@ -269,7 +282,7 @@ private struct ComputerRow: View {
             Circle().fill(tone).frame(width: 8, height: 8)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.name).foregroundStyle(.white)
+                Text(row.name).foregroundStyle(appColors.primary)
                 Text(row.status).font(.paper(.subheadline)).foregroundStyle(.secondary)
                 if let watchers = row.watchers {
                     Text(watchers).font(.paper(.footnote)).foregroundStyle(.secondary)
@@ -295,6 +308,7 @@ private struct ComputerRow: View {
 /// Gym menu (`SCR-01`). Rust says which one shows (`gym.screen`).
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     /// The sheet this host is showing, to tell a swipe from Rust closing it.
     @State private var shownSheet: String?
     @State private var picking = false
@@ -306,9 +320,14 @@ struct CoderTab: View {
         Group {
             switch gym?.screen {
             case "menu":
-                if let menu = gym?.menu { GymMenuView(menu: menu) { bridge.gym($0) } }
+                // The Gym's screens are dark only for now (#11028).
+                if let menu = gym?.menu {
+                    GymMenuView(menu: menu) { bridge.gym($0) }.environment(\.colorScheme, .dark)
+                }
             case "first_run":
-                if let first = gym?.first_run { GymFirstRunView(first: first) { bridge.gym($0) } }
+                if let first = gym?.first_run {
+                    GymFirstRunView(first: first) { bridge.gym($0) }.environment(\.colorScheme, .dark)
+                }
             default:
                 if let view = bridge.packet?.coder {
                     NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
@@ -363,7 +382,7 @@ struct CoderTab: View {
                              set: { if $0 == nil { bridge.gymShare = nil } })) { share in
             GymShareSheet(text: share.text)
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .task { await CoderLaunchTaps.run(bridge) }
         // Rust says when a transcript page, a streamed reply, or a task's
         // status arrives, and asks every second while the open chat runs
@@ -552,10 +571,11 @@ enum CoderLaunchTaps {
 
 struct TailnetTab: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+            appColors.background.ignoresSafeArea()
             // The device list is its own scrolling list; a surrounding
             // scroll view would collapse it.
             if let view = bridge.packet?.tailnet {
@@ -583,6 +603,7 @@ struct TailnetTab: View {
 /// validates every value; nothing here is kept.
 struct InputBar: View {
     let input: ComputersInput
+    @Environment(\.appColors) private var appColors
     let busy: Bool
     let submit: (String) -> Void
     let cancel: () -> Void
@@ -617,7 +638,7 @@ struct InputBar: View {
             }
         }
         .padding(12)
-        .background(Color(white: 0.08), in: RoundedRectangle(cornerRadius: 16))
+        .background(appColors.raised, in: RoundedRectangle(cornerRadius: 16))
         .padding(8)
         .onAppear { scanning = input.scan }
     }
