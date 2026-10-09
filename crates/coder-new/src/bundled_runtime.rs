@@ -1125,10 +1125,40 @@ enum LocalProvider {
 impl Generate for LocalProvider {
     async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
         match self {
-            Self::Codex(generator) => generator.generate(system, prompt).await,
+            Self::Codex(generator) => {
+                let mut generated = generator.generate(system, prompt).await;
+                generated.model = codex_model_label(&generated.model);
+                generated
+            }
             Self::Claude(generator) => generator.generate(system, prompt).await,
             Self::Gateway(generator) => generator.generate(system, &gateway_prompt(prompt)).await,
         }
+    }
+}
+
+// Model metadata is also the composer rail label. Qualify it at the provider
+// boundary rather than inferring the backend from a GPT model name.
+fn codex_model_label(model: &str) -> String {
+    if model.is_empty() || model.starts_with("codex:") {
+        model.to_owned()
+    } else {
+        format!("codex:{model}")
+    }
+}
+
+#[cfg(test)]
+mod codex_model_label_tests {
+    use super::codex_model_label;
+
+    #[test]
+    fn qualifies_codex_model_metadata() {
+        assert_eq!(codex_model_label("gpt-6.1-sol"), "codex:gpt-6.1-sol");
+        assert_eq!(
+            codex_model_label("gpt-6.1-sol:high"),
+            "codex:gpt-6.1-sol:high"
+        );
+        assert_eq!(codex_model_label("codex:gpt-6.1-sol"), "codex:gpt-6.1-sol");
+        assert_eq!(codex_model_label(""), "");
     }
 }
 

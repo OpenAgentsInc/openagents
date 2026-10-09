@@ -714,3 +714,30 @@ fn running_and_failed_run_keep_the_command_visible() {
     assert!(canvas.contains("× Run false"));
     assert!(canvas.contains("Could not start command"));
 }
+
+#[test]
+fn local_codex_model_label_is_shown_above_the_input_rail() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.plugins.enabled = false;
+    app.live.partial_model = Some("codex:gpt-6.1-sol".into());
+    let screen = render(&mut app, 80, 24);
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains("codex:gpt-6.1-sol") && line.contains('─'))
+    );
+
+    app.live.partial_model = None;
+    app.live.entries.push(Entry::Assistant {
+        text: "Done".into(),
+        model: Some("codex:gpt-6.1-sol".into()),
+        elapsed_ms: None,
+    });
+    let screen = render(&mut app, 80, 24);
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains("codex:gpt-6.1-sol") && line.contains('─'))
+    );
+}
