@@ -269,7 +269,9 @@ pub fn build(pack: &ZonePack, player: &PlayerController) -> Result<(World, Everg
     // houses stood (#10938).
     glade.relight_destruction();
     glade.bake_light(scene.clone());
-    glade.start_wreckage(pack, &placements, scene)?;
+    // The houses claim their own lots: Everglade's town houses stand on
+    // this ground in the town and would split the large house in three.
+    glade.start_wreckage_with_houses(pack, &placements, scene, Some(&houses()))?;
     let town = glade
         .town_mut()
         .ok_or("The showcase has no destructible houses")?;

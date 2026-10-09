@@ -461,7 +461,29 @@ impl Everglade {
         placements: &[layout::Placement],
         scene: Arc<TexturedScene>,
     ) -> Result<(), String> {
-        let mut town = demolition::town::Town::standalone(pack, placements, scene)?;
+        self.start_wreckage_with_houses(pack, placements, scene, None)
+    }
+
+    /// As [`Everglade::start_wreckage`], with the zone's own kit houses
+    /// claiming their lots in place of Everglade's town houses
+    /// ([`demolition::town::Town::standalone_with_houses`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn start_wreckage_with_houses(
+        &mut self,
+        pack: &ZonePack,
+        placements: &[layout::Placement],
+        scene: Arc<TexturedScene>,
+        houses: Option<&[layout::kit_house::KitHouse]>,
+    ) -> Result<(), String> {
+        let mut town = match houses {
+            Some(houses) => {
+                demolition::town::Town::standalone_with_houses(pack, placements, scene, houses)?
+            }
+            None => demolition::town::Town::standalone(pack, placements, scene)?,
+        };
         town.set_track(
             self.cast
                 .as_ref()

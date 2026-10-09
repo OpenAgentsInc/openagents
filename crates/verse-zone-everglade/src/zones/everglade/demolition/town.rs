@@ -951,7 +951,7 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
     ) -> Result<Self, String> {
-        Self::build(pack, placements, world, true)
+        Self::build(pack, placements, world, true, None)
     }
 
     /// The destructible models among `placements` outside Everglade's
@@ -966,7 +966,23 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
     ) -> Result<Self, String> {
-        Self::build(pack, placements, world, false)
+        Self::build(pack, placements, world, false, None)
+    }
+
+    /// As [`Town::standalone`], with `houses` the zone's own kit houses:
+    /// each claims the kit pieces on its lot as one building, in place of
+    /// Everglade's town houses, whose lots may overlap the zone's.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn standalone_with_houses(
+        pack: &ZonePack,
+        placements: &[Placement],
+        world: Arc<TexturedScene>,
+        houses: &[layout::kit_house::KitHouse],
+    ) -> Result<Self, String> {
+        Self::build(pack, placements, world, false, Some(houses))
     }
 
     fn build(
@@ -974,6 +990,7 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
         everglade: bool,
+        own_houses: Option<&[layout::kit_house::KitHouse]>,
     ) -> Result<Self, String> {
         let surveyed: Vec<Surveyed> = survey(placements)
             .into_iter()
@@ -1085,14 +1102,17 @@ impl Town {
         // A medieval kit house is one building even when its proxies' boxes
         // do not touch. Its pieces are claimed by the lot before the rest
         // of the carved placements group by bounds.
-        let houses: Vec<layout::kit_house::KitHouse> = layout::first_town_houses()
-            .into_iter()
-            .chain(
-                layout::city::kit_houses()
-                    .into_iter()
-                    .map(|(_, house)| house),
-            )
-            .collect();
+        let houses: Vec<layout::kit_house::KitHouse> = match own_houses {
+            Some(houses) => houses.to_vec(),
+            None => layout::first_town_houses()
+                .into_iter()
+                .chain(
+                    layout::city::kit_houses()
+                        .into_iter()
+                        .map(|(_, house)| house),
+                )
+                .collect(),
+        };
         let mut claimed = vec![false; placements.len()];
         // A kit house's center is the lot's, and its reach is its wall
         // line. A generated landmark that stands on a lot keeps the center
