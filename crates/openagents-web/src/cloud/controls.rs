@@ -4,9 +4,8 @@
 use super::effects::{Snapshot, State as RequestState};
 use super::hosts::{Binding, Hosts};
 use super::session::{CloudSession, SessionError, Viewer, now};
-use super::{colors, protect, refused, service, ticket, work, workspace_shell};
+use super::{colors, protect, refused, service, ui, work, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{DefaultBodyLimit, Form, Path, State};
@@ -19,6 +18,8 @@ use coder_access::protocol::{
 };
 use coder_access::task_read::{ListQuery, Page, PageQuery};
 use coder_ui::control;
+use maud::{Markup, PreEscaped, Render, html};
+use openagents_ui::forms::{Checkbox, Field, Input, Select, Textarea};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -282,19 +283,33 @@ pub(super) fn submit(key: &str, label: &str, enabled: bool) -> Result<String, Re
 }
 
 pub(super) fn hidden(name: &str, value: &str) -> String {
-    format!(
-        "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
-        escape(name),
-        escape(value)
-    )
+    ui::hidden(name, value).into_string()
 }
 
 pub(super) fn link(binding: &Binding) -> String {
-    format!(
-        "<p><a href=\"/cloud/app/hosts/{}\">Computer connection</a> · <a href=\"/cloud/app/hosts/{}/tasks\">Resident tasks</a></p>",
-        escape(binding.id()),
-        escape(binding.id())
-    )
+    links(binding).into_string()
+}
+
+/// The computer connection and resident task links of one binding.
+fn links(binding: &Binding) -> Markup {
+    let computer = format!("/cloud/app/hosts/{}", binding.id());
+    let tasks = format!("{computer}/tasks");
+    ui::links([
+        (computer.as_str(), "Computer connection"),
+        (tasks.as_str(), "Resident tasks"),
+    ])
+}
+
+/// A labelled form control: `control` receives the field's ARIA wiring.
+fn field<C: Render>(
+    id: &str,
+    label: &str,
+    required: bool,
+    control: impl FnOnce(openagents_ui::forms::FieldAria) -> C,
+) -> Markup {
+    let field = Field::new(id, label).required(required);
+    let aria = field.aria();
+    field.control(control(aria)).render()
 }
 
 async fn computers(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -306,26 +321,32 @@ async fn computers(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    let mut content = String::from(
-        "<h2>Computers</h2><p>These are explicitly configured account connections. Open one to verify its current native grant and resident generation. Account membership enrolls no computer.</p><ul>",
-    );
-    if let Some(hosts) = &app.config.cloud_hosts {
-        for binding in hosts.current(&viewer) {
-            content.push_str(&format!(
-                "<li><a href=\"/cloud/app/hosts/{}\">Open connection {}</a></li>",
-                escape(binding.id()),
-                escape(binding.id())
-            ));
+    let bindings = app
+        .config
+        .cloud_hosts
+        .as_ref()
+        .map_or_else(Vec::new, |hosts| hosts.current(&viewer));
+    let content = html! {
+        h2 { "Computers" }
+        p { "These are explicitly configured account connections. Open one to verify its current native grant and resident generation. Account membership enrolls no computer." }
+        ul {
+            @for binding in &bindings {
+                li {
+                    a href=(format!("/cloud/app/hosts/{}", binding.id())) {
+                        "Open connection " (binding.id())
+                    }
+                }
+            }
         }
-    }
-    content.push_str("</ul><p>Device keys remain with the separately configured server adapter. Host invitations, owner keys, and automatic discovery are unavailable in this browser.</p>");
+        p { "Device keys remain with the separately configured server adapter. Host invitations, owner keys, and automatic discovery are unavailable in this browser." }
+    };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "computers",
-        Some(&content),
+        Some(&content.into_string()),
         None,
     )
 }
@@ -372,11 +393,10 @@ async fn computer(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         providers: &[],
         observed_at: Some(now()),
     };
-    let mut content = match show(&control::computer(&host, colors())) {
+    let computer = match show(&control::computer(&host, colors())) {
         Ok(v) => v,
         Err(r) => return r,
     };
-    content.push_str(&link(context.binding));
     let selection = context
         .viewer
         .workspace
@@ -393,21 +413,18 @@ async fn computer(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
             reason: Some("Use the exact server form below to confirm this connection."),
         },
     };
-    match show(&control::enrollment_review(&display, colors())) {
-        Ok(v) => content.push_str(&v),
+    let review = match show(&control::enrollment_review(&display, colors())) {
+        Ok(v) => v,
         Err(r) => return r,
-    }
-    if enrolled {
-        content.push_str("<p>This native connection is enrolled for the current browser session and exact account projection.</p>");
-        if native.rights.contains(Right::Operate) {
-            content.push_str(&format!(
-                "<p><a href=\"/cloud/app/hosts/{}/new-task\">Create a resident task</a></p>",
-                escape(&id)
-            ));
-        } else {
-            content.push_str(
-                "<p>This connection is read-only. Its native grant admits no task effects.</p>",
-            );
+    };
+    let standing = if enrolled {
+        html! {
+            p { "This native connection is enrolled for the current browser session and exact account projection." }
+            @if native.rights.contains(Right::Operate) {
+                p { a href=(format!("/cloud/app/hosts/{id}/new-task")) { "Create a resident task" } }
+            } @else {
+                p { "This connection is read-only. Its native grant admits no task effects." }
+            }
         }
     } else if available {
         let csrf = match context.csrf(&headers, "enroll", context.binding.identity()) {
@@ -418,15 +435,36 @@ async fn computer(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
             Ok(v) => v,
             Err(r) => return r,
         };
-        content.push_str(&format!("<form method=\"post\" action=\"/cloud/app/hosts/{}/enroll\">{}<label><input type=\"checkbox\" name=\"custody\" value=\"yes\" required> I reviewed this exact account, workspace, host, device grant, expiry, and server custody.</label>{button}</form>",escape(&id),ticket(&csrf)));
+        ui::BoundForm::new(format!("/cloud/app/hosts/{id}/enroll"))
+            .csrf(&csrf)
+            .body(
+                Checkbox::new(
+                    "custody",
+                    "I reviewed this exact account, workspace, host, device grant, expiry, and server custody.",
+                )
+                .id("enroll-custody")
+                .value("yes")
+                .required(true),
+            )
+            .submit_with(PreEscaped(button))
+            .render()
     } else {
-        content.push_str("<p>Browser control custody is unavailable. The operator has not separately admitted this binding and its protected request journal. Canonical observation remains read-only.</p>");
-    }
+        ui::unavailable(
+            "Browser control custody is unavailable",
+            "The operator has not separately admitted this binding and its protected request journal. Canonical observation remains read-only.",
+        )
+    };
+    let content = html! {
+        (ui::native(&computer))
+        (links(context.binding))
+        (ui::native(&review))
+        (standing)
+    };
     let resource = match context.resource(None, None, None, None) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content, resource)
+    context.page(&headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
@@ -547,17 +585,37 @@ async fn new_task(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(v) => v,
         Err(r) => return r,
     };
-    let content = format!(
-        "{}<h2>New resident task</h2><p>Task submission records intent. The resident owner's current auto-start policy determines whether it starts. Capacity and execution are unknown until reported by the owner.</p><form method=\"post\">{}{}<label>Title <input name=\"title\" maxlength=\"200\" required></label>{composer}<label>Requested engine <select name=\"engine\"><option value=\"\">Resident policy</option><option value=\"codex\">Codex</option><option value=\"claude_code\">Claude Code</option><option value=\"devin\">Devin</option><option value=\"opencode\">OpenCode</option><option value=\"grok_build\">Grok Build</option></select></label>{button}</form>",
-        link(context.binding),
-        ticket(&csrf),
-        hidden("request", &request)
-    );
+    let form = ui::BoundForm::here()
+        .csrf(&csrf)
+        .bind("request", &request)
+        .body(html! {
+            (field("task-title", "Title", true, |aria| {
+                Input::new("title").maxlength(200).aria(aria)
+            }))
+            (ui::native(&composer))
+            (field("task-engine", "Requested engine", false, |aria| {
+                Select::new("engine")
+                    .option("", "Resident policy")
+                    .option("codex", "Codex")
+                    .option("claude_code", "Claude Code")
+                    .option("devin", "Devin")
+                    .option("opencode", "OpenCode")
+                    .option("grok_build", "Grok Build")
+                    .aria(aria)
+            }))
+        })
+        .submit_with(PreEscaped(button));
+    let content = html! {
+        (links(context.binding))
+        h2 { "New resident task" }
+        p { "Task submission records intent. The resident owner's current auto-start policy determines whether it starts. Capacity and execution are unknown until reported by the owner." }
+        (form)
+    };
     let resource = match context.resource(None, None, None, None) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content, resource)
+    context.page(&headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
@@ -652,24 +710,45 @@ async fn actions(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let content = format!(
-        "{}<h2>Exact task command</h2><p>Displayed revision {}. The owner atomically refuses a command based on another revision. Queue, send, steer, stop, and answering a pending question retain distinct native semantics. A stop request does not prove executor termination or cleanup.</p><form method=\"post\">{}{}{}{}<label>Operation <select name=\"action\"><option value=\"queue\">Queue after this turn</option><option value=\"send\">Send as a new turn</option><option value=\"steer\">Request native steering</option><option value=\"interrupt\">Request stop</option><option value=\"answer\">Answer the pending question</option></select></label>{composer}<label><input type=\"checkbox\" name=\"emulate\" value=\"yes\"> Use emulated steering (steer only)</label>{button}</form><p><a href=\"/cloud/app/hosts/{}/tasks/{}/queue\">Inspect and edit the native queue</a> · <a href=\"/cloud/app/hosts/{}/tasks/{}/review\">Read exact candidate review</a></p>",
-        link(context.binding),
-        page.scope.revision,
-        ticket(&csrf),
-        hidden("request", &request),
-        hidden("issued_at", &issued.to_string()),
-        hidden("revision", &page.scope.revision.to_string()),
-        escape(&id),
-        escape(&task),
-        escape(&id),
-        escape(&task)
-    );
+    let form = ui::BoundForm::here()
+        .csrf(&csrf)
+        .bind("request", &request)
+        .bind("issued_at", &issued.to_string())
+        .bind("revision", &page.scope.revision.to_string())
+        .body(html! {
+            (field("command-action", "Operation", false, |aria| {
+                Select::new("action")
+                    .option("queue", "Queue after this turn")
+                    .option("send", "Send as a new turn")
+                    .option("steer", "Request native steering")
+                    .option("interrupt", "Request stop")
+                    .option("answer", "Answer the pending question")
+                    .aria(aria)
+            }))
+            (ui::native(&composer))
+            (Checkbox::new("emulate", "Use emulated steering (steer only)")
+                .id("command-emulate")
+                .value("yes"))
+        })
+        .submit_with(PreEscaped(button));
+    let task_url = format!("/cloud/app/hosts/{id}/tasks/{task}");
+    let queue_url = format!("{task_url}/queue");
+    let review_url = format!("{task_url}/review");
+    let content = html! {
+        (links(context.binding))
+        h2 { "Exact task command" }
+        p { "Displayed revision " (page.scope.revision) ". The owner atomically refuses a command based on another revision. Queue, send, steer, stop, and answering a pending question retain distinct native semantics. A stop request does not prove executor termination or cleanup." }
+        (form)
+        (ui::links([
+            (queue_url.as_str(), "Inspect and edit the native queue"),
+            (review_url.as_str(), "Read exact candidate review"),
+        ]))
+    };
     let resource = match context.resource(None, Some(&page), None, None) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content, resource)
+    context.page(&headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
@@ -799,22 +878,49 @@ async fn queue(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let content = format!(
-        "{}<h2>Native queue</h2><p>Task revision {} · queue snapshot <code>{}</code>. Native edit leases, original command ownership, and this exact queue digest fence edits. Lease or release does not renew itself on lost-reply recovery.</p><pre>{}</pre><form method=\"post\">{}{}{}{}<label>Queue operation <select name=\"action\"><option value=\"lease\">Take edit lease</option><option value=\"release\">Release edit lease</option><option value=\"edit\">Edit my held command</option><option value=\"remove\">Remove my held command</option><option value=\"reorder\">Set the exact order</option><option value=\"send_now\">Send my held command now</option></select></label><label>Command ID <input name=\"command\" maxlength=\"64\"></label><label>Replacement text <textarea name=\"text\" maxlength=\"16384\"></textarea></label><label>Exact ordered command IDs (one per line) <textarea name=\"order\" maxlength=\"8192\"></textarea></label>{button}</form>",
-        link(context.binding),
-        page.scope.revision,
-        escape(&queue_digest),
-        escape(&record),
-        ticket(&csrf),
-        hidden("request", &request),
-        hidden("revision", &page.scope.revision.to_string()),
-        hidden("queue_digest", &queue_digest)
-    );
+    let form = ui::BoundForm::here()
+        .csrf(&csrf)
+        .bind("request", &request)
+        .bind("revision", &page.scope.revision.to_string())
+        .bind("queue_digest", &queue_digest)
+        .body(html! {
+            (field("queue-action", "Queue operation", false, |aria| {
+                Select::new("action")
+                    .option("lease", "Take edit lease")
+                    .option("release", "Release edit lease")
+                    .option("edit", "Edit my held command")
+                    .option("remove", "Remove my held command")
+                    .option("reorder", "Set the exact order")
+                    .option("send_now", "Send my held command now")
+                    .aria(aria)
+            }))
+            (field("queue-command", "Command ID", false, |aria| {
+                Input::new("command").maxlength(64).aria(aria)
+            }))
+            (field("queue-text", "Replacement text", false, |aria| {
+                Textarea::new("text").maxlength(16384).aria(aria)
+            }))
+            (field("queue-order", "Exact ordered command IDs (one per line)", false, |aria| {
+                Textarea::new("order").maxlength(8192).aria(aria)
+            }))
+        })
+        .submit_with(PreEscaped(button));
+    let content = html! {
+        (links(context.binding))
+        h2 { "Native queue" }
+        p {
+            "Task revision " (page.scope.revision) " \u{b7} queue snapshot "
+            code { (queue_digest) }
+            ". Native edit leases, original command ownership, and this exact queue digest fence edits. Lease or release does not renew itself on lost-reply recovery."
+        }
+        pre { (record) }
+        (form)
+    };
     let resource = match context.resource(None, Some(&page), Some(&queue_digest), None) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content, resource)
+    context.page(&headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
@@ -946,22 +1052,26 @@ async fn review(
         Ok(v) => v,
         Err(_) => return refused(SessionError::Conflict),
     };
-    let content = format!(
-        "{}<h2>Original candidate review</h2><p>Publication commits the exact reviewed tree and pushes only under the resident repository policy. This is distinct from local integration, checks, deployment, executor completion, and cleanup. An unsupported resident publication lane refuses; a reviewed page does not activate one.</p><pre>{}</pre><form method=\"post\">{}{}{}{}{}{}{button}</form>",
-        link(context.binding),
-        escape(&original),
-        ticket(&csrf),
-        hidden("request", &request),
-        hidden("revision", &page.scope.revision.to_string()),
-        hidden("base", &review.base),
-        hidden("head_commit", &review.head_commit),
-        hidden("head", &review.head)
-    );
+    let form = ui::BoundForm::here()
+        .csrf(&csrf)
+        .bind("request", &request)
+        .bind("revision", &page.scope.revision.to_string())
+        .bind("base", &review.base)
+        .bind("head_commit", &review.head_commit)
+        .bind("head", &review.head)
+        .submit_with(PreEscaped(button));
+    let content = html! {
+        (links(context.binding))
+        h2 { "Original candidate review" }
+        p { "Publication commits the exact reviewed tree and pushes only under the resident repository policy. This is distinct from local integration, checks, deployment, executor completion, and cleanup. An unsupported resident publication lane refuses; a reviewed page does not activate one." }
+        pre { (original) }
+        (form)
+    };
     let resource = match context.resource(None, Some(&page), None, Some(&review)) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content, resource)
+    context.page(&headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
@@ -1130,7 +1240,7 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
         operation: snapshot.action.name(),
         outcome: outcome.as_ref(),
     };
-    let mut content = match show(&control::receipt(&value, colors())) {
+    let receipt = match show(&control::receipt(&value, colors())) {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -1138,22 +1248,14 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
         Ok(v) => v,
         Err(_) => return refused(SessionError::Conflict),
     };
-    content.push_str(&format!("<h3>Exact reviewed operation</h3><pre>{}</pre><p>Original request expires at Unix second {}. Closing this page dispatches nothing. A lost or expired reply remains unknown; this page never generates a replacement request or replays an operation automatically.</p>",escape(&action),snapshot.expires_at));
-    if let Some(error) = snapshot.failure {
-        content.push_str(&format!("<p>Last native exchange: {}. Inspect canonical resident state; this is not evidence of completed work or cleanup.</p>",escape(&error.to_string())));
-    }
-    if let Some(refusal) = &snapshot.refusal {
-        content.push_str(&format!(
-            "<p>Original native refusal: <code>{}</code>. No successful operation is reported. An unavailable result can follow an effect; inspect canonical task, stop, publication, and cleanup evidence.</p>",
-            escape(&format!("{:?}", refusal.code))
-        ));
-    }
-    if matches!(
+    let pending = matches!(
         snapshot.state,
         RequestState::Prepared | RequestState::Unknown
-    ) && snapshot.expires_at > now()
-        && snapshot.refusal.is_none()
-    {
+    );
+    let unknown = matches!(snapshot.state, RequestState::Unknown);
+    // Only the original request is ever confirmed again; an expired or
+    // refused original admits no redispatch.
+    let next = if pending && snapshot.expires_at > now() && snapshot.refusal.is_none() {
         let csrf = match context.csrf(headers, "confirm", &confirmation(snapshot)) {
             Ok(v) => v,
             Err(r) => return r,
@@ -1162,30 +1264,52 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
             Ok(v) => v,
             Err(r) => return r,
         };
-        content.push_str(&format!(
-            "<form method=\"post\" action=\"{}/confirm\">{}{button}</form>",
-            request_url(context.binding, &snapshot.id),
-            ticket(&csrf)
-        ));
-    } else if matches!(
-        snapshot.state,
-        RequestState::Prepared | RequestState::Unknown
-    ) {
+        let form = ui::BoundForm::new(format!(
+            "{}/confirm",
+            request_url(context.binding, &snapshot.id)
+        ))
+        .csrf(&csrf)
+        .submit_with(PreEscaped(button));
+        if unknown {
+            ui::outcome_unknown(
+                "The native reply to this original request was lost. Confirming sends this same original request again; this page never generates a replacement request.",
+                Some(form),
+            )
+        } else {
+            form.render()
+        }
+    } else if pending {
         let reason = if snapshot.expires_at <= now() {
             "The original packet expired."
         } else {
             "The native owner retained an uncertain result."
         };
-        content.push_str(&format!("<p>{reason} No redispatch is admitted. Reconcile this original request through the resident task owner before reviewing any separate action.</p>"));
-    }
-    content.push_str(&link(context.binding));
+        let text = format!(
+            "{reason} No redispatch is admitted. Reconcile this original request through the resident task owner before reviewing any separate action."
+        );
+        if unknown {
+            ui::outcome_unknown(text.as_str(), None)
+        } else {
+            html! { p { (text) } }
+        }
+    } else {
+        html! {}
+    };
+    let binding = context.binding.id();
+    let mut follow: Vec<(String, &str)> = Vec::new();
     if let Some(Outcome::CloudAccepted { accepted }) = &snapshot.outcome {
-        content.push_str(&format!(
-            "<p><a href=\"{}\">Inspect the canonical Cloud job and cleanup evidence</a></p>",
-            super::operator::job_url(context.binding.id(), &accepted.scope)
+        follow.push((
+            super::operator::job_url(binding, &accepted.scope),
+            "Inspect the canonical Cloud job and cleanup evidence",
         ));
     } else if let Operation::CloudSubmit { intent } = &snapshot.action {
-        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/cloud/{}/jobs/{}\">Inspect the original Cloud creation identity</a></p>", escape(context.binding.id()), escape(&intent.project), escape(&snapshot.id)));
+        follow.push((
+            format!(
+                "/cloud/app/hosts/{binding}/cloud/{}/jobs/{}",
+                intent.project, snapshot.id
+            ),
+            "Inspect the original Cloud creation identity",
+        ));
     } else {
         let scope = match &snapshot.action {
             Operation::CloudContinue { intent } => Some(&intent.scope),
@@ -1194,32 +1318,51 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
             _ => None,
         };
         if let Some(scope) = scope {
-            content.push_str(&format!(
-                "<p><a href=\"{}\">Inspect the original Cloud job</a></p>",
-                super::operator::job_url(context.binding.id(), scope)
+            follow.push((
+                super::operator::job_url(binding, scope),
+                "Inspect the original Cloud job",
             ));
         }
-        if let Some(url) = super::environment::action_url(context.binding.id(), &snapshot.action) {
-            content.push_str(&format!(
-                "<p><a href=\"{}\">Return to the project environment</a></p>",
-                escape(&url)
-            ));
+        if let Some(url) = super::environment::action_url(binding, &snapshot.action) {
+            follow.push((url, "Return to the project environment"));
         }
     }
     if let Some(task) = action_task(&snapshot.action) {
-        content.push_str(&format!(
-            "<p><a href=\"/cloud/app/hosts/{}/tasks/{}\">Inspect the canonical task</a></p>",
-            escape(context.binding.id()),
-            escape(task)
+        follow.push((
+            format!("/cloud/app/hosts/{binding}/tasks/{task}"),
+            "Inspect the canonical task",
         ));
     } else if matches!(snapshot.action, Operation::CreateTask { .. }) {
-        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}\">Inspect the original creation identity</a></p>",escape(context.binding.id()),escape(&snapshot.id)));
+        follow.push((
+            format!("/cloud/app/hosts/{binding}/tasks/{}", snapshot.id),
+            "Inspect the original creation identity",
+        ));
     }
+    let content = html! {
+        (ui::native(&receipt))
+        h3 { "Exact reviewed operation" }
+        pre { (action) }
+        p { "Original request expires at Unix second " (snapshot.expires_at) ". Closing this page dispatches nothing. A lost or expired reply remains unknown; this page never generates a replacement request or replays an operation automatically." }
+        @if let Some(error) = snapshot.failure {
+            p { "Last native exchange: " (error.to_string()) ". Inspect canonical resident state; this is not evidence of completed work or cleanup." }
+        }
+        @if let Some(refusal) = &snapshot.refusal {
+            p {
+                "Original native refusal: " code { (format!("{:?}", refusal.code)) }
+                ". No successful operation is reported. An unavailable result can follow an effect; inspect canonical task, stop, publication, and cleanup evidence."
+            }
+        }
+        (next)
+        (links(context.binding))
+        @for (href, label) in &follow {
+            p { a href=(href) { (label) } }
+        }
+    };
     let resource = match context.resource(Some(snapshot), None, None, None) {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(headers, &content, resource)
+    context.page(headers, &content.into_string(), resource)
 }
 
 #[derive(Deserialize)]
