@@ -107,7 +107,7 @@ impl NavItem {
 
     /// A keyboard shortcut that follows the row: `keys` in
     /// `aria-keyshortcuts` form (`Control+N`), shown as a quiet keycap
-    /// `hint` (`Ctrl N`) at the row's end on wide screens. The shell script
+    /// `hint` (`⌃N`) at the row's end on wide screens. The shell script
     /// follows any `Control+<letter>` row it finds on the page.
     #[must_use]
     pub fn shortcut(mut self, keys: impl Into<String>, hint: impl Into<String>) -> Self {

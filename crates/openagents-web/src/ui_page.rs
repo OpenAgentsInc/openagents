@@ -181,7 +181,7 @@ impl UiPage {
                 NavItem::new("New chat", "/")
                     .icon(Icon::ComposeEditSquare.size(IconSize::Md))
                     .current(current == Some("/"))
-                    .shortcut("Control+N", "Ctrl N"),
+                    .shortcut("Control+N", "⌃N"),
             );
         for section in self.sections {
             sidebar = sidebar.section(section);
@@ -382,7 +382,7 @@ mod tests {
             "href=\"/\" aria-current=\"page\"",
             ">New chat</span>",
             "aria-keyshortcuts=\"Control+N\"",
-            "<kbd class=\"oa-nav-shortcut\" aria-hidden=\"true\">Ctrl N</kbd>",
+            "<kbd class=\"oa-nav-shortcut\" aria-hidden=\"true\">⌃N</kbd>",
         ] {
             assert!(html.contains(needle), "{needle}");
         }

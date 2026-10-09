@@ -109,7 +109,7 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         .nav(
             NavItem::new("New chat", "/ui")
                 .icon(Icon::ComposeEditSquare)
-                .shortcut("Control+N", "Ctrl N"),
+                .shortcut("Control+N", "⌃N"),
         )
         .section(
             ChatList::new()

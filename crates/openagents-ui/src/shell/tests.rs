@@ -492,11 +492,11 @@ fn root_layout_is_one_fixed_height_screen_that_never_bounces() {
 #[test]
 fn new_chat_row_carries_its_shortcut_and_the_send_button_follows_the_text() {
     let row = NavItem::new("New chat", "/")
-        .shortcut("Control+N", "Ctrl N")
+        .shortcut("Control+N", "⌃N")
         .render()
         .into_string();
-    assert!(row.contains(r#"aria-keyshortcuts="Control+N" title="New chat (Ctrl N)""#));
-    assert!(row.contains(r#"<kbd class="oa-nav-shortcut" aria-hidden="true">Ctrl N</kbd>"#));
+    assert!(row.contains(r#"aria-keyshortcuts="Control+N" title="New chat (⌃N)""#));
+    assert!(row.contains(r#"<kbd class="oa-nav-shortcut" aria-hidden="true">⌃N</kbd>"#));
     let script = crate::script();
     assert!(script.contains(r#""Control+" + event.key.toUpperCase()"#));
     assert!(script.contains("event.metaKey") && script.contains("parts.send.disabled = true"));
