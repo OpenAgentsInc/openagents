@@ -592,6 +592,33 @@ pub struct Accounts {
     /// account or session is made. Absent lets anyone with GitHub in.
     #[serde(default)]
     pub invite_only: Option<oa_auth::InviteOnly>,
+    /// Where the account stores live (#11154): `files` beside the
+    /// registry (the default, for local use and tests), or `postgres`,
+    /// the account database (docs/data/schema.md).
+    #[serde(default)]
+    pub store: AccountStore,
+    /// With `store = "postgres"`: the environment variable holding the
+    /// connection string (from Secret Manager; never in the config).
+    #[serde(default = "default_database_env")]
+    pub database_url_env: String,
+    /// With `store = "postgres"`: at the first start on the database,
+    /// move the registry's account files into it, then leave the marker
+    /// `postgres-import.json` so later starts never import stale files.
+    #[serde(default)]
+    pub import_files: bool,
+}
+
+/// Where the account stores live.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AccountStore {
+    #[default]
+    Files,
+    Postgres,
+}
+
+fn default_database_env() -> String {
+    "OPENAGENTS_ACCOUNTS_DATABASE_URL".to_string()
 }
 
 /// The OAuth App behind `POST /v1/sessions/github`.

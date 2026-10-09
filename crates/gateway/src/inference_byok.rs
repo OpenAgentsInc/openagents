@@ -114,6 +114,9 @@ pub struct Keys {
     path: PathBuf,
     keyring: Keyring,
     saved: std::sync::Mutex<Saved>,
+    /// The account database, when the registry is kept there (#11154):
+    /// every read and write goes to it, so any number of gateways agree.
+    database: Option<tenancy::db::Database>,
 }
 
 impl std::fmt::Debug for Keys {
@@ -170,6 +173,14 @@ impl Keys {
     /// The store cannot be read.
     pub fn with_keyring(dir: &Path, keyring: Keyring) -> Result<Self, String> {
         let path = dir.join(STORE);
+        if let Some(database) = tenancy::db::bound(dir) {
+            return Ok(Self {
+                path,
+                keyring,
+                saved: std::sync::Mutex::new(Saved::default()),
+                database: Some(database),
+            });
+        }
         let saved = match std::fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|error| format!("{}: {error}", path.display()))?,
@@ -180,6 +191,7 @@ impl Keys {
             path,
             keyring,
             saved: std::sync::Mutex::new(saved),
+            database: None,
         })
     }
 
@@ -214,6 +226,17 @@ impl Keys {
             .seal(&associated(tenant, provider), key.as_bytes())
             .map_err(|error| error.to_string())?;
         let fingerprint = model_access::fingerprint(key);
+        if let Some(database) = &self.database {
+            let kept = Kept {
+                sealed,
+                fingerprint: fingerprint.clone(),
+                added_at: now(),
+            };
+            let record = serde_json::to_value(&kept).map_err(|e| e.to_string())?;
+            tenancy::db::records::put_provider_key(database, tenant, provider.word(), &record)
+                .map_err(|e| e.to_string())?;
+            return Ok(fingerprint);
+        }
         let mut saved = self.saved.lock().map_err(|_| "The key store is busy.")?;
         saved.keys.entry(tenant.to_owned()).or_default().insert(
             provider.word().to_owned(),
@@ -233,6 +256,10 @@ impl Keys {
     ///
     /// Writing failed.
     pub fn delete(&self, tenant: &str, provider: Provider) -> Result<bool, String> {
+        if let Some(database) = &self.database {
+            return tenancy::db::records::delete_provider_key(database, tenant, provider.word())
+                .map_err(|e| e.to_string());
+        }
         let mut saved = self.saved.lock().map_err(|_| "The key store is busy.")?;
         let removed = saved
             .keys
@@ -245,50 +272,47 @@ impl Keys {
         Ok(removed)
     }
 
+    /// `tenant`'s kept keys, by provider word.
+    fn kept(&self, tenant: &str) -> BTreeMap<String, Kept> {
+        if let Some(database) = &self.database {
+            return tenancy::db::records::provider_keys(database, tenant)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|(word, record)| Some((word, serde_json::from_value(record).ok()?)))
+                .collect();
+        }
+        self.saved
+            .lock()
+            .ok()
+            .and_then(|saved| saved.keys.get(tenant).cloned())
+            .unwrap_or_default()
+    }
+
     /// What `tenant` keeps: provider, fingerprint, when added.
     #[must_use]
     pub fn listed(&self, tenant: &str) -> Vec<(String, String, u64)> {
-        self.saved
-            .lock()
-            .map(|saved| {
-                saved
-                    .keys
-                    .get(tenant)
-                    .map(|keys| {
-                        keys.iter()
-                            .map(|(word, kept)| {
-                                (word.clone(), kept.fingerprint.clone(), kept.added_at)
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default()
+        self.kept(tenant)
+            .into_iter()
+            .map(|(word, kept)| (word, kept.fingerprint, kept.added_at))
+            .collect()
     }
 
     /// Adapters on `tenant`'s own keys. A key that no longer opens is left
     /// out (and its fingerprint stays listed, so the owner can replace it).
     #[must_use]
     pub fn upstreams(&self, tenant: &str) -> Vec<Arc<dyn Upstream>> {
-        let opened: Vec<(Provider, Zeroizing<Vec<u8>>)> = match self.saved.lock() {
-            Ok(saved) => saved
-                .keys
-                .get(tenant)
-                .map(|keys| {
-                    keys.iter()
-                        .filter_map(|(word, kept)| {
-                            let provider = provider(word)?;
-                            let plain = self
-                                .keyring
-                                .open(&associated(tenant, provider), &kept.sealed)
-                                .ok()?;
-                            Some((provider, plain))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            Err(_) => Vec::new(),
-        };
+        let opened: Vec<(Provider, Zeroizing<Vec<u8>>)> = self
+            .kept(tenant)
+            .iter()
+            .filter_map(|(word, kept)| {
+                let provider = provider(word)?;
+                let plain = self
+                    .keyring
+                    .open(&associated(tenant, provider), &kept.sealed)
+                    .ok()?;
+                Some((provider, plain))
+            })
+            .collect();
         opened
             .into_iter()
             .filter_map(|(provider, plain)| {
@@ -584,5 +608,41 @@ mod tests {
         assert!(!keys.delete("acme", Provider::OpenRouter).unwrap());
         assert!(provider("typesafe").is_none());
         assert_eq!(provider("vercel"), Some(Provider::Vercel));
+    }
+
+    /// The same store kept in the account database (#11154): sealed,
+    /// shared by two gateways at once. Runs with
+    /// `TENANCY_TEST_DATABASE_URL` set; passes without it.
+    #[test]
+    fn keys_in_the_account_database_are_sealed_and_shared() {
+        let Some(url) = std::env::var("TENANCY_TEST_DATABASE_URL")
+            .ok()
+            .filter(|u| !u.is_empty())
+        else {
+            eprintln!("skipped: TENANCY_TEST_DATABASE_URL is not set");
+            return;
+        };
+        let database = tenancy::db::Database::scratch(&url).unwrap();
+        let (dir, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        tenancy::db::attach(dir.path(), database.clone());
+        tenancy::db::attach(other.path(), database.clone());
+        let (keyring, document) = Keyring::scratch("k1").unwrap();
+        let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
+        let theirs =
+            Keys::with_keyring(other.path(), Keyring::parse(document.as_bytes()).unwrap()).unwrap();
+        keys.put("acme", Provider::OpenRouter, "sk-or-v1-secret")
+            .unwrap();
+        assert!(!dir.path().join(STORE).exists());
+        let rows = database
+            .query("SELECT record::text FROM identity.provider_keys", &[])
+            .unwrap();
+        assert!(!rows[0].get::<_, String>(0).contains("sk-or-v1-secret"));
+        // The other gateway sees it at once, and opens it.
+        assert_eq!(theirs.listed("acme").len(), 1);
+        assert_eq!(theirs.upstreams("acme").len(), 1);
+        assert!(theirs.upstreams("other").is_empty());
+        assert!(theirs.delete("acme", Provider::OpenRouter).unwrap());
+        assert!(keys.listed("acme").is_empty());
+        assert!(!keys.delete("acme", Provider::OpenRouter).unwrap());
     }
 }

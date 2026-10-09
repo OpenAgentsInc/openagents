@@ -252,3 +252,89 @@ fn only_a_next_page_on_the_same_api_origin_is_followed() {
         Some("/user/repos?page=2")
     );
 }
+
+/// GitHub access kept in the account database (#11154): the same
+/// record, sealed the same way, found by account and by digest, and two
+/// writers to one account both land. Runs with
+/// `TENANCY_TEST_DATABASE_URL` set (a server the test may create a
+/// database on); passes without doing anything otherwise.
+#[cfg(feature = "postgres")]
+#[test]
+fn github_access_round_trips_through_the_account_database() {
+    let Some(url) = std::env::var("TENANCY_TEST_DATABASE_URL")
+        .ok()
+        .filter(|u| !u.is_empty())
+    else {
+        eprintln!("skipped: TENANCY_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let database = tenancy::db::Database::scratch(&url).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    tenancy::db::attach(dir.path(), database.clone());
+    let gh = github([7; 32]);
+    assert!(matches!(
+        status(dir.path(), "acct_a").unwrap().access,
+        Access::None
+    ));
+    let sealed = seal(&gh, "acct_a", 42, "gho_example_token").unwrap();
+    mutate(dir.path(), "acct_a", |record| {
+        record.grant = Some(Grant {
+            github_id: 42,
+            login: "ada".into(),
+            scopes: vec!["repo".into()],
+            sealed: sealed.clone(),
+            granted_unix: 1,
+            revoked_unix: None,
+        });
+        Ok(())
+    })
+    .unwrap();
+    assert!(matches!(
+        status(dir.path(), "acct_a").unwrap().access,
+        Access::Connected { private: true, .. }
+    ));
+    // Nothing was written beside the registry.
+    assert!(!dir.path().join(STORE_DIR).exists());
+    let digest = hex(&Sha256::digest(b"acct_a"));
+    let found = load_by_digest(dir.path(), &digest).unwrap().unwrap();
+    assert_eq!(found.account, "acct_a");
+    let token = open(&gh, "acct_a", 42, &found.grant.unwrap().sealed).unwrap();
+    assert_eq!(token.as_str(), "gho_example_token");
+    // The database holds the sealed token, never the token.
+    let rows = database
+        .query(
+            "SELECT record::text, github_id FROM identity.github_access",
+            &[],
+        )
+        .unwrap();
+    assert!(!rows[0].get::<_, String>(0).contains("gho_example_token"));
+    assert_eq!(rows[0].get::<_, Option<i64>>(1), Some(42));
+    // Two writers on one account: both projects are kept.
+    std::thread::scope(|scope| {
+        for n in 0..2_u64 {
+            let dir = dir.path();
+            scope.spawn(move || {
+                mutate(dir, "acct_a", |record| {
+                    record.projects.push(Project {
+                        id: format!("prj_{n:016x}"),
+                        name: format!("r{n}"),
+                        repository_id: n,
+                        repository: format!("ada/r{n}"),
+                        default_branch: "main".into(),
+                        private: false,
+                        created_unix: 1,
+                        installation_id: None,
+                    });
+                    Ok(())
+                })
+                .unwrap();
+            });
+        }
+    });
+    assert_eq!(status(dir.path(), "acct_a").unwrap().projects.len(), 2);
+    disconnect(dir.path(), "acct_a").unwrap();
+    assert!(!matches!(
+        status(dir.path(), "acct_a").unwrap().access,
+        Access::Connected { .. }
+    ));
+}

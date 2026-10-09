@@ -25,6 +25,7 @@
 
 pub mod docs;
 pub mod import;
+pub mod records;
 #[cfg(test)]
 mod tests;
 
@@ -112,6 +113,24 @@ impl Database {
         let database = Self::open(dsn)?;
         database.migrate()?;
         Ok(database)
+    }
+
+    /// For tests: create a fresh database on the server `admin_dsn`
+    /// reaches (a libpq key=value string), migrate it, and connect.
+    ///
+    /// # Errors
+    ///
+    /// The server refuses.
+    pub fn scratch(admin_dsn: &str) -> Result<Self, Error> {
+        let admin = Self::open(admin_dsn)?;
+        let mut bytes = [0_u8; 8];
+        getrandom::fill(&mut bytes).map_err(|e| Error(e.to_string()))?;
+        let name = format!(
+            "scratch_{}",
+            bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        );
+        admin.execute(&format!("CREATE DATABASE {name}"), &[])?;
+        Self::connect(&format!("{admin_dsn} dbname={name}"))
     }
 
     /// Connect without migrating.

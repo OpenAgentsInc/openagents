@@ -75,6 +75,49 @@ pub enum Trouble {
     Accounts(tenancy::accounts::Trouble),
 }
 
+/// Keep the account stores in Postgres (#11154): connect (applying any
+/// pending migration), move the registry's files in at the first start
+/// when asked to, and attach the database to the registry directory so
+/// every account, session, key, GitHub-access and provider-key read and
+/// write goes there.
+fn attach_database(
+    registry: &std::path::Path,
+    accounts: &crate::config::Accounts,
+) -> Result<(), Trouble> {
+    let fail = |message: String| Trouble::Io(std::io::Error::other(message));
+    let dsn = std::env::var(&accounts.database_url_env)
+        .map_err(|_| fail(format!("{} is unset", accounts.database_url_env)))?;
+    let database = tenancy::db::Database::connect(&dsn).map_err(|error| fail(error.to_string()))?;
+    let marker = registry.join(tenancy::db::import::MARKER);
+    if accounts.import_files && !marker.exists() && registry.join("accounts.json").exists() {
+        let started = std::time::Instant::now();
+        let imported = tenancy::db::import::import(&database, registry, true)
+            .map_err(|error| fail(format!("moving the account files: {error}")))?;
+        let verified = tenancy::db::import::verify(&database, registry)
+            .map_err(|error| fail(format!("checking the moved account files: {error}")))?;
+        if !verified.mismatches.is_empty() {
+            return Err(fail(format!(
+                "the moved account files do not read back: {:?}",
+                verified.mismatches
+            )));
+        }
+        let note = serde_json::json!({
+            "imported": imported,
+            "millis": started.elapsed().as_millis() as u64,
+            "at_unix": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default(),
+        });
+        let staged = registry.join(format!(".{}.tmp", tenancy::db::import::MARKER));
+        std::fs::write(&staged, format!("{note}\n")).map_err(Trouble::Io)?;
+        std::fs::rename(&staged, &marker).map_err(Trouble::Io)?;
+        eprintln!("gateway: moved the account files into the database: {note}");
+    }
+    tenancy::db::attach(registry, database);
+    Ok(())
+}
+
 impl std::fmt::Display for Trouble {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -277,6 +320,11 @@ impl ServeState {
         // lifecycle book. A deployment that configures `accounts` gets
         // them installed on first open — an empty genesis, never a
         // guessed membership.
+        if let Some(accounts) = &config.accounts
+            && accounts.store == crate::config::AccountStore::Postgres
+        {
+            attach_database(&config.registry, accounts)?;
+        }
         if let Some(accounts) = &config.accounts {
             if tenancy::Accounts::open(&config.registry).is_err() {
                 tenancy::Accounts::install(&config.registry).map_err(Trouble::Accounts)?;

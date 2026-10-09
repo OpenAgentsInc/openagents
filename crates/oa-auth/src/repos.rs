@@ -1014,8 +1014,31 @@ fn file(dir: &Path, account: &str, extension: &str) -> PathBuf {
         .join(format!("{}.{extension}", hex(&digest)))
 }
 
+/// A record read from the account database, checked as a file is.
+#[cfg(feature = "postgres")]
+fn from_row(value: serde_json::Value) -> Result<Record, RepoError> {
+    let record: Record = serde_json::from_value(value).map_err(|_| RepoError::Storage)?;
+    if record.v != SCHEMA || record.projects.len() > MAX_PROJECTS {
+        return Err(RepoError::Storage);
+    }
+    Ok(record)
+}
+
 fn load(dir: &Path, account: &str) -> Result<Record, RepoError> {
     check_account(account)?;
+    #[cfg(feature = "postgres")]
+    if let Some(database) = tenancy::db::bound(dir) {
+        let record = match tenancy::db::records::github_access(&database, account)
+            .map_err(|_| RepoError::Storage)?
+        {
+            Some(value) => from_row(value)?,
+            None => Record::new(account),
+        };
+        if record.account != account {
+            return Err(RepoError::Storage);
+        }
+        return Ok(record);
+    }
     let record = read_record(&file(dir, account, "json"))?.unwrap_or_else(|| Record::new(account));
     if record.account != account {
         return Err(RepoError::Storage);
@@ -1028,6 +1051,17 @@ fn load(dir: &Path, account: &str) -> Result<Record, RepoError> {
 fn load_by_digest(dir: &Path, digest: &str) -> Result<Option<Record>, RepoError> {
     if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Ok(None);
+    }
+    #[cfg(feature = "postgres")]
+    if let Some(database) = tenancy::db::bound(dir) {
+        return match tenancy::db::records::github_access_by_digest(&database, digest)
+            .map_err(|_| RepoError::Storage)?
+        {
+            Some(value) => Ok(Some(from_row(value)?).filter(|record| {
+                hex(&Sha256::digest(record.account.as_bytes())) == digest.to_ascii_lowercase()
+            })),
+            None => Ok(None),
+        };
     }
     let path = dir.join(STORE_DIR).join(format!("{digest}.json"));
     Ok(read_record(&path)?.filter(|record| {
@@ -1062,6 +1096,22 @@ fn mutate<T>(
     change: impl FnOnce(&mut Record) -> Result<T, RepoError>,
 ) -> Result<T, RepoError> {
     check_account(account)?;
+    #[cfg(feature = "postgres")]
+    if let Some(database) = tenancy::db::bound(dir) {
+        return tenancy::db::records::update_github_access(&database, account, |current| {
+            let mut record = match current {
+                Some(value) => from_row(value)?,
+                None => Record::new(account),
+            };
+            if record.account != account {
+                return Err(RepoError::Storage);
+            }
+            let out = change(&mut record)?;
+            let value = serde_json::to_value(&record).map_err(|_| RepoError::Storage)?;
+            Ok((value, out))
+        })
+        .map_err(|_| RepoError::Storage)?;
+    }
     let store = dir.join(STORE_DIR);
     create_private_dir(&store)?;
     let _lock = Lock::acquire(&file(dir, account, "lock"))?;

@@ -53,6 +53,9 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         github: None,
         github_app: None,
         invite_only: None,
+        store: Default::default(),
+        database_url_env: String::new(),
+        import_files: false,
         anonymous,
     }
 }
@@ -1779,6 +1782,9 @@ async fn signup_and_anonymous_off_when_not_configured() {
             github: None,
             github_app: None,
             invite_only: None,
+            store: Default::default(),
+            database_url_env: String::new(),
+            import_files: false,
             anonymous: None,
         }),
         false,
@@ -1892,6 +1898,9 @@ async fn stores_install_under_accounts_config_and_validate() {
             github: None,
             github_app: None,
             invite_only: None,
+            store: Default::default(),
+            database_url_env: String::new(),
+            import_files: false,
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),

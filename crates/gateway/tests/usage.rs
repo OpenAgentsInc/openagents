@@ -85,6 +85,9 @@ fn account_config() -> config::Accounts {
         github: None,
         github_app: None,
         invite_only: None,
+        store: Default::default(),
+        database_url_env: String::new(),
+        import_files: false,
         anonymous: None,
     }
 }

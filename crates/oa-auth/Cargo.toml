@@ -12,6 +12,9 @@ description = "OpenAgents sign-in: GitHub OAuth (authorization code + PKCE), pro
 fake = ["dep:axum"]
 # A small account service over the tenancy stores, for local fixtures only.
 local = ["dep:axum"]
+# Keep GitHub access in the account database when one is attached to the
+# registry directory (#11154).
+postgres = ["tenancy/postgres"]
 
 [dependencies]
 axum = { version = "0.8", optional = true }
