@@ -958,6 +958,11 @@ mod tests {
         assert!(store.lease("j1").is_err());
         assert!(store.lease("../other").is_err());
         drop(lock);
+        // A child another test forks shares the lock until it execs.
+        let started = std::time::Instant::now();
+        while store.lease("j1").is_err() && started.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert!(store.lease("j1").is_ok());
     }
 }

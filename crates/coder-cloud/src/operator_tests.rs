@@ -449,22 +449,25 @@ fn accepted(outcome: Outcome) -> dto::Accepted {
     }
 }
 fn read(f: &Fixture, id: &str) -> dto::Job {
-    match f
-        .owner
-        .execute(
-            "read",
-            &f.principal,
-            &Operation::CloudRead {
-                query: dto::ReadQuery {
-                    workspace: "checkout".into(),
-                    project: "synthetic".into(),
-                    job: id.into(),
-                    revision: None,
-                },
-            },
-        )
-        .unwrap()
-    {
+    let query = Operation::CloudRead {
+        query: dto::ReadQuery {
+            workspace: "checkout".into(),
+            project: "synthetic".into(),
+            job: id.into(),
+            revision: None,
+        },
+    };
+    // A read racing the worker's save sees two different record bytes and
+    // refuses as malformed; read again.
+    let mut outcome = f.owner.execute("read", &f.principal, &query);
+    for _ in 0..50 {
+        if outcome != Err(Code::Malformed) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        outcome = f.owner.execute("read", &f.principal, &query);
+    }
+    match outcome.unwrap() {
         Outcome::CloudRead { job } => *job,
         _ => panic!("Expected a native job."),
     }
