@@ -96,6 +96,11 @@ pub struct Config {
     pub upstream: Option<Arc<upstream::Upstream>>,
     /// The pay host for same-origin public flow and stats reads.
     pub pay_upstream: Option<Arc<upstream::Upstream>>,
+    /// The inference gateway (`--inference`): the API docs' models page
+    /// reads its rate card (`GET /v1/rates`). Without it, or when it
+    /// doesn't answer in time, the page shows the card the gateway's own
+    /// adapters publish.
+    pub inference: Option<Arc<upstream::Upstream>>,
     /// The Everglade web build and its pack (`--everglade DIR`), served
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
     /// unavailable.
@@ -155,6 +160,7 @@ impl Config {
             secure_cookies: false,
             upstream: None,
             pay_upstream: None,
+            inference: None,
             everglade: None,
             bunny: None,
             components_build: None,

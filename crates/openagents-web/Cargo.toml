@@ -31,6 +31,7 @@ hmac = "0.12.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 jev = { path = "../jev" }
+inference = { path = "../inference" }
 libc = "0.2"
 maud = { version = "=0.27.0", features = ["axum"] }
 oa-auth = { path = "../oa-auth" }

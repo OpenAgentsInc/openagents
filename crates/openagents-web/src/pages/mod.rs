@@ -1,5 +1,6 @@
 //! The public pages, one module per section.
 
+mod api_docs;
 mod blue_rush;
 mod bunny;
 pub(crate) mod chat;
@@ -18,6 +19,8 @@ use axum::Router;
 
 use crate::App;
 
+#[cfg(test)]
+pub(crate) use api_docs::API_DOCS;
 #[cfg(test)]
 pub(crate) use blue_rush::{ASSETS as BLUE_RUSH_ASSETS, PATH as BLUE_RUSH};
 pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
@@ -45,6 +48,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(everglade::routes())
         .merge(bunny::routes())
         .merge(content::routes())
+        .merge(api_docs::routes())
         .merge(download::routes())
         .merge(connect::routes())
         .merge(profile::routes())

@@ -204,6 +204,10 @@ plugins, and the Gym.</p>",
     if open {
         body.push_str("</ol>");
     }
+    body.push_str(
+        "<h2>API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
+<ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>",
+    );
     UiPage::new("Docs")
         .section("/docs")
         .path("/docs")

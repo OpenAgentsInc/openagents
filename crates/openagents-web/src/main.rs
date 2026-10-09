@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
-[--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
+[--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
@@ -15,6 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
     let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();
     let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
+    let mut inference = std::env::var("OPENAGENTS_WEB_INFERENCE").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
     // Off unless set: chats untouched this many days are removed.
     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
@@ -43,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
             "--public-host" => config.public_hosts.push(value),
             "--pay-host" => pay_host = Some(value),
+            "--inference" => inference = Some(value),
             "--upstream" => upstream = Some(value),
             "--everglade" => config.everglade = Some(PathBuf::from(value)),
             "--bunny" => config.bunny = Some(PathBuf::from(value)),
@@ -202,6 +204,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             openagents_web::upstream::Upstream::new(&url)?,
         ));
         println!("Paths this site doesn't own are proxied to {url}");
+    }
+    // The inference gateway the API docs' rate card is read from.
+    if let Some(url) = inference.filter(|url| !url.is_empty()) {
+        config.inference = Some(std::sync::Arc::new(
+            openagents_web::upstream::Upstream::new(&url)?,
+        ));
     }
     if let Some(url) = pay_host {
         config.pay_upstream = Some(std::sync::Arc::new(

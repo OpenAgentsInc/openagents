@@ -70,7 +70,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 43] = [
+const PAGES: [&str; 54] = [
     "/",
     "/live",
     "/everglade",
@@ -114,6 +114,17 @@ const PAGES: [&str; 43] = [
     "/docs/troubleshooting",
     "/docs/faq",
     "/docs/glossary",
+    "/docs/api",
+    "/docs/api/quickstart",
+    "/docs/api/models",
+    "/docs/api/decisions",
+    "/docs/api/responses",
+    "/docs/api/chat-completions",
+    "/docs/api/routing",
+    "/docs/api/bring-your-own-key",
+    "/docs/api/errors",
+    "/docs/api/limits",
+    "/docs/api/privacy",
 ];
 
 /// The docs list every guide, each guide links its neighbors, and every
@@ -2584,7 +2595,9 @@ async fn purchase_browser_reads_without_creating_or_writing() {
     with.customer = Some(customer.clone());
     let (status, body) = get(router(with.clone()), "/app/purchases").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("No purchases") && body.contains("Plugins you buy in the app show up here."));
+    assert!(
+        body.contains("No purchases") && body.contains("Plugins you buy in the app show up here.")
+    );
     assert!(!customer.exists());
     let (status, _) = get(router(with), "/app/purchases/one").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -2616,4 +2629,149 @@ fn purchase_pages_show_identical_terms_and_name_the_installed_client_step() {
     );
     item.phase = Phase::Approved;
     assert!(crate::purchases::render_one(&item).contains("purchase invoke --root ROOT"));
+}
+
+/// The API docs: the index lists every guide, each guide answers as a
+/// page and as Markdown, `llms.txt` lists the Markdown, and every site
+/// link in a guide answers `200`.
+#[tokio::test]
+async fn the_api_docs_list_every_guide_and_serve_markdown() {
+    let root = tempfile::tempdir().unwrap();
+    let site = || router(config(root.path().join("tasks")));
+    let (_, docs) = get(site(), "/docs").await;
+    assert!(docs.contains("href=\"/docs/api\""));
+    let (_, index) = get(site(), "/docs/api").await;
+    let (status, headers, llms) = get_with(site(), "/docs/api/llms.txt", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain")
+    );
+    for (slug, _) in pages::API_DOCS {
+        assert!(
+            index.contains(&format!("href=\"/docs/api/{slug}\"")),
+            "{slug}"
+        );
+        assert!(
+            llms.contains(&format!("https://openagents.com/docs/api/{slug}.md")),
+            "{slug}"
+        );
+        let (status, html) = get(site(), &format!("/docs/api/{slug}")).await;
+        assert_eq!(status, StatusCode::OK, "{slug}");
+        assert!(html.contains("Beta"), "{slug} says it's a beta");
+        let main = &html[html.find("<main").unwrap()..html.find("</main>").unwrap()];
+        assert!(!main.contains("{{"), "{slug} has an undrawn table");
+        for target in main.split("href=\"").skip(1) {
+            let target = &target[..target.find('"').unwrap()];
+            if target.starts_with('/') && !target.starts_with("/static/") {
+                let path = target.split('#').next().unwrap();
+                let (status, _) = get(site(), path).await;
+                assert_eq!(status, StatusCode::OK, "{slug} links {target}");
+            }
+        }
+        let (status, headers, markdown) =
+            get_with(site(), &format!("/docs/api/{slug}.md"), LOCAL).await;
+        assert_eq!(status, StatusCode::OK, "{slug}.md");
+        assert!(
+            headers[header::CONTENT_TYPE]
+                .to_str()
+                .unwrap()
+                .starts_with("text/markdown")
+        );
+        assert!(markdown.starts_with("# "), "{slug}.md");
+        assert!(!markdown.contains("{{"), "{slug}.md has an undrawn table");
+    }
+    assert_eq!(get(site(), "/docs/api/nope").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        get(site(), "/docs/api/nope.md").await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// The models page draws the rate card the gateway serves at
+/// `GET /v1/rates`, every row with its list price, margin, price, and
+/// sats; without a gateway it draws the published card, the card a
+/// gateway with no rate overrides serves (`crates/gateway/tests/
+/// inference_rates.rs` holds the gateway to that). A page and an API that
+/// disagree fail here.
+#[tokio::test]
+async fn the_models_page_shows_the_gateways_rate_card() {
+    use inference::rates::{Card, Kind, SatsRate};
+    fn shows(main: &str, card: &Card) {
+        let text = main.replace("<strong>", "").replace("</strong>", "");
+        for row in &card.rows {
+            for amount in [&row.input, &row.cached_input, &row.output] {
+                let cell = match row.kind {
+                    Kind::List => format!(
+                        "${} + ${} = ${}",
+                        amount.list_usd, amount.margin_usd, amount.price_usd
+                    ),
+                    Kind::Promotion => format!("${}", amount.price_usd),
+                };
+                let cell = match amount.price_sats {
+                    Some(sats) => format!("{cell} ({sats} sats)"),
+                    None => cell,
+                };
+                assert!(text.contains(&cell), "{} misses {cell}", row.model);
+            }
+        }
+        let drawn = text.matches("<tr>").count();
+        // Two tables: the card (a header and its rows) and the models.
+        assert!(drawn > card.rows.len(), "{drawn} rows");
+    }
+    let root = tempfile::tempdir().unwrap();
+
+    // No gateway: the published card, dollars only.
+    let (status, html) = get(
+        router(config(root.path().join("tasks"))),
+        "/docs/api/models",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let published = Card::published(None);
+    shows(&html, &published);
+    assert!(!html.contains(" sats)"));
+
+    // A gateway: its card, with sats and a promotion row.
+    let mut rates = inference::rates::published();
+    let mut glm = rates.get("zai", "zai/glm-5.3-flash").cloned().unwrap();
+    glm.promotion = Some(inference::meter::Promotion {
+        label: "Free this week".into(),
+        input: 0,
+        cached_input: None,
+        output: 0,
+    });
+    rates.set(glm);
+    let served = Card::from_rates(
+        &rates,
+        Some(&SatsRate {
+            usd_per_btc: 100_000,
+            as_of: "2026-10-09".into(),
+        }),
+    );
+    let body = serde_json::to_string(&served).unwrap();
+    let app = Router::new().route(
+        "/v1/rates",
+        axum::routing::get(move || {
+            let body = body.clone();
+            async move { ([(header::CONTENT_TYPE, "application/json")], body) }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let mut settings = config(root.path().join("tasks"));
+    settings.inference = Some(Arc::new(
+        upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+    ));
+    let (_, html) = get(router(settings.clone()), "/docs/api/models").await;
+    shows(&html, &served);
+    assert!(html.contains("$100,000 per bitcoin"));
+    assert!(html.contains("promotion: Free this week"));
+    crate::copy_guard::assert_plain("/docs/api/models", &html);
+    let (_, markdown) = get(router(settings), "/docs/api/models.md").await;
+    assert!(markdown.contains("(158 sats)"), "{markdown}");
+    server.abort();
 }
