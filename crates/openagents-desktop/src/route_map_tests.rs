@@ -278,10 +278,11 @@ fn the_page_views_carry_the_inspector_gaps_and_outline() {
     page.act(Action::Select { node: coder }, now);
     let labels = page.view_labels();
     assert!(labels.iter().any(|l| l == "Coder"));
+    // The sample plugins are never on the map, so nothing reads adopted.
     assert!(
-        labels
+        !labels
             .iter()
-            .any(|l| l.starts_with("Adopted into everyone's Coder: Project map"))
+            .any(|l| l.starts_with("Adopted into everyone's Coder"))
     );
     assert!(labels.iter().any(|l| l.contains("Engine")));
     page.act(
@@ -305,7 +306,7 @@ fn the_page_views_carry_the_inspector_gaps_and_outline() {
     assert!(
         labels
             .iter()
-            .any(|l| l.trim_start() == "Plugin: Project map, Adopted")
+            .any(|l| l.trim_start().starts_with("Plugin: Outline, Not packaged"))
     );
 }
 

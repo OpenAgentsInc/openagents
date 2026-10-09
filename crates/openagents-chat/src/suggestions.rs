@@ -55,9 +55,9 @@ pub const SUGGESTIONS: &[Suggestion] = &[
         message: "What's new in the Gym?",
     },
     Suggestion {
-        id: "gym.test",
-        label: "Test a plugin",
-        message: "Which plugin should I try?",
+        id: "meta.tools",
+        label: "What tools do you have?",
+        message: "What tools do you have?",
     },
     Suggestion {
         id: "meta.model",
@@ -237,13 +237,10 @@ mod tests {
         let shown: Vec<&str> = suggestions(&[]).map(|s| s.id).collect();
         assert_eq!(
             shown,
-            ["meta.who", "meta.capabilities", "gym.news", "gym.test"]
+            ["meta.who", "meta.capabilities", "gym.news", "meta.tools"]
         );
         // Typed words, a tapped id, and a shown answer each count as used.
-        let used = markers(
-            ["who are you", "Which plugin should I try?"],
-            ["gym.news@v3"],
-        );
+        let used = markers(["who are you", "What tools do you have?"], ["gym.news@v3"]);
         let shown: Vec<&str> = suggestions(&used).map(|s| s.id).collect();
         assert_eq!(
             shown,

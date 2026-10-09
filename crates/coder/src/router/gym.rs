@@ -650,6 +650,10 @@ pub fn reply(
                 })
             }
         }
+        // No plugin in the Gym to test: say so, and name the built-in ones.
+        RouteId::EvalRun if records.tools.is_empty() => {
+            bank_reply(bank, facts, "eval.run.none", None, None)
+        }
         RouteId::EvalRun => tool_of(records, tool, route).and_then(|chosen| {
             let latest = records.latest(&chosen.id).cloned();
             let suite = records.suite(&chosen.id);
@@ -1480,15 +1484,17 @@ mod tests {
         assert!(
             matches!(&default, Reply::Bank { card: Some(Card::Tool { tool, .. }), .. } if tool.name == "Project map")
         );
-        assert_eq!(
-            super::reply(
-                RouteId::EvalRun,
-                None,
-                &Grounding::default(),
-                Bank::builtin(),
-                &facts()
-            ),
-            Reply::Model
+        // No plugin in the Gym at all: the bank says so, never the model.
+        let none = super::reply(
+            RouteId::EvalRun,
+            None,
+            &Grounding::default(),
+            Bank::builtin(),
+            &facts(),
+        );
+        assert!(
+            matches!(&none, Reply::Bank { answer, card: None, offer: None, .. } if answer.id == "eval.run.none"),
+            "{none:?}"
         );
     }
 

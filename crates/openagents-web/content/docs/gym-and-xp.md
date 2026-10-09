@@ -8,9 +8,6 @@ chat, and its results also stand on boards in the Verse.
 
 On the phone's Chat menu, tap a starter, or ask in any chat:
 
-- **Test a plugin.** We show plugins to test; tap **Start the test**. Our
-  computers run the tests and the card shows the result, such as "passed
-  5 of 6 with it, 2 of 6 without". See [Test a plugin](/docs/test-a-plugin).
 - **What's new.** The Gym's news, from published results, checks, our
   changelog, and our notes.
 - **Check a result.** Rerun another trainer's published result. If you get

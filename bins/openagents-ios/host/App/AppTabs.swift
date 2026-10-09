@@ -236,14 +236,16 @@ struct AccountTab: View {
                             Label("Trainer", systemImage: "star.circle")
                         }
                         .accessibilityIdentifier("account-trainer")
-                        // Opt into the Gym: Rust opens its intro on the Chat tab.
-                        Button {
-                            bridge.gymTrain()
-                        } label: {
-                            Label("Train Coder", systemImage: "dumbbell")
-                        }
-                        .foregroundStyle(appColors.primary)
-                        .accessibilityIdentifier("account-train")
+                        // Train Coder opened a test of the Gym's sample plugins,
+                        // which are no longer shown; it comes back when the Gym
+                        // has a real plugin to test.
+                        // Button {
+                        //     bridge.gymTrain()
+                        // } label: {
+                        //     Label("Train Coder", systemImage: "dumbbell")
+                        // }
+                        // .foregroundStyle(appColors.primary)
+                        // .accessibilityIdentifier("account-train")
                         // Profile: Rust shows it as a sheet on the Chat tab.
                         Button {
                             bridge.profile()

@@ -12,7 +12,7 @@ The words these docs use, in plain terms.
 | **Coding agent** | Codex, Claude Code, Grok Build, OpenCode, or Devin: the programs Coder runs to do the work. Also called engines. |
 | **Computer** | A Mac, Linux, or Windows computer where Coder can run, which your phone can connect to. |
 | **Deck** | A slide presentation the Mac app shows full screen. |
-| **Defaults** | The plugins Coder uses for everyone. Today: Project map. |
+| **Defaults** | The plugins Coder uses for everyone, once their test results hold up. |
 | **Device key** | The key your phone or computer makes the first time it runs. It signs your messages and holds access to your computers. |
 | **Grid** | The Verse's shared world, where players walk around live and the Gym stands. |
 | **Gym** | Where plugins are tested on Coder, with and without, and the results are published and checked. |

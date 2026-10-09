@@ -27,7 +27,11 @@
     "OpenAgents for Mac 1.0",
     ".dmg",
     "computer you've connected",
-    "As an AI language model"
+    "As an AI language model",
+    "Project map",
+    "Code finder",
+    "Test reader",
+    "Explain this error"
   ],
   "flows": [
     {
@@ -372,8 +376,8 @@
           "answers": ["plugins.web", "openagents.plugin-list"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Project map"]],
-          "forbidden": ["Code Reviewer", "Test Generator", "Doc Writer", "Bug Hunter", "Refactor Assistant"]
+          "required": [["Claude Code"], ["Codex"], ["Cursor"]],
+          "forbidden": ["Code Reviewer", "Test Generator", "Doc Writer", "Bug Hunter", "Refactor Assistant", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
         }
       ]
     },

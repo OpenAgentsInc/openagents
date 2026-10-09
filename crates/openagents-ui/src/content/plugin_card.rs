@@ -147,22 +147,22 @@ mod tests {
     #[test]
     fn a_card_shows_its_words_escaped_and_only_a_real_action() {
         let html = PluginCard::new(
-            "Project map",
-            Icon::Maps,
-            "Shows Coder how the project is laid out <first>.",
+            "Claude Code",
+            Icon::Assistant,
+            "Coder hands Claude Code a task <first>.",
         )
         .runs_on("With Coder on your computer")
         .action("Get Coder", "/download")
         .render()
         .into_string();
-        assert!(html.contains(r#"<article class="oa-plugin-card" aria-label="Project map">"#));
-        assert!(html.contains(r#"<h3 class="oa-plugin-card__name">Project map</h3>"#));
-        assert!(html.contains("laid out &lt;first&gt;."));
+        assert!(html.contains(r#"<article class="oa-plugin-card" aria-label="Claude Code">"#));
+        assert!(html.contains(r#"<h3 class="oa-plugin-card__name">Claude Code</h3>"#));
+        assert!(html.contains("a task &lt;first&gt;."));
         assert!(html.contains("<span>With Coder on your computer</span>"));
         assert!(html.contains(r#"href="/download""#));
         assert!(html.contains("Get Coder"));
 
-        let bare = PluginCard::new("Code finder", Icon::Search, "Finds TODO notes.")
+        let bare = PluginCard::new("Codex", Icon::Code, "Hands Codex a task.")
             .render()
             .into_string();
         assert!(!bare.contains("oa-plugin-card__action"));
@@ -181,8 +181,8 @@ mod tests {
         );
         let html = PluginCards::new("Plugins")
             .cards([
-                PluginCard::new("Project map", Icon::Maps, "One."),
-                PluginCard::new("Code finder", Icon::Search, "Two."),
+                PluginCard::new("Claude Code", Icon::Assistant, "One."),
+                PluginCard::new("Codex", Icon::Code, "Two."),
             ])
             .render()
             .into_string();

@@ -39,10 +39,10 @@ const SEARCH_LIMIT: u64 = 500;
 
 const SWITCHES: &[&str] = &[];
 
-/// The OpenAgents catalog's plugins (`deploy/eval-runner/catalog`), their
-/// package records compiled in. The hosted runner publishes their releases
-/// under its key; until each has a listing of its own, search and install
-/// find them here (#10307).
+/// The hosted runner's sample plugins (`deploy/eval-runner/catalog`), their
+/// package records compiled in. The runner publishes their releases under
+/// its key. They are its test fixtures: search never lists them, and
+/// install finds one only when named exactly (#10307).
 const CATALOG: [&str; 6] = [
     include_str!("../../plugin-repo-map/package.json"),
     include_str!("../../plugin-code-search/package.json"),
@@ -77,20 +77,14 @@ pub(crate) fn catalog() -> Vec<Listing> {
         .collect()
 }
 
-/// `listings` and the catalog's plugins that have no listing of their own,
-/// the catalog first.
-pub(crate) fn with_catalog(listings: Vec<Listing>, author: Option<&str>) -> Vec<Listing> {
-    let mut out: Vec<Listing> = catalog()
+/// `listings` without the hosted runner's sample plugins, which are its
+/// test fixtures and never shown.
+pub(crate) fn without_samples(listings: Vec<Listing>) -> Vec<Listing> {
+    let samples: Vec<String> = catalog().into_iter().map(|entry| entry.package).collect();
+    listings
         .into_iter()
-        .filter(|entry| author.is_none_or(|author| author == entry.publisher))
-        .filter(|entry| {
-            !listings
-                .iter()
-                .any(|listing| listing.package == entry.package)
-        })
-        .collect();
-    out.extend(listings);
-    out
+        .filter(|listing| !samples.contains(&listing.package))
+        .collect()
 }
 
 /// The newest release of the catalog plugin `entry`, as the listing
@@ -1023,7 +1017,7 @@ fn search_command(args: &Args) -> Result<Value, String> {
     let mut client = Client::connect(&relay, signer_for(args.option("as"))?);
     let found = listings(&mut client, author, None);
     let found: Vec<Listing> = match found {
-        Ok(found) => search(with_catalog(found, author), &query)
+        Ok(found) => search(without_samples(found), &query)
             .into_iter()
             .take(limit)
             .collect(),
@@ -1299,7 +1293,7 @@ mod tests {
     }
 
     #[test]
-    fn the_catalog_is_found_without_listings_and_comes_first() {
+    fn search_never_lists_the_sample_plugins() {
         assert_eq!(super::catalog().len(), 6);
         let stand_in = Listing {
             package: format!("{}:explain-error-check", "1".repeat(64)),
@@ -1311,15 +1305,18 @@ mod tests {
             blobs: Vec::new(),
             created_at: 9,
         };
-        let all = with_catalog(vec![stand_in], None);
-        assert_eq!(all.len(), 7);
-        assert_eq!(all[0].slug, "project-map");
-        assert_eq!(search(all.clone(), "")[0].slug, "project-map");
-        assert_eq!(search(all.clone(), "project map")[0].slug, "project-map");
-        // A catalog plugin someone listed is not shown twice.
+        // A sample's own listing on the relay is dropped; others stay.
         let listed = super::catalog()[0].clone();
-        assert_eq!(with_catalog(vec![listed], None).len(), 6);
-        // Install resolves the newest release the catalog key signed.
+        let all = without_samples(vec![stand_in, listed]);
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].slug, "explain-error-check");
+        assert!(
+            search(all.clone(), "project map")
+                .iter()
+                .all(|listing| listing.slug != "project-map")
+        );
+        // Install by exact name resolves the newest release the runner's
+        // key signed.
         let mut relay = FakeRelay::default();
         assert!(
             find(&mut relay, "project-map")

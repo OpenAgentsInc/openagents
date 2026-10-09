@@ -94,10 +94,10 @@ struct VerseEvalsPanel: View {
 
     private func content(_ view: EvalsView) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            // The way into the Gym's loop: test a capability on Coder, in chat.
-            Button("Train Coder", systemImage: "dumbbell", action: train)
-                .accessibilityIdentifier("evals-train")
-            Divider().overlay(.white.opacity(0.3))
+            // Train Coder opened a test of the Gym's sample plugins, which are no longer shown; it comes back when the Gym has a real plugin to test.
+            // Button("Train Coder", systemImage: "dumbbell", action: train)
+            //     .accessibilityIdentifier("evals-train")
+            // Divider().overlay(.white.opacity(0.3))
             notes(view)
             Divider().overlay(.white.opacity(0.3))
             Text("Published results").font(.paper(.headline))

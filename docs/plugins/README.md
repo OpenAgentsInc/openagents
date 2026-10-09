@@ -50,7 +50,6 @@ own, on a timer or when a task ends, only while the plugin is turned on
 on that computer. See [Plugins that run in the background](#plugins-that-run-in-the-background).
 
 Not every plugin has every part. A plugin made in chat is a single skill.
-Project map is a workflow that runs one piece of Wasm, with its tests.
 
 Coder and the coding agents it works with (Codex, Claude Code, Grok Build,
 OpenCode, and Devin) are not plugins. They are the agents plugins plug
@@ -64,30 +63,26 @@ by workflows and typed decisions, never by a name a model writes.
 
 | Plugin | What it does | Source |
 | --- | --- | --- |
-| Project map | Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests. | [`crates/plugin-repo-map`](../../crates/plugin-repo-map/) |
-| Code finder | Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file. | [`crates/plugin-code-search`](../../crates/plugin-code-search/) |
-| Test reader | Reads the test reports in a project for Coder: which tests failed, where, and why. | [`crates/plugin-test-report`](../../crates/plugin-test-report/) |
-| Explain this error | Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix. | [`crates/plugin-explain-error`](../../crates/plugin-explain-error/) |
-| Release notes | Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit. | [`crates/plugin-release-notes`](../../crates/plugin-release-notes/) |
-| Dependency check | Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow. | [`crates/plugin-dependency-check`](../../crates/plugin-dependency-check/) |
+| Claude Code | Coder hands a task to Claude Code on your computer and shows its progress as it works. | [`crates/coder-new/src/acp_discovery.rs`](../../crates/coder-new/src/acp_discovery.rs) |
+| Codex | Coder hands a task to Codex on your computer and shows its progress as it works. | [`crates/coder-new/src/acp_discovery.rs`](../../crates/coder-new/src/acp_discovery.rs) |
+| Cursor | Coder hands a task to Cursor's agent on your computer and shows its progress as it works. | [`crates/coder-new/src/acp_discovery.rs`](../../crates/coder-new/src/acp_discovery.rs) |
+| Grok Build | Coder hands a task to Grok Build on your computer and shows its progress as it works. | [`crates/coder-new/src/acp_discovery.rs`](../../crates/coder-new/src/acp_discovery.rs) |
+| OpenRouter | Use OpenRouter models in Coder with your own API key. | [`crates/coder-new/src/plugin_definition.rs`](../../crates/coder-new/src/plugin_definition.rs) |
 
-This table, the chat's answers about which plugins there are, and the
-app's Gym chips all follow the hosted runner's catalog,
-[`deploy/eval-runner/catalog`](../../deploy/eval-runner/catalog), and each
-plugin's `package.json` name and summary; `cargo test -p coder --test
-plugin_catalog` fails until they agree. To add a plugin to the Gym, list
-its directory there, give it a product note
-(`knowledge/openagents/openagents.tool-<slug>.md`, tagged `tool` and its
-directory's slug, titled and summarized as its package), add it to the
-app's chips and the authoring interview's starter catalog, then rewrite
-the generated plugin list and the route map:
+These are the plugins built into Coder in the `openagents` terminal
+(`/plugins` there turns each on or off). The coding agents are found on
+your computer when they are installed, and Coder delegates to them over
+ACP. This table, the chat's answers about which plugins there are, and the
+website's plugin cards follow
+[`crates/coder/src/builtin_plugins.rs`](../../crates/coder/src/builtin_plugins.rs);
+`cargo test -p coder --test plugin_catalog` fails until they agree. After
+changing that list, rewrite the generated plugin list and the route map:
 `PLUGIN_LIST_WRITE=1 cargo test -p coder --test plugin_catalog` and
 `ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources`.
 
-Each directory is a complete plugin to copy: `package.json`, a workflow
-under `programs/`, the Wasm crate itself, and a test set under `evals/`.
-The last three are [worked examples](examples/README.md) written to be
-copied, each with its test result and a run on a real repository.
+The packages under `crates/plugin-*` that the hosted eval runner lists
+([`deploy/eval-runner/catalog`](../../deploy/eval-runner/catalog)) are test
+fixtures for the runner. They are not shown to people.
 
 ## Reuse an exact release with a colleague
 
@@ -222,7 +217,7 @@ lane qualification, current customer authority, and explicit purchase approval.
 In the OpenAgents app on your phone, ask "Help me make a plugin that ...".
 We draft the plugin and its tests with you one step at a time, try it once,
 and then run the full test set on our computers. A plugin made in chat is a
-skill, and it can turn on plugins we already have, such as Project map. A
+skill. A
 plugin that needs new code goes to Coder on a computer you connect.
 
 In a terminal on your computer (`openagents chat` or OpenAgents Terminal),

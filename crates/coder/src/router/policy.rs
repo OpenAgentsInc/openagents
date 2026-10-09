@@ -975,7 +975,7 @@ pub const WEB_PLUGINS: &str = "plugins.web";
 /// The tier for `routing`. See the module documentation for the rules.
 /// On the website ([`Surface::Web`]) it is then held to [`for_web`], except
 /// that a wish to try or test a plugin (the typed `eval.run` route, never
-/// the message's words) gets [`WEB_PLUGINS`] with the catalog's cards
+/// the message's words) gets [`WEB_PLUGINS`] with the built-in plugins' cards
 /// instead of a model reply that could name plugins we don't have.
 #[must_use]
 pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {

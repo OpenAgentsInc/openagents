@@ -105,7 +105,7 @@ pub fn violations(text: &str, allow: &[&str]) -> Vec<Violation> {
             let before = lower[..start].chars().next_back();
             let after = lower[end..].chars().next();
             let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
-            if !word(before) && !word(after) {
+            if !word(before) && !word(after) && !product_name(text, start, end) {
                 hits.push(Violation {
                     term,
                     context: context(text, start, end),
@@ -123,6 +123,18 @@ pub fn violations(text: &str, allow: &[&str]) -> Vec<Violation> {
         }
     }
     hits
+}
+
+/// Product names that read like a lexicon term: "Cursor", the code editor
+/// and coding agent, written with its capital. A "cursor" in lower case is
+/// still machine talk.
+const PRODUCT_NAMES: &[&str] = &["Cursor"];
+
+/// Whether `text[start..end]` is one of [`PRODUCT_NAMES`], written as the
+/// product.
+fn product_name(text: &str, start: usize, end: usize) -> bool {
+    text.get(start..end)
+        .is_some_and(|found| PRODUCT_NAMES.contains(&found))
 }
 
 /// The visible text of an HTML document or fragment: tags, scripts, styles
@@ -547,6 +559,18 @@ mod tests {
     fn plain_copy_passes_and_words_inside_words_do_not_count() {
         assert!(violations("Start a new chat. Download OpenAgents for Mac.", &[]).is_empty());
         assert!(violations("Planes and elanes", &[]).is_empty());
+    }
+
+    #[test]
+    fn cursor_the_product_is_a_name_and_a_cursor_is_still_machine_talk() {
+        assert!(violations("Hand it to Claude Code, Codex, or Cursor.", &[]).is_empty());
+        assert!(violations("Coder hands a task to Cursor's agent.", &[]).is_empty());
+        assert_eq!(violations("Move the cursor back.", &[]).len(), 1);
+        assert!(violations("| Cursor | Hands Cursor's agent a task. |", &[]).is_empty());
+        assert_eq!(
+            violations("The event cursor is ahead of the page.", &[]).len(),
+            1
+        );
     }
 
     #[test]

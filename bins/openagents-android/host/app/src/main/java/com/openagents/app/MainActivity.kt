@@ -628,8 +628,8 @@ class MainActivity : ComponentActivity() {
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
             if (Preview.on) addView(group(listOf(
                 "★  ${AccountRoute.TRAINER.title}" to "account-trainer" to { open(AccountRoute.TRAINER) },
-                // Opt into the Gym: Rust opens its intro on the Chat tab.
-                "Train Coder" to "account-train" to { bridge.gymTrain() },
+                // Train Coder opened a test of the Gym's sample plugins, which are no longer shown; it comes back when the Gym has a real plugin to test.
+                // "Train Coder" to "account-train" to { bridge.gymTrain() },
                 // Profile: Rust shows it as a sheet on the Chat tab.
                 "Profile" to "account-profile" to { bridge.profile() },
             )))

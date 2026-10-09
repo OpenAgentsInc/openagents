@@ -338,10 +338,7 @@ impl Routed {
             kb,
             tools,
             admitted,
-            plugin_names: coder::gym_kb::catalog_plugins()
-                .into_iter()
-                .map(|p| p.name)
-                .collect(),
+            plugin_names: coder::builtin_plugins::names(),
             target,
         })
     }

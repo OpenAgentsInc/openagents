@@ -423,10 +423,7 @@ pub fn check(
         "canned", "stem", "grounded", "model", "opener", "offer", "refuse", "gym", "author", "cli",
     ];
     let mut ids = BTreeSet::new();
-    let plugin_names: Vec<String> = crate::gym_kb::catalog_plugins()
-        .into_iter()
-        .map(|plugin| plugin.name)
-        .collect();
+    let plugin_names: Vec<String> = crate::builtin_plugins::names();
     for flow in &set.flows {
         for golden in &flow.goldens {
             let at = &golden.id;

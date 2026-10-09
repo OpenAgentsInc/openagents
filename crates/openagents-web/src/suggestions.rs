@@ -23,7 +23,8 @@
 //!
 //! An answer that came with plugin cards (the reply's typed `plugins`,
 //! `docs/web/plugin-card.md`) shows them inside its message
-//! ([`plugin_cards`]), drawn from the compiled-in plugin catalog.
+//! ([`plugin_cards`]), drawn from Coder's built-in plugins
+//! (`coder::builtin_plugins`).
 
 use maud::{Markup, html};
 use openagents_chat::router::{Meta, Screen};
@@ -164,45 +165,39 @@ pub(crate) async fn reply_chips(app: &App, chat: &Conversation) -> Markup {
     }
 }
 
-/// Where every catalog plugin runs, as its card says.
+/// Where every built-in plugin runs, as its card says.
 const PLUGIN_RUNS_ON: &str = "With Coder on your computer";
 
 /// The card action that works on this site: nothing here runs a plugin,
 /// so each card leads to getting Coder, which does.
 const PLUGIN_ACTION: (&str, &str) = ("Get Coder", "/download");
 
-/// The icon a catalog plugin's card shows, by package slug.
+/// The icon a built-in plugin's card shows, by slug.
 fn plugin_icon(slug: &str) -> Icon {
     match slug {
-        "project-map" => Icon::Maps,
-        "code-finder" => Icon::Search,
-        "test-reader" => Icon::Flask,
-        "explain-error" => Icon::Bug,
-        "release-notes" => Icon::Notepad,
-        "dependency-check" => Icon::Cube,
+        "claude-code" => Icon::Assistant,
+        "codex" => Icon::Code,
+        "cursor" => Icon::Cursor,
+        "grok-build" => Icon::Agent,
+        "openrouter" => Icon::ApiKey,
         _ => Icon::PluginPuzzle,
     }
 }
 
 /// The plugin cards an answer comes with (`docs/web/plugin-card.md`): one
-/// per slug the reply carried that the compiled-in catalog knows, in the
-/// reply's order, named and described by the plugin's own package. A slug
-/// the catalog doesn't know draws nothing. Empty without slugs.
+/// per slug the reply carried that Coder's built-in plugins know, in the
+/// reply's order, named and described by `coder::builtin_plugins`. A slug
+/// it doesn't know draws nothing. Empty without slugs.
 pub(crate) fn plugin_cards(slugs: &[String]) -> Markup {
     if slugs.is_empty() {
         return html! {};
     }
-    let catalog = coder::gym_kb::catalog_plugins();
     let cards = slugs.iter().filter_map(|slug| {
-        let plugin = catalog.iter().find(|plugin| &plugin.slug == slug)?;
+        let plugin = coder::builtin_plugins::builtin_plugin(slug)?;
         Some(
-            PluginCard::new(
-                plugin.name.as_str(),
-                plugin_icon(&plugin.slug),
-                plugin.summary.as_str(),
-            )
-            .runs_on(PLUGIN_RUNS_ON)
-            .action(PLUGIN_ACTION.0, PLUGIN_ACTION.1),
+            PluginCard::new(plugin.name, plugin_icon(plugin.slug), plugin.summary)
+                .runs_on(PLUGIN_RUNS_ON)
+                .action(PLUGIN_ACTION.0, PLUGIN_ACTION.1),
         )
     });
     html! { (PluginCards::new("Plugins").cards(cards)) }
@@ -293,7 +288,7 @@ mod tests {
             [
                 "meta.capabilities",
                 "gym.news",
-                "gym.test",
+                "meta.tools",
                 "eval.credit.how"
             ]
         );
@@ -331,28 +326,30 @@ mod tests {
         assert_eq!(routed, [("Connect a computer", "/docs/connect-a-computer")]);
     }
 
-    /// An answered reply's plugin slugs draw the catalog's own cards, each
+    /// An answered reply's plugin slugs draw the built-in plugins' cards, each
     /// with the one action that works here; unknown slugs draw nothing,
     /// and a user message or a reply without slugs shows none.
     #[test]
     fn an_answer_with_plugin_slugs_shows_the_catalogs_cards() {
         let meta = Meta {
-            answer: Some("plugins.web@1".into()),
-            plugins: vec!["project-map".into(), "nope".into(), "code-finder".into()],
+            answer: Some("plugins.web@2".into()),
+            plugins: vec!["claude-code".into(), "project-map".into(), "codex".into()],
             ..Meta::default()
         };
         let answered = chat(Some(meta));
         assert!(message_plugins(&answered, &answered.messages[0]).is_empty());
         let slugs = message_plugins(&answered, &answered.messages[1]);
-        assert_eq!(slugs, ["project-map", "nope", "code-finder"]);
+        assert_eq!(slugs, ["claude-code", "project-map", "codex"]);
         let html = plugin_cards(slugs).into_string();
         assert_eq!(
             html.matches(r#"<article class="oa-plugin-card""#).count(),
             2
         );
-        let map = coder::gym_kb::catalog_plugin("project-map").expect("in the catalog");
-        assert!(html.contains(&maud::html! { (map.name) }.into_string()));
-        assert!(html.contains(&maud::html! { (map.summary) }.into_string()));
+        let claude = coder::builtin_plugins::builtin_plugin("claude-code").expect("built in");
+        assert!(html.contains(&maud::html! { (claude.name) }.into_string()));
+        assert!(html.contains(&maud::html! { (claude.summary) }.into_string()));
+        // A sample plugin's slug draws nothing.
+        assert!(!html.contains("Project map"));
         assert!(html.contains(PLUGIN_RUNS_ON));
         assert!(html.contains(r#"href="/download""#));
         assert!(!html.contains("<button"));

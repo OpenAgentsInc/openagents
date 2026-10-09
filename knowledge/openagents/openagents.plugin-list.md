@@ -1,50 +1,47 @@
 ---
 id: openagents.plugin-list
-version: 1
+version: 2
 kind: product
 title: "Which plugins there are"
 summary: >-
-  The plugins in the Gym, which you can test on Coder: Project map, Code finder, Test reader, Explain this error, Release notes, and Dependency check.
-tags: [gym, plugins, catalog, extension]
+  Coder's built-in plugins: Claude Code, Codex, Cursor, Grok Build, and OpenRouter.
+tags: [plugins, catalog, coder]
 applies_when: >-
-  The user asks which plugins there are, which plugins are in the Gym, or which plugins they can test or use with Coder.
+  The user asks which plugins there are, which plugins Coder has, or which plugins they can use or test with Coder.
 answer: >-
-  The Gym has six plugins you can test on Coder: Project map, Code finder, Test reader, Explain this error, Release notes, and Dependency check. Each has its own test set, run with the plugin and without it, so you can see whether it makes Coder better. Ask us what one does, or ask to test one.
+  Coder comes with five built-in plugins: Claude Code, Codex, Cursor, Grok Build, and OpenRouter. With the coding agents, Coder hands a task to Claude Code, Codex, Cursor, or Grok Build on your computer, when you have it, and shows its progress as it works. With OpenRouter, Coder uses OpenRouter models with your own API key. In the openagents terminal, /plugins turns each on or off.
 status: admitted
 author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - deploy/eval-runner/catalog
-    - crates/plugin-repo-map/package.json
-    - crates/plugin-code-search/package.json
-    - crates/plugin-test-report/package.json
-    - crates/plugin-explain-error/package.json
-    - crates/plugin-release-notes/package.json
-    - crates/plugin-dependency-check/package.json
+    - crates/coder/src/builtin_plugins.rs
+    - crates/coder-new/src/acp_discovery.rs
+    - crates/coder-new/src/bundled_runtime.rs
+    - crates/coder-new/src/delegation_events.rs
+    - crates/coder-new/tests/bundled_plugins.rs
+    - crates/coder-new/src/plugin_definition.rs
 evidence:
-  - "Generated from the hosted runner's catalog and each plugin's package.json by crates/coder/tests/plugin_catalog.rs (#10090); PLUGIN_LIST_WRITE=1 rewrites it, and its version moves when its words do."
+  - "Generated from Coder's built-in plugins (crates/coder/src/builtin_plugins.rs) by crates/coder/tests/plugin_catalog.rs; PLUGIN_LIST_WRITE=1 rewrites it, and its version moves when its words do. The hosted runner's sample plugins are test fixtures and are not listed."
 ---
 
 ## Answer
 
-The Gym has six plugins you can test on Coder: Project map, Code finder, Test reader, Explain this error, Release notes, and Dependency check. Each has its own test set, run with the plugin and without it, so you can see whether it makes Coder better. Ask us what one does, or ask to test one.
+Coder comes with five built-in plugins: Claude Code, Codex, Cursor, Grok Build, and OpenRouter. With the coding agents, Coder hands a task to Claude Code, Codex, Cursor, or Grok Build on your computer, when you have it, and shows its progress as it works. With OpenRouter, Coder uses OpenRouter models with your own API key. In the openagents terminal, /plugins turns each on or off.
 
 ## Details
 
-- **Project map** (`crates/plugin-repo-map`): Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests.
-- **Code finder** (`crates/plugin-code-search`): Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file.
-- **Test reader** (`crates/plugin-test-report`): Reads the test reports in a project for Coder: which tests failed, where, and why.
-- **Explain this error** (`crates/plugin-explain-error`): Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix.
-- **Release notes** (`crates/plugin-release-notes`): Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit.
-- **Dependency check** (`crates/plugin-dependency-check`): Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow.
+- **Claude Code**: Coder hands a task to Claude Code on your computer and shows its progress as it works.
+- **Codex**: Coder hands a task to Codex on your computer and shows its progress as it works.
+- **Cursor**: Coder hands a task to Cursor's agent on your computer and shows its progress as it works.
+- **Grok Build**: Coder hands a task to Grok Build on your computer and shows its progress as it works.
+- **OpenRouter**: Use OpenRouter models in Coder with your own API key.
 
 ## Sources
 
-- `deploy/eval-runner/catalog`
-- `crates/plugin-repo-map/package.json`
-- `crates/plugin-code-search/package.json`
-- `crates/plugin-test-report/package.json`
-- `crates/plugin-explain-error/package.json`
-- `crates/plugin-release-notes/package.json`
-- `crates/plugin-dependency-check/package.json`
+- `crates/coder/src/builtin_plugins.rs`
+- `crates/coder-new/src/acp_discovery.rs`
+- `crates/coder-new/src/bundled_runtime.rs`
+- `crates/coder-new/src/delegation_events.rs`
+- `crates/coder-new/tests/bundled_plugins.rs`
+- `crates/coder-new/src/plugin_definition.rs`

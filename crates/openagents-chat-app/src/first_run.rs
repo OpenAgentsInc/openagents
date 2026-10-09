@@ -22,12 +22,11 @@ use crate::gym::{FirstRun, Gym, level_line, next_step};
 /// The intro chat's opening message: sent for the player, as a starter
 /// chip would, so the capability card and its test come from the Gym's
 /// records.
-pub const FIRST_MESSAGE: &str = "Test Project map on Coder";
+pub const FIRST_MESSAGE: &str = "Which plugins can I test?";
 
 /// The Gym's starter chips on the Gym menu: `(id, label, message)`. A new
 /// chat's suggestions are [`SUGGESTIONS`].
 pub const STARTERS: &[(&str, &str, &str)] = &[
-    ("test", "Test a plugin", "Which plugin should I try?"),
     ("news", "What's new", "What's new in the Gym?"),
     ("check", "Check a result", "Find me a result to check"),
 ];
@@ -191,7 +190,6 @@ pub fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
                 format!("menu.{id}"),
                 label,
                 Some(match *id {
-                    "test" => "test",
                     "news" => "news",
                     _ => "check",
                 }),
@@ -231,7 +229,7 @@ pub fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
         status: "GYM OPEN".into(),
         next,
         primary,
-        primary_subtitle: "Test a plugin, see what's new, earn XP".into(),
+        primary_subtitle: "See what's new, check results, earn XP".into(),
         chips,
         rows,
         footer: match app_build {
@@ -283,12 +281,9 @@ mod tests {
         assert_eq!(menu.player.level, None);
         assert_eq!(menu.player.xp_label, None);
         assert_eq!(menu.primary.label, "CHAT WITH OPENAGENTS");
-        assert_eq!(
-            menu.next,
-            "Next: test a plugin to see if it makes Coder better."
-        );
+        assert_eq!(menu.next, "Next: ask what's new in the Gym.");
         let labels: Vec<&str> = menu.chips.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(labels, ["Test a plugin", "What's new", "Check a result"]);
+        assert_eq!(labels, ["What's new", "Check a result"]);
         assert_eq!(menu.footer, "Gym open · v1.0.0 (21) · Playtest");
     }
 }

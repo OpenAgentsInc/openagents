@@ -49,10 +49,8 @@ automatic. Computers pick up the defaults with
 `openagents plugin defaults sync`, and our hosted runner reads them on
 each run.
 
-This has happened once. On 2026-09-29, Project map went from a result,
-to three confirming checks, to a validation, to adoption, in one
-afternoon. Every key in that record came from one machine and one
-operator, which the
+This has happened once, on 2026-09-29. Every key in that record came
+from one machine and one operator, which the
 [record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/extensions/measurements/2026-09-29-first-adoption.md)
 says.
 

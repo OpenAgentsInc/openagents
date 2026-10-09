@@ -1768,7 +1768,7 @@ fn a_fresh_new_chat_always_shows_suggestions() {
             ("coder-suggest-meta.who", "Who are you?"),
             ("coder-suggest-meta.capabilities", "What can you do?"),
             ("coder-suggest-gym.news", "What's new in the Gym?"),
-            ("coder-suggest-gym.test", "Test a plugin"),
+            ("coder-suggest-meta.tools", "What tools do you have?"),
         ]
         .map(|(key, label)| (key.to_owned(), label.to_owned()))
     );
@@ -1800,10 +1800,10 @@ fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
     );
     assert_eq!(shown.len(), 4);
     assert_eq!(shown[3].1, "What models does this use?");
-    // "Test a plugin" sends its question, and neither shows again.
-    fixture.tap("coder-suggest-gym.test");
-    assert_eq!(hand.asked()[1], ["Which plugin should I try?"]);
-    hand.say("Try Project map.", true);
+    // "What tools do you have?" sends its question, and neither shows again.
+    fixture.tap("coder-suggest-meta.tools");
+    assert_eq!(hand.asked()[1], ["What tools do you have?"]);
+    hand.say("Coder can hand a task to Claude Code.", true);
     drop(fixture);
 
     let hand = Hand::default();
@@ -1816,7 +1816,7 @@ fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
         "{shown:?}"
     );
     assert!(
-        node(&screen, "coder-suggest-gym.test").is_none(),
+        node(&screen, "coder-suggest-meta.tools").is_none(),
         "{shown:?}"
     );
     assert_eq!(

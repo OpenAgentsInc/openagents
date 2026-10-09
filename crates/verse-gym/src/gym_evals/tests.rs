@@ -161,3 +161,19 @@ fn a_result_without_a_baseline_says_so() {
     assert_eq!(headline(p), "3 of 8 passed with it, not run without it");
     assert_eq!(verdict_words(p.verdict()), "No clear change");
 }
+
+/// The hosted runner's sample plugins never stand on the board: a subject
+/// signed by the runner's key or the starter catalog's is a sample.
+#[test]
+fn sample_plugin_subjects_are_left_off_the_board() {
+    assert!(is_sample(&format!(
+        "{}:project-map/project-map",
+        eval_ext::hosted::RUNNER
+    )));
+    assert!(is_sample(&format!(
+        "{}:openagents/repo-map",
+        "a".repeat(64)
+    )));
+    assert!(!is_sample(&format!("{}:my-tool/skill", "1".repeat(64))));
+    assert!(!is_sample("no-key"));
+}

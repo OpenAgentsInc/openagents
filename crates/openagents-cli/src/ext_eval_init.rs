@@ -107,7 +107,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Err(error) => return output.fail(command, &error),
     };
     let name = door.model().to_string();
-    let author = Author::new(door, name, None, Catalog::starter()).for_person("the operator");
+    let author = Author::new(door, name, None, Catalog::default()).for_person("the operator");
     let stdin = std::io::stdin();
     let result = crate::runtime().block_on(interview(
         &author,

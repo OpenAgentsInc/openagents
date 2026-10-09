@@ -25,13 +25,13 @@ internal class EvalsPanel(
             add(context.label("Reading results…", 14f, Palette.SECONDARY, key = "evals-loading"))
             return@apply
         }
-        // The way into the Gym's loop: test a capability on Coder, in chat.
-        add(context.label("Train Coder", 16f, bold = true, key = "evals-train").apply {
-            isClickable = true; isFocusable = true
-            setPadding(0, context.dp(8), 0, context.dp(8))
-            setOnClickListener { train() }
-        })
-        addDivider(12)
+        // Train Coder opened a test of the Gym's sample plugins, which are no longer shown; it comes back when the Gym has a real plugin to test.
+        // add(context.label("Train Coder", 16f, bold = true, key = "evals-train").apply {
+        //     isClickable = true; isFocusable = true
+        //     setPadding(0, context.dp(8), 0, context.dp(8))
+        //     setOnClickListener { train() }
+        // })
+        // addDivider(12)
         // Compare notes: agents in the Gym.
         val toggle = context.row().apply {
             addView(context.column().apply {

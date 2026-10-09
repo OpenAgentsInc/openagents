@@ -125,19 +125,22 @@ pub const CHANGELOG: &[Release] = &[
     assert!(changelog_of("fn main() {}").is_empty());
 }
 
-/// The catalog is the notes tagged `tool`, Project map first; the Gym
-/// notes are the ones tagged `gym`; both cite their note's path.
+/// The catalog is the notes tagged `tool`, Project map first (in the
+/// fixture notes; the product corpus has none, since the sample plugins are
+/// never shown); the Gym notes are the ones tagged `gym` and cite their
+/// note's path.
 #[test]
 fn the_catalog_and_notes_come_from_tagged_product_notes() {
     let corpus = corpus();
-    let tools = tools(&corpus);
-    assert!(tools.len() >= 3, "{tools:?}");
+    assert!(
+        tools(&corpus).is_empty(),
+        "no product note is a sample plugin's"
+    );
+    let tools = super::fixture_tools();
+    assert_eq!(tools.len(), 6, "{tools:?}");
     assert_eq!(tools[0].id, DEFAULT_TOOL);
     assert_eq!(tools[0].name, "Project map");
     let root = knowledge::product::repository();
-    for tool in &tools {
-        assert!(root.join(&tool.source).exists(), "{}", tool.source);
-    }
     let notes = notes(&corpus);
     assert!(
         notes
@@ -146,6 +149,9 @@ fn the_catalog_and_notes_come_from_tagged_product_notes() {
         "{notes:?}"
     );
     assert!(notes.iter().all(|note| !note.id.contains("tool-")));
+    for note in &notes {
+        assert!(root.join(&note.source).exists(), "{}", note.source);
+    }
 }
 
 // Publications built as the runner will build them: a report under the
@@ -570,7 +576,7 @@ fn admission(root: &str, decision: &str) -> Vec<u8> {
 /// refused, skipped, or asked for.
 #[test]
 fn an_adoption_is_read_from_the_defaults_release_and_its_admissions() {
-    let tools = tools(&corpus());
+    let tools = super::fixture_tools();
     let root = pubkey("defaults-root");
     let (release, files) = defaults_release(
         "defaults-root",
@@ -648,7 +654,7 @@ fn starter_release() -> Event {
 #[test]
 fn a_starter_release_reads_as_its_tools_test_set() {
     let release = starter_release();
-    let tools = tools(&corpus());
+    let tools = super::fixture_tools();
     let suite = Fetched::suite(&starter_files(), &release, &tools).expect("the release reads");
     assert_eq!(suite.tool.as_deref(), Some(DEFAULT_TOOL));
     assert_eq!(suite.tool_name, "Project map");
@@ -700,7 +706,7 @@ fn a_starter_release_reads_as_its_tools_test_set() {
 #[test]
 fn a_release_that_does_not_check_is_refused() {
     let release = starter_release();
-    let tools = tools(&corpus());
+    let tools = super::fixture_tools();
     let files = starter_files();
 
     let other = signer("someone").sign(

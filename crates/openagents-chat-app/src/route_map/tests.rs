@@ -184,15 +184,15 @@ fn members_and_edges_follow_a_request() {
     );
 }
 
-/// The committed plugins have their real statuses: Project map adopted,
-/// Code finder and Test reader reproduced, Outline not packaged.
+/// The hosted runner's sample plugins are never on the map; the other
+/// committed plugins keep their real statuses (Outline not packaged).
 #[test]
-fn the_catalog_plugins_have_their_real_statuses() {
+fn the_sample_plugins_are_not_on_the_map() {
     let map = Map::committed();
+    for dir in crate::eval_cards::catalog_dirs() {
+        assert!(map.find(&format!("plugin:{dir}")).is_none(), "{dir}");
+    }
     let stage = |dir: &str| map.nodes[map.find(&format!("plugin:{dir}")).unwrap()].stage;
-    assert_eq!(stage("crates/plugin-repo-map"), Some(Stage::Adopted));
-    assert_eq!(stage("crates/plugin-code-search"), Some(Stage::Reproduced));
-    assert_eq!(stage("crates/plugin-test-report"), Some(Stage::Reproduced));
     assert_eq!(stage("crates/plugin-outline"), Some(Stage::NotPackaged));
 }
 
@@ -348,20 +348,17 @@ fn plugin_gaps_and_their_next_steps() {
     assert!(f.detail.contains("No clear change"));
 }
 
-/// A catalog plugin (one the chat's catalog notes list) is tested from chat;
-/// the hosted runner tests only those.
+/// No plugin is in the chat's catalog (no product note is a tool), so a
+/// plugin with no result is tested on a computer, never offered in chat.
 #[test]
-fn a_catalog_plugin_is_tested_in_chat() {
-    let mut p = plugin("crates/plugin-repo-map", Some("project-map"), "Project map");
-    p.knowledge = vec!["openagents.tool-project-map".into()];
+fn a_plugin_without_a_result_is_tested_on_a_computer() {
+    let p = plugin("crates/plugin-p0", Some("p0"), "P0");
     let map = Map::build(with_plugins(vec![p]), records(vec![]), Local::default());
-    let gap = gap_on(&map, "plugin:crates/plugin-repo-map", GapKind::NoResult).unwrap();
-    assert_eq!(
-        gap.step,
-        NextStep::Chat {
-            label: "Test it in chat".into(),
-            message: "Test Project map on Coder".into()
-        }
+    let gap = gap_on(&map, "plugin:crates/plugin-p0", GapKind::NoResult).unwrap();
+    assert!(
+        matches!(&gap.step, NextStep::Command { label, .. } if label == "Run its tests"),
+        "{:?}",
+        gap.step
     );
 }
 
@@ -542,27 +539,16 @@ fn the_inspector_shows_why_numbers_and_records() {
     );
     assert!(dispatch.members.iter().any(|(_, label)| label == "Coder"));
 
-    let map_plugin = map.inspect(map.find("plugin:crates/plugin-repo-map").unwrap());
+    let map_plugin = map.inspect(map.find("plugin:crates/plugin-outline").unwrap());
     let labels: Vec<&str> = map_plugin.fields.iter().map(|f| f.label.as_str()).collect();
-    for label in [
-        "Where",
-        "Wasm",
-        "Workflows",
-        "Knowledge",
-        "Tests",
-        "Result",
-        "Check",
-        "Validation",
-        "Adopted",
-    ] {
-        assert!(labels.contains(&label), "{label} in {labels:?}");
-    }
+    assert!(labels.contains(&"Where"), "{labels:?}");
+    // Nothing on the map is adopted, so Coder shows no empty adopted field.
     let coder = map.inspect(map.find("coder").unwrap());
     assert!(
-        coder
+        !coder
             .fields
             .iter()
-            .any(|f| f.label == "Adopted into everyone's Coder" && f.value.contains("Project map"))
+            .any(|f| f.label == "Adopted into everyone's Coder")
     );
     let missing = map.inspect(map.find("route:capability.missing").unwrap());
     assert!(
@@ -582,8 +568,11 @@ fn accessible_names_say_kind_state_and_gaps() {
     let name = map.accessible_name(missing);
     assert!(name.starts_with("Route: capability.missing"), "{name}");
     assert!(name.contains("gap"), "{name}");
-    let project = map.accessible_name(map.find("plugin:crates/plugin-repo-map").unwrap());
-    assert_eq!(project, "Plugin: Project map, Adopted");
+    let outline_plugin = map.accessible_name(map.find("plugin:crates/plugin-outline").unwrap());
+    assert!(
+        outline_plugin.starts_with("Plugin: Outline, Not packaged"),
+        "{outline_plugin}"
+    );
     assert_eq!(
         map.accessible_name(map.find("coder").unwrap()),
         "Coder: Coder"
@@ -633,7 +622,7 @@ fn filters_narrow_nodes_and_gaps() {
         ..Filter::default()
     };
     assert!(unmeasured.admits(&map, map.find("plugin:crates/plugin-outline").unwrap()));
-    assert!(!unmeasured.admits(&map, map.find("plugin:crates/plugin-repo-map").unwrap()));
+    assert!(!unmeasured.admits(&map, map.find("route:meta").unwrap()));
     assert!(Filter::default().is_clear());
 }
 

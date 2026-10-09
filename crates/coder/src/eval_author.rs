@@ -758,7 +758,8 @@ pub fn router_offer(offer: Offer) -> Option<crate::router::Offer> {
 }
 
 /// The `eval.author` seam for the chat worker: the worker's own door with
-/// [`REASONING`] and its judge, over the starter catalog. Without a live
+/// [`REASONING`] and its judge, over an empty catalog: the hosted runner's
+/// sample plugins are its test fixtures, never offered. Without a live
 /// door or a judge there is no interview, and the route answers from the
 /// bank.
 #[must_use]
@@ -773,7 +774,7 @@ pub fn seam(
                 self::door(live.clone()),
                 model,
                 Some(judge),
-                Catalog::starter(),
+                Catalog::default(),
             ))
         }
         // The worker's primary first, its fallback after, both asking for
@@ -784,7 +785,7 @@ pub fn seam(
                 ordered.before(self::door(ordered.fallback.clone())),
                 model,
                 Some(judge),
-                Catalog::starter(),
+                Catalog::default(),
             ))
         }
         _ => Arc::new(crate::router::seams::NoAuthor),

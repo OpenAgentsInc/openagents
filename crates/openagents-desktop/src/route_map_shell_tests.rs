@@ -187,7 +187,12 @@ fn a_screen_reader_reads_the_map_and_selects_a_node() {
             .map(|(id, _)| *id)
     };
     assert!(named(Role::Button, "Router: OpenAgents").is_some());
-    assert!(named(Role::Button, "Plugin: Project map, Adopted").is_some());
+    assert!(tree.update.nodes.iter().any(|(_, node)| {
+        node.role() == Role::Button
+            && node
+                .label()
+                .is_some_and(|l| l.starts_with("Plugin: Outline, Not packaged"))
+    }));
     assert!(named(Role::Button, "Fit").is_some(), "the toolbar");
     let coder = named(Role::Button, "Coder: Coder").expect("Coder is named");
     let request = tree

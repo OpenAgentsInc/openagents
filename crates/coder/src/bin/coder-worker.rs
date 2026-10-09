@@ -3797,14 +3797,14 @@ fn served_of(routing: &router::Routing, tier: &Tier, bank: &Bank, facts: &router
             }
             _ => Vec::new(),
         },
-        // An entry that comes with the plugin cards carries the compiled-in
-        // catalog's slugs (docs/web/plugin-card.md): typed ids, never text.
+        // An entry that comes with the plugin cards carries the built-in
+        // plugins' slugs (docs/web/plugin-card.md): typed ids, never text.
         plugins: answer
             .filter(|entry| entry.plugins)
             .map(|_| {
-                coder::gym_kb::catalog_plugins()
-                    .into_iter()
-                    .map(|plugin| plugin.slug)
+                coder::builtin_plugins::BUILTIN_PLUGINS
+                    .iter()
+                    .map(|plugin| plugin.slug.to_owned())
                     .collect()
             })
             .unwrap_or_default(),

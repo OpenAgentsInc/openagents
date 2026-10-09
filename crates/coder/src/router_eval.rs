@@ -971,11 +971,8 @@ mod tests {
     /// or none; no other row names one.
     #[test]
     fn eval_run_rows_name_catalog_tools() {
-        let root = knowledge::product::repository();
-        let corpus =
-            knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
-                .expect("the corpus loads");
-        let tools: BTreeSet<String> = crate::gym_kb::tools(&corpus)
+        // The labeled set names the sample plugins' notes, kept as fixtures.
+        let tools: BTreeSet<String> = crate::gym_kb::fixture_tools()
             .into_iter()
             .map(|tool| tool.id)
             .collect();

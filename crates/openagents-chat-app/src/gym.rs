@@ -1855,22 +1855,14 @@ impl Gym {
                 badge: None,
                 compare: None,
                 lines: vec![Line {
-                    text: "You haven't run a test yet. Your first test takes a few minutes.".into(),
+                    text: "You haven't run a test yet.".into(),
                     tone: Tone::Body,
                 }],
                 items: vec![],
                 progress: vec![],
                 primary: None,
                 secondary: vec![],
-                chips: vec![self.actions.button(
-                    format!("{id}.test"),
-                    "Test a plugin",
-                    Some("test"),
-                    Action::Say {
-                        text: "Which plugin should I try?".into(),
-                        fresh: false,
-                    },
-                )],
+                chips: vec![],
                 source: None,
                 busy: false,
             };
@@ -2231,7 +2223,7 @@ impl Gym {
         let standing = self.standing.clone();
         let mut items = made_items(&standing);
         let mut lines = vec![];
-        let mut chips = vec![];
+        let chips = vec![];
         let primary = if !standing.read {
             lines.push(line("Reading your XP…", Tone::Quiet));
             None
@@ -2239,15 +2231,6 @@ impl Gym {
             lines.push(line(
                 "Nothing yet. When another trainer checks a result you added, you earn XP here.",
                 Tone::Body,
-            ));
-            chips.push(self.actions.button(
-                format!("{id}.test"),
-                "Test a plugin",
-                Some("test"),
-                Action::Say {
-                    text: "Which plugin should I try?".into(),
-                    fresh: false,
-                },
             ));
             None
         } else {
@@ -2434,15 +2417,6 @@ impl Gym {
                         run.tool,
                         outcome.claim.verdict.plain()
                     ),
-                },
-            ),
-            self.actions.button(
-                "sheet.another",
-                "Test another plugin",
-                Some("test"),
-                Action::Say {
-                    text: "Which plugin should I try?".into(),
-                    fresh: false,
                 },
             ),
         ];
@@ -2931,7 +2905,7 @@ pub fn next_step(gym: &Gym) -> &'static str {
     if gym.latest_result().is_some() {
         return "Next: check someone else's result for more XP.";
     }
-    "Next: test a plugin to see if it makes Coder better."
+    "Next: ask what's new in the Gym."
 }
 
 fn line(text: &str, tone: Tone) -> Line {

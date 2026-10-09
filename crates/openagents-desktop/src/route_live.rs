@@ -18,8 +18,8 @@
 //! | `bonus` | gold with a ring, from the router out to the author |
 //! | `run` | white, from the router out to Coder |
 //!
-//! An event's `node` names a map node (`plugin:explain-error` finds the
-//! plugin `crates/plugin-explain-error`); one the map doesn't have runs to
+//! An event's `node` names a map node (`plugin:outline` finds the plugin
+//! `crates/plugin-outline`); one the map doesn't have runs to
 //! its nearest known place (Coder for plugins and hosted resources, the
 //! router otherwise). Events on one node wait for the one before to land,
 //! so a call's white dot goes out before its payment comes back.
@@ -984,11 +984,11 @@ mod tests {
     fn an_events_node_finds_its_place_on_the_map() {
         let map = Map::committed();
         let id = |i: usize| map.nodes[i].id.clone();
-        let short = event(r#"{"type":"call","resource":"plugin","node":"plugin:explain-error"}"#);
-        assert_eq!(
-            id(target(&map, &short)),
-            "plugin:crates/plugin-explain-error"
-        );
+        let short = event(r#"{"type":"call","resource":"plugin","node":"plugin:outline"}"#);
+        assert_eq!(id(target(&map, &short)), "plugin:crates/plugin-outline");
+        // The hosted runner's sample plugins are not on the map: Coder.
+        let sample = event(r#"{"type":"call","resource":"plugin","node":"plugin:explain-error"}"#);
+        assert_eq!(id(target(&map, &sample)), "coder");
         let exact = event(r#"{"type":"call","node":"engine:codex"}"#);
         assert_eq!(id(target(&map, &exact)), "engine:codex");
         let new =
@@ -1004,10 +1004,10 @@ mod tests {
     fn each_event_type_sends_its_dot() {
         let map = Map::committed();
         let front = map.find("front").unwrap();
-        let plugin = map.find("plugin:crates/plugin-repo-map").unwrap();
+        let plugin = map.find("plugin:crates/plugin-outline").unwrap();
         let at = |kind: &str| {
             let e = event(&format!(
-                r#"{{"type":"{kind}","resource":"plugin","node":"plugin:repo-map","amount_sats":5}}"#
+                r#"{{"type":"{kind}","resource":"plugin","node":"plugin:outline","amount_sats":5}}"#
             ));
             let legs = legs(&map, &e);
             assert_eq!(legs.len(), 1, "{kind}");
@@ -1056,7 +1056,7 @@ mod tests {
     fn the_author_and_the_wallet_sit_past_the_node_away_from_its_parent() {
         let map = Map::committed();
         let layout = Layout::of(&map);
-        let plugin = map.find("plugin:crates/plugin-repo-map").unwrap();
+        let plugin = map.find("plugin:crates/plugin-outline").unwrap();
         let parent = map.nodes[plugin].parent.unwrap();
         let (p, q) = (layout.positions[parent], layout.positions[plugin]);
         let author = place(&map, &layout, Stop::Past(plugin, AUTHOR));
@@ -1071,7 +1071,13 @@ mod tests {
     #[test]
     fn a_payment_waits_for_its_call_to_land() {
         let map = Map::committed();
-        let events = fixture(FIXTURE);
+        // The recorded stream names sample plugins, which are not on the
+        // map; two real plugins stand in so each keeps its own node.
+        let events = fixture(
+            &FIXTURE
+                .replace("plugin:explain-error", "plugin:outline")
+                .replace("plugin:code-search", "plugin:action-items"),
+        );
         let mut schedule = Schedule::default();
         // The call, its payment, and its share arrive together.
         for e in &events[..3] {

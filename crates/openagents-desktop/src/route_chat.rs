@@ -82,10 +82,10 @@ pub const SCRIPT: [Exchange; 8] = [
         reply: "Running it with Codex.",
     },
     Exchange {
-        ask: "map this repo",
-        route: "work.dispatch",
-        serves: "plugin:crates/plugin-repo-map",
-        reply: "Coder is drawing a project map.",
+        ask: "what tools do you have?",
+        route: "meta",
+        serves: "answer:meta.tools",
+        reply: "Coder can hand a task to Codex, Cursor, or Grok Build on your computer.",
     },
     Exchange {
         ask: "what's new in the Gym?",

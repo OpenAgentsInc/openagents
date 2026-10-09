@@ -812,22 +812,13 @@ pub fn news_card(
     items: &[NewsItem],
     offer: Option<(String, Action)>,
 ) -> CardView {
-    let mut chips = vec![];
+    let chips = vec![];
     let mut lines = vec![];
     if items.is_empty() {
         lines.push(Line {
             text: "Nothing new since you last asked.".into(),
             tone: Tone::Body,
         });
-        chips.push(actions.button(
-            format!("{id}.test"),
-            "Test a plugin",
-            Some("test"),
-            Action::Say {
-                text: "Which plugin should I try?".into(),
-                fresh: false,
-            },
-        ));
     }
     let rows = items
         .iter()

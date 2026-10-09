@@ -74,7 +74,7 @@ talk (`oa-copy`).
 | pricing | cost, the paid plan, message limits |
 | chats | finding, archiving, renaming, and deleting chats |
 | privacy | training, who sees messages, storage |
-| plugins | which plugins to try (the catalog's cards) |
+| plugins | which plugins to try (the built-in plugins' cards) |
 | limits | files, running code, browsing |
 | smalltalk | greetings and thanks |
 | general | general questions, and code work the website can't do |

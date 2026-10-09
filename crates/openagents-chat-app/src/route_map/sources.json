@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@ad6b923c106e",
+  "bank": "chat-answers-v1@2491372888cc",
   "routes": [
     {
       "id": "meta",
@@ -301,7 +301,7 @@
     },
     {
       "id": "meta.tools",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -311,7 +311,7 @@
       "offer": null,
       "sources": [
         "crates/openagents-mobile/src/basic_coder.rs",
-        "docs/plugins/README.md"
+        "crates/coder/src/builtin_plugins.rs"
       ]
     },
     {
@@ -345,7 +345,7 @@
     },
     {
       "id": "meta.tools.website",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -355,7 +355,7 @@
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
-        "docs/plugins/README.md",
+        "crates/coder/src/builtin_plugins.rs",
         "crates/openagents-web/src/pages/download.rs"
       ]
     },
@@ -1051,7 +1051,7 @@
     },
     {
       "id": "gym.what",
-      "version": 2,
+      "version": 3,
       "routes": [
         "product.kb",
         "general"
@@ -1084,7 +1084,7 @@
     },
     {
       "id": "gym.what_tool",
-      "version": 3,
+      "version": 4,
       "routes": [
         "product.kb",
         "general"
@@ -1096,12 +1096,12 @@
       "sources": [
         "docs/extensions/evaluation.md",
         "knowledge/openagents/openagents.tools.md",
-        "docs/plugins/README.md"
+        "crates/coder/src/builtin_plugins.rs"
       ]
     },
     {
       "id": "eval.credit.how",
-      "version": 3,
+      "version": 4,
       "routes": [
         "eval.credit"
       ],
@@ -1191,7 +1191,7 @@
       ]
     },
     {
-      "id": "plugins.web",
+      "id": "eval.run.none",
       "version": 1,
       "routes": [
         "eval.run"
@@ -1201,8 +1201,22 @@
       "records": true,
       "offer": null,
       "sources": [
-        "deploy/eval-runner/catalog",
-        "crates/openagents-web/content/docs/test-a-plugin.md",
+        "crates/coder/src/router/gym.rs",
+        "crates/coder/src/builtin_plugins.rs"
+      ]
+    },
+    {
+      "id": "plugins.web",
+      "version": 2,
+      "routes": [
+        "eval.run"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/builtin_plugins.rs",
         "docs/web/plugin-card.md"
       ]
     },
@@ -2539,10 +2553,9 @@
         "path": "knowledge/openagents/openagents.plugin-list.md",
         "status": "admitted",
         "tags": [
-          "gym",
           "plugins",
           "catalog",
-          "extension"
+          "coder"
         ],
         "answer": true
       },
@@ -2613,90 +2626,6 @@
           "tests",
           "test-sets",
           "evals"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-code-finder",
-        "title": "Code finder",
-        "path": "knowledge/openagents/openagents.tool-code-finder.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "code-finder",
-          "code-search",
-          "extension"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-dependency-check",
-        "title": "Dependency check",
-        "path": "knowledge/openagents/openagents.tool-dependency-check.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "dependency-check",
-          "plugin",
-          "extension"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-explain-error",
-        "title": "Explain this error",
-        "path": "knowledge/openagents/openagents.tool-explain-error.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "explain-error",
-          "plugin",
-          "extension"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-project-map",
-        "title": "Project map",
-        "path": "knowledge/openagents/openagents.tool-project-map.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "project-map",
-          "repo-map",
-          "extension"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-release-notes",
-        "title": "Release notes",
-        "path": "knowledge/openagents/openagents.tool-release-notes.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "release-notes",
-          "plugin",
-          "extension"
-        ],
-        "answer": true
-      },
-      {
-        "id": "openagents.tool-test-reader",
-        "title": "Test reader",
-        "path": "knowledge/openagents/openagents.tool-test-reader.md",
-        "status": "admitted",
-        "tags": [
-          "gym",
-          "tool",
-          "test-reader",
-          "test-report",
-          "extension"
         ],
         "answer": true
       },
@@ -3443,60 +3372,6 @@
       "route": "eval.run",
       "source": "crates/coder/src/router/capability.rs",
       "line": "Tests a plugin on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
-    },
-    {
-      "id": "openagents.tool-project-map",
-      "name": "Project map",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-project-map.md",
-      "line": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests."
-    },
-    {
-      "id": "openagents.tool-code-finder",
-      "name": "Code finder",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-code-finder.md",
-      "line": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file."
-    },
-    {
-      "id": "openagents.tool-test-reader",
-      "name": "Test reader",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-test-reader.md",
-      "line": "Reads the test reports in a project for Coder: which tests failed, where, and why."
-    },
-    {
-      "id": "openagents.tool-explain-error",
-      "name": "Explain this error",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-explain-error.md",
-      "line": "Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix."
-    },
-    {
-      "id": "openagents.tool-release-notes",
-      "name": "Release notes",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-release-notes.md",
-      "line": "Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit."
-    },
-    {
-      "id": "openagents.tool-dependency-check",
-      "name": "Dependency check",
-      "kind": "plugin",
-      "reach": "coder",
-      "route": null,
-      "source": "knowledge/openagents/openagents.tool-dependency-check.md",
-      "line": "Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow."
     }
   ],
   "engines": [
@@ -3566,84 +3441,6 @@
       "tests": []
     },
     {
-      "dir": "crates/plugin-code-search",
-      "slug": "code-finder",
-      "name": "Code finder",
-      "summary": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-code-search"
-      ],
-      "workflows": [
-        "code-finder"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-code-finder"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-code-search/evals",
-          "should_fire": 4,
-          "should_not_fire": 2
-        }
-      ]
-    },
-    {
-      "dir": "crates/plugin-dependency-check",
-      "slug": "dependency-check",
-      "name": "Dependency check",
-      "summary": "Reads your manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-dependency-check"
-      ],
-      "workflows": [
-        "dependency-check"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-dependency-check"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-dependency-check/evals",
-          "should_fire": 4,
-          "should_not_fire": 2
-        }
-      ]
-    },
-    {
-      "dir": "crates/plugin-explain-error",
-      "slug": "explain-error",
-      "name": "Explain this error",
-      "summary": "Reads a failing command's output, finds the file and line in your project it points at, and explains the likely cause and a likely fix.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-explain-error"
-      ],
-      "workflows": [
-        "explain-error"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-explain-error"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-explain-error/evals",
-          "should_fire": 5,
-          "should_not_fire": 2
-        }
-      ]
-    },
-    {
       "dir": "crates/plugin-outline",
       "slug": null,
       "name": "Outline",
@@ -3657,89 +3454,6 @@
       "skills": [],
       "knowledge": [],
       "tests": []
-    },
-    {
-      "dir": "crates/plugin-release-notes",
-      "slug": "release-notes",
-      "name": "Release notes",
-      "summary": "Turns the commits between two releases into grouped, user-facing release notes (breaking changes, features, fixes), each line citing its commit.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-release-notes"
-      ],
-      "workflows": [
-        "release-notes"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-release-notes"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-release-notes/evals",
-          "should_fire": 4,
-          "should_not_fire": 2
-        }
-      ]
-    },
-    {
-      "dir": "crates/plugin-repo-map",
-      "slug": "project-map",
-      "name": "Project map",
-      "summary": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-repo-map"
-      ],
-      "workflows": [
-        "project-map"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-project-map"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-repo-map/evals",
-          "should_fire": 4,
-          "should_not_fire": 2
-        },
-        {
-          "dir": "crates/plugin-repo-map/evals-validation",
-          "should_fire": 4,
-          "should_not_fire": 2
-        }
-      ]
-    },
-    {
-      "dir": "crates/plugin-test-report",
-      "slug": "test-reader",
-      "name": "Test reader",
-      "summary": "Reads the test reports in a project for Coder: which tests failed, where, and why.",
-      "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
-      "version": "0.1.0",
-      "wasm": [
-        "plugin-test-report"
-      ],
-      "workflows": [
-        "test-reader"
-      ],
-      "skills": [],
-      "knowledge": [
-        "openagents.plugin-list",
-        "openagents.tool-test-reader"
-      ],
-      "tests": [
-        {
-          "dir": "crates/plugin-test-report/evals",
-          "should_fire": 4,
-          "should_not_fire": 2
-        }
-      ]
     },
     {
       "dir": "packages/jev-probe",
@@ -3765,5 +3479,5 @@
       ]
     }
   ],
-  "showcase": "crates/plugin-explain-error"
+  "showcase": null
 }

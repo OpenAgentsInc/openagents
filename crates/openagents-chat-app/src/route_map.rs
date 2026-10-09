@@ -1332,16 +1332,21 @@ impl Map {
                     self.sources.engines.len().to_string(),
                 ));
                 fields.push(Field::new("Plugins it can use", plugins.to_string()));
-                fields.push(Field::linked(
-                    "Adopted into everyone's Coder",
-                    self.nodes
-                        .iter()
-                        .filter(|x| x.stage == Some(Stage::Adopted))
-                        .map(|x| x.label.clone())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    path("Coder's defaults", "packages/coder-defaults/policy.md"),
-                ));
+                let adopted = self
+                    .nodes
+                    .iter()
+                    .filter(|x| x.stage == Some(Stage::Adopted))
+                    .map(|x| x.label.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                // No empty field: say nothing until a plugin is adopted.
+                if !adopted.is_empty() {
+                    fields.push(Field::linked(
+                        "Adopted into everyone's Coder",
+                        adopted,
+                        path("Coder's defaults", "packages/coder-defaults/policy.md"),
+                    ));
+                }
             }
             Kind::Family | Kind::Model | Kind::Screen => {}
         }

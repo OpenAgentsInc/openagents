@@ -93,7 +93,7 @@ version = 1
 routes = ["meta"]
 place = "off_desktop"
 when = "The user asks to see how we route or handle messages, how we are put together, a map or overview of our routes and what serves each (prepared answers, knowledge, Coder and its engines, plugins), or where we are weak or missing something; not what Jev is, who we are, or what we can do in general"
-not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins, such as Project map (eval.run)"
+not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins (eval.run)"
 examples = ["can I see a map of how you work", "open the route map", "can you open the map for me", "which plugins and engines do you have, show me the map"]
 text = "Our route map shows how we handle a message: the router that reads it first, each route it can take, what serves each one, and where we're thin. It opens in the OpenAgents desktop app."
 chip = "How do you route things?"
@@ -105,7 +105,7 @@ version = 1
 routes = ["meta"]
 place = "desktop"
 when = "The user asks to see how we route or handle messages, how we are put together, a map or overview of our routes and what serves each (prepared answers, knowledge, Coder and its engines, plugins), or where we are weak or missing something; not what Jev is, who we are, or what we can do in general"
-not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins, such as Project map (eval.run)"
+not_for = "What Jev or TypeSafe is (meta.jev); what we can do in general (meta.capabilities); opening one of our slide decks (presentation.open); mapping the user's own repository (work.dispatch); testing or trying one of our plugins (eval.run)"
 examples = ["can I see a map of how you work", "open the route map", "can you open the map for me", "which plugins and engines do you have, show me the map"]
 text = "Our route map shows how we handle a message: the router that reads it first, each route it can take, what serves each one, and where we're thin."
 offer = { screen = "routes.map", label = "Open the map" }
@@ -125,15 +125,15 @@ followups = ["meta.coder", "account.computers", "meta.limits_chat"]
 
 [[answer]]
 id = "meta.tools"
-version = 1
+version = 2
 routes = ["meta"]
 place = "away"
 when = "The user asks what tools, abilities, or integrations we have or use, or what we can use to help them, without naming a project, file, error, or plugin of their own"
 not_for = "What a plugin is, or what one named plugin does, which other answers cover"
 examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
-text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs on a computer you connect: it reads and edits your files, runs commands and tests, and shows you every change. You can give Coder extra abilities with plugins, like Project map, which shows it how a project is laid out."
+text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs on a computer you connect: it reads and edits your files, runs commands and tests, and shows you every change. Coder can also hand a task to Claude Code, Codex, Cursor, or Grok Build when you have them on that computer."
 chip = "What tools do you have?"
-sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/plugins/README.md"]
+sources = ["crates/openagents-mobile/src/basic_coder.rs", "crates/coder/src/builtin_plugins.rs"]
 followups = ["meta.coder", "gym.what_tool", "account.computers"]
 
 [[answer]]
@@ -161,15 +161,15 @@ followups = ["meta.coder", "meta.github", "meta.limits_chat"]
 
 [[answer]]
 id = "meta.tools.website"
-version = 2
+version = 3
 routes = ["meta"]
 place = "web"
 when = "The user asks what tools, abilities, or integrations we have or use, or what we can use to help them, without naming a project, file, error, or plugin of their own"
 not_for = "What a plugin is, or what one named plugin does, which other answers cover"
 examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
-text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Plugins give Coder extra abilities, like Project map, which shows it how a project is laid out. Get Coder at https://openagents.com/download."
+text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Coder can also hand a task to Claude Code, Codex, Cursor, or Grok Build when you have them installed. Get Coder at https://openagents.com/download."
 chip = "What tools do you have?"
-sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/plugins/README.md", "crates/openagents-web/src/pages/download.rs"]
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder/src/builtin_plugins.rs","crates/openagents-web/src/pages/download.rs"]
 followups = ["meta.coder", "gym.what_tool"]
 
 [[answer]]
@@ -469,7 +469,7 @@ id = "dispatch.capability_stem"
 version = 3
 routes = ["work.dispatch"]
 records = true
-when = "Picked by code from the admitted-capability set: the user hands us work on their code that a named capability usable in a Coder run, such as Project map, would do"
+when = "Picked by code from the admitted-capability set: the user hands us work on their code that a named capability usable in a Coder run would do"
 stem = "Using {capability} to"
 generic_end = " take this on."
 facts = { capability = "capability.name" }
@@ -669,12 +669,12 @@ sources = ["docs/game/playtesting.md"]
 
 [[answer]]
 id = "gym.what"
-version = 2
+version = 3
 routes = ["product.kb", "general"]
 when = "The user asks what the OpenAgents Gym is, what it's for, or what they can do there; not what's new in it, what a test or a plugin is, or how their own test did"
 not_for = "What's new in the Gym (gym.news), or what a test or a plugin is (gym.what_test, gym.what_tool)"
 examples = ["what is the gym for", "what do people do in the gym"]
-text = "The Gym is where we test plugins for Coder, our coding agent. We run the same tests with a plugin and without it, so you can see whether it makes Coder better. You can start a test right here in chat, add your result to the Gym, and check other trainers' results to earn XP. The Gym in the Verse shows the results on a board."
+text = "The Gym is where plugins for Coder, our coding agent, get tested. The same tests run with a plugin and without it, so you can see whether it makes Coder better. Trainers add their results to the Gym and check each other's results to earn XP. The Gym in the Verse shows the results on a board."
 chip = "What's the Gym?"
 sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.gym-results.md", "docs/verse/gym.md"]
 followups = ["gym.what_tool", "gym.what_test", "eval.credit.how"]
@@ -692,23 +692,23 @@ followups = ["gym.what_tool", "eval.credit.how"]
 
 [[answer]]
 id = "gym.what_tool"
-version = 3
+version = 4
 routes = ["product.kb", "general"]
 when = "The user asks what a plugin is (or a capability or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does, and not what tools we have"
-not_for = "What one named plugin such as Project map does, which our notes answer; what tools or abilities we have, which meta.tools answers"
+not_for = "What one named plugin does, which our notes answer; what tools or abilities we have, which meta.tools answers"
 examples = ["what is a plugin", "What's a plugin?", "what is a tool in the gym"]
-text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map is one; ask us which plugins the Gym has to see them all. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
+text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Coder's built-in plugins hand tasks to Claude Code, Codex, Cursor, and Grok Build on your computer. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
 chip = "What's a plugin?"
-sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md", "docs/plugins/README.md"]
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md", "crates/coder/src/builtin_plugins.rs"]
 followups = ["gym.what_test"]
 
 [[answer]]
 id = "eval.credit.how"
-version = 3
+version = 4
 routes = ["eval.credit"]
 when = "The user asks how they earn XP or credit from tests, test sets, checks, or plugins, or whether that credit pays money; not what they have earned so far"
 examples = ["How do I earn XP from tests?", "do I get paid for my tests?", "what earns xp in the gym", "what do I get when someone checks my result", "what happens when coder adopts my plugin"]
-text = "You can test a plugin here in chat, make your own plugin and its tests with us, and add your results to the Gym. You earn XP when your work is used: when another trainer checks a result you added and gets the same verdict, when you check someone else's result, or when Coder adopts your plugin for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
+text = "You can make your own plugin and its tests with us and add your results to the Gym. You earn XP when your work is used: when another trainer checks a result you added and gets the same verdict, when you check someone else's result, or when Coder adopts your plugin for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
 chip = "How do I earn XP from tests?"
 sources = ["docs/extensions/evaluation.md", "nips/openagents/NIP-XP.md", "knowledge/openagents/openagents.credit.md"]
 followups = ["eval.credit.mine", "gym.what_test"]
@@ -766,19 +766,30 @@ facts = { tool = "gym.tool" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
 followups = ["gym.what_test"]
 
-# The website can't start a test, so on openagents.com an eval.run turn
-# ("Which plugin should I try?") gets this line with the catalog's plugin
-# cards under it (`plugins = true`, docs/web/plugin-card.md). The cards name
-# the plugins from their packages; the text never lists them by hand.
 [[answer]]
-id = "plugins.web"
+id = "eval.run.none"
 version = 1
 routes = ["eval.run"]
 records = true
+when = "Picked from the Gym's records: the user wants to test a plugin, or asks which plugins they can test, and the Gym has no plugin to test"
+text = "There's no plugin to test in the Gym right now. Coder's built-in plugins hand a task to Claude Code, Codex, Cursor, or Grok Build on your computer and show its progress as it works."
+sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/builtin_plugins.rs"]
+followups = ["gym.what_tool"]
+
+# The website can't run a plugin, so on openagents.com an eval.run turn
+# ("Which plugins are there?") gets this line with the built-in plugin
+# cards under it (`plugins = true`, docs/web/plugin-card.md). The cards name
+# the plugins from crates/coder/src/builtin_plugins.rs; the text never lists
+# them by hand.
+[[answer]]
+id = "plugins.web"
+version = 2
+routes = ["eval.run"]
+records = true
 plugins = true
-when = "Picked by code on the openagents.com website: the user wants to try or test one of our plugins, or asks which plugin to try; the catalog's plugin cards show with it"
-text = "These are the plugins you can try with Coder, our coding agent. They run with Coder on your computer. Once you have Coder, you can test any of them: we run a plugin's tests with it and without it, so you can see whether it makes Coder better."
-sources = ["deploy/eval-runner/catalog", "crates/openagents-web/content/docs/test-a-plugin.md", "docs/web/plugin-card.md"]
+when = "Picked by code on the openagents.com website: the user wants to try or test one of our plugins, or asks which plugins there are or which to try; the built-in plugin cards show with it"
+text = "These plugins come built into Coder, our coding agent, and run with Coder on your computer. Coder hands a task to the coding agent you pick and shows its progress as it works."
+sources = ["crates/coder/src/builtin_plugins.rs", "docs/web/plugin-card.md"]
 followups = ["gym.what_tool"]
 
 [[answer]]

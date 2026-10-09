@@ -50,8 +50,9 @@ const CODEBASE_KB: &str = "crates/coder/fixtures/chat-router/codebase-questions-
 const LABELED: &str = "crates/coder/fixtures/chat-router/routes-v4.json";
 
 /// The plugin the map shows as the example to copy, by directory, when it
-/// is in this repository (#10086's Explain this error).
-const SHOWCASE: &[&str] = &["crates/plugin-explain-error", "packages/explain-error"];
+/// is in this repository. None today: the old example, Explain this error,
+/// is one of the hosted runner's sample plugins, which are never shown.
+const SHOWCASE: &[&str] = &[];
 
 /// Directories under `crates/` named `plugin-*` that are not plugins: the
 /// guest development kit.
@@ -446,7 +447,11 @@ fn plugins(product: &[KnowledgeSource]) -> Vec<PluginSource> {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             let at = format!("{parent}/{name}");
-            if path.is_dir() && name.starts_with(prefix) && !skip.contains(&at.as_str()) {
+            // The hosted runner's sample plugins are its test fixtures,
+            // never shown (`deploy/eval-runner/catalog`).
+            let sample = coder::gym_kb::catalog_dirs().contains(&at.as_str());
+            if path.is_dir() && name.starts_with(prefix) && !skip.contains(&at.as_str()) && !sample
+            {
                 dirs.push(path);
             }
         }

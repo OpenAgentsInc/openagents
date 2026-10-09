@@ -48,6 +48,7 @@ pub mod about;
 pub mod activity;
 pub mod agent;
 pub mod argv;
+pub mod builtin_plugins;
 pub mod capability;
 pub mod chat_goldens;
 pub mod child;

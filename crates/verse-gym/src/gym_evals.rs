@@ -175,11 +175,28 @@ pub fn verified<'a>(events: impl IntoIterator<Item = &'a Event>) -> BTreeMap<Str
         {
             continue;
         }
-        if let Ok(publication) = eval_ext::parse_publication(event) {
+        if let Ok(publication) = eval_ext::parse_publication(event)
+            && !is_sample(&publication.report.subject.definition.id)
+        {
             out.insert(event.id.clone(), publication);
         }
     }
     out
+}
+
+/// The starter catalog's placeholder key, which names the sample plugins'
+/// Wasm guests (`ext_eval::author::catalog::STARTER_KEY`).
+const STARTER_KEY: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+/// Whether a subject's definition ID names one of the hosted runner's
+/// sample plugins (`deploy/eval-runner/catalog`): signed by the runner's
+/// key or the starter catalog's. They are the runner's test fixtures and
+/// never stand on the board.
+#[must_use]
+pub fn is_sample(definition_id: &str) -> bool {
+    definition_id
+        .split_once(':')
+        .is_some_and(|(key, _)| key == eval_ext::hosted::RUNNER || key == STARTER_KEY)
 }
 
 /// One result on the board.

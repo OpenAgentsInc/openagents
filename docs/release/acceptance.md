@@ -145,7 +145,7 @@ conversation run in the owner's order.
 | Scenario | Checks | Guards |
 | --- | --- | --- |
 | `ui-placeholder` | An empty chat's centered composer paints **Message OpenAgents…** (faint-ink pixels in the composer field of a 2x capture). | #10072 |
-| `ui-starter-chips` | A new chat's starters (the phone's shared list: Who are you?, What can you do?, What's new in the Gym?, Test a plugin) are small chips in the follow-ups' row directly above the centered composer, inside the column at 1200x840 and 760x540; tapping Who are you? sends it, and after the reply the starters are gone and the composer docks. Runs in its own chat. | #10097 |
+| `ui-starter-chips` | A new chat's starters (the phone's shared list: Who are you?, What can you do?, What's new in the Gym?, What tools do you have?) are small chips in the follow-ups' row directly above the centered composer, inside the column at 1200x840 and 760x540; tapping Who are you? sends it, and after the reply the starters are gone and the composer docks. Runs in its own chat. | #10097 |
 | `who-are-you` | "who are you" gets an answer with suggestions, and Coder does not start. | #10073 |
 | `ui-chips` | The reply's suggestions are small chips in a row directly above the composer, none in the transcript. | #10075 |
 | `ui-engines-sidebar` | Each engine from the host's report is one condensed row in the sidebar, above the footer (its routes, then an engine beside them such as Grok Build when installed), and the transcript shows no engine block. | #10072, #10091 |
