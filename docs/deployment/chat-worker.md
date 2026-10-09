@@ -1745,3 +1745,27 @@ The environment file and unit did not change. The log names bank
 `chat-answers-v1@aa9fa65069b4` (83 answers) and the product KB at 112
 entries. The web chat goldens through a local site against it: 67 of 97
 (from 25 of 97 on `bbed5d89af`); see `docs/web/chat-goldens.md`.
+
+Release `17ff0e03cc` (2026-10-09 UTC) puts #11106's website-chat fixes
+(`33e4e0930f`) and the chat-privacy note v13 live on the failover chain
+(`ddab7b9a6e`): the note no longer says chats go to Space Bunny Alpha
+(retired by OpenRouter) and names Gemini 3.8 Flash on OpenRouter, then GLM
+5.3 Flash and the Vercel AI Gateway. The binary was built on this Mac with
+`cargo zigbuild --locked --release -p coder --bin coder-worker --target
+x86_64-unknown-linux-musl` at `2e5f61a282` (no crate changes since; sha256
+`a2d1bb4c196b…`), installed with `knowledge/` from `git archive 17ff0e03cc
+knowledge/` (no `._*` files) and `codebase-kb.gz` copied from `ddab7b9a6e`,
+checked with `--check`, and put live by moving the `chat` symlink and
+restarting `coder-worker-chat`. The environment file, unit, and
+`coder-worker.service`/`current` did not change; the notes held aside in
+`/var/lib/coder-worker-chat/kb-held/` were not restored (the release's
+`openagents.jev.md` v3 replaces them), and `2e5f61a282` and `ddab7b9a6e`
+stay in `releases/` for rollback. The log names `product kb
+openagents-product@d9e9f1c97b64 (108 entries)`, `router
+chat-router-v5@bcab1427d09d (Live)`, bank `chat-answers-v1@efe69f37d240`
+(86 answers), and Jev answering through OpenRouter (the Vercel AI Gateway
+still answers 402 and is skipped). From CoderOS, `openagents chat` answered
+"What is OpenAgents?", "how do I connect my codebase?", and "what models do
+you use?" from the bank, "can I opt out of training?" from the v13 note,
+and "what products do you have?" on Gemini, none naming Jev or TypeSafe as
+ours.
