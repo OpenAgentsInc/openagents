@@ -63,6 +63,11 @@ async fn world(with_github: bool) -> World {
     if with_github {
         config.github = Some(Arc::new(app));
     }
+    // A key store for the visitor's own Claude key (Settings, Claude).
+    let byo = private.join("byo");
+    std::fs::create_dir(&byo).unwrap();
+    std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700)).unwrap();
+    config.cloud_byo = Some(Arc::new(crate::cloud::byo::Computers::open(&byo).unwrap()));
     World {
         root,
         site: crate::router(config),
@@ -105,9 +110,29 @@ impl Answer {
 
 impl Browser {
     async fn get(&mut self, world: &World, path: &str) -> Answer {
-        let mut request = Request::get(path)
+        self.send(world, path, None).await
+    }
+
+    /// POST a form from this site's own page.
+    async fn post(&mut self, world: &World, path: &str, form: &[(&str, &str)]) -> Answer {
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(form)
+            .finish();
+        self.send(world, path, Some(body)).await
+    }
+
+    async fn send(&mut self, world: &World, path: &str, form: Option<String>) -> Answer {
+        let mut request = Request::builder()
+            .method(if form.is_some() { "POST" } else { "GET" })
+            .uri(path)
             .header(header::HOST, HOST)
             .header(header::ACCEPT, "text/html");
+        if form.is_some() {
+            request = request
+                .header(header::ORIGIN, ORIGIN)
+                .header("sec-fetch-site", "same-origin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+        }
         if !self.0.is_empty() {
             let cookies: Vec<String> = self.0.iter().map(|(k, v)| format!("{k}={v}")).collect();
             request = request.header(header::COOKIE, cookies.join("; "));
@@ -115,7 +140,11 @@ impl Browser {
         let response = world
             .site
             .clone()
-            .oneshot(request.body(Body::empty()).unwrap())
+            .oneshot(
+                request
+                    .body(form.map(Body::from).unwrap_or_default())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let status = response.status();
@@ -361,4 +390,110 @@ async fn return_to_never_leaves_the_site() {
         .await;
     assert!(done.body.contains("content=\"0;url=/\""), "{}", done.body);
     assert!(!done.body.contains("evil.example"));
+}
+
+/// The value of `name="{name}"` inside the form posting to `action`.
+fn form_field(html: &str, action: &str, name: &str) -> String {
+    let form = html
+        .split("<form ")
+        .skip(1)
+        .find(|form| form.contains(&format!("action=\"{action}\"")))
+        .expect("form")
+        .split("</form>")
+        .next()
+        .unwrap();
+    form.split_once(&format!("name=\"{name}\" value=\""))
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap()
+        .into()
+}
+
+#[tokio::test]
+async fn a_github_account_adds_sees_and_removes_its_own_claude_key() {
+    const KEY: &str = "sk-ant-api03-fake-github-settings-key-for-tests-only";
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    let done = browser
+        .through_github(&world, "%2Fsettings", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    // Sign-in opens the account's own workspace, as the key sign-in does.
+    assert!(
+        browser.0.contains_key("oa_cloud_workspace"),
+        "{:?}",
+        browser.0.keys()
+    );
+
+    let settings = browser.get(&world, "/settings").await;
+    assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+    crate::copy_guard::assert_plain("/settings", &settings.body);
+    assert!(settings.body.contains("Not added"));
+    assert!(settings.body.contains("href=\"/settings/claude\""));
+    assert!(!settings.body.contains("Unavailable"));
+
+    let page = browser.get(&world, "/settings/claude").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    crate::copy_guard::assert_plain("/settings/claude", &page.body);
+    assert!(page.body.contains("Nothing saved."));
+    let csrf = form_field(&page.body, "/settings/claude", "csrf");
+    let request = form_field(&page.body, "/settings/claude", "request");
+    let saved = browser
+        .post(
+            &world,
+            "/settings/claude",
+            &[
+                ("csrf", &csrf),
+                ("request", &request),
+                ("material", "anthropic_api_key"),
+                ("value", KEY),
+                ("consent", "custody"),
+            ],
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::SEE_OTHER, "{}", saved.body);
+    assert_eq!(saved.location(), "/settings/claude");
+
+    let page = browser.get(&world, "/settings/claude").await;
+    assert!(
+        page.body.contains("Saved: Anthropic API key"),
+        "{}",
+        page.body
+    );
+    assert!(!page.body.contains(KEY) && !page.body.contains("fake-github"));
+    let settings = browser.get(&world, "/settings").await;
+    assert!(settings.body.contains("Saved: Anthropic API key"));
+    assert!(!settings.body.contains(KEY));
+
+    let csrf = form_field(&page.body, "/settings/claude/remove", "csrf");
+    let request = form_field(&page.body, "/settings/claude/remove", "request");
+    let removed = browser
+        .post(
+            &world,
+            "/settings/claude/remove",
+            &[("csrf", &csrf), ("request", &request)],
+        )
+        .await;
+    assert_eq!(removed.status, StatusCode::SEE_OTHER, "{}", removed.body);
+    let page = browser.get(&world, "/settings/claude").await;
+    assert!(page.body.contains("Nothing saved."));
+}
+
+#[tokio::test]
+async fn a_session_without_a_workspace_gets_its_own_one_selected() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    // A browser signed in before sign-in picked a workspace.
+    browser.0.remove("oa_cloud_workspace");
+    let healed = browser.get(&world, "/settings/claude").await;
+    assert_eq!(healed.status, StatusCode::SEE_OTHER, "{}", healed.body);
+    assert_eq!(healed.location(), "/settings/claude");
+    assert!(browser.0.contains_key("oa_cloud_workspace"));
+    let page = browser.get(&world, "/settings/claude").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
 }

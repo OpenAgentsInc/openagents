@@ -14,6 +14,8 @@
 //! 4301. Accounts and sessions are real tenancy stores in the scratch
 //! directory, served by `oa_auth::local`. `--cloud-build` also serves the
 //! signed-in Cloud pages (Settings, Billing) the account menu links to.
+//! A scratch key store under the directory backs Settings, Claude, so a
+//! GitHub account can add, see, and remove its own Anthropic API key.
 
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};

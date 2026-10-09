@@ -256,13 +256,23 @@ async fn finish(
             );
         }
     };
-    let Ok(cookies) = grant.cookies() else {
+    let Ok(mut cookies) = grant.cookies() else {
         return again(
             StatusCode::BAD_REQUEST,
             "Sign-in didn't go through",
             "Start again.",
         );
     };
+    // Open in the account's own workspace (GitHub sign-up creates one), as
+    // the key sign-in does: Settings and the Claude credential need it.
+    let Ok(selected) = crate::cloud::default_workspace_cookies(service, &grant.viewer) else {
+        return again(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Sign-in isn't available right now",
+            "Try again in a minute.",
+        );
+    };
+    cookies.extend(selected);
     // The session cookie is SameSite=Strict, and this response ends a trip
     // that began on github.com, so continue with a same-site step: the next
     // request then carries the cookie.

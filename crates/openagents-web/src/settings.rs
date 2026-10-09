@@ -5,7 +5,7 @@
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{Form, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
@@ -20,7 +20,9 @@ use crate::account::Account;
 use crate::cloud::byo::{self, Computers, Owner};
 use crate::cloud::custody::{CustodyError, Key, Material};
 use crate::cloud::session::{CloudSession, SessionError, Viewer, now};
-use crate::cloud::{SIGN_IN, protect, refused, service};
+use crate::cloud::{
+    SIGN_IN, default_workspace, default_workspace_cookies, protect, refused, service,
+};
 use crate::ui_page::{UiPage, action_link};
 
 pub(crate) const PAGE: &str = "/settings";
@@ -35,16 +37,32 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 /// The signed-in viewer, or the answer to give instead (sign in first).
+///
+/// A session that opened without a workspace (GitHub sign-ins before they
+/// picked one) gets the account's own workspace selected here and comes
+/// back to `back`; the next request checks that selection as usual.
 async fn viewer<'a>(
     app: &'a App,
     headers: &HeaderMap,
+    back: &str,
 ) -> Result<(&'a CloudSession, Viewer), Response> {
     let service = service(app)?;
-    match service.authenticate(headers).await {
-        Ok(viewer) => Ok((service, viewer)),
-        Err(SessionError::Unauthenticated) => Err(protect(Redirect::to(SIGN_IN).into_response())),
-        Err(error) => Err(refused(error)),
+    let viewer = match service.authenticate(headers).await {
+        Ok(viewer) => viewer,
+        Err(SessionError::Unauthenticated) => {
+            return Err(protect(Redirect::to(SIGN_IN).into_response()));
+        }
+        Err(error) => return Err(refused(error)),
+    };
+    if viewer.workspace.is_none() && default_workspace(&viewer).is_some() {
+        let cookies = default_workspace_cookies(service, &viewer).map_err(refused)?;
+        let mut response = protect(Redirect::to(back).into_response());
+        for cookie in cookies {
+            response.headers_mut().append(header::SET_COOKIE, cookie);
+        }
+        return Err(response);
     }
+    Ok((service, viewer))
 }
 
 /// The page, shown with the viewer's account menu.
@@ -71,47 +89,105 @@ fn page(
     )
 }
 
+/// Where the viewer's own Claude credential stands, for the Settings row.
+enum Standing {
+    Saved(Material),
+    Empty,
+    /// The account has no workspace to keep a key for.
+    NoWorkspace,
+    /// The server's key store can't be read.
+    Broken,
+}
+
+impl Standing {
+    fn of(computers: &Computers, viewer: &Viewer) -> Self {
+        let Ok(owner) = Owner::from_viewer(viewer) else {
+            return Self::NoWorkspace;
+        };
+        match computers.status(&owner, now()) {
+            Ok(Some(status)) => Self::Saved(status.material),
+            Ok(None) => Self::Empty,
+            Err(_) => Self::Broken,
+        }
+    }
+
+    /// The row's hint, and whether its Manage button can work.
+    fn hint(&self) -> (String, bool) {
+        match self {
+            Self::Saved(material) => (format!("Saved: {}", material_label(*material)), true),
+            Self::Empty => ("Not added".to_owned(), true),
+            Self::NoWorkspace => (
+                "Your account has no workspace yet, so there's nowhere to keep a key.".to_owned(),
+                false,
+            ),
+            Self::Broken => (
+                "This server can't save keys at the moment. Try again later.".to_owned(),
+                false,
+            ),
+        }
+    }
+}
+
 async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
-    let (service, viewer) = match viewer(&app, &headers).await {
+    let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let claude = match app.config.cloud_byo.as_deref() {
-        Some(computers) => match Owner::from_viewer(&viewer)
-            .ok()
-            .map(|owner| computers.status(&owner, now()))
-        {
-            Some(Ok(Some(status))) => Some(format!("Saved: {}", material_label(status.material))),
-            Some(Ok(None)) => Some("Not added".to_owned()),
-            Some(Err(_)) | None => Some("Unavailable right now".to_owned()),
-        },
-        None => None,
-    };
-    let body = html! {
-        (MarkdownRoot::new(html! { h1 { "Settings" } }))
-        section aria-labelledby="settings-profile" {
-            (MarkdownRoot::new(html! { h2 #settings-profile { "Profile" } }))
-            p {
-                (Avatar::new().name(viewer.account_label.clone()).size(AvatarSize::Px40))
-                " " strong { (viewer.account_label) }
-            }
-        }
-        section aria-labelledby="settings-theme" {
-            (MarkdownRoot::new(html! { h2 #settings-theme { "Theme" } }))
-            (MarkdownRoot::new(html! { p { "Switch between light and dark." } }))
-            div { (ThemeToggle::new().fallback_action(crate::theme::TOGGLE_PATH).return_to(PAGE)) }
-        }
-        @if let Some(claude) = claude {
-            section aria-labelledby="settings-claude" {
-                (MarkdownRoot::new(html! {
-                    h2 #settings-claude { "Claude" }
-                    p { "Your own Anthropic API key or cloud credential for Claude Code. " (claude) }
-                }))
-                p { (action_link("Manage", CLAUDE)) }
-            }
-        }
-    };
+    let claude = app
+        .config
+        .cloud_byo
+        .as_deref()
+        .map(|computers| Standing::of(computers, &viewer).hint());
+    let body = settings_content(&viewer.account_label, claude);
     page(&headers, service, &viewer, "Settings", PAGE, body)
+}
+
+/// The Settings page: profile, theme, and (when this server keeps keys)
+/// the Claude credential row with its hint and whether Manage can work.
+fn settings_content(name: &str, claude: Option<(String, bool)>) -> Markup {
+    html! {
+        div class="oa-settings" {
+            h1 class="oa-heading" data-level="1" { "Settings" }
+            section class="oa-settings-group" aria-labelledby="settings-profile" {
+                h2 #settings-profile { "Profile" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-who" {
+                        (Avatar::new().name(name.to_owned()).size(AvatarSize::Px40))
+                        span class="oa-settings-label" { (name) }
+                    }
+                }
+            }
+            section class="oa-settings-group" aria-labelledby="settings-appearance" {
+                h2 #settings-appearance { "Appearance" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Theme" }
+                        span class="oa-settings-hint" { "Switch between light and dark." }
+                    }
+                    div class="oa-settings-control" {
+                        (ThemeToggle::new().fallback_action(crate::theme::TOGGLE_PATH).return_to(PAGE))
+                    }
+                }
+            }
+            @if let Some((hint, manage)) = claude {
+                section class="oa-settings-group" aria-labelledby="settings-claude" {
+                    h2 #settings-claude { "Claude" }
+                    div class="oa-settings-row" {
+                        div class="oa-settings-text" {
+                            span class="oa-settings-label" { "Your Claude key" }
+                            span class="oa-settings-hint" {
+                                "Your own Anthropic API key or cloud credential for Claude Code."
+                            }
+                            span class="oa-settings-hint" { (hint) }
+                        }
+                        @if manage {
+                            div class="oa-settings-control" { (action_link("Manage", CLAUDE)) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn material_label(material: Material) -> &'static str {
@@ -133,14 +209,21 @@ struct Context<'a> {
 }
 
 async fn context<'a>(app: &'a App, headers: &HeaderMap) -> Result<Context<'a>, Response> {
-    let (service, viewer) = viewer(app, headers).await?;
+    let (service, viewer) = viewer(app, headers, CLAUDE).await?;
     let Some(computers) = app.config.cloud_byo.as_deref() else {
         return Err(problem(
             StatusCode::NOT_FOUND,
-            "This server doesn't store Claude credentials.",
+            "This server doesn't keep Claude keys.",
+            PAGE,
         ));
     };
-    let owner = Owner::from_viewer(&viewer).map_err(refused)?;
+    let Ok(owner) = Owner::from_viewer(&viewer) else {
+        return Err(problem(
+            StatusCode::FORBIDDEN,
+            "Your account has no workspace yet, so there's nowhere to keep a key.",
+            PAGE,
+        ));
+    };
     Ok(Context {
         service,
         viewer,
@@ -149,35 +232,40 @@ async fn context<'a>(app: &'a App, headers: &HeaderMap) -> Result<Context<'a>, R
     })
 }
 
-fn problem(status: StatusCode, text: &str) -> Response {
+fn problem(status: StatusCode, text: &str, back: &str) -> Response {
+    let label = if back == PAGE { "Settings" } else { "Back" };
     protect(crate::layout::problem(
         status,
         "Claude credential",
         text,
-        (CLAUDE, "Back"),
+        (back, label),
     ))
 }
 
 fn custody_failure(error: CustodyError) -> Response {
-    let (status, text) = match error {
+    let (status, text, back) = match error {
         CustodyError::Invalid => (
             StatusCode::BAD_REQUEST,
-            "That isn't a valid credential for this provider. Claude.ai logins and setup tokens aren't accepted.",
+            "That isn't a valid key for this provider. Anthropic API keys start with sk-ant-api. Claude.ai logins and setup tokens aren't accepted.",
+            CLAUDE,
         ),
         CustodyError::Consent => (
             StatusCode::BAD_REQUEST,
-            "Check the box to save the credential.",
+            "Check the box to save the key.",
+            CLAUDE,
         ),
         CustodyError::Absent | CustodyError::Changed => (
             StatusCode::CONFLICT,
-            "Your credential changed. Reload the page.",
+            "Your key changed. Reload the page.",
+            CLAUDE,
         ),
         CustodyError::Unavailable => (
             StatusCode::SERVICE_UNAVAILABLE,
-            "Saving credentials isn't working right now. Try again later.",
+            "This server can't save keys at the moment. Try again later.",
+            PAGE,
         ),
     };
-    problem(status, text)
+    problem(status, text, back)
 }
 
 async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -217,21 +305,24 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
     )
 }
 
-/// The Claude credential page: what is saved, a remove button, and the
-/// form that adds or replaces it.
+/// The Claude credential page: what is saved (never the key itself), a
+/// remove button, and the form that adds or replaces it.
 fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &str)) -> Markup {
     let material = Field::new("claude-credential-material", "Provider");
-    let value = Field::new("claude-credential-value", "Credential")
+    let value = Field::new("claude-credential-value", "Key")
         .required(true)
-        .description("Anthropic: the API key. Bedrock, Vertex, or Foundry: the JSON credential.");
+        .description("Anthropic: the API key, from console.anthropic.com. Bedrock, Vertex, or Foundry: the JSON credential.");
     html! {
         p { (action_link("Settings", PAGE)) }
         (MarkdownRoot::new(html! {
             h1 { "Claude credential" }
             p { "Add your own Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential, to run Claude Code tasks in parallel. Usage bills to your own account." }
             @match saved {
-                Some(material) => p { "Saved: " (material_label(material)) },
-                None => p { "Nothing saved. Without a credential, Claude Code runs one task at a time on your Claude plan." },
+                Some(material) => {
+                    p { "Saved: " (material_label(material)) }
+                    p class="oa-page-meta" aria-label="Key hidden" { "••••••••••••••••" }
+                },
+                None => p { "Nothing saved. Without a key, Claude Code runs one task at a time on your Claude plan." },
             }
         }))
         @if saved.is_some() {
@@ -265,7 +356,7 @@ fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &st
                     .spellcheck(false),
             ))
             p {
-                (Checkbox::new("consent", "Save this credential for my account")
+                (Checkbox::new("consent", "Save this key for my account")
                     .value("custody")
                     .description("It's used only for your own tasks and never shows up in saved environments, exports, or logs. Remove it any time.")
                     .required(true))
@@ -391,5 +482,30 @@ mod tests {
         assert!(byo::TERMS.contains(
             "never put in a checkpoint, saved environment image, export, log, or evidence"
         ));
+    }
+
+    #[test]
+    fn settings_hides_manage_when_the_claude_key_cant_be_kept() {
+        let manage = "href=\"/settings/claude\"";
+        for standing in [Standing::Empty, Standing::Saved(Material::AnthropicApiKey)] {
+            let html = settings_content("Ada", Some(standing.hint())).into_string();
+            assert!(html.contains(manage), "{html}");
+            assert!(!html.contains("Unavailable"));
+        }
+        for standing in [Standing::NoWorkspace, Standing::Broken] {
+            let (hint, can) = standing.hint();
+            assert!(!can);
+            let html = settings_content("Ada", Some((hint.clone(), can))).into_string();
+            assert!(!html.contains(manage), "{html}");
+            assert!(html.contains(&hint.replace('\'', "&#39;")) || html.contains(&hint));
+        }
+        // No key store: no Claude row at all.
+        let html = settings_content("Ada", None).into_string();
+        assert!(!html.contains("settings-claude"));
+        for needle in [">Settings<", ">Profile<", ">Theme<", ">Ada<"] {
+            assert!(html.contains(needle), "{needle}");
+        }
+        let text = oa_copy::visible_text(&html);
+        assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
     }
 }

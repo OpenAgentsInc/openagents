@@ -197,6 +197,29 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
     response
 }
 
+/// The workspace a session opens in when none is selected yet. There is no
+/// workspace picker: the account's own workspace, else its first.
+pub(crate) fn default_workspace(viewer: &session::Viewer) -> Option<&session::Workspace> {
+    viewer
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.role == "owner")
+        .or_else(|| viewer.workspaces.first())
+}
+
+/// The cookies that select [`default_workspace`] (none when the account has
+/// no workspace). Every request checks the selection again, so a stale
+/// cookie never grants anything.
+pub(crate) fn default_workspace_cookies(
+    service: &CloudSession,
+    viewer: &session::Viewer,
+) -> Result<Vec<HeaderValue>, SessionError> {
+    match default_workspace(viewer) {
+        Some(workspace) => service.workspace_cookies(&workspace.id),
+        None => Ok(Vec::new()),
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SignIn {
@@ -232,18 +255,9 @@ async fn sign_in_submit(
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    // There is no workspace picker: the account's own workspace (else its
-    // first) is selected. Every request checks the selection again.
-    let workspaces = &grant.viewer.workspaces;
-    if let Some(workspace) = workspaces
-        .iter()
-        .find(|workspace| workspace.role == "owner")
-        .or_else(|| workspaces.first())
-    {
-        match service.workspace_cookies(&workspace.id) {
-            Ok(selected) => cookies.extend(selected),
-            Err(error) => return refused(error),
-        }
+    match default_workspace_cookies(service, &grant.viewer) {
+        Ok(selected) => cookies.extend(selected),
+        Err(error) => return refused(error),
     }
     let mut response = see_other("/");
     for cookie in cookies {
