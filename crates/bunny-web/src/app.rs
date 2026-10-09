@@ -84,6 +84,9 @@ const MAX_FRAME: f64 = 10.0;
 const MAX_STEPS: u32 = 1000;
 const SAVE_KEY: &str = "bunny.progress.v1";
 const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
+/// The bunny is drawn a little larger than its body height, ears and all,
+/// so a Kit reads on a phone.
+const DRAWN: f32 = 1.25;
 
 struct GpuMesh {
     vao: WebGlVertexArrayObject,
@@ -605,6 +608,15 @@ impl App {
 
     fn new_run(&mut self) {
         self.game = Game::new(Garden::first());
+        #[cfg(feature = "autoplay")]
+        if self
+            .window
+            .location()
+            .hash()
+            .is_ok_and(|hash| hash == "#quiet")
+        {
+            self.game.farmer_on = false;
+        }
         self.queue.clear();
         self.particles.clear();
         self.carry = 0.0;
@@ -617,7 +629,7 @@ impl App {
         self.camera_yaw = self.bunny_yaw;
         let (fx, fz) = self.game.farmer.facing;
         self.farmer_yaw = scene::yaw_of(fx as f32, fz as f32);
-        self.size = scene::metres(TIER_HEIGHT[0]);
+        self.size = scene::metres(TIER_HEIGHT[0]) * DRAWN;
         self.camera_size = 0.0;
     }
 
@@ -786,7 +798,7 @@ impl App {
         );
         self.size = approach(
             self.size,
-            scene::metres(TIER_HEIGHT[usize::from(b.tier)]),
+            scene::metres(TIER_HEIGHT[usize::from(b.tier)]) * DRAWN,
             8.0,
             dt,
         );
@@ -872,9 +884,10 @@ impl App {
             reach -= 0.25;
         }
         let eye = target_ground - forward * reach + Vec3::Y * up;
-        let look = target_ground + forward * 4.0 + Vec3::Y * (0.4 + 0.3 * t);
+        let ahead = if aspect < 1.0 { 3.0 } else { 4.0 };
+        let look = target_ground + forward * ahead + Vec3::Y * (0.4 + 0.3 * t);
         let fov = if aspect < 1.0 {
-            (2.0 * ((35.0_f32).to_radians().tan() / aspect).atan()).min(95.0_f32.to_radians())
+            (2.0 * ((35.0_f32).to_radians().tan() / aspect).atan()).min(80.0_f32.to_radians())
         } else {
             60.0_f32.to_radians()
         };
