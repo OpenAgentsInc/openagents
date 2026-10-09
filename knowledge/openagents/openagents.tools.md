@@ -1,6 +1,6 @@
 ---
 id: openagents.tools
-version: 5
+version: 6
 kind: product
 title: "Plugins"
 summary: >-
@@ -30,12 +30,14 @@ provenance:
     - docs/product/2026-09-28-app-wireframe.md
     - docs/extensions/plugins.md
     - knowledge/openagents/openagents.plugin-list.md
+    - crates/openagents-web/content/docs/test-a-plugin.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
   - "2026-09-29: version 2 (#9958) says capability, the on-screen word decided in #9957; the note's id and tags stay."
   - "2026-10-01: version 3 (#10087) says plugin, the owner's one word for anything a person adds, and names its parts from docs/plugins/README.md; the note's id and tags stay."
   - "2026-10-01: version 4 (#10090) names no hand-kept list of plugins: `openagents.plugin-list`, generated from the hosted runner's catalog, lists them all."
   - "2026-10-08: version 5 (#11031) stops claiming 'what tools do you have' questions (meta.tools answers those plainly) and drops the internal 'we don't call it a tool' terminology note, which the chat repeated to users as a confusing explanation."
+  - "2026-10-09: version 6 says where plugins run (with Coder on your computer), so an answer on the website never suggests running one there; the website answers 'which plugin should I try' with the catalog's plugin cards (docs/web/plugin-card.md)."
 ---
 
 ## Answer
@@ -47,6 +49,7 @@ A plugin is anything you add to OpenAgents. It can contain skills (instructions 
 - Wasm is the only code a plugin can carry, and it runs in a sandbox with no network and bounded reads.
 - A plugin made in chat is a skill: plain instructions Coder follows, which may turn on plugins such as Project map. Plugins with new code are made with Coder on a connected computer.
 - Coder and the coding agents it can use (Codex, Claude Code, and others) are not plugins: they are what plugins plug into.
+- Plugins run with Coder on your computer, and Gym tests start from the OpenAgents app or the `openagents` command. The openagents.com website can't run a plugin or start a test; it shows each plugin with a link to get Coder.
 - Engineering documents ship a plugin as a NIP-EXT extension package and call a measured improvement a capability; the app and this chat say plugin.
 
 ## Sources
@@ -56,3 +59,4 @@ A plugin is anything you add to OpenAgents. It can contain skills (instructions 
 - `docs/product/2026-09-28-app-wireframe.md`
 - `docs/extensions/plugins.md`
 - `knowledge/openagents/openagents.plugin-list.md`
+- `crates/openagents-web/content/docs/test-a-plugin.md`

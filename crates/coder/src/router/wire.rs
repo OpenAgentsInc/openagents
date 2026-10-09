@@ -163,6 +163,11 @@ pub struct Served {
     /// The plugin-creation step the turn served (#10177): the result's
     /// typed `plugin` field (`openagents_chat::plugin_flow::Flow::wire`).
     pub plugin: Option<Value>,
+    /// The catalog plugins the answer shows as cards, by package slug
+    /// (`docs/web/plugin-card.md`): set only from a bank entry's
+    /// [`super::Entry::plugins`] and the compiled-in catalog, never from
+    /// the message or a model.
+    pub plugins: Vec<String>,
 }
 
 /// Adds a routed turn's fields to a `26900` result body.
@@ -194,6 +199,9 @@ pub fn annotate(result: &mut Value, served: &Served, bank: &Bank) {
     }
     if let Some(plugin) = &served.plugin {
         result["plugin"] = plugin.clone();
+    }
+    if !served.plugins.is_empty() {
+        result["plugins"] = json!(served.plugins);
     }
 }
 

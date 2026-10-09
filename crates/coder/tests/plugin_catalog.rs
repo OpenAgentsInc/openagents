@@ -185,6 +185,39 @@ fn the_plugin_list_note_is_the_catalog() {
     );
 }
 
+/// The package records compiled into the worker and the website (the plugin
+/// cards, `docs/web/plugin-card.md`) are the catalog's, in its order, and
+/// each reads its slug, name, and summary.
+#[test]
+fn the_compiled_in_packages_are_the_catalog() {
+    let dirs: Vec<&str> = gym_kb::CATALOG_PACKAGES
+        .iter()
+        .map(|(dir, _)| *dir)
+        .collect();
+    assert_eq!(
+        dirs,
+        gym_kb::catalog_dirs(),
+        "gym_kb::CATALOG_PACKAGES needs one include_str! per directory in {CATALOG_PATH}, \
+         in its order"
+    );
+    let compiled = gym_kb::catalog_plugins();
+    let plugins = catalog();
+    assert_eq!(
+        compiled.len(),
+        plugins.len(),
+        "a package record failed to read"
+    );
+    for (compiled, plugin) in compiled.iter().zip(&plugins) {
+        assert_eq!(compiled.name, plugin.name);
+        assert_eq!(compiled.summary, plugin.summary);
+        assert!(!compiled.slug.is_empty());
+        assert_eq!(
+            gym_kb::catalog_plugin(&compiled.slug).as_ref(),
+            Some(compiled)
+        );
+    }
+}
+
 /// The worker's tool catalog is the runner's catalog: one note per
 /// plugin, in its order, named and summarized by its package.
 #[test]

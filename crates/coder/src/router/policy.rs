@@ -961,12 +961,26 @@ code or a computer, a command, a screen, the wallet, an account, or the Gym). Sa
 sentences that the OpenAgents app does that, and that they can download it at \
 openagents.com/download; answer any question in the message about OpenAgents itself.";
 
+/// The bank entry the website answers `eval.run` with: which plugins there
+/// are, as cards (`docs/web/plugin-card.md`), since nothing on the website
+/// can start a test.
+pub const WEB_PLUGINS: &str = "plugins.web";
+
 /// The tier for `routing`. See the module documentation for the rules.
-/// On the website ([`Surface::Web`]) it is then held to [`for_web`].
+/// On the website ([`Surface::Web`]) it is then held to [`for_web`], except
+/// that a wish to try or test a plugin (the typed `eval.run` route, never
+/// the message's words) gets [`WEB_PLUGINS`] with the catalog's cards
+/// instead of a model reply that could name plugins we don't have.
 #[must_use]
 pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
     let tier = decide_anywhere(routing, bank, facts, situation);
     if situation.context.surface() == Surface::Web {
+        if routing.route == RouteId::EvalRun
+            && !matches!(tier, Tier::Refuse { .. })
+            && let Some(plugins) = final_of(bank, facts, WEB_PLUGINS)
+        {
+            return plugins;
+        }
         for_web(routing, tier)
     } else {
         tier
@@ -1639,6 +1653,34 @@ mod tests {
             other => panic!("{other:?}"),
         }
         let mut secret = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
+        secret.risk = Risk::SecretShared;
+        secret.risk_p = 0.99;
+        assert!(matches!(
+            decided(&secret, &web(), false),
+            Tier::Refuse { .. }
+        ));
+    }
+
+    /// On the website, a wish to try or test a plugin ("Which plugin should
+    /// I try?", the `eval.run` route) is the prepared answer that comes
+    /// with the catalog's cards, never the model naming plugins we don't
+    /// have (docs/web/plugin-card.md). Elsewhere `eval.run` is unchanged.
+    #[test]
+    fn the_website_answers_a_plugin_question_with_the_cards() {
+        let run = routed(RouteId::EvalRun, 0.9, "none", 0.0, 0.1);
+        match decided(&run, &web(), false) {
+            Tier::CannedFinal { answer, offer, .. } => {
+                assert_eq!(answer.id, WEB_PLUGINS);
+                assert!(answer.plugins);
+                assert_eq!(offer, None);
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!matches!(
+            router(&run),
+            Tier::CannedFinal { answer, .. } if answer.id == WEB_PLUGINS
+        ));
+        let mut secret = run.clone();
         secret.risk = Risk::SecretShared;
         secret.risk_p = 0.99;
         assert!(matches!(

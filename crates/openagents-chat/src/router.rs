@@ -991,6 +991,28 @@ fn followups(value: &Value) -> Vec<Followup> {
     kept
 }
 
+/// The most plugin cards one reply keeps.
+pub const MAX_PLUGIN_CARDS: usize = 12;
+
+/// Reads a result's `plugins` array: package slugs (`project-map`), each a
+/// short lowercase id, kept once each and at most [`MAX_PLUGIN_CARDS`].
+/// Anything else is set aside.
+fn plugin_slugs(value: &Value) -> Vec<String> {
+    let mut kept: Vec<String> = vec![];
+    for slug in value.as_array().into_iter().flatten() {
+        let Some(slug) = slug.as_str().filter(|slug| slug.len() <= 64 && tag_like(slug)) else {
+            continue;
+        };
+        if !kept.iter().any(|kept| kept == slug) {
+            kept.push(slug.to_owned());
+        }
+        if kept.len() == MAX_PLUGIN_CARDS {
+            break;
+        }
+    }
+    kept
+}
+
 /// A bank id, `id@version`, route, or tier word: short, lowercase ASCII.
 fn tag_like(text: &str) -> bool {
     (1..=96).contains(&text.len())
@@ -1057,6 +1079,12 @@ pub struct Meta {
     /// what this computer does next, never read from the reply's text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin: Option<crate::plugin_flow::Flow>,
+    /// The catalog plugins this reply shows as cards, by package slug
+    /// (`docs/web/plugin-card.md`), from the result's typed `plugins`
+    /// field: bounded ids a surface looks up in its own copy of the
+    /// catalog, never words to show.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<String>,
     /// The person's own keys this turn went with (BYOK `mine`, #10176),
     /// by provider and fingerprint, never the key: the worker ran the
     /// turn's model and Jev on them. Empty when it ran on ours. This
@@ -1170,6 +1198,9 @@ impl Meta {
         self.take_followups(payload);
         if let Some(flow) = crate::plugin_flow::Flow::parse(&payload["plugin"]) {
             self.plugin = Some(flow);
+        }
+        if payload["plugins"].is_array() {
+            self.plugins = plugin_slugs(&payload["plugins"]);
         }
     }
 
@@ -1433,6 +1464,30 @@ mod tests {
             "answer": "smalltalk.hello@1"}),
         );
         assert!(older.canned());
+    }
+
+    /// A result's `plugins` are package slugs, kept once each and bounded;
+    /// anything that is not a short lowercase id is set aside, and the
+    /// chips' part of the record keeps them (docs/web/plugin-card.md).
+    #[test]
+    fn a_result_keeps_its_plugin_slugs() {
+        let mut meta = Meta::default();
+        meta.resulted(&json!({"type": "result", "text": "These are the plugins…",
+            "model": "bank:chat-answers-v1", "tier": "canned", "answer": "plugins.web@1",
+            "plugins": ["project-map", "code-finder", "project-map", "Not A Slug", 7,
+                "x".repeat(65)]}));
+        assert_eq!(meta.plugins, ["project-map", "code-finder"]);
+        assert_eq!(
+            crate::suggestions::chip_meta(&meta).plugins,
+            ["project-map", "code-finder"]
+        );
+        let many: Vec<String> = (0..20).map(|n| format!("plugin-{n}")).collect();
+        let mut bounded = Meta::default();
+        bounded.resulted(&json!({"type": "result", "plugins": many}));
+        assert_eq!(bounded.plugins.len(), MAX_PLUGIN_CARDS);
+        let mut none = Meta::default();
+        none.resulted(&json!({"type": "result", "text": "Hi!"}));
+        assert!(none.plugins.is_empty());
     }
 
     /// The phone's read-only list is the owner's list the worker's CLI

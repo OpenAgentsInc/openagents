@@ -194,6 +194,89 @@ pub fn catalog_dirs() -> Vec<&'static str> {
         .collect()
 }
 
+/// Each catalog plugin's package record, compiled in, by directory, in
+/// [`CATALOG_SOURCE`]'s order. `crates/coder/tests/plugin_catalog.rs`
+/// holds the two lists together.
+pub const CATALOG_PACKAGES: &[(&str, &str)] = &[
+    (
+        "crates/plugin-repo-map",
+        include_str!("../../plugin-repo-map/package.json"),
+    ),
+    (
+        "crates/plugin-code-search",
+        include_str!("../../plugin-code-search/package.json"),
+    ),
+    (
+        "crates/plugin-test-report",
+        include_str!("../../plugin-test-report/package.json"),
+    ),
+    (
+        "crates/plugin-explain-error",
+        include_str!("../../plugin-explain-error/package.json"),
+    ),
+    (
+        "crates/plugin-release-notes",
+        include_str!("../../plugin-release-notes/package.json"),
+    ),
+    (
+        "crates/plugin-dependency-check",
+        include_str!("../../plugin-dependency-check/package.json"),
+    ),
+];
+
+/// One catalog plugin as its package names it: the words a plugin card
+/// shows (`docs/web/plugin-card.md`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogPlugin {
+    /// The package's `slug` (`project-map`): the id a result's `plugins`
+    /// field carries.
+    pub slug: String,
+    /// The package's `name` (`Project map`).
+    pub name: String,
+    /// The package's one-line `summary`.
+    pub summary: String,
+}
+
+/// The catalog's plugins, in [`CATALOG_SOURCE`]'s order, each read from its
+/// package record ([`CATALOG_PACKAGES`]); a record without a slug, name,
+/// or summary is left out.
+#[must_use]
+pub fn catalog_plugins() -> Vec<CatalogPlugin> {
+    let dirs = catalog_dirs();
+    let mut plugins: Vec<(usize, CatalogPlugin)> = CATALOG_PACKAGES
+        .iter()
+        .filter_map(|(dir, json)| {
+            let at = dirs.iter().position(|listed| listed == dir)?;
+            let package: Value = serde_json::from_str(json).ok()?;
+            let text = |field: &str| {
+                package[field]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+            };
+            Some((
+                at,
+                CatalogPlugin {
+                    slug: text("slug")?,
+                    name: text("name")?,
+                    summary: text("summary")?,
+                },
+            ))
+        })
+        .collect();
+    plugins.sort_by_key(|(at, _)| *at);
+    plugins.into_iter().map(|(_, plugin)| plugin).collect()
+}
+
+/// The catalog plugin whose package slug is `slug`.
+#[must_use]
+pub fn catalog_plugin(slug: &str) -> Option<CatalogPlugin> {
+    catalog_plugins()
+        .into_iter()
+        .find(|plugin| plugin.slug == slug)
+}
+
 /// A catalog directory's component slug, the tag its tool note carries:
 /// `crates/plugin-repo-map` is `repo-map`.
 #[must_use]

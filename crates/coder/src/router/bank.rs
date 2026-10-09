@@ -211,6 +211,13 @@ pub struct Entry {
     /// it.
     #[serde(default)]
     pub records: bool,
+    /// The answer comes with the plugin catalog's cards
+    /// (`docs/web/plugin-card.md`): its result carries the catalog's
+    /// package slugs in `plugins`, and a surface that draws plugin cards
+    /// draws them from its own copy of the catalog. The text then speaks
+    /// of the cards' plugins without naming them all.
+    #[serde(default)]
+    pub plugins: bool,
     /// Where it may be shown: an entry whose words assume the chat is or
     /// is not on a computer says so, and its variant for the other place is
     /// `id.here` ([`HERE_SUFFIX`]).

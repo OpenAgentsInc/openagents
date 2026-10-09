@@ -3649,6 +3649,17 @@ fn served_of(routing: &router::Routing, tier: &Tier, bank: &Bank, facts: &router
             }
             _ => Vec::new(),
         },
+        // An entry that comes with the plugin cards carries the compiled-in
+        // catalog's slugs (docs/web/plugin-card.md): typed ids, never text.
+        plugins: answer
+            .filter(|entry| entry.plugins)
+            .map(|_| {
+                coder::gym_kb::catalog_plugins()
+                    .into_iter()
+                    .map(|plugin| plugin.slug)
+                    .collect()
+            })
+            .unwrap_or_default(),
         ..Served::default()
     }
 }

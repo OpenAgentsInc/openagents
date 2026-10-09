@@ -688,6 +688,21 @@ facts = { tool = "gym.tool" }
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
 followups = ["gym.what_test"]
 
+# The website can't start a test, so on openagents.com an eval.run turn
+# ("Which plugin should I try?") gets this line with the catalog's plugin
+# cards under it (`plugins = true`, docs/web/plugin-card.md). The cards name
+# the plugins from their packages; the text never lists them by hand.
+[[answer]]
+id = "plugins.web"
+version = 1
+routes = ["eval.run"]
+records = true
+plugins = true
+when = "Picked by code on the openagents.com website: the user wants to try or test one of our plugins, or asks which plugin to try; the catalog's plugin cards show with it"
+text = "These are the plugins you can try with Coder, our coding agent. They run with Coder on your computer. Once you have Coder, you can test any of them: we run a plugin's tests with it and without it, so you can see whether it makes Coder better."
+sources = ["deploy/eval-runner/catalog", "crates/openagents-web/content/docs/test-a-plugin.md", "docs/web/plugin-card.md"]
+followups = ["gym.what_tool"]
+
 [[answer]]
 id = "eval.check.one"
 version = 1

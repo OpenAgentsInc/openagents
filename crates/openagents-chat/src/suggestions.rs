@@ -187,14 +187,16 @@ pub fn screen_label(screen: Screen, connecting: bool) -> &'static str {
 /// reads, when the person has none.
 pub const CONNECT_LABEL: &str = "Connect a computer";
 
-/// The part of a reply's [`Meta`] the chips under it read: its prepared
-/// answer, follow-ups, and the offers to run Coder or open a screen. A
-/// surface that stores replies keeps this, not the router's whole record.
+/// The part of a reply's [`Meta`] the chips and cards under it read: its
+/// prepared answer, follow-ups, the offers to run Coder or open a screen,
+/// and the plugins it shows as cards. A surface that stores replies keeps
+/// this, not the router's whole record.
 #[must_use]
 pub fn chip_meta(meta: &Meta) -> Meta {
     Meta {
         answer: meta.answer.clone(),
         followups: meta.followups.clone(),
+        plugins: meta.plugins.clone(),
         offers: meta
             .offers
             .iter()
