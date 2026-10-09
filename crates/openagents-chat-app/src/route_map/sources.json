@@ -1,16 +1,16 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@2491372888cc",
+  "set": "chat-router-v5@8f5ec0c8bcf0",
+  "bank": "chat-answers-v1@790efc6773d5",
   "routes": [
     {
       "id": "meta",
       "family": "answers",
       "description": "Questions about us, the assistant itself: what model or AI this is, who we are or who built us, what we can and cannot do, what it costs, message limits, privacy, whether we remember things, whether we are open source, or what Coder or Jev is",
-      "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map (also just \"the map\"), our routes, what serves each, our plugins and engines, or where we are weak, thin, or missing something, including asking to open or show the route map or the plugin map",
+      "what": "Questions about us, the assistant: what model or AI this is, who we are or who built us, what we can and cannot do or whether we can help with a kind of work, what it costs, message limits, privacy and whether we keep chats, memory, whether we are open source, what Coder or Jev is, what OpenAgents is, how to connect their codebase or repository so we can work on it, and how we work with GitHub or connected computers in general, including asking us to connect, sign in to, or link GitHub, or asking whether we can do a kind of work for them; and asking to see how we route or handle messages or how we are put together: our route map (also just \"the map\"), our routes, what serves each, our plugins and engines, or where we are weak, thin, or missing something, including asking to open or show the route map or the plugin map",
       "not_for": "Handing us a concrete task in the user's own repository, or asking us to delegate to Coder or run it now, even as a test (work.dispatch); how to use one app feature step by step (product.kb or account); asking us to do something now, such as book, send, or read their accounts, rather than whether we can (capability.missing); testing or trying one of our plugins, such as Project map (eval.run); after the line in parentheses saying Coder's run in this chat ended, a question about what that run did, changed, or ran, or why it used an engine (general)",
-      "examples": 13
+      "examples": 16
     },
     {
       "id": "smalltalk",
@@ -25,16 +25,16 @@
       "family": "answers",
       "description": "A question about the world or programming concepts, an explanation, writing help, or advice: anything answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories",
       "what": "A question about the world or programming concepts, an explanation, writing help, or advice: answerable in a chat reply without OpenAgents product facts and without the user's own files or repositories; and, only when the conversation has the line in parentheses saying Coder's run in this chat ended, a question about that run: what happened, what it changed, found, or ran, whether it passed, which engine it used and why, or a summary or explanation of it, which we answer from its result",
-      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's, and what our own essays and thesis say about general agents, test-time capabilities, capability claims, or typed decision models, or a summary, overview, or comparison of our essays (product.kb); work on the user's own code (work.dispatch), including more work on Coder's run in this chat, such as another change, a fix, a test, or the same for another place (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
+      "not_for": "Facts about OpenAgents or us (product.kb, meta), including what plugins are or what they do, what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our plugins does even when its name sounds like another product's, and what our own essays and thesis say about general agents, test-time capabilities, capability claims, or typed decision models, or a summary, overview, or comparison of our essays (product.kb); work on the user's own code (work.dispatch), including more work on Coder's run in this chat, such as another change, a fix, a test, or the same for another place (work.dispatch); asking us to do, fetch, or reach something now, such as a booking, their email, a site, a device, or live data (capability.missing)",
       "examples": 7
     },
     {
       "id": "product.kb",
       "family": "answers",
       "description": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is (connecting a computer, the Grid, the Verse, XP, protocols such as NIP-CJ); not the wallet, and not account settings",
-      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which plugins the Gym has or what one of our plugins does, even when its name sounds like another product's; and what our own essays, Test-Time Capabilities and The Return of the General Agent, say: our thesis on general agents, test-time capabilities, capability claims and deltas, admission and adoption, reach and restraint, the judgment budget, the capability flywheel, why general agents stalled, extending an agent at machine speed, what we have and have not shown, what makes a claim reproduced or externally validated, and why typed decision models make routing feasible; including asking to summarize, give an overview of, explain, or compare our essays: \"the essays\", \"both essays\", \"the two essays\", or our essays, posts, or writing mean these two published essays, which we answer from our knowledge, never files on the user's computer",
+      "what": "How to do something in the OpenAgents app or with OpenAgents services, or what an OpenAgents feature is: connecting a phone or a computer and what connecting needs, such as whether Tailscale or another tool is required, the Gym, the Grid, the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; what plugins are and what they do; and which plugins the Gym has or what one of our plugins does, even when its name sounds like another product's; and what our own essays, Test-Time Capabilities and The Return of the General Agent, say: our thesis on general agents, test-time capabilities, capability claims and deltas, admission and adoption, reach and restraint, the judgment budget, the capability flywheel, why general agents stalled, extending an agent at machine speed, what we have and have not shown, what makes a claim reproduced or externally validated, and why typed decision models make routing feasible; including asking to summarize, give an overview of, explain, or compare our essays: \"the essays\", \"both essays\", \"the two essays\", or our essays, posts, or writing mean these two published essays, which we answer from our knowledge, never files on the user's computer",
       "not_for": "The wallet (wallet); account settings (account); questions about us as an assistant (meta); how the OpenAgents code implements something (codebase.kb); a concept not specific to OpenAgents, or what another company's product is or costs, or someone else's essay or help writing one (general); summarizing a README, a file, or a document in the user's own repository or computer (work.dispatch); what's new in the Gym (gym.news); which plugins they can test or should test first (eval.run); testing, making, or checking a plugin, a result, or credit (eval.run, eval.author, eval.check, eval.result, eval.credit)",
-      "examples": 18
+      "examples": 19
     },
     {
       "id": "codebase.kb",
@@ -176,57 +176,60 @@
   "answers": [
     {
       "id": "meta.who",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
-      "chip": "Who are you?",
+      "chip": "What is OpenAgents?",
       "place": "away",
       "records": false,
       "offer": null,
       "sources": [
         "crates/openagents-mobile/src/basic_coder.rs",
-        "docs/deployment/chat-worker.md"
+        "docs/deployment/chat-worker.md",
+        "crates/coder-new/README.md"
       ]
     },
     {
       "id": "meta.who.here",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
-      "chip": "Who are you?",
+      "chip": "What is OpenAgents?",
       "place": "here",
       "records": false,
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
-        "docs/deployment/chat-worker.md"
+        "docs/deployment/chat-worker.md",
+        "crates/coder-new/README.md"
       ]
     },
     {
       "id": "meta.who.website",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
-      "chip": "Who are you?",
+      "chip": "What is OpenAgents?",
       "place": "web",
       "records": false,
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
         "docs/auth/README.md",
-        "crates/openagents-web/src/pages/download.rs"
+        "crates/openagents-web/src/pages/download.rs",
+        "crates/coder-new/README.md"
       ]
     },
     {
       "id": "meta.model",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
-      "chip": "What models does this use?",
+      "chip": "What models do you use?",
       "place": "any",
       "records": false,
       "offer": null,
@@ -461,6 +464,23 @@
         "crates/coder-new/README.md",
         "crates/openagents-web/src/pages/download.rs",
         "docs/auth/README.md"
+      ]
+    },
+    {
+      "id": "meta.codebase",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "How do I connect my codebase?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-web/src/projects/mod.rs",
+        "crates/openagents-web/src/pages/download.rs",
+        "scripts/install/coder.sh",
+        "knowledge/openagents/openagents.connect-codebase.md"
       ]
     },
     {
@@ -1083,20 +1103,38 @@
       ]
     },
     {
-      "id": "gym.what_tool",
-      "version": 4,
+      "id": "meta.plugins",
+      "version": 1,
       "routes": [
         "product.kb",
         "general"
       ],
-      "chip": "What's a plugin?",
+      "chip": "What are plugins?",
+      "place": "any",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder/src/builtin_plugins.rs",
+        "crates/coder-new/README.md",
+        "crates/coder-new/src/acp_discovery.rs",
+        "knowledge/openagents/openagents.tools.md"
+      ]
+    },
+    {
+      "id": "gym.what_tool",
+      "version": 5,
+      "routes": [
+        "product.kb",
+        "general"
+      ],
+      "chip": "How does the Gym test a plugin?",
       "place": "any",
       "records": false,
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "knowledge/openagents/openagents.tools.md",
-        "crates/coder/src/builtin_plugins.rs"
+        "knowledge/openagents/openagents.tests.md",
+        "knowledge/openagents/openagents.credit.md"
       ]
     },
     {
@@ -1996,6 +2034,26 @@
           "remove",
           "terminal",
           "in-app"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.connect-codebase",
+        "title": "Connecting your codebase",
+        "path": "knowledge/openagents/openagents.connect-codebase.md",
+        "status": "admitted",
+        "tags": [
+          "codebase",
+          "code",
+          "repository",
+          "repo",
+          "project",
+          "connect",
+          "github",
+          "coder",
+          "install",
+          "login",
+          "sync"
         ],
         "answer": true
       },

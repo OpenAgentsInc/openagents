@@ -3510,7 +3510,12 @@ pub(super) mod card_fixtures {
             .iter()
             .take(openagents_chat_app::first_run::SUGGESTIONS_SHOWN)
             .collect();
-        assert_eq!(starters[0].label, "Who are you?");
+        assert_eq!(starters[0].label, "What is OpenAgents?");
+        // Exactly the four starters, so every one shows (#11095).
+        assert_eq!(
+            openagents_chat_app::first_run::SUGGESTIONS.len(),
+            openagents_chat_app::first_run::SUGGESTIONS_SHOWN
+        );
         let directory =
             std::env::var_os("OPENAGENTS_STARTERS_CAPTURE_DIR").map(std::path::PathBuf::from);
         let (mut app, now) = super::tests::chat_fixture(0);
@@ -3539,7 +3544,10 @@ pub(super) mod card_fixtures {
                     .find(|hit| hit.key == key)
                     .unwrap_or_else(|| panic!("{key} at {name}"));
                 assert!(hit.enabled, "{key}");
-                assert!(hit.rect.w < card.w / 2.0, "{key}: {:?}", hit.rect);
+                // Sized to its words, never stretched across the column;
+                // "How do I connect my codebase?" is about half the card
+                // at the minimum window (#11095).
+                assert!(hit.rect.w < card.w * 0.6, "{key}: {:?}", hit.rect);
                 assert!(hit.rect.h <= 32.0, "{key}: {:?}", hit.rect);
                 assert!(
                     hit.rect.x >= row.x
@@ -3602,14 +3610,6 @@ pub(super) mod card_fixtures {
                     .is_some_and(|(resource, _)| resource.starts_with("composer:")),
                 "the composer's text at {name}"
             );
-            assert!(
-                !scene.hits.iter().any(|hit| hit.key
-                    == format!(
-                        "coder-suggest-{}",
-                        openagents_chat_app::first_run::SUGGESTIONS[starters.len()].id
-                    )),
-                "only the first few show"
-            );
             if let Some(directory) = &directory {
                 std::fs::create_dir_all(directory).unwrap();
                 std::fs::write(
@@ -3645,7 +3645,7 @@ pub(super) mod card_fixtures {
                 Request::Chat {
                     command: Command::Send { text, .. },
                     ..
-                } if text == "Who are you?"
+                } if text == "What is OpenAgents?"
             )),
             "a tap sends the starter's words"
         );

@@ -1755,7 +1755,7 @@ fn suggestions(view: &Value) -> Vec<(String, String)> {
 
 /// Every new chat shows suggested questions, not only a first chat ever:
 /// with chats already kept and the Gym never opted into, a new chat still
-/// offers "Who are you?" and the rest of the first four.
+/// offers "What is OpenAgents?" and the other three (#11095).
 #[test]
 fn a_fresh_new_chat_always_shows_suggestions() {
     let hand = Hand::default();
@@ -1765,10 +1765,10 @@ fn a_fresh_new_chat_always_shows_suggestions() {
     assert_eq!(
         suggestions(&screen),
         [
-            ("coder-suggest-meta.who", "Who are you?"),
-            ("coder-suggest-meta.capabilities", "What can you do?"),
-            ("coder-suggest-gym.news", "What's new in the Gym?"),
-            ("coder-suggest-meta.tools", "What tools do you have?"),
+            ("coder-suggest-meta.who", "What is OpenAgents?"),
+            ("coder-suggest-meta.model", "What models do you use?"),
+            ("coder-suggest-meta.codebase", "How do I connect my codebase?"),
+            ("coder-suggest-meta.plugins", "What are plugins?"),
         ]
         .map(|(key, label)| (key.to_owned(), label.to_owned()))
     );
@@ -1780,30 +1780,27 @@ fn a_fresh_new_chat_always_shows_suggestions() {
     assert!(node(&screen, "coder-suggest-meta.who").is_some());
 }
 
-/// A tapped suggestion sends its words and never shows again, on the next
-/// new chat and after a relaunch; the next unused one takes its place.
+/// A tapped suggestion sends its words and moves after the unused ones,
+/// on the next new chat and after a relaunch.
 #[test]
-fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
+fn a_tapped_suggestion_moves_last_even_after_a_relaunch() {
     let dir = tempfile::tempdir().expect("temp dir");
     let kept = dir.path().join("basic");
     let hand = Hand::default();
     let mut fixture = Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now)))
         .answered_and_kept(&hand, &kept);
     fixture.tap("coder-suggest-meta.who");
-    assert_eq!(hand.asked(), vec![vec!["Who are you?".to_owned()]]);
+    assert_eq!(hand.asked(), vec![vec!["What is OpenAgents?".to_owned()]]);
     hand.say("We are OpenAgents.", true);
     let screen = fixture.tap("coder-new");
     let shown = suggestions(&screen);
-    assert!(
-        node(&screen, "coder-suggest-meta.who").is_none(),
-        "{shown:?}"
-    );
     assert_eq!(shown.len(), 4);
-    assert_eq!(shown[3].1, "What models does this use?");
-    // "What tools do you have?" sends its question, and neither shows again.
-    fixture.tap("coder-suggest-meta.tools");
-    assert_eq!(hand.asked()[1], ["What tools do you have?"]);
-    hand.say("Coder can hand a task to Claude Code.", true);
+    assert_eq!(shown[0].1, "What models do you use?");
+    assert_eq!(shown[3].1, "What is OpenAgents?");
+    // "What are plugins?" sends its question, and it moves last too.
+    fixture.tap("coder-suggest-meta.plugins");
+    assert_eq!(hand.asked()[1], ["What are plugins?"]);
+    hand.say("A plugin adds an ability to Coder.", true);
     drop(fixture);
 
     let hand = Hand::default();
@@ -1811,24 +1808,16 @@ fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
         .answered_and_kept(&hand, &kept);
     let screen = fixture.render();
     let shown = suggestions(&screen);
-    assert!(
-        node(&screen, "coder-suggest-meta.who").is_none(),
-        "{shown:?}"
-    );
-    assert!(
-        node(&screen, "coder-suggest-meta.tools").is_none(),
-        "{shown:?}"
-    );
     assert_eq!(
         shown
             .iter()
             .map(|(_, label)| label.as_str())
             .collect::<Vec<_>>(),
         [
-            "What can you do?",
-            "What's new in the Gym?",
-            "What models does this use?",
-            "How do I earn XP?"
+            "What models do you use?",
+            "How do I connect my codebase?",
+            "What is OpenAgents?",
+            "What are plugins?"
         ]
     );
 }
@@ -1840,20 +1829,18 @@ fn a_typed_question_hides_the_same_suggestion() {
     let hand = Hand::default();
     let mut fixture =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
-    fixture.say("  what can you DO ");
-    hand.say("In this chat we can answer questions.", true);
+    fixture.say("  what models do YOU use ");
+    hand.say("There isn't one model.", true);
     let screen = fixture.tap("coder-new");
-    assert!(
-        node(&screen, "coder-suggest-meta.capabilities").is_none(),
-        "{:?}",
-        suggestions(&screen)
-    );
-    // "whats new in the gym" is the words of "What's new in the Gym?".
-    fixture.say("whats new in the gym");
-    hand.say("Nothing new yet.", true);
+    let shown = suggestions(&screen);
+    assert_eq!(shown[3].0, "coder-suggest-meta.model", "{shown:?}");
+    // "what is openagents" is the words of "What is OpenAgents?".
+    fixture.say("what is openagents");
+    hand.say("We are OpenAgents.", true);
     let screen = fixture.tap("coder-new");
-    assert!(node(&screen, "coder-suggest-gym.news").is_none());
-    assert!(node(&screen, "coder-suggest-meta.who").is_some());
+    let shown = suggestions(&screen);
+    assert_eq!(shown[0].0, "coder-suggest-meta.codebase", "{shown:?}");
+    assert_eq!(shown[3].0, "coder-suggest-meta.model", "{shown:?}");
 }
 
 /// A follow-up chip once used never shows again: tapped, typed, or its
@@ -1888,16 +1875,11 @@ fn a_used_followup_chip_never_shows_again() {
     let chat = fixture.render();
     assert!(node(&chat, "coder-followup-0").is_none());
     assert!(node(&chat, "coder-followup-1").is_none());
-    // The prepared answer shown (meta.model) is used: its suggestion is
-    // gone from a new chat.
+    // The prepared answer shown (meta.model) is used: its suggestion
+    // moves after the unused ones in a new chat.
     let screen = fixture.tap("coder-new");
     let shown = suggestions(&screen);
-    assert!(
-        !shown
-            .iter()
-            .any(|(_, label)| label == "What models does this use?"),
-        "{shown:?}"
-    );
+    assert_eq!(shown[3].1, "What models do you use?", "{shown:?}");
 }
 
 /// Unused suggestions come first; once they run out, used ones fill in, so
@@ -1929,7 +1911,7 @@ fn a_new_chat_always_shows_four_suggestions() {
 #[test]
 fn the_suggestions_are_plain_and_unique() {
     let list = crate::first_run::SUGGESTIONS;
-    assert_eq!(list.len(), 10);
+    assert_eq!(list.len(), 4);
     let mut ids = std::collections::BTreeSet::new();
     for suggestion in list {
         assert!(ids.insert(suggestion.id), "{} twice", suggestion.id);

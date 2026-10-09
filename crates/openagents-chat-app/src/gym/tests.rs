@@ -1118,7 +1118,7 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     phone.tab.gym.set_start("done");
     let (coder, view) = phone.render();
     assert_eq!(view.screen, "chat");
-    assert!(find(&coder, |n| n["key"] == "coder-suggest-meta.tools").is_some());
+    assert!(find(&coder, |n| n["key"] == "coder-suggest-meta.plugins").is_some());
     phone.press("coder-back");
     assert_eq!(phone.gym().screen, "menu");
 }

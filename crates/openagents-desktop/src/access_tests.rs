@@ -376,14 +376,14 @@ fn a_screen_reader_reaches_and_presses_a_starter_chip() {
     let before = tree(&mut app, None);
     let lines = outline(&before);
     let dump = lines.join("\n");
-    let chip = find(&lines, "Button \"Who are you?\"");
+    let chip = find(&lines, "Button \"What is OpenAgents?\"");
     assert!(lines[chip].contains("<click>"), "{dump}");
     let composer = find(&lines, "MultilineTextInput \"Message OpenAgents");
     assert!(
         chip < composer,
         "the starters read before the composer: {dump}"
     );
-    let id = node_with(&before, Role::Button, "What can you do?");
+    let id = node_with(&before, Role::Button, "What models do you use?");
     assert!(
         before
             .update
@@ -398,7 +398,7 @@ fn a_screen_reader_reaches_and_presses_a_starter_chip() {
     assert!(
         !lines
             .iter()
-            .any(|line| line.contains("Button \"Who are you?\"")),
+            .any(|line| line.contains("Button \"What is OpenAgents?\"")),
         "the starters leave once the chat has a message:\n{}",
         lines.join("\n")
     );

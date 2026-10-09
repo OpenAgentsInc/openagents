@@ -35,6 +35,52 @@
   ],
   "flows": [
     {
+      "id": "starters",
+      "title": "The four questions under the chat box",
+      "goldens": [
+        {
+          "id": "starters.what_is",
+          "phrasings": ["What is OpenAgents?", "whats openagents", "wait what even is openagents"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.who.website", "openagents.overview"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["OpenAgents"], ["Coder"], ["many models"], ["plugin"]],
+          "forbidden": ["computer you connect", "Gemini", "Vercel", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
+        },
+        {
+          "id": "starters.models",
+          "phrasings": ["What models do you use?", "what model r u running", "which ai do u use"],
+          "route": ["meta"],
+          "answers": ["meta.model"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["isn't one model"], ["router"], ["many models"]],
+          "forbidden": ["Gemini", "Vercel", "Space Bunny", "GPT-"]
+        },
+        {
+          "id": "starters.codebase",
+          "phrasings": ["How do I connect my codebase?", "how do i hook my code up to openagents", "how can u work on my project"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.codebase", "openagents.connect-codebase"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["openagents.com/projects"], ["connect GitHub"], ["install.sh"], ["install.ps1"], ["coder login"], ["openagents.com/device"], ["/sync on"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "starters.plugins",
+          "phrasings": ["What are plugins?", "whats a plugin", "what do plugins do"],
+          "route": ["product.kb", "general", "meta"],
+          "answers": ["meta.plugins", "openagents.tools"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"], ["Claude Code"], ["Codex"], ["/plugins"]],
+          "forbidden": ["Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check", "Gemini", "Vercel"]
+        }
+      ]
+    },
+    {
       "id": "about",
       "title": "Who we are and what we can do",
       "goldens": [
@@ -75,8 +121,8 @@
           "answers": ["meta.model"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["router"], ["model"]],
-          "forbidden": []
+          "required": [["router"], ["isn't one model", "many models"]],
+          "forbidden": ["Gemini", "Vercel", "Space Bunny"]
         },
         {
           "id": "about.jev",

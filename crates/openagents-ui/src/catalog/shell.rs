@@ -102,8 +102,8 @@ pub(super) fn composer(pane: Pane) -> Markup {
             (Message::status("Working…"))
         })))
         (specimen("SuggestionChips SuggestionChip", "Suggestions to ask, and a link", SuggestionChips::new("Suggestions")
-            .chip(SuggestionChip::send("Who are you?", "/ui", [("q".to_owned(), "Who are you?".to_owned())]))
-            .chip(SuggestionChip::send("What tools do you have?", "/ui", [("q".to_owned(), "What tools do you have?".to_owned())]))
+            .chip(SuggestionChip::send("What is OpenAgents?", "/ui", [("q".to_owned(), "What is OpenAgents?".to_owned())]))
+            .chip(SuggestionChip::send("What are plugins?", "/ui", [("q".to_owned(), "What are plugins?".to_owned())]))
             .chip(SuggestionChip::link("Connect a computer", "/docs/connect-a-computer"))))
         (specimen("ComposerDropdown ModelPickerTrigger", "Triggers alone", row(html! {
             (ComposerDropdown::new("Environment", "Cloud").icon(Icon::Globe).show_label(true))

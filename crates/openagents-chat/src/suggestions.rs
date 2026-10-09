@@ -35,59 +35,29 @@ pub struct Suggestion {
 /// How many suggestions a new chat shows at once.
 pub const SUGGESTIONS_SHOWN: usize = 4;
 
-/// Every new chat's suggestions, in order (`SCR-15.E06`). A new chat shows
-/// the first [`SUGGESTIONS_SHOWN`] the person has not used yet (tapped, or
-/// sent the same words) first, then used ones, so there are always four.
+/// Every new chat's suggestions, in order (`SCR-15.E06`): exactly these
+/// four, on the website, the phone, and the desktop app (owner,
+/// 2026-10-09, #11095). Used ones move after the ones not used yet.
 pub const SUGGESTIONS: &[Suggestion] = &[
     Suggestion {
         id: "meta.who",
-        label: "Who are you?",
-        message: "Who are you?",
-    },
-    Suggestion {
-        id: "meta.capabilities",
-        label: "What can you do?",
-        message: "What can you do?",
-    },
-    Suggestion {
-        id: "gym.news",
-        label: "What's new in the Gym?",
-        message: "What's new in the Gym?",
-    },
-    Suggestion {
-        id: "meta.tools",
-        label: "What tools do you have?",
-        message: "What tools do you have?",
+        label: "What is OpenAgents?",
+        message: "What is OpenAgents?",
     },
     Suggestion {
         id: "meta.model",
-        label: "What models does this use?",
-        message: "What models does this use?",
+        label: "What models do you use?",
+        message: "What models do you use?",
     },
     Suggestion {
-        id: "eval.credit.how",
-        label: "How do I earn XP?",
-        message: "How do I earn XP from tests?",
+        id: "meta.codebase",
+        label: "How do I connect my codebase?",
+        message: "How do I connect my codebase?",
     },
     Suggestion {
-        id: "gym.check",
-        label: "Check a result",
-        message: "Find me a result to check",
-    },
-    Suggestion {
-        id: "account.computers",
-        label: "How do I connect a computer?",
-        message: "How do I connect a computer?",
-    },
-    Suggestion {
-        id: "meta.open_source",
-        label: "Are you open source?",
-        message: "Are you open source?",
-    },
-    Suggestion {
-        id: "meta.pricing",
-        label: "What does it cost?",
-        message: "What does it cost?",
+        id: "meta.plugins",
+        label: "What are plugins?",
+        message: "What are plugins?",
     },
 ];
 
@@ -234,22 +204,22 @@ mod tests {
 
     #[test]
     fn unused_suggestions_come_first_and_used_ones_fill_to_four() {
-        let shown: Vec<&str> = suggestions(&[]).map(|s| s.id).collect();
-        assert_eq!(
-            shown,
-            ["meta.who", "meta.capabilities", "gym.news", "meta.tools"]
-        );
-        // Typed words, a tapped id, and a shown answer each count as used.
-        let used = markers(["who are you", "What tools do you have?"], ["gym.news@v3"]);
-        let shown: Vec<&str> = suggestions(&used).map(|s| s.id).collect();
+        let shown: Vec<&str> = suggestions(&[]).map(|s| s.label).collect();
         assert_eq!(
             shown,
             [
-                "meta.capabilities",
-                "meta.model",
-                "eval.credit.how",
-                "gym.check"
+                "What is OpenAgents?",
+                "What models do you use?",
+                "How do I connect my codebase?",
+                "What are plugins?"
             ]
+        );
+        // Typed words, a tapped id, and a shown answer each count as used.
+        let used = markers(["what is openagents"], ["meta.plugins@1"]);
+        let shown: Vec<&str> = suggestions(&used).map(|s| s.id).collect();
+        assert_eq!(
+            shown,
+            ["meta.model", "meta.codebase", "meta.who", "meta.plugins"]
         );
         // Everything used: still four, in order.
         let all: Vec<&str> = SUGGESTIONS.iter().map(|s| s.message).collect();
@@ -257,8 +227,8 @@ mod tests {
         assert_eq!(suggestions(&used).count(), SUGGESTIONS_SHOWN);
         assert_eq!(suggestions(&used).next().map(|s| s.id), Some("meta.who"));
         assert_eq!(
-            find("meta.pricing").map(|s| s.label),
-            Some("What does it cost?")
+            find("meta.codebase").map(|s| s.label),
+            Some("How do I connect my codebase?")
         );
     }
 

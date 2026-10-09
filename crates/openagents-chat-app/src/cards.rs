@@ -985,7 +985,7 @@ mod tests {
         };
         assert_eq!(requests.len(), 2);
         assert!(matches!(&requests[0].1, Command::UseSuggestion { id, .. } if id == "meta.who"));
-        assert!(matches!(&requests[1].1, Command::Send { text, .. } if text == "Who are you?"));
+        assert!(matches!(&requests[1].1, Command::Send { text, .. } if text == "What is OpenAgents?"));
         assert!(matches!(
             session.card_action("coder-suggest-meta.who"),
             Effect::None

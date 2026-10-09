@@ -65,7 +65,8 @@ talk (`oa-copy`).
 
 | Flow | What people ask |
 | --- | --- |
-| about | who we are, what OpenAgents is, what we can do, the model, Jev, open source |
+| starters | the four questions under the chat box, exactly as the chips send them (What is OpenAgents?, What models do you use?, How do I connect my codebase?, What are plugins?), plus two casual phrasings each (#11095) |
+| about | who we are, what OpenAgents is, what we can do, the models, Jev, open source |
 | github | connecting a GitHub repository, projects |
 | account | signing in, whether an account is needed |
 | coder | what Coder is, installing it, `coder login`, `/sync` and replying from the website |

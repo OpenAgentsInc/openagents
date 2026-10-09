@@ -843,8 +843,8 @@ mod tests {
         // The chat-answers-v1 entries that shipped in coder::first are
         // here, at the versions that shipped, so logged tags still resolve.
         for (id, version) in [
-            ("meta.who", 2),
-            ("meta.model", 2),
+            ("meta.who", 3),
+            ("meta.model", 3),
             ("meta.capabilities", 3),
             ("meta.limits_chat", 3),
             ("meta.coder", 3),
@@ -966,7 +966,7 @@ when = "x"
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-        assert_eq!(chips, ["meta.capabilities", "meta.model", "meta.pricing"]);
+        assert_eq!(chips, ["meta.model", "meta.codebase", "meta.plugins"]);
     }
 
     /// An entry whose words would be wrong on openagents.com (Coder sent
@@ -999,8 +999,8 @@ when = "x"
             assert!(!text.contains("computer you"), "{id}: {text}");
         }
         // Followups follow the place too.
-        let who = bank.entry("meta.who.website").unwrap();
-        let chips = bank.followups(who, &web);
+        let coder = bank.entry("meta.coder.website").unwrap();
+        let chips = bank.followups(coder, &web);
         assert!(
             chips.iter().any(|(id, _)| id == "meta.github.website"),
             "{chips:?}"

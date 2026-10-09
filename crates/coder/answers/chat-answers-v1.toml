@@ -32,48 +32,49 @@ bank = "chat-answers-v1"
 
 [[answer]]
 id = "meta.who"
-version = 2
+version = 3
 routes = ["meta"]
 place = "away"
-when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
-examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
-text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we send Coder, our coding agent, to a computer you've connected."
-chip = "Who are you?"
-sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
-followups = ["meta.capabilities", "meta.model", "meta.pricing"]
+when = "The user asks who or what we are, what OpenAgents is, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI models power the chat, or a detailed question about what we can do"
+examples = ["What is OpenAgents?", "whats openagents", "who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. We're a general agent you can chat with on the web, in your terminal, on desktop, and on your phone: we answer questions, explain things, and help you plan and write. When work needs a computer, like changing a repository or running commands, Coder, our coding agent, does it on a computer you connect. Each message goes to whichever of many models fits it best, and plugins add new abilities, like handing work to Claude Code or Codex."
+chip = "What is OpenAgents?"
+sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/deployment/chat-worker.md", "crates/coder-new/README.md"]
+followups = ["meta.model", "meta.codebase", "meta.plugins"]
 
 [[answer]]
 id = "meta.who.here"
-version = 2
+version = 3
 routes = ["meta"]
 place = "here"
-when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
-examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
-text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs this computer, like reading or changing a repository or running commands, we send Coder, our coding agent, to work here."
-chip = "Who are you?"
-sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
-followups = ["meta.capabilities", "meta.model", "meta.pricing"]
+when = "The user asks who or what we are, what OpenAgents is, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI models power the chat, or a detailed question about what we can do"
+examples = ["What is OpenAgents?", "whats openagents", "who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. We're a general agent you can chat with on the web, in your terminal, on desktop, and on your phone: we answer questions, explain things, and help you plan and write. When work needs this computer, like changing a repository or running commands, Coder, our coding agent, does it here. Each message goes to whichever of many models fits it best, and plugins add new abilities, like handing work to Claude Code or Codex."
+chip = "What is OpenAgents?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/deployment/chat-worker.md", "crates/coder-new/README.md"]
+followups = ["meta.model", "meta.codebase", "meta.plugins"]
 
 
 [[answer]]
 id = "meta.who.website"
-version = 2
+version = 3
 routes = ["meta"]
 place = "web"
-when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
-examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
-text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. Sign in with GitHub to keep your chats on your account and add your repositories as projects. For hands-on work in your code, Coder, our coding agent, runs in your terminal: get it at https://openagents.com/download."
-chip = "Who are you?"
-sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/auth/README.md", "crates/openagents-web/src/pages/download.rs"]
-followups = ["meta.capabilities", "meta.github", "meta.pricing"]
+when = "The user asks who or what we are, what OpenAgents is, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI models power the chat, or a detailed question about what we can do"
+examples = ["What is OpenAgents?", "whats openagents", "who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. We're a general agent you can chat with on the web, in your terminal, on desktop, and on your phone: we answer questions, explain things, and help you plan and write. When work needs a computer, like changing a repository or running commands, Coder, our coding agent, does it in your terminal: get it at https://openagents.com/download. Each message goes to whichever of many models fits it best, and plugins add new abilities, like handing work to Claude Code or Codex."
+chip = "What is OpenAgents?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/auth/README.md", "crates/openagents-web/src/pages/download.rs", "crates/coder-new/README.md"]
+followups = ["meta.model", "meta.codebase", "meta.plugins"]
 
 [[answer]]
 id = "meta.model"
-version = 2
+version = 3
 routes = ["meta"]
 when = "The user asks what AI model or models power this chat, or whether we are ChatGPT, Claude, Gemini, or another named assistant; not who made or built us"
+examples = ["What models do you use?", "what model r u", "which models power this"]
 text = "There isn't one model. A fast router reads each message and sends it to whatever answers it best, from quick built-in answers to many models across providers, through our own gateway. The pool keeps growing, so the best fit can change from one message to the next."
-chip = "What models does this use?"
+chip = "What models do you use?"
 sources = ["crates/coder/src/generate.rs", "crates/coder/src/router.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.jev", "meta.privacy", "meta.pricing"]
 
@@ -170,7 +171,7 @@ examples = ["What tools do you have?", "what tools can you use", "do you have an
 text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Coder can also hand a task to Claude Code, Codex, Cursor, or Grok Build when you have them installed. Get Coder at https://openagents.com/download."
 chip = "What tools do you have?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder/src/builtin_plugins.rs","crates/openagents-web/src/pages/download.rs"]
-followups = ["meta.coder", "gym.what_tool"]
+followups = ["meta.coder", "meta.plugins"]
 
 [[answer]]
 id = "meta.limits_chat"
@@ -253,6 +254,18 @@ text = "Coder is our coding agent. It runs in your terminal on your own computer
 chip = "What is Coder?"
 sources = ["crates/coder-new/README.md", "crates/openagents-web/src/pages/download.rs", "docs/auth/README.md"]
 followups = ["meta.github", "meta.pricing"]
+
+[[answer]]
+id = "meta.codebase"
+version = 1
+routes = ["meta"]
+when = "The user asks how to connect, link, or add their codebase, code, project, or repository so we can work on it, in general; not a question only about GitHub, and not a specific change to make"
+not_for = "A specific task in a repository, such as fixing a bug or opening a pull request; how we work with GitHub in general (meta.github)"
+examples = ["How do I connect my codebase?", "how do i hook up my code", "how can you work on my project", "connect my codebase"]
+text = "Two ways. On the web: sign in at https://openagents.com/projects, connect GitHub, and add a repository. On your own computer: install Coder with `curl -fsSL https://openagents.com/cli/install.sh | sh` (Windows: `irm https://openagents.com/cli/install.ps1 | iex`), run `coder login` and approve it at https://openagents.com/device, then `cd` into your repo and run `coder`. Type `/sync on` to see those chats on the web too."
+chip = "How do I connect my codebase?"
+sources = ["crates/openagents-web/src/projects/mod.rs", "crates/openagents-web/src/pages/download.rs", "scripts/install/coder.sh", "knowledge/openagents/openagents.connect-codebase.md"]
+followups = ["meta.coder", "meta.plugins"]
 
 [[answer]]
 id = "meta.github"
@@ -691,17 +704,28 @@ sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tes
 followups = ["gym.what_tool", "eval.credit.how"]
 
 [[answer]]
-id = "gym.what_tool"
-version = 4
+id = "meta.plugins"
+version = 1
 routes = ["product.kb", "general"]
-when = "The user asks what a plugin is (or a capability or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does, and not what tools we have"
-not_for = "What one named plugin does, which our notes answer; what tools or abilities we have, which meta.tools answers"
-examples = ["what is a plugin", "What's a plugin?", "what is a tool in the gym"]
-text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Coder's built-in plugins hand tasks to Claude Code, Codex, Cursor, and Grok Build on your computer. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
-chip = "What's a plugin?"
-sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md", "crates/coder/src/builtin_plugins.rs"]
-followups = ["gym.what_test"]
+when = "The user asks what plugins are, what a plugin is (or a capability or extension), what plugins do, or what a plugin contains; not which plugins there are or which to try, not what one named plugin does, not how the Gym tests plugins, and not what tools we have"
+not_for = "What one named plugin does, which our notes answer; how the Gym tests a plugin (gym.what_tool); what tools or abilities we have, which meta.tools answers"
+examples = ["What are plugins?", "whats a plugin", "what do plugins do", "what is a plugin", "What's a plugin?"]
+text = "A plugin adds an ability to Coder, our coding agent, and you turn each one on or off with `/plugins` in Coder. Its built-in plugins hand a task to Claude Code, Codex, Cursor, or Grok Build on your computer and show its progress as it works, and OpenRouter lets you use more models with your own key. You can make your own plugin too: instructions, small sandboxed programs, and tests that show whether it helps."
+chip = "What are plugins?"
+sources = ["crates/coder/src/builtin_plugins.rs", "crates/coder-new/README.md", "crates/coder-new/src/acp_discovery.rs", "knowledge/openagents/openagents.tools.md"]
+followups = ["meta.codebase", "meta.model"]
 
+[[answer]]
+id = "gym.what_tool"
+version = 5
+routes = ["product.kb", "general"]
+when = "The user asks what a plugin is in the Gym or how the Gym tests a plugin; not what plugins are in general (meta.plugins), not what one named plugin does, and not what tools we have"
+not_for = "What plugins are or do in general (meta.plugins); what one named plugin does, which our notes answer; what tools or abilities we have, which meta.tools answers"
+examples = ["what is a tool in the gym", "what is a plugin in the gym", "how does the gym test a plugin"]
+text = "In the Gym, a plugin comes with a test set: the same tests run with the plugin and without it, so you can see whether it makes Coder better. You earn XP when your results are checked or Coder adopts your plugin."
+chip = "How does the Gym test a plugin?"
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tests.md", "knowledge/openagents/openagents.credit.md"]
+followups = ["gym.what_test", "meta.plugins"]
 [[answer]]
 id = "eval.credit.how"
 version = 4

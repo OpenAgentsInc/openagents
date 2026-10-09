@@ -7,7 +7,7 @@
   "tier": "canned",
   "route": "meta",
   "bank": "chat-answers-v1@DIGEST",
-  "answer": "meta.model@2",
+  "answer": "meta.model@3",
   "followups": [
     { "id": "meta.jev", "label": "What is Jev?" },
     { "id": "meta.privacy", "label": "What happens to my messages?" },

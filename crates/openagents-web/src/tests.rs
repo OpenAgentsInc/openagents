@@ -491,7 +491,7 @@ async fn the_homepage_composer_is_the_design_language_component() {
     ));
     // The homepage posts a plain form and follows the redirect to the chat.
     assert!(!home.contains("hx-post="));
-    // The phone's first four starter questions sit under the composer, each
+    // The four starter questions sit under the composer, each
     // a plain form posting its words to `/chat`.
     assert!(home.contains(
         "<div class=\"oa-suggestions\" role=\"group\" aria-label=\"Suggestions\" id=\"chat-suggestions\">"

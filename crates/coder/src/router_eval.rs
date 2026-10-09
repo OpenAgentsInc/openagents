@@ -914,6 +914,8 @@ mod tests {
         "meta.model",
         "meta.jev",
         "meta.coder",
+        "meta.codebase",
+        "meta.plugins",
         "meta.capabilities",
         "meta.limits_chat",
         "meta.pricing",

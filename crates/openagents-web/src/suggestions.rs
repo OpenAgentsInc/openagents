@@ -239,11 +239,11 @@ mod tests {
             id: "00000000-0000-4000-8000-000000000000".into(),
             owner: "owner".into(),
             revision: 2,
-            title: "Who are you?".into(),
+            title: "What is OpenAgents?".into(),
             messages: vec![
                 Message {
                     role: Role::User,
-                    text: "Who are you?".into(),
+                    text: "What is OpenAgents?".into(),
                     request_id: Some("r".into()),
                 },
                 Message {
@@ -282,15 +282,11 @@ mod tests {
         };
         let used = markers(&[chat(Some(meta))]);
         let shown: Vec<&str> = suggestions::suggestions(&used).map(|s| s.id).collect();
-        // "Who are you?" was sent and the model answer shown: both last.
+        // "What is OpenAgents?" was sent and the model answer shown: both
+        // last, in order.
         assert_eq!(
             shown,
-            [
-                "meta.capabilities",
-                "gym.news",
-                "meta.tools",
-                "eval.credit.how"
-            ]
+            ["meta.codebase", "meta.plugins", "meta.who", "meta.model"]
         );
     }
 

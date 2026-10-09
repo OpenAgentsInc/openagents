@@ -69,7 +69,8 @@ pub fn route(route: RouteId) -> Value {
             "Questions about us, the assistant: what model or AI this is, who we are or who \
              built us, what we can and cannot do or whether we can help with a kind of work, \
              what it costs, message limits, privacy and whether we keep chats, memory, whether \
-             we are open source, what Coder or Jev is, and how we work with GitHub or \
+             we are open source, what Coder or Jev is, what OpenAgents is, how to connect \
+             their codebase or repository so we can work on it, and how we work with GitHub or \
              connected computers in general, including asking us to connect, sign in to, or \
              link GitHub, or asking whether we can do a kind of work for them; and asking to \
              see how we route or handle messages or how we are put together: our route map \
@@ -87,6 +88,9 @@ pub fn route(route: RouteId) -> Value {
                  it used an engine (general)",
             ),
             &[
+                "What is OpenAgents?",
+                "What models do you use?",
+                "How do I connect my codebase?",
                 "who r u",
                 "who built this",
                 "is this claude or gemini under the hood",
@@ -117,8 +121,8 @@ pub fn route(route: RouteId) -> Value {
              which engine it used and why, or a summary or explanation of it, which we answer \
              from its result",
             Some(
-                "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
-                 set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
+                "Facts about OpenAgents or us (product.kb, meta), including what plugins are \
+                 or what they do, what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
                  plugins does even when its name sounds like another product's, and what our \
                  own essays and thesis say about general agents, test-time capabilities, \
                  capability claims, or typed decision models, or a summary, overview, or \
@@ -142,8 +146,8 @@ pub fn route(route: RouteId) -> Value {
             "How to do something in the OpenAgents app or with OpenAgents services, or what an \
              OpenAgents feature is: connecting a phone or a computer and what connecting \
              needs, such as whether Tailscale or another tool is required, the Gym, the Grid, \
-             the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; and which \
-             plugins the Gym has or what one of our plugins does, even when its name sounds \
+             the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; what plugins \
+             are and what they do; and which plugins the Gym has or what one of our plugins does, even when its name sounds \
              like another product's; and what our own essays, Test-Time Capabilities and The \
              Return of the General Agent, say: our thesis on general agents, test-time \
              capabilities, capability claims and deltas, admission and adoption, reach and \
@@ -167,6 +171,7 @@ pub fn route(route: RouteId) -> Value {
             ),
             &[
                 "how do I connect my Mac",
+                "What are plugins?",
                 "what's the Grid",
                 "what is the verse",
                 "what's the pylon thing",

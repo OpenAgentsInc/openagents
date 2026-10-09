@@ -854,7 +854,7 @@ fn ui_starter_chips(gate: &mut Gate) -> Outcome {
         }
         lines_at.push(lines.len());
     }
-    // A tap on "Who are you?" sends it, as the phone's chip does: the key
+    // A tap on "What is OpenAgents?" sends it, as the phone's chip does: the key
     // the click at its middle reached.
     let first = starters[0];
     let tapped = tapped.ok_or("no click reached the first starter")?;
