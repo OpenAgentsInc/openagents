@@ -10395,6 +10395,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-ui"
+version = "0.1.0"
+dependencies = [
+ "maud",
+]
+
+[[package]]
 name = "openagents-wallet"
 version = "0.1.0"
 dependencies = [
