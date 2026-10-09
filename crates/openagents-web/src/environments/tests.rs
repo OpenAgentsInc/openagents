@@ -298,7 +298,7 @@ fn the_list_and_picker_have_their_empty_and_error_states() {
     let list = view::index(&[row]).into_string();
     assert!(list.contains("Needs your answer") && list.contains("Version 2"));
     let pick = view::pick(&view::Pick {
-        mine: None,
+        list: false,
         repo: "nope",
         error: Some("Enter a GitHub repository as owner/name or its github.com address."),
     })
@@ -326,4 +326,111 @@ fn posts_must_come_from_this_site() {
     assert!(same_site(&h));
     h.insert("origin", HeaderValue::from_static("https://evil.example"));
     assert!(!same_site(&h));
+}
+
+#[tokio::test]
+async fn on_a_server_that_signs_people_in_the_pages_need_a_signed_in_person() {
+    use crate::projects::tests::{Browser, world};
+    let world = world().await;
+    let mut browser = Browser::default();
+    // Signed out: log in first, then come back to the same page.
+    for (path, back) in [
+        ("/environments", "%2Fenvironments"),
+        ("/environments/new", "%2Fenvironments%2Fnew"),
+        (
+            "/environments/new?repo=octo%2Frepo",
+            "%2Fenvironments%2Fnew%3Frepo%3Docto%252Frepo",
+        ),
+    ] {
+        let page = browser.get(&world, path).await;
+        assert_eq!(page.status, StatusCode::SEE_OTHER, "{path}: {}", page.body);
+        assert_eq!(page.location(), format!("/login?return_to={back}"));
+    }
+    // The repository list (an HTMX fragment) sends HTMX to log in.
+    let fragment = browser
+        .send(
+            &world,
+            Request::get(super::REPOS).header("hx-request", "true"),
+            Body::empty(),
+        )
+        .await;
+    assert_eq!(fragment.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        fragment.headers["hx-redirect"],
+        "/login?return_to=%2Fenvironments"
+    );
+    // A post from a signed-out browser goes to log in.
+    let post = browser
+        .send(
+            &world,
+            Request::post("/environments")
+                .header("sec-fetch-site", "same-origin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            Body::from("repo=octo%2Frepo"),
+        )
+        .await;
+    assert_eq!(post.status, StatusCode::SEE_OTHER);
+    assert!(post.location().starts_with("/login"));
+    // Signed in, the page and the header agree: no Log in in the header
+    // (this server has no studio, so the page says so).
+    browser.sign_in(&world, "octo-local").await;
+    let page = browser.get(&world, "/environments").await;
+    assert_eq!(page.status, StatusCode::NOT_FOUND, "{}", page.body);
+    assert!(!page.body.contains("href=\"/login"), "{}", page.body);
+}
+
+#[test]
+fn the_empty_state_and_log_in_card_center_in_the_main_area() {
+    let empty = view::index(&[]).into_string();
+    assert!(
+        empty.contains(r#"<div class="oa-page" data-align="center"><div class="oa-empty-message""#),
+        "{empty}"
+    );
+    let css = openagents_ui::stylesheet();
+    assert!(css.contains(r#".oa-page[data-align="center"]"#));
+}
+
+#[test]
+fn the_repository_list_loads_after_the_page_a_page_at_a_time() {
+    let pick = view::pick(&view::Pick {
+        list: true,
+        repo: "",
+        error: None,
+    })
+    .into_string();
+    assert!(
+        pick.contains(r#"hx-get="/environments/repositories?page=1""#),
+        "{pick}"
+    );
+    assert!(pick.contains(r#"hx-trigger="load""#) && pick.contains("Loading your repositories"));
+    assert!(pick.contains("Or paste a GitHub address"));
+    let rows = [
+        view::RepoRow {
+            full_name: "octo/newest",
+            private: true,
+        },
+        view::RepoRow {
+            full_name: "octo/older",
+            private: false,
+        },
+    ];
+    let page = view::repos(&rows, 1, true).into_string();
+    assert!(page.find("octo/newest") < page.find("octo/older"));
+    assert!(
+        page.contains(r#"href="/environments/new?repo=octo%2Fnewest""#),
+        "{page}"
+    );
+    assert!(page.contains("Private") && page.contains("Show more"));
+    assert!(page.contains(r#"hx-get="/environments/repositories?page=2""#));
+    let last = view::repos(&rows, 2, false).into_string();
+    assert!(!last.contains("Show more"));
+    let none = view::repos(&[], 1, false).into_string();
+    assert!(none.contains("No repositories found."));
+    let unconnected = view::repos_unconnected(false).into_string();
+    assert!(unconnected.contains(r#"href="/projects""#));
+    let failed = view::repos_failed("GitHub didn't answer.", 1).into_string();
+    assert!(failed.contains("Try again") && failed.contains(r#"id="env-repos-1""#));
+    for html in [&pick, &page, &none, &unconnected, &failed] {
+        assert!(oa_copy::violations(&text(html), &[]).is_empty(), "{html}");
+    }
 }

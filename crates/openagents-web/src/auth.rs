@@ -110,7 +110,8 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
                 }
             }
         }
-    });
+    })
+    .centered();
     protect(
         UiPage::new(title)
             .path(path)

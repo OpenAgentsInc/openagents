@@ -838,4 +838,4 @@ async fn reconnect(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

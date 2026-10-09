@@ -17,6 +17,23 @@
   max-width: 64rem;
 }
 
+/*
+ * A short page centered in the main area (an empty state, the log in
+ * card): the column fills the workspace's height (a flex column) and
+ * centers its content, with even padding above and below.
+ */
+.oa-page[data-align="center"] {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: calc(var(--spacing) * 8);
+}
+
+.oa-page[data-align="center"] > .oa-empty-message[data-fill="static"] {
+  height: auto;
+}
+
 .oa-page .oa-page-eyebrow,
 .oa-page-eyebrow {
   margin: 0 0 calc(var(--spacing) * 2);
@@ -230,6 +247,11 @@
   max-width: 24rem;
   margin: calc(var(--spacing) * 16) auto 0;
   text-align: center;
+}
+
+.oa-page[data-align="center"] > .oa-sign-in {
+  width: 100%;
+  margin-block: 0;
 }
 
 .oa-sign-in h1 {

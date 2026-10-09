@@ -7,11 +7,14 @@
 use maud::{Markup, Render, html};
 
 /// The reading column of a scrolling page: `div.oa-page`, centered, with
-/// the page's padding. [`PageColumn::wide`] widens it for tables.
+/// the page's padding. [`PageColumn::wide`] widens it for tables;
+/// [`PageColumn::centered`] centers a short page (an empty state, the log
+/// in card) vertically in the main area.
 #[derive(Clone, Debug)]
 pub struct PageColumn {
     content: Markup,
     wide: bool,
+    centered: bool,
 }
 
 impl PageColumn {
@@ -21,6 +24,7 @@ impl PageColumn {
         Self {
             content: content.render(),
             wide: false,
+            centered: false,
         }
     }
 
@@ -30,12 +34,20 @@ impl PageColumn {
         self.wide = true;
         self
     }
+
+    /// Fills the main area's height and centers the content vertically
+    /// (`data-align="center"`): empty states and the log in card.
+    #[must_use]
+    pub fn centered(mut self) -> Self {
+        self.centered = true;
+        self
+    }
 }
 
 impl Render for PageColumn {
     fn render(&self) -> Markup {
         html! {
-            div.oa-page data-width=[self.wide.then_some("wide")] { (self.content) }
+            div.oa-page data-width=[self.wide.then_some("wide")] data-align=[self.centered.then_some("center")] { (self.content) }
         }
     }
 }
@@ -107,6 +119,11 @@ mod tests {
         assert_eq!(
             wide,
             "<div class=\"oa-page\" data-width=\"wide\">&lt;b&gt;</div>"
+        );
+        let centered = PageColumn::new("x").centered().render().into_string();
+        assert_eq!(
+            centered,
+            "<div class=\"oa-page\" data-align=\"center\">x</div>"
         );
     }
 

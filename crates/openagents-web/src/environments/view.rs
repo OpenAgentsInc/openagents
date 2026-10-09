@@ -8,7 +8,7 @@ use coder_environment_operator::studio::claude::{self, Run, RunState};
 use coder_environment_operator::studio::{Status, Summary, View};
 use maud::{Markup, PreEscaped, Render, html};
 use openagents_ui::actions::{
-    Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize, EmptyMessage,
+    Badge, Busy, Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize, EmptyMessage,
 };
 use openagents_ui::content::{
     ActivityStatus, CodeBlock, MarkdownRoot, MarkdownSize, PageColumn, ResultCard, Step, Steps,
@@ -92,6 +92,7 @@ pub(crate) fn index(rows: &[Summary]) -> Markup {
                 )
                 .actions(new),
         )
+        .centered()
         .render();
     }
     let mut table =
@@ -121,10 +122,105 @@ pub(crate) fn index(rows: &[Summary]) -> Markup {
 
 /// What the repository step shows.
 pub(crate) struct Pick<'a> {
-    /// The person's repositories, when GitHub sign-in is available.
-    pub mine: Option<&'a [coder_environment_operator::studio::github::Repo]>,
+    /// Load the person's repositories after the page shows
+    /// ([`super::REPOS`]).
+    pub list: bool,
     pub repo: &'a str,
     pub error: Option<&'a str>,
+}
+
+/// HTMX, for the repository list that loads after the page shows.
+pub(crate) fn htmx_head() -> Markup {
+    html! {
+        meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
+        script src="/static/htmx.min.js" defer {}
+    }
+}
+
+fn repos_href(page: u32) -> String {
+    format!("{}?page={page}", super::REPOS)
+}
+
+/// One repository to choose.
+pub(crate) struct RepoRow<'a> {
+    pub full_name: &'a str,
+    pub private: bool,
+}
+
+/// One page of the person's repositories, each a link to its branch step,
+/// and a Show more button that loads the next page in its place.
+pub(crate) fn repos(rows: &[RepoRow<'_>], page: u32, more: bool) -> Markup {
+    let next = format!("env-repos-{}", page + 1);
+    html! {
+        @if !rows.is_empty() {
+            ul.oa-chat-archive-list role="list" {
+                @for row in rows {
+                    li.oa-chat-archive-row {
+                        span {
+                            (row.full_name)
+                            @if row.private { " " (Badge::new("Private")) }
+                        }
+                        (ButtonLink::new("Choose", format!("/environments/new?repo={}", encode(row.full_name)))
+                            .size(ControlSize::Sm)
+                            .variant(ButtonVariant::Soft)
+                            .color(Color::Secondary)
+                            .attr("aria-label", format!("Choose {}", row.full_name)))
+                    }
+                }
+            }
+        } @else if page == 1 && !more {
+            p { "No repositories found." }
+        }
+        @if more {
+            div id=(next) {
+                (ButtonLink::new("Show more", repos_href(page + 1))
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary)
+                    .attr("hx-get", repos_href(page + 1))
+                    .attr("hx-target", format!("#{next}"))
+                    .attr("hx-swap", "outerHTML"))
+            }
+        }
+    }
+}
+
+/// The list's place when GitHub isn't connected (or stopped accepting the
+/// access): a way to connect it on Projects.
+pub(crate) fn repos_unconnected(reconnect: bool) -> Markup {
+    html! {
+        p {
+            @if reconnect {
+                "GitHub stopped accepting your access. "
+                a href=(crate::projects::RECONNECT) { "Reconnect GitHub" }
+                " to list your repositories."
+            } @else {
+                a href=(crate::projects::PAGE) { "Connect GitHub on Projects" }
+                " to list your repositories, or paste a public repository's address below."
+            }
+        }
+    }
+}
+
+/// The list's place when it couldn't load, with a way to try again.
+pub(crate) fn repos_failed(error: &str, page: u32) -> Markup {
+    let id = format!("env-repos-{page}");
+    html! {
+        div id=(id) {
+            p role="alert" { (error) }
+            (ButtonLink::new("Try again", repos_href(page))
+                .size(ControlSize::Sm)
+                .variant(ButtonVariant::Soft)
+                .color(Color::Secondary)
+                .attr("hx-get", repos_href(page))
+                .attr("hx-target", format!("#{id}"))
+                .attr("hx-swap", "outerHTML"))
+        }
+    }
+}
+
+fn encode(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
 /// `/environments/new`, step one: choose a repository.
@@ -134,19 +230,17 @@ pub(crate) fn pick(p: &Pick<'_>) -> Markup {
             h1 { "New environment" }
             p { "Choose a GitHub repository. An agent will work out how to install it, check the result on a fresh computer, and ask you to save it." }
         }))
-        form.oa-page-form action="/environments/new" method="get" {
-            @if let Some(mine) = p.mine {
-                @if !mine.is_empty() {
-                    (field("env-pick", "Your repositories", None, |aria| {
-                        let mut select = Select::new("pick").id("env-pick").aria(aria).placeholder("Choose a repository");
-                        for r in mine {
-                            select = select.option(r.full_name.clone(), r.full_name.clone());
-                        }
-                        select
-                    }))
+        @if p.list {
+            section.oa-page-form aria-labelledby="env-yours" {
+                (MarkdownRoot::new(html! { h2 #env-yours { "Your repositories" } }))
+                // The list loads after the page shows, newest first.
+                div #env-repos-1 hx-get=(repos_href(1)) hx-trigger="load" hx-swap="outerHTML" {
+                    p { (Busy::new("Loading your repositories")) }
                 }
             }
-            (field("env-repo", if p.mine.is_some_and(|m| !m.is_empty()) { "Or paste a GitHub address" } else { "GitHub repository" }, p.error, |aria| {
+        }
+        form.oa-page-form action="/environments/new" method="get" {
+            (field("env-repo", if p.list { "Or paste a GitHub address" } else { "GitHub repository" }, p.error, |aria| {
                 Input::new("repo")
                     .id("env-repo")
                     .value(p.repo)

@@ -10,10 +10,18 @@
 //!
 //! These pages are local only (the site guard answers them on the local
 //! address, like `/app`), and every post must come from this site.
-//! Repositories come from the signed-in person's own GitHub access when
-//! they connected GitHub on `/projects` ([`crate::projects`]), else from
-//! the studio's GitHub token (`Studio::github`), else from a pasted public
-//! repository address.
+//!
+//! On a server that signs people in, every page here is for a signed-in
+//! person only ([`signed_in_only`], the same sign-in check the header's
+//! account reads, so the page and the header always agree), and
+//! repositories come from that person's own GitHub access (connected on
+//! `/projects`, [`crate::projects`]), or from a pasted public repository
+//! address. Only a server with no sign-in at all uses the studio's own
+//! GitHub token (`Studio::github`).
+//!
+//! `/environments/new` answers at once; the person's repositories load
+//! after it ([`repositories`]), a page of 30 at a time, most recently
+//! pushed first, from the account service's per-account cache.
 
 mod view;
 
@@ -24,8 +32,9 @@ use std::time::Duration;
 
 use axum::Form;
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::middleware::Next;
 use axum::response::sse::{Event, KeepAlive};
 use axum::response::{IntoResponse, Redirect, Response, Sse};
 use axum::routing::{get, post};
@@ -35,6 +44,8 @@ use maud::html;
 use serde::Deserialize;
 
 use crate::App;
+use crate::cloud::session::SessionError;
+use crate::cloud::session::github::RepoCallError;
 use crate::ui_page::UiPage;
 
 static SHOWN: AtomicBool = AtomicBool::new(false);
@@ -49,6 +60,7 @@ pub(crate) fn routes(app: &App) -> Router<App> {
     Router::new()
         .route("/environments", get(index).post(create))
         .route("/environments/new", get(new))
+        .route(REPOS, get(repositories))
         .route("/environments/{id}", get(show))
         .route("/environments/{id}/events", get(events))
         .route("/environments/{id}/message", post(message))
@@ -58,7 +70,63 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         .route("/environments/{id}/runs/{run}", get(run))
         .route("/environments/{id}/runs/{run}/events", get(run_events))
         .route("/environments/{id}/runs/{run}/stop", post(stop))
+        .route_layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            signed_in_only,
+        ))
         .layer(DefaultBodyLimit::max(64 * 1024))
+}
+
+/// Where one page of the person's repositories loads from.
+pub(crate) const REPOS: &str = "/environments/repositories";
+
+/// Whether this server signs people in (then these pages need a
+/// signed-in person, and the studio's own GitHub token is never used).
+fn sign_in(app: &App) -> bool {
+    crate::account::sign_in_available(app)
+}
+
+/// On a server that signs people in, only a signed-in person reaches these
+/// pages: a page asks to log in first and comes back here; a post goes to
+/// the log in page; a fragment or stream answers 401 (HTMX follows its
+/// `HX-Redirect`). The check is the request's shared sign-in
+/// ([`crate::cloud::session::shared`]), the one the header shows.
+async fn signed_in_only(State(app): State<App>, request: Request, next: Next) -> Response {
+    if !sign_in(&app) {
+        return next.run(request).await;
+    }
+    let Some(service) = app.config.cloud.as_deref() else {
+        return next.run(request).await;
+    };
+    match service.authenticate(request.headers()).await {
+        Ok(_) => next.run(request).await,
+        Err(SessionError::Unavailable) => crate::cloud::refused(SessionError::Unavailable),
+        Err(_) => sign_in_first(&request),
+    }
+}
+
+fn sign_in_first(request: &Request) -> Response {
+    let headers = request.headers();
+    let page = request
+        .uri()
+        .path_and_query()
+        .map_or("/environments", |p| p.as_str());
+    let streams = request.uri().path().ends_with("/events");
+    if request.method() == axum::http::Method::GET && !htmx(headers) && !streams {
+        return protect(Redirect::to(&crate::auth::login_href(page, false)).into_response());
+    }
+    let login = crate::auth::login_href("/environments", false);
+    if htmx(headers) {
+        let mut response = StatusCode::UNAUTHORIZED.into_response();
+        if let Ok(value) = HeaderValue::from_str(&login) {
+            response.headers_mut().insert("hx-redirect", value);
+        }
+        return protect(response);
+    }
+    if streams {
+        return protect(StatusCode::UNAUTHORIZED.into_response());
+    }
+    protect(Redirect::to(&login).into_response())
 }
 
 fn protect(response: Response) -> Response {
@@ -77,16 +145,18 @@ fn studio(app: &App) -> Option<&Arc<Studio>> {
     app.config.environments.as_ref()
 }
 
-/// The GitHub client for this request: the signed-in person's own access
-/// when they connected GitHub, else the studio's. The person's token is
-/// used for this request only.
+/// The GitHub client for this request. On a server that signs people in:
+/// the signed-in person's own access when they connected GitHub, else no
+/// token (public repositories only). On a server without sign-in: the
+/// studio's. The person's token is used for this request only.
 async fn github(app: &App, studio: &Studio, headers: &HeaderMap) -> GitHub {
-    if let Some(service) = app.config.cloud.as_deref()
-        && let Ok(token) = service.github_token(headers).await
-    {
-        return GitHub::new(Some(token));
+    if !sign_in(app) {
+        return studio.github().clone();
     }
-    studio.github().clone()
+    match app.config.cloud.as_deref() {
+        Some(service) => GitHub::new(service.github_token(headers).await.ok()),
+        None => GitHub::new(None),
+    }
 }
 
 fn unavailable(headers: &HeaderMap) -> Response {
@@ -170,22 +240,22 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
     } else {
         q.repo.trim()
     };
-    let github = github(&app, studio, &headers).await;
+    let list = sign_in(&app) || studio.github().signed_in();
     if chosen.is_empty() {
-        return pick_page(&github, &headers, "", None).await;
+        return pick_page(list, &headers, "", None);
     }
     let Some(name) = coder_environment_operator::studio::github::RepoName::parse(chosen) else {
         return pick_page(
-            &github,
+            list,
             &headers,
             chosen,
             Some("Enter a GitHub repository as owner/name or its github.com address."),
-        )
-        .await;
+        );
     };
+    let github = github(&app, studio, &headers).await;
     let repo = match github.repository(&name).await {
         Ok(r) => r,
-        Err(e) => return pick_page(&github, &headers, chosen, Some(e.as_str())).await,
+        Err(e) => return pick_page(list, &headers, chosen, Some(e.as_str())),
     };
     let branches = github.branches(&name).await.unwrap_or_default();
     branch_page(
@@ -197,26 +267,15 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
     )
 }
 
-async fn pick_page(
-    github: &GitHub,
-    headers: &HeaderMap,
-    repo: &str,
-    error: Option<&str>,
-) -> Response {
-    let mine = if github.signed_in() {
-        github.repositories().await.ok()
-    } else {
-        None
-    };
-    let content = view::pick(&view::Pick {
-        mine: mine.as_deref(),
-        repo,
-        error,
-    });
+/// The repository step, answered at once: `list` loads the person's
+/// repositories after the page shows ([`repositories`]).
+fn pick_page(list: bool, headers: &HeaderMap, repo: &str, error: Option<&str>) -> Response {
+    let content = view::pick(&view::Pick { list, repo, error });
     protect(
         UiPage::new("New environment")
             .path("/environments/new")
             .section("/environments")
+            .head(view::htmx_head())
             .breadcrumb(view::breadcrumb("New environment"))
             .content(content)
             .status(if error.is_some() {
@@ -226,6 +285,74 @@ async fn pick_page(
             })
             .respond(headers),
     )
+}
+
+#[derive(Deserialize, Default)]
+struct ReposQuery {
+    #[serde(default)]
+    page: Option<u32>,
+}
+
+/// One page of the person's repositories to choose from, and a Show more
+/// button for the next: from the account service on a server that signs
+/// people in (30 a page, cached per account), else from the studio's
+/// token (one read, up to 300).
+async fn repositories(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<ReposQuery>,
+) -> Response {
+    let Some(studio) = studio(&app) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let page = query.page.unwrap_or(1).clamp(1, oa_auth::repos::MAX_PAGE);
+    let body = if sign_in(&app) {
+        let Some(service) = app.config.cloud.as_deref() else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+        match service.github_repositories(&headers, page).await {
+            Ok(listing) => view::repos(
+                &listing
+                    .repositories
+                    .iter()
+                    .map(|r| view::RepoRow {
+                        full_name: &r.full_name,
+                        private: r.private,
+                    })
+                    .collect::<Vec<_>>(),
+                page,
+                listing.more,
+            ),
+            Err(RepoCallError::Repo(
+                oa_auth::repos::RepoError::NotConnected | oa_auth::repos::RepoError::OtherGithub,
+            )) => view::repos_unconnected(false),
+            Err(RepoCallError::Repo(oa_auth::repos::RepoError::Reconnect)) => {
+                view::repos_unconnected(true)
+            }
+            Err(error) => view::repos_failed(&error.to_string(), page),
+        }
+    } else {
+        match studio.github().repositories().await {
+            Ok(found) if page == 1 => view::repos(
+                &found
+                    .iter()
+                    .map(|r| view::RepoRow {
+                        full_name: &r.full_name,
+                        private: r.private,
+                    })
+                    .collect::<Vec<_>>(),
+                1,
+                false,
+            ),
+            Ok(_) => html! {},
+            Err(error) => view::repos_failed(&error, page),
+        }
+    };
+    let mut response = body.into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    protect(response)
 }
 
 fn branch_page(

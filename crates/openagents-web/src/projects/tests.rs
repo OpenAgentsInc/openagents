@@ -27,7 +27,7 @@ const SECRET: &str = "web-test-secret";
 const CHAT: &str = "12345678-1234-4234-8234-123456789abc";
 const LOOSE: &str = "22345678-1234-4234-8234-123456789abc";
 
-struct World {
+pub(crate) struct World {
     _root: tempfile::TempDir,
     site: Router,
     fake: Fake,
@@ -35,7 +35,7 @@ struct World {
     github: reqwest::Client,
 }
 
-async fn world() -> World {
+pub(crate) async fn world() -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -83,22 +83,22 @@ async fn world() -> World {
 }
 
 #[derive(Default)]
-struct Browser(BTreeMap<String, String>);
+pub(crate) struct Browser(BTreeMap<String, String>);
 
-struct Answer {
-    status: StatusCode,
-    headers: HeaderMap,
-    body: String,
+pub(crate) struct Answer {
+    pub(crate) status: StatusCode,
+    pub(crate) headers: HeaderMap,
+    pub(crate) body: String,
 }
 
 impl Answer {
-    fn location(&self) -> &str {
+    pub(crate) fn location(&self) -> &str {
         self.headers[header::LOCATION].to_str().unwrap()
     }
 }
 
 impl Browser {
-    async fn send(
+    pub(crate) async fn send(
         &mut self,
         world: &World,
         request: axum::http::request::Builder,
@@ -142,7 +142,7 @@ impl Browser {
         }
     }
 
-    async fn get(&mut self, world: &World, path: &str) -> Answer {
+    pub(crate) async fn get(&mut self, world: &World, path: &str) -> Answer {
         self.send(world, Request::get(path), Body::empty()).await
     }
 
@@ -179,7 +179,7 @@ impl Browser {
         self.get(world, back.strip_prefix(ORIGIN).unwrap()).await
     }
 
-    async fn sign_in(&mut self, world: &World, login: &str) {
+    pub(crate) async fn sign_in(&mut self, world: &World, login: &str) {
         let done = self
             .through_github(world, "/auth/github?return_to=/", login)
             .await;
