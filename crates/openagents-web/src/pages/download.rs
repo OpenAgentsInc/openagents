@@ -121,7 +121,10 @@ pub(crate) const DOWNLOADS: [Download; 8] = [
         part: Part::Phone,
         platform: "iPhone",
         label: "join the beta",
-        url: Some(super::connect::TESTFLIGHT),
+        // Hidden until Apple's beta review approves a build for the external
+        // group; until then the link says it isn't accepting testers. Set it
+        // back to `Some(super::connect::TESTFLIGHT)` then.
+        url: None,
     },
     Download {
         part: Part::Web,
@@ -242,6 +245,7 @@ pub(crate) fn page(desktop: bool) -> PageColumn {
             }))
         }
         (MarkdownRoot::new(html! {
+            @if shown(Part::Phone, desktop).next().is_some() {
             section aria-labelledby="phone-title" {
                 h2 #phone-title { "Phone" }
                 @for (download, url) in shown(Part::Phone, desktop) {
@@ -262,6 +266,7 @@ pub(crate) fn page(desktop: bool) -> PageColumn {
                         }
                     }
                 }
+            }
             }
             section aria-labelledby="web-title" {
                 h2 #web-title { "Web" }
@@ -435,13 +440,14 @@ mod tests {
                 None => assert!(!page.contains(download.label), "{}", download.label),
             }
         }
-        for heading in ["Coder", "Desktop", "Phone", "Web"] {
+        for heading in ["Coder", "Desktop", "Web"] {
             assert!(
                 page.contains(&format!("-title\">{heading}</h2>")),
                 "{heading}"
             );
         }
-        assert!(page.contains(&format!("href=\"{TESTFLIGHT_APP}\"")));
+        // The iPhone beta is hidden until Apple's review approves a build.
+        assert!(!page.contains("phone-title") && !page.contains(TESTFLIGHT_APP));
         assert!(page.contains("Windows may ask you to confirm: More info \u{2192} Run anyway."));
         assert!(page.contains(CODER_SH) && page.contains(CODER_PS1));
         crate::copy_guard::assert_plain("/download", &page);
@@ -454,7 +460,7 @@ mod tests {
             assert!(!page.contains(download.url.unwrap()), "{download:?}");
         }
         assert!(!page.contains("desktop-title") && !page.contains("Run anyway"));
-        assert!(page.contains(super::super::connect::TESTFLIGHT));
+        assert!(!page.contains(super::super::connect::TESTFLIGHT));
         assert!(page.contains("href=\"https://openagents.com/\""));
     }
 

@@ -1288,10 +1288,14 @@ async fn the_download_page_offers_every_platform_from_its_table() {
         }
     }
     assert_eq!(links, expected, "{body}");
-    assert!(body.contains(pages::TESTFLIGHT));
+    // The Phone section shows only while a phone download is listed.
+    let phone = pages::shown(pages::Part::Phone, pages::DESKTOP_RELEASED)
+        .next()
+        .is_some();
+    assert_eq!(body.contains(pages::TESTFLIGHT), phone);
     assert!(!main.to_lowercase().contains("microcoder"), "{main}");
     assert!(body.contains("<h2 id=\"coder-title\">Coder</h2>"));
-    assert!(body.contains("<h2 id=\"phone-title\">Phone</h2>"));
+    assert_eq!(body.contains("<h2 id=\"phone-title\">Phone</h2>"), phone);
     assert!(body.contains("<h2 id=\"web-title\">Web</h2>"));
     assert!(body.contains("<title>Download OpenAgents \u{b7} OpenAgents</title>"));
     assert!(body.contains("<h1>Download OpenAgents</h1>"));
