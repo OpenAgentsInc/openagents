@@ -26,9 +26,9 @@ needs no demo account, and **Sign-in required** is **No**.
 >    **Accept**, then **Install**.
 > 3. Open OpenAgents. There is no sign-in: start typing in Chat.
 >
-> To reach your own computer from the phone, get OpenAgents at
-> <https://openagents.com/download>, run `openagents connect invite` on the
-> computer, and scan the code from **Account > Computers**.
+> To reach your own computer from the phone, open **Account > Computers >
+> Connect a computer** and follow the steps there (it starts with
+> `curl -fsSL https://openagents.com/cli/install.sh | bash` on the computer).
 >
 > Something wrong? **Account > Report a problem**, or take a screenshot and
 > send it as TestFlight feedback.
@@ -43,9 +43,8 @@ The build's What to Test text is `whatToTest` in
 > 1. Chat: ask anything, or tap a suggested question. The answer streams in.
 > 2. Wallet: your balance, Receive, and Send. It is a real Bitcoin wallet, so
 >    keep only small amounts in it during the beta.
-> 3. Account: open each row. To reach your own computer, get OpenAgents at
->    https://openagents.com/download, run openagents connect invite on it, and
->    scan the code from Account > Computers.
+> 3. Account: open each row. To reach your own computer, open Account >
+>    Computers > Connect a computer and follow the steps there.
 >
 > Something wrong? Account > Report a problem, or take a screenshot and send
 > it as TestFlight feedback.
@@ -70,9 +69,10 @@ Set from the same file (`review`):
 > 3. Account tab: Report a problem, Computers, Appearance, Your keys, Identity
 >    keys, About this device, Changelog, Source code, and Follow us on X.
 >
-> Computers is optional: it pairs the phone with a computer running
-> OpenAgents (https://openagents.com/download, then openagents connect invite
-> shows a code to scan). Nothing else in the app needs a computer.
+> Computers is optional: it pairs the phone with a computer running our
+> command-line app (install: curl -fsSL https://openagents.com/cli/install.sh
+> | bash; then openagents connect invite shows a code to scan). Nothing else
+> in the app needs a computer.
 
 Test information for the app (also from the file): the beta description,
 feedback email chris@openagents.com, marketing URL https://openagents.com,

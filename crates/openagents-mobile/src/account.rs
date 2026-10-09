@@ -38,7 +38,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "54",
         title: "OpenAgents 1.0 beta",
-        what_to_test: "No sign-in is needed. In Chat, ask anything or tap a suggested question: the reply should stream in. Open Wallet: it should show your balance, Receive, and Send. In Account, open each row: Computers, Appearance, Your keys, Identity keys, About this device, Changelog, and Report a problem. To reach your own computer, get OpenAgents at https://openagents.com/download, run openagents connect invite there, and scan the code from Account > Computers.",
+        what_to_test: "No sign-in is needed. In Chat, ask anything or tap a suggested question: the reply should stream in. Open Wallet: it should show your balance, Receive, and Send. In Account, open each row: Computers, Appearance, Your keys, Identity keys, About this device, Changelog, and Report a problem. To reach your own computer, open Account > Computers > Connect a computer and follow the steps there.",
         items: &[
             Item {
                 title: "Three tabs",
@@ -46,7 +46,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Plainer words",
-                detail: "Your keys and Connect a computer say what to do in plain words, with the download link.",
+                detail: "Your keys says what to do in plain words.",
             },
         ],
     },
