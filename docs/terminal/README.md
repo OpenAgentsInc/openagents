@@ -27,6 +27,9 @@ requests, proposals, and durable sessions. Every surface names the
 resources it shows with the [workbench resource references](workbench-resources.md).
 The [program status proposal](program-status-osc7501.md) decides how our
 programs, host, and clients adopt OSC 7501 to show what each pane is doing.
+The [multiplexing lessons](multiplexing-lessons.md) record what to adopt for
+reattach, multiple clients, backpressure, and recovery, mapped to NIP-TERM
+and the terminal crates.
 Those roadmap additions are
 planned until their issues have retained release evidence.
 The [issue directory](issue-roadmap.md) maps the full plan to the public
