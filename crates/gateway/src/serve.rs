@@ -563,6 +563,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());
         routes.extend(crate::sso::routes());
+        routes.extend(crate::github_repos::routes());
         routes.extend(crate::usage::routes());
         routes.extend(crate::dashboard::routes());
         routes.extend(crate::playground::routes());
