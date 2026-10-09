@@ -122,11 +122,14 @@ as `crates/coder-ui/NOTICE` already does for its sources.
    - The token values are generated from one Rust table (extending
      `coder-ui`'s `coder_noir.rs` with a sibling `coder_light.rs`) by a small
      generator binary that writes the CSS. Native and web then cannot drift.
-6. **Theme selection**: `data-theme` on `<html>`, defaulting to
-   `prefers-color-scheme`. The choice is stored in a first-party cookie read on
-   the server, so the first paint has the right theme and there is no flash.
-   A small Alpine toggle sets it. Nested `data-theme` lets a single panel, such
-   as a terminal, stay dark inside a light page.
+6. **Theme selection** (owner decision, 2026-10-08): the toggle starts on the
+   system setting (`prefers-color-scheme`, no `data-theme` set), and one click
+   switches to the opposite of what is showing: light to dark, dark to light.
+   It never cycles through a third "system" state. The choice is stored in a
+   first-party cookie read on the server, so the next page paints in the right
+   theme with no flash; clearing the cookie returns to the system setting.
+   Nested `data-theme` lets a single panel, such as a terminal, stay dark
+   inside a light page.
 7. **Fonts**: keep Geist for body text and Paper Mono for code instead of Apps
    SDK UI's system sans. The type scale (sizes, line heights, weights,
    tracking) comes from Apps SDK UI. Revisit after Coder Light is on screen.
@@ -229,12 +232,14 @@ files.
 - **Size**: keep the shipped CSS under the current 46 KB plus the token
   files, by deleting old CSS as pages move.
 
+## Decisions taken (2026-10-08)
+
+- **Accent**: neutral black for Coder Light, matching Apps SDK UI's light
+  primary. Coder Noir keeps its near-white neutral.
+- **Default theme**: follow the system setting, with a one-click light/dark
+  toggle (decision 6).
+
 ## Open questions
 
-- **Accent color**: Coder Noir's accent is a near-white, neutral `#ededed`.
-  Coder Light can use Apps SDK UI's light neutral (black) or a brand accent.
-  The default in this plan is neutral black.
-- **Fonts**: Geist and Paper Mono, or Apps SDK UI's system sans, for Coder
-  Light.
-- **Default theme**: follow the system setting (as planned), or always start
-  in Coder Noir.
+- **Fonts**: Geist and Paper Mono, or Apps SDK UI's system sans and mono, for
+  Coder Light. A side-by-side comparison page is being reviewed.
