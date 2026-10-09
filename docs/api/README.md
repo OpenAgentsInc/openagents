@@ -8,6 +8,7 @@ hides it today; payment is x402.
 
 | Document | What it covers |
 | --- | --- |
+| [API design: public and internal (2026-10-09)](design.md) | The target shape of every endpoint we serve: principles (one base URL, OpenAPI 3.1, versioning, idempotency, cursor pagination, one error shape, auth and `oak_` scopes, tenancy, events, privacy classes), every route mapped by data domain to PUBLIC, FIRST-PARTY, or INTERNAL with its status, which service owns what, what is public at launch and never, the inconsistencies, and the migration plan. Start here. |
 | [The OpenAgents API (design, 2026-10-02)](2026-10-02-openagents-api.md) | The owner's decisions; plain HTTP at `api.openagents.com` with curl examples for every main call; how our front turns each call into NIP traffic and where keys live; x402 Lightning payment with the 402, pay, retry flow; the endpoint-to-NIP table and the NIP gaps; where it runs; the phased path; and what is still open. |
 | [A router for agentic execution (plan, 2026-10-02)](2026-10-02-agentic-execution-router.md) | Outcome-based routing, explicit execution and disclosure grants, durable task recovery, payment and settlement boundaries, evidence, and phased implementation gates. |
 
