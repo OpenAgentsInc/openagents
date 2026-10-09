@@ -37,10 +37,10 @@ const KIT_BAKE_HISTORY: &[&str] = &[KIT_BAKE_SHA256];
 /// layers with only [`PHONE_SUNS`] (`verse-bake --phone-layers`), or empty
 /// while none is published.
 #[rustfmt::skip]
-pub const KIT_BAKE_PHONE_SHA256: &str = "";
+pub const KIT_BAKE_PHONE_SHA256: &str = "a55d55e1e948bd425e17a0ad5b17d059464514cf8c38874e6c71453c80baf351";
 /// Transfer size of the phone tier's light layers; zero while none is
 /// published.
-pub const KIT_BAKE_PHONE_BYTES: u64 = 0;
+pub const KIT_BAKE_PHONE_BYTES: u64 = 34206277;
 /// The phone tier's light-layer transfer budget.
 pub const KIT_BAKE_PHONE_BUDGET: u64 = 40 * 1024 * 1024;
 // Retain previous reviewed digests here when changing KIT_BAKE_PHONE_SHA256.
