@@ -404,6 +404,13 @@ files are included below.
 | [history/2026-09-26-retired-gym-migration.md](history/2026-09-26-retired-gym-migration.md) | Historical | The Gym |
 | [history/README.md](history/README.md) | Historical | Historical surveys |
 
+## inference
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [inference/README.md](inference/README.md) | Index | Inference |
+| [inference/gateway.md](inference/gateway.md) | Design / plan | The inference gateway: Open Responses and Chat Completions, upstream accounts, credit-aware routing, measurement, rate card, rollout |
+
 ## kev
 
 | Document | Role | Topic |

@@ -33,6 +33,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Earn revenue from Coder: what businesses want, pricing, referrals, partners, and the sales roadmap | [Sales](sales/README.md), [revenue roadmap](sales/revenue-roadmap.md), [agent sales floor in Everglade](sales/agent-sales-floor.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |
 | Call the Pro inference door (GPT-5.6 Sol, Terra, and Luna) | [Pro inference door](gateway/README.md) |
+| Plan our own inference gateway: every model account behind one Open Responses API, for our apps and the public | [Inference gateway spec](inference/gateway.md) |
 | Work on model implementations | [Kev](kev/README.md), [Lev](lev/README.md), [Laya](laya/README.md) |
 | Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |
 | Operate the relay | [Deployment](deployment/README.md) |
