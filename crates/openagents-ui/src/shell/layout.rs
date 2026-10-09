@@ -701,6 +701,7 @@ pub struct Sidebar {
     sections: Vec<Markup>,
     bottom: Vec<NavItem>,
     footer: Option<Markup>,
+    corner: Option<Markup>,
 }
 
 impl Sidebar {
@@ -753,6 +754,15 @@ impl Sidebar {
     #[must_use]
     pub fn footer(mut self, footer: impl Render) -> Self {
         self.footer = Some(footer.render());
+        self
+    }
+
+    /// A control pinned to the bottom-right corner of the panel, on the same
+    /// row as the footer, such as the [`super::ThemeToggle`]. It stays
+    /// reachable when the panel is collapsed to its rail.
+    #[must_use]
+    pub fn corner(mut self, corner: impl Render) -> Self {
+        self.corner = Some(corner.render());
         self
     }
 }
@@ -961,16 +971,21 @@ fn render_sidebar(sidebar: &Sidebar) -> Markup {
                 }
                 @for section in &sidebar.sections { (section) }
             }
-            @if !sidebar.bottom.is_empty() || sidebar.footer.is_some() {
+            @if !sidebar.bottom.is_empty() || sidebar.footer.is_some() || sidebar.corner.is_some() {
                 div class="oa-sidebar-footer" {
-                    @if !sidebar.bottom.is_empty() {
-                        nav class="oa-sidebar-bottom" aria-label="More" {
-                            ul class="oa-nav-list" role="list" {
-                                @for item in &sidebar.bottom { (item) }
+                    div class="oa-sidebar-footer-main" {
+                        @if !sidebar.bottom.is_empty() {
+                            nav class="oa-sidebar-bottom" aria-label="More" {
+                                ul class="oa-nav-list" role="list" {
+                                    @for item in &sidebar.bottom { (item) }
+                                }
                             }
                         }
+                        @if let Some(footer) = &sidebar.footer { (footer) }
                     }
-                    @if let Some(footer) = &sidebar.footer { (footer) }
+                    @if let Some(corner) = &sidebar.corner {
+                        div class="oa-sidebar-corner" { (corner) }
+                    }
                 }
             }
         }

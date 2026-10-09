@@ -364,7 +364,8 @@ fn every_rendered_class_has_a_rule() {
                         .trailing(html! { "1" }),
                 )
                 .section(SidebarSection::new("Chats").empty("No chats yet"))
-                .footer(ThemeToggle::new().fallback_action("/theme")),
+                .footer(html! { "f" })
+                .corner(ThemeToggle::new().fallback_action("/theme")),
         )
         .actions(ThemeToggle::new())
         .composer(
@@ -795,4 +796,21 @@ fn a_select_can_belong_to_a_form_it_sits_outside() {
         html.contains(r#"name="project" form="chat-form""#),
         "{html}"
     );
+}
+
+#[test]
+fn the_corner_control_renders_in_the_sidebar_footer_row() {
+    let html = AppShell::new()
+        .sidebar(
+            Sidebar::new()
+                .footer(html! { "acct" })
+                .corner(ThemeToggle::new()),
+        )
+        .render()
+        .into_string();
+    let footer = html.find("oa-sidebar-footer\"").unwrap();
+    let corner = html.find("oa-sidebar-corner").unwrap();
+    let toggle = html.find("data-oa-theme-toggle").unwrap();
+    assert!(footer < html.find("acct").unwrap());
+    assert!(html.find("acct").unwrap() < corner && corner < toggle);
 }

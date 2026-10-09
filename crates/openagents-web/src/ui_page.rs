@@ -239,6 +239,11 @@ impl UiPage {
         let signed_out = account == Account::SignedOut;
         let log_in = crate::auth::login_href(&self.return_to, false);
         let sign_up = crate::auth::login_href(&self.return_to, true);
+        let toggle = self.toggle.then(|| {
+            ThemeToggle::new()
+                .fallback_action(theme::TOGGLE_PATH)
+                .return_to(self.return_to.clone())
+        });
         let sidebar = match account {
             Account::SignedIn {
                 name,
@@ -276,11 +281,11 @@ impl UiPage {
                 .bottom(NavItem::new("Log in", &log_in).icon(Icon::EnterLogin.size(IconSize::Md))),
             Account::Unknown => sidebar.bottom(docs),
         };
-        let toggle = self.toggle.then(|| {
-            ThemeToggle::new()
-                .fallback_action(theme::TOGGLE_PATH)
-                .return_to(self.return_to)
-        });
+        // The theme toggle sits in the sidebar's bottom-right corner.
+        let sidebar = match toggle {
+            Some(toggle) => sidebar.corner(toggle),
+            None => sidebar,
+        };
         let on_download = current == Some(DOWNLOAD);
         let mut download = ButtonLink::new("Download", DOWNLOAD)
             .color(Color::Secondary)
@@ -305,7 +310,6 @@ impl UiPage {
                     .size(ControlSize::Sm)
                     .pill(true))
             }
-            @if let Some(toggle) = toggle { (toggle) }
         };
         let mut shell = AppShell::new()
             .mode(self.mode)
@@ -492,11 +496,14 @@ mod tests {
         assert!(html.contains(
             "<span class=\"oa-breadcrumb-current\" aria-current=\"page\" title=\"Download OpenAgents\">"
         ));
-        // Download is a pill link in the header actions, before the toggle.
+        // Download is a pill link in the header actions; the theme toggle
+        // sits in the sidebar's bottom-right corner, not the header.
         let actions = html.find("class=\"oa-main-header-actions\"").unwrap();
         let download = html.find("href=\"/download\"").unwrap();
         let toggle = html.find("data-oa-theme-toggle").unwrap();
-        assert!(actions < download && download < toggle);
+        assert!(actions < download);
+        assert!(sidebar_footer < toggle && toggle < aside_end);
+        assert!(html.contains("class=\"oa-sidebar-corner\""));
         assert!(html[download.saturating_sub(200)..download].contains("oa-button"));
         assert!(html.contains("data-pill"), "{html}");
         assert!(

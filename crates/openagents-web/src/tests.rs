@@ -416,7 +416,10 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert_eq!(home.matches("href=\"/download\"").count(), 1);
     assert!(home.find("class=\"oa-main-header-actions\"").unwrap() < download);
     assert!(home[home[..download].rfind('<').unwrap()..download].contains("class=\"oa-button\""));
-    assert!(download < home.find("data-oa-theme-toggle").unwrap());
+    // The theme toggle sits in the sidebar's bottom-right corner.
+    let toggle = home.find("data-oa-theme-toggle").unwrap();
+    assert!(home.find("class=\"oa-sidebar-corner\"").unwrap() < toggle);
+    assert!(toggle < home.find("</aside>").unwrap());
     // No Chat or Cloud entries; "New chat" heads the left panel.
     assert!(!home.contains("href=\"/chat\"") && !home.contains("href=\"/cloud/app\""));
     assert!(home.contains(">New chat</span>"));
