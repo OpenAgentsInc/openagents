@@ -319,6 +319,7 @@ fn event(kind: &str, fields: &[(&str, Value)]) -> Event {
         provider_ref: None,
         provider_subscription: None,
         customer: None,
+        charges: Vec::new(),
         received: 0,
         applied: false,
         outcome: String::new(),

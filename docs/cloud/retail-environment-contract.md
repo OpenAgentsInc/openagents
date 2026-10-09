@@ -194,6 +194,56 @@ live keys and live events. Stripe's webhook points at `POST /v1/billing/webhook`
 | `invoice.paid` | The paid month (the invoice line's period) is recorded with `record_period`, and the workspace that pays extra hours is named. A renewal starts a new month, so hours reset. An invoice that arrives before its checkout is recorded and answered 409, so Stripe sends it again. |
 | `invoice.payment_failed` | Past due. No new month is recorded: the paid month runs to its end, then setups refuse ("Saved environments come with the Pro plan.") until Stripe collects, when `invoice.paid` records that month. |
 | `customer.subscription.deleted` | The subscription ends; a month cut short ends then (`end_period`). Saved images stay 30 days, then retire. |
+| `charge.refunded` | A **full** refund: see Refunds and disputes below. A partial refund is acknowledged and changes nothing. |
+| `charge.dispute.created` | The subscription is at risk; new paid months wait. See below. |
+| `charge.dispute.closed` | `won` (or `warning_closed`) clears the risk; `lost` is treated like a full refund. Any other status is acknowledged and waits for the final one. |
+
+### Refunds and disputes (#11074)
+
+Every one of these arrives on the same signed `POST /v1/billing/webhook`
+(same signature check, same test/live refusal, same event-id idempotency) and
+is placed on the invoice it paid: by the charge or payment-intent references
+recorded when `invoice.paid` arrived, by the invoice a charge names, or by the
+subscription's customer and amount. A dispute names only its charge, so the
+gateway reads that one charge back from Stripe (`GET /v1/charges/{id}`, same
+key and mode) when the book can't place it; if Stripe can't answer, the
+webhook answers 503 and Stripe sends the event again. A charge that is not a
+subscription payment is acknowledged and ignored.
+
+- **Full refund.** The invoice closes as refunded and the allowance it granted
+  is taken back from the workspace's credits (never more than is unspent, and
+  once, keyed `billing:refund:<invoice>`). When that invoice paid the month the
+  subscription stands in, the month **ends at the event's time**
+  (`end_period`), the subscription is cancelled, setups refuse ("Saved
+  environments come with the Pro plan."), and Settings says "Your last Pro
+  payment was refunded, so Pro ended." Hours already counted stay counted. A
+  refund of an earlier month only takes back its allowance. Paying again later
+  starts a fresh month and clears the message.
+- **Partial refund.** The month stands; nothing changes.
+- **Dispute opened.** The subscription is marked at risk. The month already
+  paid runs to its end and nothing is taken back yet, but **no new paid month
+  starts while the dispute is open**: an `invoice.paid` for a later month is
+  answered 409 `not_yet` without being recorded, so Stripe sends it again (its
+  retries last about three days; after that, resend the event from the Stripe
+  Dashboard once the dispute has closed). Settings says "Your bank has opened a
+  dispute on a Pro payment. Pro stays on for the month you paid for, and a new
+  month won't start until the dispute is closed."
+- **Dispute won.** The invoice is paid again, the risk is cleared, the message
+  goes, and new months start as usual.
+- **Dispute lost.** Handled once, like a full refund (the money already went
+  back to the bank): the allowance is taken back (`billing:dispute:<invoice>`),
+  the paid month ends at the event's time, the subscription is cancelled, and
+  Settings says "Your bank reversed a Pro payment, so Pro ended."
+- **Once.** The event id is the journal key, so a repeated event is a
+  duplicate; a second event for an invoice already closed, or for a dispute
+  already opened or closed, is superseded. A closing event that arrives before
+  its opening one wins: the late opening is superseded.
+
+The sandbox provider's one-step `charge-disputed` event (claw back at once) is
+unchanged; the Stripe dispute steps are `dispute-opened`, `dispute-won` and
+`dispute-lost`. Checks: the three refund/dispute tests in
+`crates/gateway/tests/billing_stripe.rs` and the Settings messages in
+`subscribe_opens_stripe_checkout_and_settings_shows_pro_after_the_event`.
 
 Cancelling happens on Stripe's billing page; the gateway's own cancel route
 answers `cancel_in_portal` under Stripe so a cancel can never leave Stripe

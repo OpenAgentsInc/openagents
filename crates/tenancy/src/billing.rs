@@ -348,9 +348,22 @@ pub struct Subscription {
     /// The provider's customer reference, when the provider keeps one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub customer: Option<String>,
+    /// An open dispute on one of its payments: the subscription is at
+    /// risk and no new paid month starts until the dispute closes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispute: Option<Dispute>,
     /// The transition journal, bounded.
     #[serde(default)]
     pub history: Vec<Transition>,
+}
+
+/// A cardholder dispute open on a subscription payment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Dispute {
+    /// The provider's dispute reference (`dp_…` at Stripe).
+    pub id: String,
+    /// The invoice whose payment is disputed.
+    pub invoice: String,
 }
 
 /// An invoice's standing.
@@ -367,6 +380,8 @@ pub enum InvoiceState {
     Refunded,
     /// The charge is under dispute.
     Disputed,
+    /// The dispute closed against the merchant: the money went back.
+    DisputeLost,
 }
 
 impl std::fmt::Display for InvoiceState {
@@ -377,6 +392,7 @@ impl std::fmt::Display for InvoiceState {
             Self::Failed => "failed",
             Self::Refunded => "refunded",
             Self::Disputed => "disputed",
+            Self::DisputeLost => "dispute-lost",
         })
     }
 }
@@ -408,6 +424,10 @@ pub struct Invoice {
     /// When it last changed standing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<u64>,
+    /// The provider's references to the payment that settled it (charge
+    /// and payment intent), so a later refund or dispute finds it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub charges: Vec<String>,
 }
 
 /// A provider event as the webhook verified it — the deduplicated
@@ -420,7 +440,11 @@ pub struct Event {
     /// The provider's event id — the dedup key.
     pub id: String,
     /// `checkout-completed`, `invoice-paid`, `invoice-failed`,
-    /// `subscription-cancelled`, `charge-refunded`, `charge-disputed`.
+    /// `subscription-cancelled`, `charge-refunded` (a full refund),
+    /// `charge-disputed` (the sandbox's one-step dispute that takes the
+    /// money back at once), and the Stripe dispute's three steps:
+    /// `dispute-opened` (at risk, nothing taken back), `dispute-won`, and
+    /// `dispute-lost` (like a refund).
     pub kind: String,
     /// The checkout the event names, when it names one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -456,6 +480,10 @@ pub struct Event {
     /// (`cus_…` at Stripe) — what the billing portal opens for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub customer: Option<String>,
+    /// On `invoice-paid`, the provider's references to the payment
+    /// (recorded on the invoice for later refunds and disputes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub charges: Vec<String>,
     /// When the webhook accepted it — the server writes this; a
     /// provider body does not carry it.
     #[serde(default)]
@@ -837,6 +865,7 @@ impl BillingBook {
             provider_ref: None,
             grace_ends: None,
             customer: None,
+            dispute: None,
             history: Vec::new(),
         };
         subscription.history.push(Transition {
@@ -975,6 +1004,9 @@ impl BillingBook {
             "subscription-cancelled" => self.subscription_cancelled(event, now),
             "charge-refunded" => self.charge_refunded(event, now, false),
             "charge-disputed" => self.charge_refunded(event, now, true),
+            "dispute-opened" => self.dispute_opened(event, now),
+            "dispute-won" => self.dispute_won(event, now),
+            "dispute-lost" => self.charge_refunded(event, now, true),
             other => Outcome::Ignored(format!("unknown event kind `{other}`")),
         }
     }
@@ -1066,6 +1098,7 @@ impl BillingBook {
                         .or_else(|| event.provider_ref.clone()),
                     grace_ends: None,
                     customer: event.customer.clone(),
+                    dispute: None,
                     history: Vec::new(),
                 };
                 subscription.history.push(Transition {
@@ -1138,7 +1171,23 @@ impl BillingBook {
                 provider_ref: event.provider_ref.clone().unwrap_or_default(),
                 created: now,
                 resolved: None,
+                charges: event.charges.clone(),
             });
+        if let Some(invoice) = self.invoices.get_mut(&invoice_id) {
+            for charge in &event.charges {
+                if !invoice.charges.contains(charge) {
+                    invoice.charges.push(charge.clone());
+                }
+            }
+        }
+        // A dispute pauses new paid months until it closes. The gateway
+        // answers such an invoice "not yet" before journaling it, so the
+        // provider sends it again; this is the book's own guard.
+        if event.period > subscription.period && subscription.dispute.is_some() {
+            return Outcome::Ignored(
+                "a dispute is open; no new month starts until it closes".into(),
+            );
+        }
         if event.period <= subscription.period && subscription.state == SubscriptionState::Active {
             self.invoices.get_mut(&invoice_id).unwrap().state = InvoiceState::Paid;
             return Outcome::Superseded(format!(
@@ -1233,6 +1282,7 @@ impl BillingBook {
                     provider_ref: event.provider_ref.clone().unwrap_or_default(),
                     created: now,
                     resolved: None,
+                    charges: event.charges.clone(),
                 });
             invoice.state = InvoiceState::Failed;
             invoice.resolved = Some(now);
@@ -1292,6 +1342,10 @@ impl BillingBook {
         Outcome::Applied(Vec::new())
     }
 
+    /// A full refund, or a lost dispute: the invoice is closed, the
+    /// allowance it granted is taken back (clamped to what is unspent),
+    /// and when it paid the month the subscription stands in, that month
+    /// ends now.
     fn charge_refunded(&mut self, event: &Event, now: u64, disputed: bool) -> Outcome {
         let invoice_id = match &event.invoice {
             Some(id) => id.clone(),
@@ -1301,11 +1355,17 @@ impl BillingBook {
             Some(invoice) => invoice,
             None => return Outcome::Ignored(format!("unknown invoice `{invoice_id}`")),
         };
-        if invoice.state == InvoiceState::Refunded || invoice.state == InvoiceState::Disputed {
+        if matches!(
+            invoice.state,
+            InvoiceState::Refunded | InvoiceState::DisputeLost
+        ) {
             return Outcome::Superseded("invoice already closed".into());
         }
+        if invoice.state != InvoiceState::Paid && invoice.state != InvoiceState::Disputed {
+            return Outcome::Ignored(format!("invoice `{invoice_id}` was never paid"));
+        }
         invoice.state = if disputed {
-            InvoiceState::Disputed
+            InvoiceState::DisputeLost
         } else {
             InvoiceState::Refunded
         };
@@ -1315,6 +1375,8 @@ impl BillingBook {
         } else {
             invoice.amount
         };
+        let workspace = invoice.workspace.clone();
+        let (subscription_id, period) = (invoice.subscription.clone(), invoice.period);
         let kind = if disputed { "dispute" } else { "refund" };
         let source = format!("billing:{kind}:{invoice_id}");
         let audit = format!("{kind} on invoice {invoice_id}");
@@ -1322,19 +1384,129 @@ impl BillingBook {
             source.clone(),
             Clawback {
                 source: source.clone(),
-                workspace: invoice.workspace.clone(),
+                workspace: workspace.clone(),
                 amount,
                 kind: kind.to_string(),
                 issued: now,
                 audit: audit.clone(),
             },
         );
+        if let Some(subscription) = subscription_id
+            .as_ref()
+            .and_then(|id| self.subscriptions.get_mut(id))
+        {
+            if subscription
+                .dispute
+                .as_ref()
+                .is_some_and(|d| d.invoice == invoice_id)
+            {
+                subscription.dispute = None;
+            }
+            let current = period == subscription.period
+                && matches!(
+                    subscription.state,
+                    SubscriptionState::Active | SubscriptionState::PastDue
+                );
+            if current {
+                subscription.state = SubscriptionState::Cancelled;
+                subscription.cancel_at = Some(now);
+                subscription.pending_plan = None;
+                subscription.grace_ends = None;
+                subscription.history.push(Transition {
+                    at: now,
+                    action: if disputed { "dispute-lost" } else { "refunded" }.to_string(),
+                    plan: subscription.plan.clone(),
+                    period: subscription.period,
+                    source: format!("invoice {invoice_id}"),
+                });
+            }
+        }
         Outcome::Applied(vec![Effect::Debit {
-            workspace: invoice.workspace.clone(),
+            workspace,
             source,
             amount,
             audit,
         }])
+    }
+
+    /// A dispute opened on a paid invoice: the subscription is at risk
+    /// and no new paid month starts until the dispute closes. Nothing is
+    /// taken back yet; the outcome decides.
+    fn dispute_opened(&mut self, event: &Event, now: u64) -> Outcome {
+        let (Some(invoice_id), Some(dispute_id)) = (&event.invoice, &event.provider_ref) else {
+            return Outcome::Ignored("no invoice or dispute named".into());
+        };
+        // A closing event that arrived first settles the dispute for good.
+        if self.events.values().any(|e| {
+            matches!(e.kind.as_str(), "dispute-won" | "dispute-lost")
+                && e.applied
+                && e.provider_ref.as_ref() == Some(dispute_id)
+        }) {
+            return Outcome::Superseded("dispute already closed".into());
+        }
+        let Some(invoice) = self.invoices.get_mut(invoice_id) else {
+            return Outcome::Ignored(format!("unknown invoice `{invoice_id}`"));
+        };
+        if invoice.state != InvoiceState::Paid {
+            return Outcome::Superseded(format!("invoice is already {}", invoice.state));
+        }
+        invoice.state = InvoiceState::Disputed;
+        invoice.resolved = Some(now);
+        if let Some(subscription) = invoice
+            .subscription
+            .clone()
+            .and_then(|id| self.subscriptions.get_mut(&id))
+        {
+            subscription.dispute = Some(Dispute {
+                id: dispute_id.clone(),
+                invoice: invoice_id.clone(),
+            });
+            subscription.history.push(Transition {
+                at: now,
+                action: "at-risk".to_string(),
+                plan: subscription.plan.clone(),
+                period: subscription.period,
+                source: format!("dispute {dispute_id}"),
+            });
+        }
+        Outcome::Applied(Vec::new())
+    }
+
+    /// A dispute closed in the merchant's favour: the payment stands and
+    /// new paid months may start again.
+    fn dispute_won(&mut self, event: &Event, now: u64) -> Outcome {
+        let Some(invoice_id) = &event.invoice else {
+            return Outcome::Ignored("no invoice named".into());
+        };
+        let Some(invoice) = self.invoices.get_mut(invoice_id) else {
+            return Outcome::Ignored(format!("unknown invoice `{invoice_id}`"));
+        };
+        if invoice.state != InvoiceState::Disputed {
+            return Outcome::Superseded(format!("invoice is {}", invoice.state));
+        }
+        invoice.state = InvoiceState::Paid;
+        invoice.resolved = Some(now);
+        if let Some(subscription) = invoice
+            .subscription
+            .clone()
+            .and_then(|id| self.subscriptions.get_mut(&id))
+        {
+            if subscription
+                .dispute
+                .as_ref()
+                .is_some_and(|d| d.invoice == *invoice_id)
+            {
+                subscription.dispute = None;
+                subscription.history.push(Transition {
+                    at: now,
+                    action: "dispute-won".to_string(),
+                    plan: subscription.plan.clone(),
+                    period: subscription.period,
+                    source: format!("invoice {invoice_id}"),
+                });
+            }
+        }
+        Outcome::Applied(Vec::new())
     }
 
     /// Cancel through the management route — identical state change to
@@ -2155,6 +2327,7 @@ mod tests {
             provider_ref: None,
             provider_subscription: None,
             customer: None,
+            charges: Vec::new(),
             received: 0,
             applied: false,
             outcome: String::new(),

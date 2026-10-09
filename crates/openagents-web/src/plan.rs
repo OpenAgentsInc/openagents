@@ -22,7 +22,7 @@ use maud::{Markup, html};
 use openagents_ui::actions::{Button, ButtonType};
 use openagents_ui::forms::{Checkbox, Field, Input, InputType};
 use retail_cloud::environment::{
-    self, EnvironmentPlan, ExtraHours, Standing, Summary, day_label, usd,
+    self, EnvironmentPlan, ExtraHours, Notice, Standing, Summary, day_label, usd,
 };
 use retail_cloud::journal::Journal;
 
@@ -228,6 +228,14 @@ pub(crate) fn section(
                     }
                 }
             }
+            @if let Some(Some(Summary { notice: Some(notice), .. })) = &view.summary {
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Payment" }
+                        span class="oa-settings-hint" { (notice_text(t, *notice)) }
+                    }
+                }
+            }
             @match (&view.summary, active) {
                 (None, _) => {
                     div class="oa-settings-row" {
@@ -269,6 +277,24 @@ pub(crate) fn section(
                 }
             }
         }
+    }
+}
+
+/// What a refund or dispute means to the person, in plain words.
+pub(crate) fn notice_text(t: &EnvironmentPlan, notice: Notice) -> String {
+    match notice {
+        Notice::Dispute => format!(
+            "Your bank has opened a dispute on a {} payment. {} stays on for the month you paid for, and a new month won't start until the dispute is closed.",
+            t.name, t.name
+        ),
+        Notice::Refunded => format!(
+            "Your last {} payment was refunded, so {} ended. Subscribe again to start a new month.",
+            t.name, t.name
+        ),
+        Notice::DisputeLost => format!(
+            "Your bank reversed a {} payment, so {} ended. Subscribe again to start a new month.",
+            t.name, t.name
+        ),
     }
 }
 

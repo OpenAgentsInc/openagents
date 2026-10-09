@@ -595,7 +595,7 @@ async fn stripe_webhook(
             "The event is missing the `Stripe-Signature` header.",
         );
     };
-    let value = match stripe.verify(body, header, unix_now()) {
+    let mut value = match stripe.verify(body, header, unix_now()) {
         Ok(value) => value,
         Err(problem) => return refused(StatusCode::UNAUTHORIZED, "bad_signature", problem),
     };
@@ -611,6 +611,20 @@ async fn stripe_webhook(
         Ok(snapshot) => snapshot.book,
         Err(response) => return response,
     };
+    // A dispute names only its charge: read the charge from Stripe so the
+    // dispute finds its invoice. If Stripe can't answer, Stripe retries.
+    if let Some(charge) = crate::subscriptions::charge_to_fetch(&value, &book) {
+        match crate::subscriptions::fetch_charge(stripe, &charge).await {
+            Ok(fetched) => value["data"]["object"]["oa_charge"] = fetched,
+            Err(problem) => {
+                return refused(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "stripe_unavailable",
+                    problem,
+                );
+            }
+        }
+    }
     let (meaning, owed) = read(&value, &book, &config(state).plans, unix_now());
     if let (Some(owed), Some(path)) = (owed, &stripe.environment_meter)
         && let Err(problem) = meter(path, &owed)

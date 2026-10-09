@@ -417,6 +417,7 @@ const SETTINGS: &str = "settings";
 const MONTH: &str = "month";
 const DEBIT: &str = "debit";
 const CREDITS: &str = "credits";
+const NOTICE: &str = "notice";
 
 fn get<T: for<'de> Deserialize<'de>>(
     journal: &Journal,
@@ -527,6 +528,59 @@ pub fn set_credits_account(journal: &mut Journal, account: &str, credits: &str) 
 /// A journal failure.
 pub fn credits_account(journal: &Journal, account: &str) -> Result<Option<String>> {
     get(journal, CREDITS, account)
+}
+
+/// A plain fact about the account's Stripe payments that Settings says
+/// out loud (refunds and disputes, #11074).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Notice {
+    /// The bank opened a dispute on a payment: the paid month runs on, and
+    /// no new month starts until it closes.
+    Dispute,
+    /// The last payment was refunded in full, so the month ended.
+    Refunded,
+    /// A dispute closed against the payment, so the month ended.
+    DisputeLost,
+}
+
+/// Say (or, with `None`, clear) the account's payment notice.
+///
+/// # Errors
+///
+/// An empty account, or a journal failure.
+pub fn set_notice(journal: &mut Journal, account: &str, notice: Option<Notice>) -> Result<()> {
+    if account.is_empty() {
+        return Err(Error::Invalid("an account"));
+    }
+    put(journal, NOTICE, account, account, &notice)
+}
+
+/// The account's payment notice, if one stands.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn notice(journal: &Journal, account: &str) -> Result<Option<Notice>> {
+    Ok(get::<Option<Notice>>(journal, NOTICE, account)?.flatten())
+}
+
+/// The account whose extra hours the credits account pays (the reverse of
+/// [`credits_account`]); billing knows the workspace, the meter the account.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn account_paid_by(journal: &Journal, credits: &str) -> Result<Option<String>> {
+    let bytes = serde_json::to_string(credits)?;
+    Ok(journal
+        .connection
+        .query_row(
+            "SELECT account FROM environment_record WHERE kind=? AND bytes=? ORDER BY rowid DESC LIMIT 1",
+            [CREDITS, bytes.as_str()],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?)
 }
 
 /// Where an account's subscription stands.
@@ -1436,6 +1490,8 @@ pub struct Summary {
     pub extra_spent_usd_micros: u64,
     pub storage_gb: u64,
     pub versions: u64,
+    /// A refund or dispute Settings says plainly.
+    pub notice: Option<Notice>,
 }
 
 /// The account's plan, month, and storage at `now`.
@@ -1463,6 +1519,7 @@ pub fn summary(
         extra_spent_usd_micros: month.extra_usd_micros,
         storage_gb,
         versions,
+        notice: notice(journal, account)?,
     })
 }
 

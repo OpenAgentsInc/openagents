@@ -1016,4 +1016,46 @@ async fn subscribe_opens_stripe_checkout_and_settings_shows_pro_after_the_event(
         answer.headers[header::LOCATION],
         "https://billing.stripe.com/p/session/test_web"
     );
+    // A dispute and a refund (#11074) are said in plain words.
+    environment::set_notice(&mut writer, "alice", Some(environment::Notice::Dispute)).unwrap();
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    plain(&page);
+    assert!(
+        page.body
+            .contains("Your bank has opened a dispute on a Pro payment."),
+        "{}",
+        page.body
+    );
+    assert!(page.body.contains("You're on Pro."), "{}", page.body);
+    environment::end_period(&mut writer, "alice", now() as i64 - 10).unwrap();
+    environment::set_notice(&mut writer, "alice", Some(environment::Notice::Refunded)).unwrap();
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    plain(&page);
+    assert!(
+        page.body
+            .contains("Your last Pro payment was refunded, so Pro ended."),
+        "{}",
+        page.body
+    );
+    assert!(
+        page.body.contains("You're not subscribed."),
+        "{}",
+        page.body
+    );
 }

@@ -49,6 +49,25 @@ fn pro() -> Plan {
 struct Fake {
     creates: Vec<(String, BTreeMap<String, String>)>,
     down: bool,
+    /// Charges read back, by id.
+    reads: Vec<String>,
+}
+
+/// Stripe's `GET /v1/charges/{id}`: a charge that names its customer and
+/// amount but no invoice (the shape a dispute's charge has).
+async fn fake_charge(
+    ApiState(fake): ApiState<Arc<Mutex<Fake>>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let mut fake = fake.lock().unwrap();
+    if fake.down {
+        return StatusCode::BAD_GATEWAY.into_response();
+    }
+    fake.reads.push(id.clone());
+    Json(json!({"object": "charge", "id": id, "livemode": false,
+        "customer": "cus_test_1", "amount": 2000, "invoice": null}))
+    .into_response()
 }
 
 async fn fake_post(
@@ -102,6 +121,7 @@ async fn deploy() -> Deployment {
         axum::serve(
             listener,
             Router::new()
+                .route("/v1/charges/{id}", axum::routing::get(fake_charge))
                 .fallback(axum::routing::post(fake_post))
                 .with_state(fake.clone()),
         )
@@ -544,4 +564,341 @@ fn stripe_settings_are_checked() {
     let mut bad = good;
     bad.success_url = "http://openagents.test/settings".into();
     assert!(bad.check(&plans).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Refunds and disputes (#11074).
+
+struct Subscriber {
+    account: String,
+    key: String,
+    billing: String,
+    meta: Value,
+    now: i64,
+}
+
+/// An invoice that carries the references of the payment that settled it.
+fn paid_invoice(id: &str, reason: &str, start: i64, meta: &Value, charge: &str) -> Value {
+    let mut value = invoice(id, reason, start, meta);
+    value["charge"] = json!(charge);
+    value["payment_intent"] = json!(format!("pi_{charge}"));
+    value
+}
+
+/// Sign up, check out, and pay the first month through signed events.
+async fn subscriber(d: &Deployment, charge: Option<&str>) -> Subscriber {
+    let (status, body) = post(d, "/v1/accounts", None, &json!({"label": "Ada"})).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let account = body["account"]["id"].as_str().unwrap().to_string();
+    let workspace = body["workspace"]["id"].as_str().unwrap().to_string();
+    let key = body["key_token"].as_str().unwrap().to_string();
+    let billing = format!("/v1/workspaces/{workspace}/billing");
+    let (status, body) = post(
+        d,
+        &format!("{billing}/checkout"),
+        Some(&key),
+        &json!({"plan": "pro"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let checkout = body["checkout"]["id"].as_str().unwrap().to_string();
+    let completed = event(
+        "evt_cs1",
+        "checkout.session.completed",
+        json!({"object": "checkout.session", "id": "cs_test_1", "mode": "subscription",
+            "payment_status": "paid", "client_reference_id": checkout,
+            "metadata": {"oa_checkout": checkout}, "subscription": "sub_test_1", "customer": "cus_test_1"}),
+    );
+    let (status, body) = deliver(d, &completed, SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let now = unix_now() as i64;
+    let meta = metadata(&account, &workspace);
+    let object = match charge {
+        Some(charge) => paid_invoice("in_1", "subscription_create", now, &meta, charge),
+        None => invoice("in_1", "subscription_create", now, &meta),
+    };
+    let (status, body) = deliver(d, &event("evt_inv1", "invoice.paid", object), SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    Subscriber {
+        account,
+        key,
+        billing,
+        meta,
+        now,
+    }
+}
+
+async fn billing_view(d: &Deployment, s: &Subscriber) -> Value {
+    let (status, view) = exchange(
+        reqwest::Client::new()
+            .get(format!("{}{}", d.address, s.billing))
+            .bearer_auth(&s.key),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    view
+}
+
+fn notice(d: &Deployment, account: &str) -> Option<environment::Notice> {
+    let j = Journal::open(&d.meter).unwrap();
+    environment::notice(&j, account).unwrap()
+}
+
+fn dispute(id: &str, charge: &str, status: &str) -> Value {
+    json!({"object": "dispute", "id": id, "charge": charge, "payment_intent": format!("pi_{charge}"),
+        "amount": 2000, "currency": "usd", "status": status})
+}
+
+fn charge(id: &str, amount: u64, refunded: u64) -> Value {
+    json!({"object": "charge", "id": id, "payment_intent": format!("pi_{id}"), "amount": amount,
+        "amount_refunded": refunded, "refunded": refunded >= amount, "customer": "cus_test_1"})
+}
+
+#[tokio::test]
+async fn a_dispute_pauses_new_months_until_it_closes() {
+    let d = deploy().await;
+    let s = subscriber(&d, Some("ch_1")).await;
+    let next = s.now + 30 * DAY;
+
+    // The bank opens a dispute: at risk, the paid month runs on, and
+    // Settings says so.
+    let opened = event(
+        "evt_dp1",
+        "charge.dispute.created",
+        dispute("dp_1", "ch_1", "needs_response"),
+    );
+    let (status, body) = deliver(&d, &opened, SIGNING).await;
+    assert_eq!(
+        (status, body["outcome"].clone()),
+        (StatusCode::OK, json!("applied")),
+        "{body}"
+    );
+    assert!(
+        d.fake.lock().unwrap().reads.is_empty(),
+        "the invoice was already known"
+    );
+    let view = billing_view(&d, &s).await;
+    assert_eq!(view["subscription"]["dispute"]["id"], "dp_1");
+    assert_eq!(view["subscription"]["state"], "active");
+    assert!(
+        matches!(standing(&d, &s.account, s.now + 1), Standing::Active { .. }),
+        "the paid month runs on"
+    );
+    assert_eq!(notice(&d, &s.account), Some(environment::Notice::Dispute));
+
+    // Recorded once: the same event, and another event for the same
+    // dispute, change nothing.
+    let (_, body) = deliver(&d, &opened, SIGNING).await;
+    assert_eq!(body["outcome"], "duplicate");
+    let again = event(
+        "evt_dp1b",
+        "charge.dispute.created",
+        dispute("dp_1", "ch_1", "needs_response"),
+    );
+    let (_, body) = deliver(&d, &again, SIGNING).await;
+    assert_eq!(
+        body["outcome"], "superseded:invoice is already disputed",
+        "{body}"
+    );
+
+    // A renewal paid during the dispute waits: Stripe is told "not yet",
+    // and no month is recorded.
+    let renewal = event(
+        "evt_inv2",
+        "invoice.paid",
+        paid_invoice("in_2", "subscription_cycle", next, &s.meta, "ch_2"),
+    );
+    let (status, body) = deliver(&d, &renewal, SIGNING).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "not_yet");
+    assert_eq!(
+        standing(&d, &s.account, next + 1),
+        Standing::Ended { at: next }
+    );
+
+    // The dispute closes in our favour: the payment stands, and the same
+    // renewal, sent again, starts its month.
+    let won = event(
+        "evt_dp1c",
+        "charge.dispute.closed",
+        dispute("dp_1", "ch_1", "won"),
+    );
+    let (status, body) = deliver(&d, &won, SIGNING).await;
+    assert_eq!(
+        (status, body["outcome"].clone()),
+        (StatusCode::OK, json!("applied")),
+        "{body}"
+    );
+    assert_eq!(notice(&d, &s.account), None);
+    let view = billing_view(&d, &s).await;
+    assert!(view["subscription"]["dispute"].is_null(), "{view}");
+    let first = view["invoices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "in_1")
+        .unwrap();
+    assert_eq!(first["state"], "paid", "{view}");
+    let (_, body) = deliver(&d, &won, SIGNING).await;
+    assert_eq!(body["outcome"], "duplicate");
+    let (status, body) = deliver(&d, &renewal, SIGNING).await;
+    assert_eq!(
+        (status, body["outcome"].clone()),
+        (StatusCode::OK, json!("applied")),
+        "{body}"
+    );
+    assert!(matches!(
+        standing(&d, &s.account, next + 1),
+        Standing::Active { .. }
+    ));
+}
+
+#[tokio::test]
+async fn a_full_refund_ends_the_month_and_a_partial_one_does_not() {
+    let d = deploy().await;
+    let s = subscriber(&d, Some("ch_1")).await;
+
+    // A partial refund: the month stands.
+    let mut partial = event("evt_rf0", "charge.refunded", charge("ch_1", 2000, 500));
+    partial["created"] = json!(s.now + DAY);
+    let (status, body) = deliver(&d, &partial, SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["outcome"].as_str().unwrap().starts_with("ignored:"),
+        "{body}"
+    );
+    assert!(matches!(
+        standing(&d, &s.account, s.now + 2 * DAY),
+        Standing::Active { .. }
+    ));
+
+    // A full refund five days in: the month ends then, the subscription
+    // is cancelled, and Settings says why.
+    let at = s.now + 5 * DAY;
+    let mut full = event("evt_rf1", "charge.refunded", charge("ch_1", 2000, 2000));
+    full["created"] = json!(at);
+    let (status, body) = deliver(&d, &full, SIGNING).await;
+    assert_eq!(
+        (status, body["outcome"].clone()),
+        (StatusCode::OK, json!("applied")),
+        "{body}"
+    );
+    assert_eq!(standing(&d, &s.account, at + 1), Standing::Ended { at });
+    assert!(matches!(
+        standing(&d, &s.account, at - 1),
+        Standing::Active { .. }
+    ));
+    assert_eq!(notice(&d, &s.account), Some(environment::Notice::Refunded));
+    let view = billing_view(&d, &s).await;
+    assert!(
+        matches!(
+            view["subscription"]["state"].as_str(),
+            Some("cancelled" | "expired")
+        ),
+        "{view}"
+    );
+    assert_eq!(view["invoices"][0]["state"], "refunded", "{view}");
+
+    // Once: the same event, and a second event for the same refund.
+    let (_, body) = deliver(&d, &full, SIGNING).await;
+    assert_eq!(body["outcome"], "duplicate");
+    let mut other = event("evt_rf2", "charge.refunded", charge("ch_1", 2000, 2000));
+    other["created"] = json!(at + DAY);
+    let (_, body) = deliver(&d, &other, SIGNING).await;
+    assert_eq!(
+        body["outcome"], "superseded:invoice already closed",
+        "{body}"
+    );
+    assert_eq!(standing(&d, &s.account, at + 2), Standing::Ended { at });
+
+    // A charge that isn't a subscription payment is acknowledged.
+    let stray = event("evt_rf3", "charge.refunded", charge("ch_stray", 700, 700));
+    let (status, body) = deliver(&d, &stray, SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["outcome"].as_str().unwrap().starts_with("ignored:"),
+        "{body}"
+    );
+
+    // A forged event is refused before it can touch anything.
+    let forged = event("evt_rf4", "charge.refunded", charge("ch_1", 2000, 2000));
+    let (status, _) = deliver(&d, &forged, "whsec_wrong_secret_wrong_secret").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Paying again later is a fresh start: the notice clears.
+    let later = at + 40 * DAY;
+    let resubscribed = event(
+        "evt_inv9",
+        "invoice.paid",
+        paid_invoice("in_9", "subscription_cycle", later, &s.meta, "ch_9"),
+    );
+    let (status, body) = deliver(&d, &resubscribed, SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(notice(&d, &s.account), None);
+}
+
+#[tokio::test]
+async fn a_lost_dispute_is_found_through_its_charge_and_closes_the_month_once() {
+    let d = deploy().await;
+    // The invoice carries no payment references (Stripe's newer shape), so
+    // the dispute's charge is read from Stripe and matched by customer and
+    // amount.
+    let s = subscriber(&d, None).await;
+    let opened = event(
+        "evt_dp1",
+        "charge.dispute.created",
+        dispute("dp_1", "ch_77", "needs_response"),
+    );
+    let (status, body) = deliver(&d, &opened, SIGNING).await;
+    assert_eq!(
+        (status, body["outcome"].clone()),
+        (StatusCode::OK, json!("applied")),
+        "{body}"
+    );
+    assert_eq!(d.fake.lock().unwrap().reads, vec!["ch_77".to_string()]);
+
+    let at = s.now + 3 * DAY;
+    let mut lost = event(
+        "evt_dp1z",
+        "charge.dispute.closed",
+        dispute("dp_1", "ch_77", "lost"),
+    );
+    lost["created"] = json!(at);
+    let (status, body) = deliver(&d, &lost, SIGNING).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "applied", "{body}");
+    assert_eq!(standing(&d, &s.account, at + 1), Standing::Ended { at });
+    assert_eq!(
+        notice(&d, &s.account),
+        Some(environment::Notice::DisputeLost)
+    );
+    let view = billing_view(&d, &s).await;
+    assert_eq!(view["invoices"][0]["state"], "dispute-lost", "{view}");
+    assert!(view["subscription"]["dispute"].is_null(), "{view}");
+
+    // Once.
+    let (_, body) = deliver(&d, &lost, SIGNING).await;
+    assert_eq!(body["outcome"], "duplicate");
+    let mut again = event(
+        "evt_dp1y",
+        "charge.dispute.closed",
+        dispute("dp_1", "ch_77", "lost"),
+    );
+    again["created"] = json!(at + DAY);
+    let (_, body) = deliver(&d, &again, SIGNING).await;
+    assert_eq!(
+        body["outcome"], "superseded:invoice already closed",
+        "{body}"
+    );
+
+    // Stripe down: a dispute that must be placed answers 503 so Stripe
+    // sends it again.
+    d.fake.lock().unwrap().down = true;
+    let stray = event(
+        "evt_dp2",
+        "charge.dispute.created",
+        dispute("dp_2", "ch_88", "needs_response"),
+    );
+    let (status, body) = deliver(&d, &stray, SIGNING).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
 }
