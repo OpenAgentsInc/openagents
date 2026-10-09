@@ -921,7 +921,7 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
             (turn(message, index + start))
         }
         p #chat-status.oa-thread-status role="status" aria-live="polite" {
-            @if chat.pending.is_some() {"OpenAgents is answering…"}
+            @if chat.pending.is_some() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
         }

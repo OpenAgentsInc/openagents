@@ -122,3 +122,11 @@
     max-width: 85%;
   }
 }
+
+/* The "Working" status while a reply is on its way: a spinner and a word. */
+.oa-thread-working {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  color: var(--color-text-secondary);
+}

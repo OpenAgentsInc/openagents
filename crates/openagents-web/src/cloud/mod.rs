@@ -156,7 +156,7 @@ fn service(app: &App) -> Result<&CloudSession, Response> {
         return Err(failure(
             StatusCode::SERVICE_UNAVAILABLE,
             "Workspace unavailable",
-            "This server has no qualified browser account connection. You can explore the components or use the OpenAgents apps.",
+            "Sign-in isn't set up on this server. You can explore the components or use the OpenAgents apps.",
         ));
     }
     let service = app

@@ -2345,12 +2345,12 @@ async fn purchase_browser_reads_without_creating_or_writing() {
     let customer = root.path().join("customer");
     let (status, body) = get(router(config(store.clone())), "/app/purchases").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    assert!(body.contains("--customer"));
+    assert!(body.contains("This server has no purchases to show."));
     let mut with = config(store);
     with.customer = Some(customer.clone());
     let (status, body) = get(router(with.clone()), "/app/purchases").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("No purchases") && body.contains("Unavailable in the browser"));
+    assert!(body.contains("No purchases") && body.contains("Plugins you buy in the app show up here."));
     assert!(!customer.exists());
     let (status, _) = get(router(with), "/app/purchases/one").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -2369,7 +2369,7 @@ fn purchase_pages_show_identical_terms_and_name_the_installed_client_step() {
         "sha256:q",
         "sha256:approval",
         "02node on bitcoin",
-        "at most 6010 msat",
+        "up to 6010 msat",
     ] {
         assert!(one.contains(term), "{term}");
     }

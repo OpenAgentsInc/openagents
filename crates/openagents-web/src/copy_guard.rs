@@ -12,6 +12,8 @@ fn allowed(route: &str) -> &'static [&'static str] {
         // it is a legal decision, not a copy fix.
         "/terms" => &["projection", "custody"],
         "/privacy" => &["projection", "retained"],
+        // The component catalog's icon gallery names the "Cursor" icon.
+        "/ui" => &["cursor"],
         _ => &[],
     }
 }
