@@ -71,9 +71,20 @@ pub(crate) struct Promise {
     /// The show episodes where it was promised (`docs/transcripts/NNN.md`).
     #[serde(default)]
     pub(crate) episodes: Vec<u32>,
+    /// Posts on X where it was promised, for a promise no episode made.
+    #[serde(default)]
+    pub(crate) posts: Vec<Post>,
     /// One short line: why a promise was dropped, or what part works.
     #[serde(default)]
     pub(crate) note: Option<String>,
+}
+
+/// A post where a promise was made: its day and its address.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Post {
+    pub(crate) date: String,
+    pub(crate) url: String,
 }
 
 /// How far along a promise is.
@@ -238,6 +249,14 @@ fn sources(promise: &Promise) -> String {
     if !promise.episodes.is_empty() {
         let episodes: Vec<String> = promise.episodes.iter().map(|n| episode_link(*n)).collect();
         out.push_str(&format!(" Promised in {}.", episodes.join(", ")));
+    }
+    if !promise.posts.is_empty() {
+        let posts: Vec<String> = promise
+            .posts
+            .iter()
+            .map(|post| format!("[{}]({})", post.date, post.url))
+            .collect();
+        out.push_str(&format!(" Posted on X: {}.", posts.join(", ")));
     }
     out
 }
@@ -457,8 +476,10 @@ mod tests {
                 );
             } else {
                 assert!(
-                    !promise.issues.is_empty() || !promise.episodes.is_empty(),
-                    "{id}: a planned or dropped promise names its issue or episode"
+                    !promise.issues.is_empty()
+                        || !promise.episodes.is_empty()
+                        || !promise.posts.is_empty(),
+                    "{id}: a planned or dropped promise names its issue, episode, or post"
                 );
                 assert!(
                     promise.status != Status::Dropped || promise.note.is_some(),

@@ -1,14 +1,35 @@
 # What OpenAgents promises, one record per claim. openagents.com/promises
 # shows what works today (shipped, launching, partial) and
-# openagents.com/roadmap shows what comes next (next, later, dropped), both rendered from this file
-# (crates/openagents-web/src/promises.rs). How to add or change a promise:
-# docs/promises/README.md. Imported from the Kitchen Sink ledger
-# (docs/kitchen-sink/ledger.md at 31640d9ef4, #11125); the ids are the
-# ledger's (W1-W5 are this registry's own).
+# openagents.com/roadmap shows the rest (next, later, dropped), both rendered
+# from this file (crates/openagents-web/src/promises.rs). How to add or change
+# a promise: docs/promises/README.md. Imported from the Kitchen Sink ledger
+# (docs/kitchen-sink/ledger.md at c46aee749a, #11125); the ids are the
+# ledger's, and W1-W5 are this registry's own.
 #
-# Each [[promise]]:
+# Each promise:
 #   id         stable name, never reused
-#   group      one of the
+#   group      one of the group ids below
+#   statement  one short sentence a user understands; no internal names
+#   surfaces   web, terminal, mobile, iphone, android, desktop, api,
+#              network, verse
+#   status     shipped (works today; "live" also reads as this), launching
+#              (new in today's 1.0 release), partial (works in part),
+#              next, later ("missing" also reads as this), or dropped
+#              (on purpose; listed at the end of /roadmap with its note)
+#   link or command
+#              the one place to try it (shipped, launching, and partial
+#              need one)
+#   issues     the GitHub issue numbers behind it
+#   episodes   the show episodes that promised it (docs/transcripts/NNN.md)
+#   posts      posts on X that promised it, for a row no episode made:
+#              { date = "YYYY-MM-DD", url = "https://x.com/..." }
+#              (next, later, and dropped need an issue, episode, or post)
+#   note       one short line: what part works, or why it was dropped
+#   evidence   what proves it (shipped, launching, and partial need at least
+#              one): { test = "path/to/file.rs::test_fn" }, { smoke =
+#              "check name in scripts/smoke/web.py" }, { golden = "id in
+#              bench/web-chat/goldens-v1.json" }, or { doc = "path" }.
+#              A test fails when a named piece of evidence is gone.
 
 [[group]]
 id = "A"
@@ -307,6 +328,18 @@ status = "later"
 episodes = [136, 137]
 
 [[promise]]
+id = "B16"
+group = "B"
+statement = "You never see ads in your chats, and our websites use no tracking cookies."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+posts = [
+  { date = "2024-05-20", url = "https://x.com/OpenAgentsInc/status/1792360190689386537" },
+  { date = "2024-10-21", url = "https://x.com/OpenAgentsInc/status/1848211700450726214" },
+  { date = "2024-12-30", url = "https://x.com/OpenAgentsInc/status/1873821809386340369" },
+]
+
+[[promise]]
 id = "C1"
 group = "C"
 statement = "You install the terminal app with one command and type `coder`."
@@ -489,6 +522,29 @@ status = "next"
 episodes = [117, 119]
 
 [[promise]]
+id = "C20"
+group = "C"
+statement = "You see how much CPU and memory each helper agent is using."
+surfaces = ["terminal", "desktop"]
+status = "next"
+posts = [
+  { date = "2026-09-04", url = "https://x.com/OpenAgentsInc/status/2095902069374763426" },
+  { date = "2026-09-05", url = "https://x.com/OpenAgentsInc/status/2096357223253389345" },
+]
+
+[[promise]]
+id = "C21"
+group = "C"
+statement = "Coder adds no refusals of its own; when a model provider refuses, it tells you which one and offers another model."
+surfaces = ["terminal", "web"]
+status = "next"
+issues = [11132]
+posts = [
+  { date = "2026-09-03", url = "https://x.com/OpenAgentsInc/status/2095596118080151936" },
+  { date = "2026-09-14", url = "https://x.com/OpenAgentsInc/status/2099561282944860387" },
+]
+
+[[promise]]
 id = "D1"
 group = "D"
 statement = "Your terminal chats show on the website with live status, and you can reply there while Coder is open."
@@ -589,7 +645,7 @@ group = "E"
 statement = "Agents can pay per request without an account."
 surfaces = ["network"]
 status = "next"
-issues = [11077, 11085]
+issues = [11077, 11136]
 episodes = [62, 63, 70, 86]
 
 [[promise]]
@@ -781,6 +837,26 @@ status = "next"
 episodes = [234, 246, 254]
 
 [[promise]]
+id = "G8"
+group = "G"
+statement = "We publish head-to-head results against leading coding agents, with scripts anyone can re-run."
+surfaces = ["web"]
+status = "next"
+issues = [11131, 11129]
+episodes = [120, 287]
+
+[[promise]]
+id = "G9"
+group = "G"
+statement = "We publish accepted outcomes per dollar, and later per kilowatt-hour, as our main measure of work."
+surfaces = ["web"]
+status = "later"
+posts = [
+  { date = "2026-06-08", url = "https://x.com/OpenAgentsInc/status/2064074384881463459" },
+  { date = "2026-07-20", url = "https://x.com/OpenAgentsInc/status/2079311647068283131" },
+]
+
+[[promise]]
 id = "H1"
 group = "H"
 statement = "Every run is recorded on your computer, and you can open any step."
@@ -865,14 +941,16 @@ group = "I"
 statement = "Your agent can pay and get paid, under rules and budgets you approve."
 surfaces = ["mobile", "network"]
 status = "next"
+issues = [11146]
 episodes = [42, 47, 141, 147, 212]
 
 [[promise]]
 id = "I4"
 group = "I"
 statement = "You can pay by card."
-surfaces = ["web"]
+surfaces = ["web", "network"]
 status = "next"
+issues = [11142, 11143, 11144]
 episodes = [37, 64, 116]
 
 [[promise]]
@@ -902,10 +980,11 @@ episodes = [37, 125, 150, 153, 229, 239]
 [[promise]]
 id = "I8"
 group = "I"
-statement = "Bitcoin is the only money, and there is no token."
+statement = "There is no OpenAgents token, and Bitcoin is our own money."
 surfaces = ["web", "terminal", "mobile", "desktop"]
 status = "shipped"
 link = "/docs/wallet"
+issues = [11141]
 episodes = [1, 200, 220, 230]
 evidence = [
   { doc = "docs/payments/README.md" },
@@ -918,6 +997,22 @@ statement = "You can hold dollar-pegged balances backed by Bitcoin."
 surfaces = ["network"]
 status = "later"
 episodes = [96, 173, 200]
+
+[[promise]]
+id = "I10"
+group = "I"
+statement = "Your agents can pay any service that asks for payment, from your wallet and within your budget."
+surfaces = ["terminal", "mobile", "network"]
+status = "later"
+issues = [11146]
+
+[[promise]]
+id = "I11"
+group = "I"
+statement = "Every payment, any method, gets the same receipt, and shows in your usage and on `/stats`."
+surfaces = ["web", "network"]
+status = "later"
+issues = [11138]
 
 [[promise]]
 id = "J1"
@@ -991,6 +1086,14 @@ status = "later"
 episodes = [202, 203, 214]
 
 [[promise]]
+id = "J9"
+group = "J"
+statement = "Sellers on the network are paid straight to their own wallet, and we never hold their money."
+surfaces = ["network"]
+status = "later"
+issues = [11149]
+
+[[promise]]
 id = "K1"
 group = "K"
 statement = "Any agent can learn to use OpenAgents from one file on the website."
@@ -1050,11 +1153,44 @@ episodes = [129, 242, 289]
 [[promise]]
 id = "K6"
 group = "K"
-statement = "Agents can buy from us using standard agent payment protocols."
+statement = "Agents can pay us with the payment method they already use, including Lightning and card."
+surfaces = ["network"]
+status = "next"
+issues = [11085, 11136, 11139, 11140, 11141, 11142, 11143, 11144, 11145]
+episodes = [62, 70]
+
+[[promise]]
+id = "K7"
+group = "K"
+statement = "One open license: everything we publish is under Apache 2.0."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "shipped"
+link = "https://github.com/OpenAgentsInc/openagents/blob/main/LICENSE"
+posts = [
+  { date = "2024-04-09", url = "https://x.com/OpenAgentsInc/status/1777692495012405439" },
+  { date = "2025-07-24", url = "https://x.com/OpenAgentsInc/status/1948214009615765765" },
+  { date = "2026-08-27", url = "https://x.com/OpenAgentsInc/status/2092991734577819698" },
+  { date = "2026-10-02", url = "https://x.com/OpenAgentsInc/status/2105903502060859718" },
+]
+evidence = [
+  { doc = "LICENSE" },
+]
+
+[[promise]]
+id = "K8"
+group = "K"
+statement = "Agents find every way to pay us in the places they already look."
+surfaces = ["network"]
+status = "next"
+issues = [11137, 11147]
+
+[[promise]]
+id = "K9"
+group = "K"
+statement = "Agents can sign in with their own Nostr key."
 surfaces = ["network"]
 status = "later"
-issues = [11085]
-episodes = [62, 70]
+issues = [11148]
 
 [[promise]]
 id = "L1"
@@ -1148,6 +1284,18 @@ statement = "A crash in one feature never takes down the app or your agents."
 surfaces = ["desktop", "terminal"]
 status = "next"
 episodes = [258]
+
+[[promise]]
+id = "L10"
+group = "L"
+statement = "The desktop opens a file in under a second and switches chats in under 50 ms."
+surfaces = ["desktop"]
+status = "next"
+issues = [11092]
+posts = [
+  { date = "2026-07-10", url = "https://x.com/OpenAgentsInc/status/2075680613731078265" },
+  { date = "2026-07-19", url = "https://x.com/OpenAgentsInc/status/2078687966210204011" },
+]
 
 [[promise]]
 id = "M1"
