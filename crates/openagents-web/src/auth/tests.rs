@@ -188,6 +188,7 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     let login = browser.get(&world, "/login?return_to=%2Fcloud%2Fapp").await;
     assert_eq!(login.status, StatusCode::OK);
     assert!(login.body.contains("Log in to OpenAgents"));
+    crate::copy_guard::assert_plain("/login", &login.body);
     assert!(login.body.contains("Continue with GitHub"));
     assert!(
         login
@@ -197,6 +198,7 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     // No key form, and no Log in button on the log in page itself.
     assert!(!login.body.contains("credential") && !login.body.contains("href=\"/signup\""));
     let signup = browser.get(&world, "/signup").await;
+    crate::copy_guard::assert_plain("/signup", &signup.body);
     assert!(
         signup.body.contains("Create your account") && signup.body.contains("Continue with GitHub")
     );
@@ -224,6 +226,7 @@ async fn first_github_sign_in_creates_the_account_and_signs_the_browser_in() {
         .await;
     assert_eq!(done.status, StatusCode::OK, "{}", done.body);
     assert!(done.body.contains("You're signed in"));
+    crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(done.body.contains("content=\"0;url=/docs\""));
     let session = done.set_cookie("oa_cloud_session").expect("session cookie");
     assert!(session.contains("HttpOnly; SameSite=Strict"));
@@ -285,6 +288,7 @@ async fn cancelling_on_github_signs_nobody_in() {
     let done = browser.through_github(&world, "%2F", "deny=1").await;
     assert_eq!(done.status, StatusCode::OK);
     assert!(done.body.contains("GitHub sign-in was canceled"));
+    crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(done.set_cookie("oa_cloud_session").is_none());
     assert!(!browser.0.contains_key("oa_auth_flow"));
     assert!(accounts(&world).accounts.is_empty());
@@ -311,6 +315,7 @@ async fn a_callback_without_this_browsers_state_is_refused() {
     let refused = victim.get(&world, path).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
     assert!(refused.body.contains("That sign-in expired"));
+    crate::copy_guard::assert_plain("/auth/github/callback", &refused.body);
     assert!(refused.set_cookie("oa_cloud_session").is_none());
 
     // The right cookie with a different state is refused too.
