@@ -82,6 +82,9 @@ pub struct Palette {
     pub warning: Rgba8,
     /// Informational text. `--color-text-info`.
     pub info: Rgba8,
+    /// Discovery (purple) text. `--color-text-discovery`; Noir has no
+    /// discovery role and uses its terminal magenta.
+    pub discovery: Rgba8,
     /// A danger wash behind content. `--color-background-danger-soft`.
     pub danger_container: Rgba8,
     /// A success wash. `--color-background-success-soft`.
@@ -113,6 +116,7 @@ impl Palette {
         success: Rgba8::rgb(0x00692a),
         warning: Rgba8::rgb(0x923b0f),
         info: Rgba8::rgb(0x0169cc),
+        discovery: Rgba8::rgb(0x532d8d),
         danger_container: Rgba8::rgb(0xffd9d9),
         success_container: Rgba8::rgb(0xd9f4e4),
         warning_container: Rgba8::rgb(0xffe7d9),
@@ -138,6 +142,7 @@ impl Palette {
         success: Rgba8::rgb(noir::SUCCESS),
         warning: Rgba8::rgb(noir::WARNING),
         info: Rgba8::rgb(noir::INFO),
+        discovery: Rgba8::rgb(noir::TERMINAL_ANSI_5),
         danger_container: Rgba8::rgb(noir::DANGER_CONTAINER),
         success_container: Rgba8::rgb(noir::SUCCESS_CONTAINER),
         warning_container: Rgba8::rgb(noir::WARNING_CONTAINER),
@@ -145,7 +150,7 @@ impl Palette {
     };
 
     /// Each role's source token, in field order.
-    pub const SOURCES: [&'static str; 21] = [
+    pub const SOURCES: [&'static str; 22] = [
         "--color-surface",
         "--color-surface-secondary",
         "--color-surface-tertiary",
@@ -163,6 +168,7 @@ impl Palette {
         "--color-text-success",
         "--color-text-warning",
         "--color-text-info",
+        "--color-text-discovery",
         "--color-background-danger-soft",
         "--color-background-success-soft",
         "--color-background-warning-soft",
@@ -180,7 +186,7 @@ impl Palette {
 
     /// Every role's color, in [`Palette::SOURCES`] order.
     #[must_use]
-    pub const fn roles(&self) -> [Rgba8; 21] {
+    pub const fn roles(&self) -> [Rgba8; 22] {
         [
             self.canvas,
             self.surface_subtle,
@@ -199,6 +205,7 @@ impl Palette {
             self.success,
             self.warning,
             self.info,
+            self.discovery,
             self.danger_container,
             self.success_container,
             self.warning_container,

@@ -6,7 +6,12 @@ rust-version.workspace = true
 publish.workspace = true
 description = "The OpenAgents design token table (Apps SDK UI roles, Coder Light and Coder Noir) as dependency-free data, shared by the web components and the native GUI themes."
 
+[features]
+# Serialize `ThemeChoice` as a stored preference (`system`, `light`, `dark`).
+serde = ["dep:serde"]
+
 [dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
 
 [lints]
 workspace = true

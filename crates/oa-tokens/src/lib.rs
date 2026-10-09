@@ -1,4 +1,5 @@
-//! The OpenAgents design token table as dependency-free data: one source for
+//! The OpenAgents design token table as data with no dependencies (an
+//! optional `serde` feature serializes [`ThemeChoice`]): one source for
 //! the web components (`openagents-ui`, which generates the token
 //! stylesheets from it) and the native GUI themes (`coder-ui`, the desktop
 //! and mobile apps). See `docs/web/apps-sdk-ui-adoption-plan.md`
@@ -44,6 +45,11 @@ pub enum Scheme {
 /// The person's theme choice. `System` follows the operating system's light
 /// or dark appearance; `Light` and `Dark` override it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
 pub enum ThemeChoice {
     #[default]
     System,
@@ -65,6 +71,16 @@ impl ThemeChoice {
                 Some(scheme) => scheme,
                 None => Scheme::Dark,
             },
+        }
+    }
+
+    /// The name a person reads.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            ThemeChoice::System => "System",
+            ThemeChoice::Light => "Light",
+            ThemeChoice::Dark => "Dark",
         }
     }
 
