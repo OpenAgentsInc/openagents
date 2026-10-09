@@ -314,7 +314,9 @@ files.
    on purpose.
 
 **Status (UI-13, 2026-10-08): done, and the legacy styles are removed.**
-Every page outside `/demo` and the full-screen canvas pages renders through
+`/demo` moved onto `UiPage` afterwards (#11029), so `demo-html.css`,
+`demo.css` and `demo-start.js` are gone too.
+Every page outside the full-screen canvas pages renders through
 `crates/openagents-web/src/ui_page.rs` (`UiPage`) and links one stylesheet,
 `/static/ui.css`; the Cloud app adds only its area stylesheet.
 
@@ -327,9 +329,8 @@ Every page outside `/demo` and the full-screen canvas pages renders through
   the Cloud `.dim` note is `.cloud-note`). `composer.css` and `chat-html.css`
   were already gone.
 - **Kept on purpose**: `static/legacy-demo.css` (the Coder Noir base that
-  `/demo` and the full-screen canvas pages `/everglade`, `/druid`, `/grid`
-  and the Verse world keep), `demo-html.css` for `/demo`, `components.css`
-  and `demo.css` for the `/components` Rust Native catalog, `cloud.css` for
+  the full-screen canvas pages `/everglade`, `/druid`, `/grid` and the Verse
+  world keep), `components.css` for the `/components` Rust Native catalog, `cloud.css` for
   the Cloud layout on `openagents-ui` tokens, and `fonts.css`. Only those
   surfaces still read the `--noir-*` variables (`src/palette.rs`), as do the
   Rust Native views themselves.

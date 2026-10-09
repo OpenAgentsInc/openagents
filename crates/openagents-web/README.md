@@ -6,8 +6,8 @@ download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
 The site and the Cloud app use the Coder Light / Coder Noir design language
-from `openagents-ui` (see "Styles"). The `/components` catalog, `/demo`, and
-the full-screen canvas pages keep Coder Noir from `coder_ui::coder_noir`:
+from `openagents-ui` (see "Styles"). The `/components` catalog and the
+full-screen canvas pages keep Coder Noir from `coder_ui::coder_noir`:
 Superlogical's Static Noir base with neutral Coder accents and cursors, whose
 `--noir-*` CSS variables preserve the native palette, including status colors
 and translucent control states. The game scenes retain
@@ -41,17 +41,18 @@ adapter. Synthetic interactive fixtures and full screen previews run their
 local state controller in Rust/Wasm. These examples connect to no live host,
 provider, or account.
 
-The direct-link `/demo` page opens a synthetic environment onboarding chat,
-from repository discovery and install repair through clean image build,
-fresh verification, Save, and a first task on the saved version. Its chat
-sidebar also keeps the original five demo conversations, with independent
-drafts, messages, and scroll positions. **Beginning** and **Latest** navigate
-the selected history. Keyboard controls, plugin settings, and the model picker
-remain available. Axum and Maud render the shared `coder-ui::demo` fixtures as
-HTML; HTTP fragments and SSE update the selected conversation. The small
-`coder-chat-web` Rust/Wasm adapter preserves drafts, caret, and scroll in page
-memory. Ordinary chat and demo pages do not load the catalog's Wasm build.
-The demo has no site header or footer and starts no provider work.
+The direct-link `/demo` page shows scripted, synthetic example chats in the
+shared `openagents-ui` shell: the left panel lists them (the current one
+highlighted) and the main area shows the selected thread with the composer
+docked. The default chat is the repository environment onboarding flow from
+`docs/cloud/example-cursor-cloud-agent-onboarding/`: discovery as a folded
+tool group, the install recipe as a code block, the failed install and its
+repair as tool rows, build and fresh-machine verification as progress steps,
+and the version to save as a result card. Other chats show a Coder fix with
+changed files and tests, and a running Cloud benchmark job. Chat links work
+without JavaScript; HTMX swaps only the thread and pushes its URL. A message
+sent from the composer gets an honest scripted reply and is not stored. The
+demo starts no provider work and connects to no account.
 
 ## Durable public chat
 
@@ -194,11 +195,11 @@ Area stylesheets that remain, each loaded only by its own pages:
 
 - `static/cloud.css`: the Cloud app's workspace layout and shared parts
   (`cloud-*` classes), on `openagents-ui` tokens.
-- `static/legacy-demo.css`: the Coder Noir base `/demo` and the full-screen
-  canvas pages (`/everglade`, `/druid`, `/grid`, the Verse world) keep on
-  purpose, with `static/demo-html.css` for `/demo`. Served with the
+- `static/legacy-demo.css`: the Coder Noir base the full-screen canvas pages
+  (`/everglade`, `/druid`, `/grid`, the Verse world) keep on purpose. Served
+  with the
   `--noir-*` variables from `src/palette.rs`.
-- `static/components.css` and `static/demo.css`: the `/components` Rust
+- `static/components.css`: the `/components` Rust
   Native catalog, also on `--noir-*`.
 
 Tests hold the line: a `UiPage` page links only `/static/ui.css`, within
@@ -224,7 +225,7 @@ has a rule (script hooks excepted); and none carries an inline `style`.
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/components`, `/components/{component}` | Shared Coder components, named synthetic variants, typed controls, source references, and full screen previews | Renders; Rust/Wasm interaction requires `--components-build`. |
-| `/demo` | Server-rendered environment onboarding and original Coder fixture conversations, with HTTP and SSE updates | Renders without the catalog Wasm build; local editing requires `--chat-build`. |
+| `/demo`, `/demo/{chat}` | Scripted, synthetic example chats (environment onboarding, a Coder fix, a Cloud job) in the `openagents-ui` shell | Renders; needs no build artifacts. |
 | `/cloud`, `/cloud/sign-in`, `/cloud/app` | Public availability and the native account/workspace shell | Public entry renders; private pages require explicit native account configuration and the Cloud Wasm build. |
 | `/cloud/app/hosts/{binding}/tasks`, `/cloud/app/hosts/{binding}/tasks/{task}` | Bounded, signed resident task reads under current Observe authority; original ATIF messages, tools, child references, checks, cost, and source pins | Requires a separately provisioned host binding. It reads no local `/app` records. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |

@@ -74,7 +74,6 @@ const OWNED_EXACT: [&str; 46] = [
     "/static/htmx.min.js",
     "/static/htmx-sse.js",
     "/static/chat-start.js",
-    "/static/demo-html.css",
     "/static/flow.js",
     "/static/everglade.js",
     "/static/verse-grid.jpg",

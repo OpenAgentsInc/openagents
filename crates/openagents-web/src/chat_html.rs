@@ -54,15 +54,6 @@ pub(crate) fn routes() -> Router<App> {
             "/static/chat-start.js",
             get(|| async { script(include_str!("../static/chat-start.js")) }),
         )
-        .route(
-            "/static/demo-html.css",
-            get(|| async {
-                (
-                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-                    crate::palette::stylesheet(include_str!("../static/demo-html.css")),
-                )
-            }),
-        )
         .route("/chat/assets/{file}", get(asset))
 }
 

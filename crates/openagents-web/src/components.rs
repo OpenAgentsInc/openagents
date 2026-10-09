@@ -263,17 +263,6 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
             "text/javascript; charset=utf-8",
             include_bytes!("../static/components-start.js").to_vec(),
         ),
-        "demo-start.js" => (
-            "text/javascript; charset=utf-8",
-            include_bytes!("../static/demo-start.js").to_vec(),
-        ),
-        "demo.css" => (
-            "text/css; charset=utf-8",
-            crate::with_fonts(&crate::palette::stylesheet(include_str!(
-                "../static/demo.css"
-            )))
-            .into_bytes(),
-        ),
         GLUE | WASM => {
             let Some(directory) = &app.config.components_build else {
                 return StatusCode::NOT_FOUND.into_response();

@@ -1,8 +1,8 @@
 //! Shared page pieces: the site links, escaping, the full-screen canvas
 //! document, and the problem page. Every scrolling page renders through
 //! [`crate::ui_page::UiPage`] in the Coder Light / Coder Noir design
-//! language; only the full-screen canvas pages ([`fullscreen`]) and
-//! `/demo` keep their own design (`static/legacy-demo.css`).
+//! language; only the full-screen canvas pages ([`fullscreen`]) keep their
+//! own design (`static/legacy-demo.css`).
 
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
