@@ -9,6 +9,7 @@ pub mod capability;
 pub mod client;
 pub mod coder_events;
 pub mod delegation;
+pub mod home_cards;
 pub mod migrate;
 pub mod pane;
 pub mod plan;
