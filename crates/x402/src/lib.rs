@@ -17,7 +17,11 @@
 //! `hosted` is an author's HTTP service sold through the front: signed
 //! registrations, the upstream address rule, and the signed paid header.
 //! `policy` is the buyer's standing ceilings, allowlist, and daily cap, and
-//! the ledger of what it paid. Nothing here pays.
+//! the ledger of what it paid. `router` is the API's front door: one `402`
+//! with every live method's challenge on one invoice, one settle path, and
+//! the live method list discovery prints; `receipt` is the one
+//! `openagents.payment-receipt.v1` record per settled payment. Nothing here
+//! pays.
 
 pub mod execution;
 pub mod facilitator;
@@ -28,7 +32,9 @@ pub mod native;
 pub mod outcome;
 pub mod payment_scheme;
 pub mod policy;
+pub mod receipt;
 pub mod replay;
+pub mod router;
 pub mod server;
 pub mod wire;
 

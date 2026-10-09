@@ -225,14 +225,26 @@ pub(crate) fn model_table() -> String {
     out
 }
 
-/// A guide's Markdown with the models page's tables drawn in.
+/// A guide's Markdown with the models page's tables and the ways to pay
+/// this API takes now drawn in.
 pub(crate) async fn source(app: &App, text: &str) -> String {
-    if !text.contains(RATE_CARD) {
-        return text.to_owned();
+    let mut out = text.to_owned();
+    if out.contains(RATE_CARD) {
+        let card = card(app).await;
+        out = out
+            .replace(RATE_CARD, &rate_card(&card))
+            .replace(MODEL_TABLE, &model_table());
     }
-    let card = card(app).await;
-    text.replace(RATE_CARD, &rate_card(&card))
-        .replace(MODEL_TABLE, &model_table())
+    if out.contains(crate::payments::TABLE) || out.contains(crate::payments::SENTENCE) {
+        let methods = crate::payments::live(app).await;
+        out = out
+            .replace(crate::payments::TABLE, &crate::payments::table(&methods))
+            .replace(
+                crate::payments::SENTENCE,
+                &crate::payments::sentence(&methods),
+            );
+    }
+    out
 }
 
 /// `/docs/api`: every guide, in reading order.

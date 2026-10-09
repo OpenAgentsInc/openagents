@@ -34,6 +34,7 @@ mod layout;
 mod markdown;
 mod pages;
 pub mod palette;
+mod payments;
 pub mod pilot;
 pub mod plan;
 mod projects;

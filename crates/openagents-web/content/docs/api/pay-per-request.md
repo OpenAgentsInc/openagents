@@ -6,6 +6,8 @@ an open standard for paying for HTTP requests.
 
 **Beta.**
 
+{{ways to pay}}
+
 ## How it works
 
 1. Send the request with no `Authorization` header.
@@ -37,6 +39,19 @@ payment terms; `accepts[0].extra.invoice` is the invoice. To send the
 proof, base64-encode
 `{"x402Version": 2, "accepted": <accepts[0]>, "payload": {"preimage": "<hex>"}}`
 as the `PAYMENT-SIGNATURE` header.
+
+## With the `Payment` scheme (MPP)
+
+When the API takes it, the same `402` also carries a
+`WWW-Authenticate: Payment` challenge (method `lightning`, intent
+`charge`) for the **same invoice**. Clients that speak the `Payment`
+scheme, such as `lnget` and `mppx`, pay it and send the same request again
+with `Authorization: Payment <credential>`: the challenge echoed back and
+`payload.preimage`, as base64url JSON. The answer carries a
+`Payment-Receipt` header.
+
+One invoice pays once. After it pays one request, the same preimage is
+refused whichever header carries it.
 
 ## From the command line
 

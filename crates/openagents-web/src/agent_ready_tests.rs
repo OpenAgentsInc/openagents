@@ -207,7 +207,7 @@ async fn the_catalogs_name_the_api_and_the_mcp_server() {
             .unwrap()
             .ends_with("/mcp/docs")
     );
-    assert_eq!(card["tools"].as_array().unwrap().len(), 4);
+    assert_eq!(card["tools"].as_array().unwrap().len(), 5);
     let (_, _, body) = fetch(
         site(root.path()),
         "/.well-known/agent-skills/index.json",
@@ -340,5 +340,172 @@ async fn the_agent_documents_have_no_machine_talk() {
         let (_, _, body) = fetch(site(root.path()), uri, None).await;
         let hits = oa_copy::violations(&body, &[]);
         assert!(hits.is_empty(), "{uri}: {hits:?}");
+    }
+}
+
+// ---------------------------------------------------------------------
+// #11137: every surface names exactly the ways to pay the API takes now
+
+/// A method as the gateway's router describes it (`MethodInfo`).
+fn gateway_method(id: &str) -> Value {
+    match id {
+        "x402" => json!({"id": "x402", "name": "x402 on Lightning", "protocol": "x402",
+            "rail": "lightning", "network": "lnbtc:000000000019d6689c085ae165831e93", "asset": "BTC",
+            "challenge": "PAYMENT-REQUIRED", "credential": "PAYMENT-SIGNATURE",
+            "receipt": "PAYMENT-RESPONSE", "spec": "https://github.com/x402-foundation/x402"}),
+        _ => {
+            json!({"id": "mpp", "name": "The Payment scheme on Lightning (MPP)", "protocol": "mpp",
+            "rail": "lightning", "network": "lnbtc:000000000019d6689c085ae165831e93", "asset": "BTC",
+            "challenge": "WWW-Authenticate: Payment", "credential": "Authorization: Payment",
+            "receipt": "Payment-Receipt", "spec": "https://paymentauth.org/draft-httpauth-payment-01.txt"})
+        }
+    }
+}
+
+/// A site in front of a stand-in gateway whose OpenAPI document lists
+/// `ids` (or no gateway at all for `None`).
+async fn site_paying(root: &std::path::Path, ids: Option<&[&str]>) -> Router {
+    let mut config = Config::development(PathBuf::from(root).join("tasks"));
+    if let Some(ids) = ids {
+        let methods: Vec<Value> = ids.iter().map(|id| gateway_method(id)).collect();
+        let document = json!({"openapi": "3.1.0", "x-openagents-payment-methods": methods});
+        let gateway = axum::Router::new().route(
+            "/v1/openapi.json",
+            axum::routing::get(move || {
+                let document = document.clone();
+                async move { axum::Json(document) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, gateway).await.unwrap() });
+        config.inference = Some(std::sync::Arc::new(
+            upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+        ));
+    }
+    router(config)
+}
+
+#[tokio::test]
+async fn every_surface_lists_exactly_the_ways_to_pay_the_api_takes() {
+    let root = tempfile::tempdir().unwrap();
+    let cases: [(Option<&[&str]>, &[&str]); 4] = [
+        (None, &[]),
+        (Some(&[]), &[]),
+        (Some(&["x402"]), &["x402"]),
+        (Some(&["x402", "mpp"]), &["x402", "mpp"]),
+    ];
+    for (gateway, expected) in cases {
+        let site = || site_paying(root.path(), gateway);
+        let named = |text: &str, id: &str| {
+            let method = gateway_method(id);
+            text.contains(method["credential"].as_str().unwrap())
+        };
+        let check_text = |uri: &str, text: &str| {
+            for id in ["x402", "mpp"] {
+                assert_eq!(
+                    named(text, id),
+                    expected.contains(&id),
+                    "{uri} with {gateway:?}: {id}\n{text}"
+                );
+            }
+        };
+
+        let (_, _, llms) = fetch(site().await, "/llms.txt", None).await;
+        check_text("/llms.txt", &llms);
+        let (_, _, auth) = fetch(site().await, "/auth.md", None).await;
+        check_text("/auth.md", &auth);
+        assert!(
+            oa_copy::violations(&auth, &[]).is_empty(),
+            "auth.md machine talk"
+        );
+
+        let (_, _, body) = fetch(site().await, "/.well-known/api-catalog", None).await;
+        let catalog: Value = serde_json::from_str(&body).unwrap();
+        let api = catalog["linkset"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["anchor"] == "https://api.openagents.com/v1")
+            .unwrap();
+        let listed: Vec<&str> = api[agent_ready::PAYMENT_REL]
+            .as_array()
+            .map(|links| links.iter().map(|l| l["id"].as_str().unwrap()).collect())
+            .unwrap_or_default();
+        assert_eq!(listed, expected, "api-catalog with {gateway:?}");
+        assert!(
+            body.contains("/docs/api/for-agents") && body.contains("/docs/api/pay-per-request")
+        );
+
+        let (_, _, body) = fetch(site().await, "/.well-known/ai-catalog.json", None).await;
+        let ard: Value = serde_json::from_str(&body).unwrap();
+        let api = ard["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["displayName"] == "OpenAgents API")
+            .unwrap();
+        let listed: Vec<&str> = api["paymentProtocols"]
+            .as_array()
+            .map(|ids| ids.iter().map(|id| id.as_str().unwrap()).collect())
+            .unwrap_or_default();
+        assert_eq!(listed, expected, "ai-catalog with {gateway:?}");
+
+        let (_, _, body) = fetch(site().await, "/.well-known/agent-card.json", None).await;
+        let card: Value = serde_json::from_str(&body).unwrap();
+        let listed: Vec<&str> = card["capabilities"]["extensions"]
+            .as_array()
+            .and_then(|extensions| {
+                extensions
+                    .iter()
+                    .find(|e| e["uri"] == wellknown::PAYMENTS_EXTENSION)
+            })
+            .map(|e| {
+                e["params"]["methods"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|m| m["id"].as_str().unwrap())
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(listed, expected, "agent card with {gateway:?}");
+
+        let (_, reply) = mcp(
+            site().await,
+            json!({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                   "params": {"name": "list_payment_methods", "arguments": {}}}),
+        )
+        .await;
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        let tool: Value = serde_json::from_str(text).unwrap();
+        let listed: Vec<&str> = tool["methods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            listed, expected,
+            "MCP list_payment_methods with {gateway:?}"
+        );
+
+        let (_, _, page) = fetch(site().await, "/docs/api/for-agents.md", None).await;
+        assert!(!page.contains("{{"), "every placeholder is drawn in");
+        for id in ["x402", "mpp"] {
+            let method = gateway_method(id);
+            let row = format!(
+                "| [{}]({}) |",
+                method["name"].as_str().unwrap(),
+                method["spec"].as_str().unwrap()
+            );
+            assert_eq!(
+                page.contains(&row),
+                expected.contains(&id),
+                "for-agents with {gateway:?}: {id}"
+            );
+        }
+        let (_, _, page) = fetch(site().await, "/docs/api/pay-per-request.md", None).await;
+        assert!(!page.contains("{{"));
     }
 }

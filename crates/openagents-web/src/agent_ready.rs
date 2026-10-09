@@ -33,6 +33,10 @@ pub(crate) const SITE: &str = "https://openagents.com";
 pub(crate) const DESCRIPTION: &str = "OpenAgents is an open network of agents you work with \
 through one conversation, from anywhere: this website, your phone, or a terminal.";
 
+/// The API catalog's link relation for each way to pay per request the
+/// API takes now (an extension relation, RFC 8288).
+pub(crate) const PAYMENT_REL: &str = "https://openagents.com/rel/payment-method";
+
 /// The public docs MCP server's address on this site.
 pub(crate) const MCP_PATH: &str = "/mcp/docs";
 
@@ -498,13 +502,14 @@ async fn api_md() -> Response {
 
 /// `/llms.txt` (llmstxt.org): the title, a one-line summary, then every
 /// guide and the agent documents, each with what it covers.
-pub(crate) fn llms_txt() -> String {
+pub(crate) fn llms_txt(methods: &[crate::payments::Method]) -> String {
     format!(
         "# OpenAgents\n\n> {DESCRIPTION} Coder, its coding agent, works on your own computer \
 with the coding agents you already use. Developers can call our models through the OpenAgents API.\n\n\
 Every page here is also Markdown: add `.md` to its address, or send `Accept: text/markdown`.\n\
 {}\n## API\n\n- [API docs]({SITE}/docs/api.md): {API_LEAD}\n{}\
 - [Authentication]({SITE}/auth.md): get an API key and send it.\n\
+- [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
 - [OpenAPI]({SITE}/openapi.json): the API's machine-readable description.\n\
 - [API catalog]({SITE}/.well-known/api-catalog): where each API and its description live.\n\n\
 ## Agent tools\n\n\
@@ -521,12 +526,14 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Terms of service]({SITE}/terms.md)\n\
 - [Privacy policy]({SITE}/privacy.md)\n",
         guide_list(true),
-        api_list(true)
+        api_list(true),
+        crate::payments::sentence(methods)
     )
 }
 
-async fn llms() -> Response {
-    text_response(llms_txt(), "text/plain; charset=utf-8")
+async fn llms(State(app): State<App>) -> Response {
+    let methods = crate::payments::live(&app).await;
+    text_response(llms_txt(&methods), "text/plain; charset=utf-8")
 }
 
 /// `/llms-full.txt`: every guide and API guide, in reading order, each
@@ -552,9 +559,25 @@ async fn llms_full(State(app): State<App>) -> Response {
 /// `/auth.md`: how an agent gets and uses a credential here.
 const AUTH_MD: &str = include_str!("../content/agents/auth.md");
 
-async fn auth_md() -> Response {
+async fn auth_md(State(app): State<App>) -> Response {
     let canonical = format!("{SITE}/auth.md");
-    markdown_response(AUTH_MD.to_owned(), &canonical)
+    let methods = crate::payments::live(&app).await;
+    markdown_response(auth_markdown(&methods), &canonical)
+}
+
+/// `auth.md` with the ways to pay per request this API takes now.
+pub(crate) fn auth_markdown(methods: &[crate::payments::Method]) -> String {
+    let mut out = AUTH_MD.trim_end().to_owned();
+    out.push_str("\n\n## Pay per request instead\n\n");
+    out.push_str(&crate::payments::sentence(methods));
+    for method in methods {
+        out.push_str(&format!(
+            "\n- {}: the `402` carries `{}`; send `{}`; the answer carries `{}`.",
+            method.name, method.challenge, method.credential, method.receipt
+        ));
+    }
+    out.push_str("\n\nEvery step: [For agents](https://openagents.com/docs/api/for-agents.md).\n");
+    out
 }
 
 // ---------------------------------------------------------------------
@@ -728,17 +751,27 @@ async fn sitemap(State(app): State<App>) -> Response {
 
 /// `/.well-known/api-catalog` (RFC 9727): each API, where its description
 /// and docs are.
-pub(crate) fn api_catalog_json(origin: &str) -> Value {
+pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]) -> Value {
+    let payment: Vec<Value> = methods
+        .iter()
+        .map(|method| json!({"href": method.spec, "title": method.name, "id": method.id}))
+        .collect();
     let api = |anchor: &str| {
-        json!({
+        let mut entry = json!({
             "anchor": anchor,
             "service-desc": [{"href": format!("{origin}/openapi.json"), "type": "application/json"}],
             "service-doc": [
                 {"href": format!("{origin}/docs/api"), "type": "text/html"},
-                {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"}
+                {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"},
+                {"href": format!("{origin}/docs/api/for-agents"), "type": "text/html", "title": "For agents: find, sign in, pay"},
+                {"href": format!("{origin}/docs/api/pay-per-request"), "type": "text/html", "title": "Pay per request"}
             ],
             "describedby": [{"href": format!("{origin}/auth.md"), "type": "text/markdown"}]
-        })
+        });
+        if !payment.is_empty() {
+            entry[PAYMENT_REL] = json!(payment);
+        }
+        entry
     };
     json!({
         "linkset": [
@@ -762,8 +795,9 @@ pub(crate) fn api_catalog_json(origin: &str) -> Value {
 }
 
 async fn api_catalog(State(app): State<App>) -> Response {
+    let methods = crate::payments::live(&app).await;
     let mut response = json_response(
-        &api_catalog_json(&crate::wellknown::origin(&app)),
+        &api_catalog_json(&crate::wellknown::origin(&app), &methods),
         "application/linkset+json; charset=utf-8",
     );
     if let Ok(value) =
@@ -776,7 +810,7 @@ async fn api_catalog(State(app): State<App>) -> Response {
 
 /// `/.well-known/ai-catalog.json` (Agentic Resource Discovery): the MCP
 /// server, the agent card, the skills, and the API.
-pub(crate) fn ai_catalog_json(origin: &str) -> Value {
+pub(crate) fn ai_catalog_json(origin: &str, methods: &[crate::payments::Method]) -> Value {
     let host = origin
         .split("://")
         .nth(1)
@@ -785,6 +819,23 @@ pub(crate) fn ai_catalog_json(origin: &str) -> Value {
         .next()
         .unwrap_or("openagents.com")
         .to_owned();
+    let mut api = json!({
+        "identifier": format!("urn:air:{host}:api:openagents"),
+        "displayName": "OpenAgents API",
+        "description": API_LEAD.replace('`', ""),
+        "type": "application/linkset+json",
+        "url": format!("{origin}/.well-known/api-catalog"),
+        "documentationUrl": format!("{origin}/docs/api/for-agents"),
+        "representativeQueries": [
+            "an OpenAI-compatible API with many models",
+            "call Open Responses with one key",
+            "cheapest model for a quick answer"
+        ]
+    });
+    if !methods.is_empty() {
+        api["paymentProtocols"] = json!(crate::payments::ids(methods));
+        api["paymentDocumentationUrl"] = json!(format!("{origin}/docs/api/pay-per-request"));
+    }
     json!({
         "specVersion": "1.0",
         "host": {
@@ -805,18 +856,7 @@ pub(crate) fn ai_catalog_json(origin: &str) -> Value {
                     "how do I write an OpenAgents plugin"
                 ]
             },
-            {
-                "identifier": format!("urn:air:{host}:api:openagents"),
-                "displayName": "OpenAgents API",
-                "description": API_LEAD.replace('`', ""),
-                "type": "application/linkset+json",
-                "url": format!("{origin}/.well-known/api-catalog"),
-                "representativeQueries": [
-                    "an OpenAI-compatible API with many models",
-                    "call Open Responses with one key",
-                    "cheapest model for a quick answer"
-                ]
-            },
+            api,
             {
                 "identifier": format!("urn:air:{host}:agent:card"),
                 "displayName": "OpenAgents agent card",
@@ -842,8 +882,9 @@ pub(crate) fn ai_catalog_json(origin: &str) -> Value {
 }
 
 async fn ai_catalog(State(app): State<App>) -> Response {
+    let methods = crate::payments::live(&app).await;
     json_response(
-        &ai_catalog_json(&crate::wellknown::origin(&app)),
+        &ai_catalog_json(&crate::wellknown::origin(&app), &methods),
         "application/json; charset=utf-8",
     )
 }
@@ -1090,7 +1131,7 @@ mod tests {
 
     #[test]
     fn llms_txt_links_every_guide_and_the_agent_documents() {
-        let llms = llms_txt();
+        let llms = llms_txt(&[]);
         assert!(llms.starts_with("# OpenAgents\n\n> "));
         for (slug, _) in DOCS {
             assert!(llms.contains(&format!("{SITE}/docs/{slug}.md)")), "{slug}");

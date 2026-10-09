@@ -94,6 +94,13 @@ pub(crate) fn tools() -> Value {
             "description": "List the OpenAgents API's models and what each costs per million tokens, as a Markdown table.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
             "annotations": read_only
+        },
+        {
+            "name": "list_payment_methods",
+            "title": "List ways to pay",
+            "description": "List the ways the OpenAgents API takes payment per request with no key right now, as JSON: each method's name, the 402 header it answers with, the header to send back, and the receipt header.",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+            "annotations": read_only
         }
     ])
 }
@@ -264,6 +271,7 @@ async fn call(app: &App, params: &Value) -> Result<Value, Fault> {
         "search_docs" => search_docs(&arguments),
         "read_doc" => read_doc(app, &arguments).await,
         "list_models" => Ok(list_models(app).await),
+        "list_payment_methods" => Ok(list_payment_methods(app).await),
         other => return Err(Fault::new(-32602, format!("No tool named {other}."))),
     };
     Ok(match text {
@@ -355,6 +363,17 @@ async fn read_doc(app: &App, arguments: &Value) -> Result<String, String> {
             "No guide is named \"{name}\". list_docs gives every name."
         ))?;
     Ok(crate::pages::api_docs::source(app, guide.source).await)
+}
+
+async fn list_payment_methods(app: &App) -> String {
+    let methods = crate::payments::live(app).await;
+    serde_json::to_string_pretty(&json!({
+        "api": "https://api.openagents.com/v1",
+        "summary": crate::payments::sentence(&methods),
+        "methods": methods,
+        "docs": format!("{SITE}/docs/api/for-agents.md"),
+    }))
+    .unwrap_or_default()
 }
 
 async fn list_models(app: &App) -> String {

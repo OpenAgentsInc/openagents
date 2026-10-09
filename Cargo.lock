@@ -5910,6 +5910,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
+ "base64 0.22.1",
  "commercial-accounts",
  "commercial-spend",
  "discovery",

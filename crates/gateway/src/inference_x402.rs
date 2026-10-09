@@ -1,5 +1,14 @@
-//! Pay per request with x402 over Lightning (#11078; OpenAgents API D3,
-//! D12): `POST /v1/responses` and `POST /v1/chat/completions` with no key.
+//! Pay per request over Lightning (#11078, #11136; OpenAgents API D3,
+//! D12): `POST /v1/responses` and `POST /v1/chat/completions` with no key,
+//! through the payment router (`openagents_x402::router`).
+//!
+//! - **The methods.** x402 `exact`/`lnbtc` always (the `inference.x402`
+//!   block turns the toll on), and the HTTP `Payment` scheme's Lightning
+//!   `charge` (MPP) when `inference.x402.mpp` is set. Both are encodings of
+//!   one invoice per `402` and consume the same replay key, so one payment
+//!   settles once. Discovery (`/v1/openapi.json`, and through it the
+//!   website's catalogs, `llms.txt`, `auth.md`, and the For agents page)
+//!   prints [`Toll::methods`], never a static list.
 //!
 //! - **The price.** The request's worst case from the rate card: for every
 //!   model its name can reach (the model itself, a task class's models, or
@@ -9,16 +18,21 @@
 //!   ceiling). Dollars become sats at `inference.sats_rate`, rounded up to
 //!   a whole sat. The same request bytes always get the same price, so the
 //!   paid retry matches its challenge.
-//! - **The challenge.** No `PAYMENT-SIGNATURE`: `402 payment_required`
-//!   with x402 v2 `exact`/`lnbtc` terms in `PAYMENT-REQUIRED`. The invoice
+//! - **The challenge.** No credential: `402 payment_required` with x402 v2
+//!   `exact`/`lnbtc` terms in `PAYMENT-REQUIRED` (with the Bazaar
+//!   extension) and, with MPP on, `WWW-Authenticate: Payment` on the same
+//!   invoice; the body lists the live methods. The invoice
 //!   comes from the resident wallet and its description hash binds the
 //!   method, URL, and body bytes (`http:1`, no headers), so a proof buys
 //!   only this request.
 //! - **The paid call.** The same request with `PAYMENT-SIGNATURE` (the
-//!   accepted terms and the preimage): `crates/x402`'s facilitator checks
-//!   the proof and consumes the payment hash once in the replay store,
-//!   then the request runs like any other. The answer carries
-//!   `PAYMENT-RESPONSE`.
+//!   accepted terms and the preimage) or `Authorization: Payment` (the
+//!   echoed challenge and the preimage): the router's adapter checks the
+//!   proof and `crates/x402`'s facilitator consumes the payment hash once
+//!   in the replay store, then the request runs like any other. The answer
+//!   carries `PAYMENT-RESPONSE` or `Payment-Receipt`, and
+//!   `x-openagents-receipt` names the one `openagents.payment-receipt.v1`
+//!   record written when it is served (no preimage in it).
 //! - **Settling.** The payment is the quoted worst case, paid up front.
 //!   The answer's actual cost is in `x-openagents-cost-usd` (and its
 //!   `openagents:cost` event); the unspent part is not returned per call.
@@ -30,7 +44,7 @@
 //! One payment buys one model turn: hosted tools, `store`, and
 //! `previous_response_id` need a key.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -42,29 +56,32 @@ use inference::request::{CreateResponse, Tool};
 use inference::router::{PriceLimit, TaskClass, micros_usd};
 use inference::run::{Admission, Admit, Admitted, Caller, Events, Gateway, Prepared};
 use inference::upstream::BoxFuture;
-use nostr::x402::{PaymentRequirements, binding_hash, http_binding};
-use openagents_x402::server::Receiver;
-use openagents_x402::wire::{decode_payment_payload, encode_header};
-use openagents_x402::{
-    Facilitator, FileReplayStore, PAYMENT_REQUIRED, PAYMENT_RESPONSE, PAYMENT_SIGNATURE,
-    PaymentRequired, ReplayStore, ResourceInfo, SettlementResponse,
+use nostr::x402::{binding_hash, http_binding};
+use openagents_x402::payment_scheme;
+use openagents_x402::receipt::{self, FileReceiptStore, Payer, PaymentReceipt};
+use openagents_x402::router::{
+    Adapter, Bound, ChallengeError, Lightning, Method, MethodInfo, MppLightning, Quote, Refused,
+    Router, Settled, X402Lightning,
 };
+use openagents_x402::server::Receiver;
+use openagents_x402::{Facilitator, FileReplayStore, PAYMENT_SIGNATURE, ResourceInfo};
 use serde_json::{Map, Value, json};
 
 use crate::config::InferenceX402;
 use crate::serve::ServeState;
 
-/// The tenant name x402 calls are metered under.
+/// The tenant name paid-per-request calls are metered under.
 pub const TENANT: &str = "x402";
 
-/// The pay-per-request toll: the receiver that issues invoices, the
-/// facilitator and its replay store, and the network.
+/// Where agents read how to pay.
+pub const DOCS: &str = "https://openagents.com/docs/api/for-agents";
+
+/// The pay-per-request toll: the payment router (its receiver, replay
+/// store, and live methods), the receipt store, and the bound origin.
 pub struct Toll {
-    receiver: Arc<dyn Receiver>,
-    facilitator: Facilitator<FileReplayStore>,
-    network: &'static str,
+    router: Router<FileReplayStore>,
+    receipts: FileReceiptStore,
     origin: Option<String>,
-    timeout_secs: u32,
 }
 
 impl Toll {
@@ -73,11 +90,12 @@ impl Toll {
     ///
     /// # Errors
     ///
-    /// A sentence when the network is not `bitcoin` or `testnet` or the
-    /// replay store cannot be opened.
+    /// A sentence when the network is not `bitcoin` or `testnet`, a store
+    /// cannot be opened, or the `Payment` challenge key cannot be read or
+    /// made.
     pub fn open(
         config: &InferenceX402,
-        registry: &std::path::Path,
+        registry: &Path,
         public_origin: Option<&str>,
         receiver: Arc<dyn Receiver>,
     ) -> Result<Self, String> {
@@ -88,17 +106,120 @@ impl Toll {
             .clone()
             .unwrap_or_else(|| registry.join("inference").join("x402-replay"));
         let store = FileReplayStore::open(&dir).map_err(|error| error.to_string())?;
-        Ok(Self {
-            receiver,
-            facilitator: Facilitator::new(store, nostr::x402::DEFAULT_CLOCK_SKEW),
-            network,
-            origin: config
-                .origin
+        let receipts_dir = config
+            .receipts_dir
+            .clone()
+            .unwrap_or_else(|| registry.join("inference").join("payment-receipts"));
+        let receipts = FileReceiptStore::open(&receipts_dir).map_err(|error| error.to_string())?;
+        let origin = config
+            .origin
+            .clone()
+            .or_else(|| public_origin.map(str::to_owned))
+            .map(|origin| origin.trim_end_matches('/').to_owned());
+        let mut adapters: Vec<Box<dyn Adapter>> = vec![Box::new(X402Lightning)];
+        if let Some(mpp) = &config.mpp {
+            let realm = mpp
+                .realm
                 .clone()
-                .or_else(|| public_origin.map(str::to_owned))
-                .map(|origin| origin.trim_end_matches('/').to_owned()),
-            timeout_secs: config.timeout_secs,
+                .or_else(|| {
+                    origin
+                        .as_deref()
+                        .and_then(|origin| origin.split("://").nth(1))
+                        .map(|host| host.split('/').next().unwrap_or(host).to_owned())
+                })
+                .unwrap_or_else(|| "api.openagents.com".to_owned());
+            let key_file = mpp
+                .challenge_key_file
+                .clone()
+                .unwrap_or_else(|| registry.join("inference").join("payment-challenge.key"));
+            adapters.push(Box::new(MppLightning::new(
+                realm,
+                challenge_key(&key_file)?,
+            )?));
+        }
+        let router = Router::new(
+            Lightning::new(
+                receiver,
+                Facilitator::new(store, nostr::x402::DEFAULT_CLOCK_SKEW),
+                network,
+                config.timeout_secs,
+            ),
+            adapters,
+        )?;
+        Ok(Self {
+            router,
+            receipts,
+            origin,
         })
+    }
+
+    /// The live payment methods, in the order the `402` sends them.
+    #[must_use]
+    pub fn methods(&self) -> Vec<MethodInfo> {
+        self.router.methods()
+    }
+
+    /// The receipts written so far.
+    #[must_use]
+    pub fn receipts(&self) -> &FileReceiptStore {
+        &self.receipts
+    }
+
+    fn has(&self, method: Method) -> bool {
+        self.router
+            .methods()
+            .iter()
+            .any(|info| info.id == method.id())
+    }
+}
+
+/// The `Payment` challenge HMAC key: 32 random bytes, hex, in a file
+/// only this user can read. Made on first use.
+fn challenge_key(path: &Path) -> Result<Vec<u8>, String> {
+    use std::io::Write;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            // SAFETY: geteuid has no preconditions.
+            let uid = unsafe { libc::geteuid() };
+            if !metadata.is_file()
+                || metadata.permissions().mode() & 0o077 != 0
+                || metadata.uid() != uid
+            {
+                return Err(format!(
+                    "The Payment challenge key {} must be a file only this user can read.",
+                    path.display()
+                ));
+            }
+            let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+            let key = hex::decode(text.trim())
+                .map_err(|_| format!("The Payment challenge key {} isn't hex.", path.display()))?;
+            if key.len() < 32 {
+                return Err("The Payment challenge key must be at least 32 bytes.".into());
+            }
+            Ok(key)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            use ring::rand::SecureRandom;
+            let mut key = [0u8; 32];
+            ring::rand::SystemRandom::new()
+                .fill(&mut key)
+                .map_err(|_| "No randomness for the Payment challenge key.".to_owned())?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(path)
+                .map_err(|error| error.to_string())?;
+            file.write_all(hex::encode(key).as_bytes())
+                .and_then(|()| file.sync_all())
+                .map_err(|error| error.to_string())?;
+            Ok(key.to_vec())
+        }
+        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -145,9 +266,22 @@ impl Receiver for WalletReceiver {
     }
 }
 
-/// Should this request go the x402 way: no key, and a toll configured.
+/// Should this request go the pay-per-request way: a toll configured, and
+/// either no `Authorization` at all or a `Payment` credential while that
+/// method is live. A bearer key always takes the keyed path.
 pub(crate) fn applies(state: &ServeState, headers: &HeaderMap) -> bool {
-    state.inference_x402.is_some() && !headers.contains_key("authorization")
+    let Some(toll) = &state.inference_x402 else {
+        return false;
+    };
+    match headers.get("authorization") {
+        None => true,
+        Some(value) => {
+            value
+                .to_str()
+                .is_ok_and(payment_scheme::is_payment_authorization)
+                && toll.has(Method::Mpp)
+        }
+    }
 }
 
 /// The models a request's name can reach: what the price covers.
@@ -216,56 +350,53 @@ fn api_error(error: &ApiError, request_id: &str) -> Response {
     crate::inference_routes::error(error, request_id)
 }
 
-fn requirements(
-    toll: &Toll,
-    amount_msat: u64,
-    request_hash: &str,
-    invoice: &str,
-) -> PaymentRequirements {
-    let mut extra = Map::new();
-    extra.insert("assetTransferMethod".into(), json!("bolt11"));
-    extra.insert("paymentFlow".into(), json!("upfront"));
-    extra.insert("requestHash".into(), json!(request_hash));
-    extra.insert("requestBindingProfile".into(), json!("http:1"));
-    extra.insert("requestBindingParams".into(), json!({"headers": []}));
-    extra.insert("invoice".into(), json!(invoice));
-    PaymentRequirements {
-        scheme: "exact".into(),
-        network: toll.network.into(),
-        amount: amount_msat.to_string(),
-        asset: "BTC".into(),
-        pay_to: toll.receiver.pay_to(),
-        max_timeout_seconds: u64::from(toll.timeout_secs),
-        extra,
-    }
+fn header_pair(name: &str, value: &str) -> Option<(axum::http::HeaderName, HeaderValue)> {
+    Some((
+        axum::http::HeaderName::from_bytes(name.as_bytes()).ok()?,
+        HeaderValue::from_str(value).ok()?,
+    ))
 }
 
-fn payment_required(message: impl Into<String>, extra: Value, request_id: &str) -> Response {
+/// A `402` with `fields` merged into the JSON body and `headers` added.
+fn payment_required(
+    message: impl Into<String>,
+    fields: &Map<String, Value>,
+    headers: &[(String, String)],
+    request_id: &str,
+) -> Response {
     let mut body = json!({
         "error": {"type": "payment_required", "code": "payment_required",
                   "message": message.into(), "param": null},
         "x402Version": 2,
+        "docs": DOCS,
     });
-    if let (Some(body), Some(extra)) = (body.as_object_mut(), extra.as_object()) {
-        for (name, value) in extra {
+    if let Some(body) = body.as_object_mut() {
+        for (name, value) in fields {
             body.insert(name.clone(), value.clone());
         }
     }
     let mut response = (StatusCode::PAYMENT_REQUIRED, axum::Json(body)).into_response();
-    let headers = response.headers_mut();
-    headers.insert("cache-control", HeaderValue::from_static("no-store"));
+    let out = response.headers_mut();
+    out.insert("cache-control", HeaderValue::from_static("no-store"));
     if let Ok(value) = HeaderValue::from_str(request_id) {
-        headers.insert("x-request-id", value);
+        out.insert("x-request-id", value);
+    }
+    for (name, value) in headers {
+        if let Some((name, value)) = header_pair(name, value) {
+            // Several challenges may share a name (`WWW-Authenticate`).
+            out.append(name, value);
+        }
     }
     response
 }
 
 /// A paid request, ready to run: its caller (with the admission that
-/// gives the payment back if nothing is answered) and the settlement
-/// header its answer carries.
+/// gives the payment back if nothing is answered), the protocol's receipt
+/// headers, and the receipt id its answer carries.
 pub(crate) struct Paid {
     pub caller: Caller,
-    pub settlement: String,
+    headers: Vec<(String, String)>,
+    receipt_id: String,
     run: Arc<Run>,
 }
 
@@ -276,18 +407,42 @@ impl Paid {
         self.run.give_back();
     }
 
-    /// Put `PAYMENT-RESPONSE` on the answer.
+    /// Put the protocol's receipt (`PAYMENT-RESPONSE` or
+    /// `Payment-Receipt`) and `x-openagents-receipt` on the answer.
     pub(crate) fn stamp(&self, response: &mut Response) {
-        if let Ok(value) = HeaderValue::from_str(&self.settlement) {
-            response.headers_mut().insert(PAYMENT_RESPONSE, value);
+        let out = response.headers_mut();
+        for (name, value) in &self.headers {
+            if let Some((name, value)) = header_pair(name, value) {
+                out.insert(name, value);
+            }
+        }
+        if let Ok(value) = HeaderValue::from_str(&self.receipt_id) {
+            out.insert(receipt::HEADER, value);
         }
     }
 }
 
-/// The x402 side of a keyless request to `path` with these exact `body`
-/// bytes (`request` is what they parse to, translated to Open Responses
-/// for Chat Completions): a `402` challenge, a refusal, or the paid
-/// caller.
+/// The Bazaar listing for `api`: an example request and answer.
+fn bazaar(api: Api, model: Option<&str>) -> Map<String, Value> {
+    let model = model.unwrap_or("openagents/chat");
+    let (input, output) = if api == Api::Chat {
+        (
+            json!({"model": model, "messages": [{"role": "user", "content": "Say hello."}], "max_tokens": 200}),
+            json!({"object": "chat.completion", "choices": [{"message": {"role": "assistant", "content": "Hello."}}]}),
+        )
+    } else {
+        (
+            json!({"model": model, "input": "Say hello.", "max_output_tokens": 200}),
+            json!({"object": "response", "status": "completed", "output_text": "Hello."}),
+        )
+    };
+    openagents_x402::router::bazaar(&input, &output)
+}
+
+/// The pay-per-request side of a keyless request to `path` with these
+/// exact `body` bytes (`request` is what they parse to, translated to Open
+/// Responses for Chat Completions): a `402` challenge, a refusal, or the
+/// paid caller.
 pub(crate) fn admit(
     state: &Arc<ServeState>,
     headers: &HeaderMap,
@@ -387,118 +542,134 @@ pub(crate) fn admit(
         rest: Map::new(),
     };
     let sats = amount_msat / 1_000;
-    let price = json!({"price_sats": sats, "price_msat": amount_msat.to_string(),
-                       "price_usd": micros_usd(micros)});
+    let quote = Quote {
+        amount_msat,
+        usd_micros: micros,
+    };
+    // Only the credential headers reach the router.
+    let credentials: Vec<(String, String)> = [PAYMENT_SIGNATURE, payment_scheme::AUTHORIZATION]
+        .into_iter()
+        .filter_map(|name| {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(|value| (name.to_owned(), value.to_owned()))
+        })
+        .collect();
+    let bound = Bound {
+        http_method: "POST",
+        url: &url,
+        body,
+        request_hash: &request_hash,
+        headers: &credentials,
+    };
+    let now = openagents_x402::unix_now();
+    let extensions = bazaar(api, request.model.as_deref());
+    let methods = toll.methods();
+    let mpp = toll.has(Method::Mpp);
+    let send_with = methods
+        .iter()
+        .map(|method| method.credential)
+        .collect::<Vec<_>>()
+        .join(" or ");
 
-    let Some(signature) = headers
-        .get(PAYMENT_SIGNATURE)
-        .and_then(|value| value.to_str().ok())
-    else {
-        let mut digest = [0u8; 32];
-        if hex_into(&request_hash, &mut digest).is_err() {
-            return Err(refuse(ApiError::new(
-                ErrorType::ServerError,
-                "The request couldn't be bound.",
-            )));
-        }
-        let invoice = match toll
-            .receiver
-            .invoice(amount_msat, digest, toll.timeout_secs)
-        {
-            Ok(invoice) => invoice,
-            Err(_) => {
-                return Err(refuse(ApiError::new(
+    // A fresh 402: every live method's challenge on one new invoice.
+    let challenge = |refused: Option<&Refused>| -> Response {
+        let challenged = match toll.router.challenge(
+            &bound,
+            quote,
+            &resource,
+            Some(&extensions),
+            refused.map(|refused| refused.reason.as_str()),
+            now,
+        ) {
+            Ok(challenged) => challenged,
+            Err(ChallengeError::Binding) => {
+                return refuse(ApiError::new(
+                    ErrorType::ServerError,
+                    "The request couldn't be bound.",
+                ));
+            }
+            Err(ChallengeError::Invoice) => {
+                return refuse(ApiError::new(
                     ErrorType::ServerError,
                     "We can't make an invoice right now. Try again in a minute, or use an API key.",
-                )));
+                ));
             }
         };
-        let required = PaymentRequired {
-            x402_version: 2,
-            error: Some("PAYMENT-SIGNATURE header is required".into()),
-            resource,
-            accepts: vec![requirements(toll, amount_msat, &request_hash, &invoice)],
-            extensions: None,
-        };
-        let Ok(header) = encode_header(&required) else {
-            return Err(refuse(ApiError::new(
-                ErrorType::ServerError,
-                "The payment terms couldn't be written.",
-            )));
-        };
-        let mut response = payment_required(
-            format!(
-                "This request costs up to {sats} sats (${}). Pay the invoice in the PAYMENT-REQUIRED header and send the same request again with PAYMENT-SIGNATURE, or use an API key.",
+        let message = match refused {
+            None => format!(
+                "This request costs up to {sats} sats (${}). Pay the invoice in this answer and send the same request again with {send_with}, or use an API key. How: {DOCS}",
                 micros_usd(micros)
             ),
-            price,
-            request_id,
-        );
-        if let Ok(value) = HeaderValue::from_str(&header) {
-            response.headers_mut().insert(PAYMENT_REQUIRED, value);
+            Some(refused) => format!(
+                "The payment wasn't accepted ({}). This request costs up to {sats} sats (${}); pay the fresh invoice in this answer and send the same request again with {send_with}.",
+                refused.reason,
+                micros_usd(micros)
+            ),
+        };
+        let mut fields = challenged.body;
+        fields.insert("price_sats".into(), json!(sats));
+        fields.insert("price_msat".into(), json!(amount_msat.to_string()));
+        fields.insert("price_usd".into(), json!(micros_usd(micros)));
+        if mpp {
+            // The `Payment` scheme's problem details (RFC 9457).
+            let problem = refused.map_or_else(
+                || payment_scheme::Problem::PaymentRequired.type_uri(),
+                |refused| refused.problem.clone(),
+            );
+            fields.insert("type".into(), json!(problem));
+            fields.insert("title".into(), json!("Payment Required"));
+            fields.insert("status".into(), json!(402));
+            fields.insert("detail".into(), json!(message));
         }
-        return Err(response);
+        let mut headers = challenged.headers;
+        if let Some(refused) = refused {
+            fields.insert("reason".into(), json!(refused.reason));
+            headers.extend(refused.headers.iter().cloned());
+        }
+        payment_required(message, &fields, &headers, request_id)
     };
 
-    let refused = |reason: &str, settlement: &SettlementResponse| {
-        let mut response = payment_required(
-            format!(
-                "The payment wasn't accepted ({reason}). Send the request without PAYMENT-SIGNATURE for fresh terms."
-            ),
-            json!({"reason": reason}),
-            request_id,
-        );
-        if let Ok(header) = encode_header(settlement)
-            && let Ok(value) = HeaderValue::from_str(&header)
-        {
-            response.headers_mut().insert(PAYMENT_RESPONSE, value);
-        }
-        response
+    let purchase = format!("inference:{request_id}");
+    let settled = match toll.router.settle(&bound, quote, &purchase, now) {
+        None => return Err(challenge(None)),
+        Some(Err(refused)) => return Err(challenge(Some(&refused))),
+        Some(Ok(settled)) => settled,
     };
-    let Ok(payload) = decode_payment_payload(signature) else {
-        let reason = "invalid_payment_payload";
-        return Err(refused(
-            reason,
-            &SettlementResponse::failed(toll.network, reason),
-        ));
+    let receipt_id = receipt::receipt_id(&settled.replay_key);
+    let receipt = PaymentReceipt {
+        v: receipt::SCHEMA.to_owned(),
+        id: receipt_id.clone(),
+        protocol: settled.method.id().to_owned(),
+        rail: settled.rail.to_owned(),
+        network: settled.network.clone(),
+        asset: settled.asset.to_owned(),
+        amount: settled.amount.clone(),
+        usd_micros: micros,
+        replay_key: settled.replay_key.clone(),
+        request_hash: request_hash.clone(),
+        resource: format!("POST {path}"),
+        payer: Payer::default(),
+        settled_at: now,
+        outcome: "served".to_owned(),
     };
-    let Some(invoice) = payload
-        .accepted
-        .extra
-        .get("invoice")
-        .and_then(Value::as_str)
-        .filter(|invoice| !invoice.is_empty())
-    else {
-        let reason = "invalid_exact_lnbtc_invoice_missing";
-        return Err(refused(
-            reason,
-            &SettlementResponse::failed(toll.network, reason),
-        ));
-    };
-    let terms = requirements(toll, amount_msat, &request_hash, invoice);
-    let admitted = match toll.facilitator.settle(
-        &terms,
-        &payload,
-        &format!("inference:{request_id}"),
-        openagents_x402::unix_now(),
-    ) {
-        Ok(admitted) => admitted,
-        Err(settlement) => {
-            let reason = settlement
-                .error_reason
-                .clone()
-                .unwrap_or_else(|| "settlement_failed".into());
-            return Err(refused(&reason, &settlement));
-        }
-    };
-    let settlement = encode_header(&admitted.response).unwrap_or_default();
+    let Settled {
+        method,
+        replay_key,
+        payment_hash,
+        headers: receipt_headers,
+        ..
+    } = settled;
     let run = Arc::new(Run {
         state: state.clone(),
-        key: admitted.proof.consumption_key.clone(),
-        payment_hash: admitted.proof.payment_hash.clone(),
+        key: replay_key,
+        method,
+        payment_hash: payment_hash.unwrap_or_default(),
         paid_micros: micros,
         models: reachable(gateway, request),
         request_id: request_id.to_owned(),
+        receipt: Arc::new(receipt),
         admitted: AtomicBool::new(false),
         given_back: Arc::new(AtomicBool::new(false)),
     });
@@ -512,19 +683,29 @@ pub(crate) fn admit(
             admission: Some(Admission(run.clone())),
             own: inference::run::OwnUpstreams::default(),
         },
-        settlement,
+        headers: receipt_headers,
+        receipt_id,
         run,
     })
 }
 
-fn hex_into(text: &str, out: &mut [u8; 32]) -> Result<(), ()> {
-    if text.len() != 64 {
-        return Err(());
+#[derive(Clone, Copy)]
+enum Stage {
+    Paid,
+    Returned,
+    Settled,
+}
+
+/// What a charge is recorded as, per method and stage.
+fn settlement(method: Method, stage: Stage) -> &'static str {
+    match (method, stage) {
+        (Method::Mpp, Stage::Paid) => "mpp_paid",
+        (Method::Mpp, Stage::Returned) => "mpp_returned",
+        (Method::Mpp, Stage::Settled) => "mpp_settled",
+        (_, Stage::Paid) => "x402_paid",
+        (_, Stage::Returned) => "x402_returned",
+        (_, Stage::Settled) => "x402_settled",
     }
-    for (index, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16).map_err(|_| ())?;
-    }
-    Ok(())
 }
 
 /// One paid request: admitted once, and its payment given back if it is
@@ -532,10 +713,13 @@ fn hex_into(text: &str, out: &mut [u8; 32]) -> Result<(), ()> {
 struct Run {
     state: Arc<ServeState>,
     key: String,
+    method: Method,
     payment_hash: String,
     paid_micros: u64,
     models: Vec<String>,
     request_id: String,
+    /// Written once, when the answer is served.
+    receipt: Arc<PaymentReceipt>,
     admitted: AtomicBool,
     /// Set once the payment is given back, by whichever side does it
     /// first, so a later release can't free a claim a retry made since.
@@ -548,7 +732,7 @@ fn release_once(state: &ServeState, key: &str, given_back: &AtomicBool) {
         return;
     }
     if let Some(toll) = &state.inference_x402 {
-        let _ = toll.facilitator.store().release(key);
+        toll.router.release(key);
     }
 }
 
@@ -604,14 +788,17 @@ impl Admit for Run {
                     format!("{} wasn't in this request's price.", outside.model),
                 ));
             }
-            self.record(None, "x402_paid").await;
+            self.record(None, settlement(self.method, Stage::Paid))
+                .await;
             Ok(Box::new(Answering {
                 run: Arc::new(RunRef {
                     state: self.state.clone(),
                     key: self.key.clone(),
+                    method: self.method,
                     request_id: self.request_id.clone(),
                     paid_micros: self.paid_micros,
                     payment_hash: self.payment_hash.clone(),
+                    receipt: self.receipt.clone(),
                     given_back: self.given_back.clone(),
                 }),
             }) as Box<dyn Admitted>)
@@ -623,9 +810,11 @@ impl Admit for Run {
 struct RunRef {
     state: Arc<ServeState>,
     key: String,
+    method: Method,
     request_id: String,
     paid_micros: u64,
     payment_hash: String,
+    receipt: Arc<PaymentReceipt>,
     given_back: Arc<AtomicBool>,
 }
 
@@ -644,7 +833,7 @@ impl Admitted for Answering {
                         tenant: TENANT.to_owned(),
                         free: false,
                         micros: Some(0),
-                        settlement: "x402_returned",
+                        settlement: settlement(self.run.method, Stage::Returned),
                     },
                 );
             }
@@ -666,6 +855,7 @@ impl Admitted for Answering {
                         .and_then(|info| info.cost.as_ref())
                         .and_then(|cost| inference::router::usd_micros(&cost.price_usd));
                     tracing_paid(&run, cost);
+                    write_receipt(&run);
                     if let Some(book) = &run.state.inference_book {
                         book.lock().await.record_charge(
                             &run.request_id,
@@ -673,7 +863,7 @@ impl Admitted for Answering {
                                 tenant: TENANT.to_owned(),
                                 free: false,
                                 micros: Some(run.paid_micros),
-                                settlement: "x402_settled",
+                                settlement: settlement(run.method, Stage::Settled),
                             },
                         );
                     }
@@ -684,17 +874,33 @@ impl Admitted for Answering {
     }
 }
 
-/// One line for the operator: what was paid, what the answer cost.
+/// The one receipt for this payment, once it served an answer.
+fn write_receipt(run: &RunRef) {
+    let Some(toll) = &run.state.inference_x402 else {
+        return;
+    };
+    if let Err(error) = toll.receipts.write(&run.receipt) {
+        eprintln!(
+            "{}",
+            json!({"event": "payment_receipt_unwritten", "request_id": run.request_id,
+                   "receipt": run.receipt.id, "error": error.to_string()})
+        );
+    }
+}
+
+/// One line for the operator: what was paid, what the answer cost. The
+/// payment hash is public; the preimage never appears.
 fn tracing_paid(run: &RunRef, cost: Option<u64>) {
     eprintln!(
         "{}",
-        json!({"event": "inference_x402_settled", "request_id": run.request_id,
+        json!({"event": "inference_paid_settled", "method": run.method.id(),
+               "request_id": run.request_id, "receipt": run.receipt.id,
                "payment_hash": run.payment_hash, "paid_usd": micros_usd(run.paid_micros),
                "cost_usd": cost.map(micros_usd)})
     );
 }
 
-/// Run a paid request's outcome: stamp the settlement on an answer, give
+/// Run a paid request's outcome: stamp the receipts on an answer, give
 /// the payment back on a refusal that came before any answer.
 pub(crate) fn finish(paid: &Paid, outcome: Result<Response, Response>) -> Response {
     match outcome {

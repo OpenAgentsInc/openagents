@@ -1,9 +1,11 @@
-//! The public inference API's contract (#11078): `GET /v1/openapi.json`
-//! held to the mounted route table, and x402 pay-per-request on
-//! `/v1/responses` and `/v1/chat/completions` against a receiver that
-//! signs real BOLT11 invoices with a test key (no real payment: the test
-//! buyer reads the preimage back from it, as a wallet returns it after
-//! paying).
+//! The public inference API's contract (#11078, #11136, #11137):
+//! `GET /v1/openapi.json` held to the mounted route table, and
+//! pay-per-request on `/v1/responses` and `/v1/chat/completions` through
+//! the payment router (x402 and the `Payment` scheme on one invoice)
+//! against a receiver that signs real BOLT11 invoices with a test key (no
+//! real payment: the test buyer reads the preimage back from it, as a
+//! wallet returns it after paying), with the advertised methods held to
+//! the configured ones.
 
 mod common;
 
@@ -205,6 +207,28 @@ struct Deployment {
 }
 
 async fn deploy(x402: bool, refuse: bool) -> Deployment {
+    deploy_with(if x402 { Pay::X402 } else { Pay::None }, refuse).await
+}
+
+/// Which pay-per-request methods a deployment is configured with.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Pay {
+    None,
+    X402,
+    X402AndMpp,
+}
+
+impl Pay {
+    fn ids(self) -> Vec<&'static str> {
+        match self {
+            Self::None => vec![],
+            Self::X402 => vec!["x402"],
+            Self::X402AndMpp => vec!["x402", "mpp"],
+        }
+    }
+}
+
+async fn deploy_with(pay: Pay, refuse: bool) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let manifest = common::manifest(&common::artifact('a'), None);
     Registry::install(dir.path(), manifest).unwrap();
@@ -233,12 +257,15 @@ async fn deploy(x402: bool, refuse: bool) -> Deployment {
         "public": {},
         "byok": {"keyring": keyring},
     });
-    if x402 {
+    if pay != Pay::None {
         inference["x402"] = json!({
             "wallet_home": "/nonexistent",
             "receiver_node": hex::encode(payee_of(NODE)),
             "network": "bitcoin",
         });
+    }
+    if pay == Pay::X402AndMpp {
+        inference["x402"]["mpp"] = json!({});
     }
     let inference: Inference = serde_json::from_value(inference).unwrap();
     let config = Config {
@@ -312,12 +339,19 @@ impl Answer {
 }
 
 async fn post(d: &Deployment, path: &str, body: &str, signature: Option<&str>) -> Answer {
+    match signature {
+        Some(signature) => post_with(d, path, body, &[("PAYMENT-SIGNATURE", signature)]).await,
+        None => post_with(d, path, body, &[]).await,
+    }
+}
+
+async fn post_with(d: &Deployment, path: &str, body: &str, headers: &[(&str, &str)]) -> Answer {
     let mut request = reqwest::Client::new()
         .post(format!("{}{path}", d.address))
         .header("content-type", "application/json")
         .body(body.to_owned());
-    if let Some(signature) = signature {
-        request = request.header("PAYMENT-SIGNATURE", signature);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
     }
     let answer = request.send().await.unwrap();
     Answer {
@@ -546,7 +580,7 @@ async fn openapi_describes_exactly_the_mounted_inference_routes() {
     let paths = document["paths"].as_object().unwrap();
     // Payment is advertised because this deployment takes it.
     assert_eq!(
-        paths["/responses"]["post"]["x-payment-info"]["protocol"],
+        paths["/responses"]["post"]["x-payment-info"]["offers"][0]["protocol"],
         "x402"
     );
 
@@ -633,7 +667,7 @@ async fn openapi_describes_exactly_the_mounted_inference_routes() {
 #[tokio::test]
 async fn openapi_is_well_formed() {
     let d = deploy(false, false).await;
-    let document = gateway::inference_openapi::document(&d.address, false);
+    let document = gateway::inference_openapi::document(&d.address, &[]);
     assert!(
         document["paths"]["/responses"]["post"]
             .get("x-payment-info")
@@ -705,5 +739,371 @@ async fn openapi_is_well_formed() {
                 }
             }
         }
+    }
+}
+
+// ------------------------------------------------------------ the router: MPP beside x402
+
+/// One `Payment` challenge's auth-params, unescaped, as lnget reads them.
+fn challenge_params(value: &str) -> Map<String, Value> {
+    let rest = value.strip_prefix("Payment ").expect("a Payment challenge");
+    let mut params = Map::new();
+    let mut chars = rest.chars().peekable();
+    loop {
+        while matches!(chars.peek(), Some(' ' | ',')) {
+            chars.next();
+        }
+        let name: String = chars.by_ref().take_while(|c| *c != '=').collect();
+        if name.is_empty() {
+            return params;
+        }
+        assert_eq!(chars.next(), Some('"'));
+        let mut text = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => text.push(chars.next().unwrap()),
+                '"' => break,
+                c => text.push(c),
+            }
+        }
+        params.insert(name, json!(text));
+    }
+}
+
+fn mpp_invoice(challenge: &Answer) -> String {
+    use base64::Engine;
+    let params = challenge_params(
+        challenge
+            .header("www-authenticate")
+            .expect("Payment challenge"),
+    );
+    let request: Value = serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(params["request"].as_str().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    request["methodDetails"]["invoice"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// The 402's `Payment` challenge, paid: the `Authorization` to send.
+fn pay_mpp(d: &Deployment, challenge: &Answer) -> String {
+    use base64::Engine;
+    let params = challenge_params(challenge.header("www-authenticate").unwrap());
+    let preimage = d.node.pay(&mpp_invoice(challenge));
+    let credential = json!({"challenge": params, "payload": {"preimage": preimage}});
+    format!(
+        "Payment {}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(credential.to_string())
+    )
+}
+
+fn receipts(d: &Deployment) -> Vec<Value> {
+    let dir = d._dir.path().join("inference").join("payment-receipts");
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+        out.push(serde_json::from_str(&text).unwrap());
+    }
+    out
+}
+
+#[tokio::test]
+async fn one_402_carries_every_live_challenge_on_one_invoice() {
+    let d = deploy_with(Pay::X402AndMpp, false).await;
+    let body = json!({"model": PAID, "input": "Say hello.", "max_output_tokens": 100}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    assert_eq!(
+        challenge.status,
+        StatusCode::PAYMENT_REQUIRED,
+        "{}",
+        challenge.text
+    );
+    if std::env::var_os("OPENAGENTS_SHOW_402").is_some() {
+        eprintln!(
+            "--- 402 headers\n{:#?}\n--- 402 body\n{}",
+            challenge.headers, challenge.text
+        );
+    }
+    let required = decode_payment_required(challenge.header("PAYMENT-REQUIRED").unwrap()).unwrap();
+    let invoice = required.accepts[0].extra["invoice"].as_str().unwrap();
+    assert_eq!(
+        invoice,
+        mpp_invoice(&challenge),
+        "one BOLT11 in both encodings"
+    );
+    let params = challenge_params(challenge.header("www-authenticate").unwrap());
+    assert_eq!(params["method"], "lightning");
+    assert_eq!(params["intent"], "charge");
+    // No origin configured: the realm falls back to the public API's host.
+    assert_eq!(params["realm"], "api.openagents.com");
+    let refusal = challenge.json();
+    assert_eq!(refusal["challengeId"], params["id"]);
+    let methods: Vec<&str> = refusal["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|method| method["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(methods, Pay::X402AndMpp.ids());
+    assert_eq!(refusal["status"], 402);
+    assert_eq!(
+        refusal["docs"],
+        "https://openagents.com/docs/api/for-agents"
+    );
+    assert!(
+        required.extensions.as_ref().unwrap()["bazaar"]["info"]["input"]["method"] == "POST",
+        "x402 Bazaar metadata"
+    );
+}
+
+#[tokio::test]
+async fn mpp_pays_once_and_the_same_invoice_cannot_pay_again_by_x402() {
+    let d = deploy_with(Pay::X402AndMpp, false).await;
+    let body = json!({"model": PAID, "input": "Say hello.", "max_output_tokens": 100}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    let authorization = pay_mpp(&d, &challenge);
+    let paid = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_eq!(paid.status, StatusCode::OK, "{}", paid.text);
+    assert_eq!(paid.json()["output"][0]["content"][0]["text"], "hello");
+    assert!(paid.header("payment-receipt").is_some(), "MPP receipt");
+    assert!(paid.header("PAYMENT-RESPONSE").is_none());
+    let receipt_id = paid.header("x-openagents-receipt").unwrap().to_owned();
+
+    // The same payment, as x402: refused, with fresh terms.
+    let signature = pay(&d, &challenge);
+    let again = post(&d, "/v1/responses", &body, Some(&signature)).await;
+    assert_eq!(again.status, StatusCode::PAYMENT_REQUIRED, "{}", again.text);
+    assert_eq!(again.json()["reason"], "duplicate_settlement");
+    assert!(again.header("PAYMENT-REQUIRED").is_some(), "fresh terms");
+    // The same credential replayed: refused.
+    let replay = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_eq!(replay.status, StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(replay.json()["reason"], "duplicate_settlement");
+
+    // One receipt, no bearer secret in it.
+    let written = receipts(&d);
+    assert_eq!(written.len(), 1);
+    let receipt = &written[0];
+    assert_eq!(receipt["v"], "openagents.payment-receipt.v1");
+    assert_eq!(receipt["id"], receipt_id);
+    assert_eq!(receipt["protocol"], "mpp");
+    assert_eq!(receipt["rail"], "lightning");
+    assert_eq!(receipt["outcome"], "served");
+    assert_eq!(receipt["resource"], "POST /v1/responses");
+    assert_eq!(receipt["amount"], required_amount(&challenge));
+    let preimage = d.node.pay(&mpp_invoice(&challenge));
+    let text = receipt.to_string();
+    assert!(!text.contains(&preimage), "no preimage in a receipt");
+    assert!(!text.contains("lnbc"), "no invoice in a receipt");
+}
+
+fn required_amount(challenge: &Answer) -> String {
+    decode_payment_required(challenge.header("PAYMENT-REQUIRED").unwrap())
+        .unwrap()
+        .accepts[0]
+        .amount
+        .clone()
+}
+
+#[tokio::test]
+async fn x402_pays_once_and_the_same_invoice_cannot_pay_again_by_mpp() {
+    let d = deploy_with(Pay::X402AndMpp, false).await;
+    let body = json!({"model": PAID, "input": "Hi.", "max_output_tokens": 40}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    let paid = post(&d, "/v1/responses", &body, Some(&pay(&d, &challenge))).await;
+    assert_eq!(paid.status, StatusCode::OK, "{}", paid.text);
+    assert!(paid.header("PAYMENT-RESPONSE").is_some());
+    assert!(paid.header("x-openagents-receipt").is_some());
+    let authorization = pay_mpp(&d, &challenge);
+    let again = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_eq!(again.status, StatusCode::PAYMENT_REQUIRED, "{}", again.text);
+    assert_eq!(again.json()["reason"], "duplicate_settlement");
+    assert!(
+        again.header("www-authenticate").is_some(),
+        "a fresh challenge"
+    );
+    let written = receipts(&d);
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["protocol"], "x402");
+}
+
+#[tokio::test]
+async fn an_mpp_credential_pays_only_its_own_request() {
+    let d = deploy_with(Pay::X402AndMpp, false).await;
+    let body = json!({"model": PAID, "input": "One.", "max_output_tokens": 50}).to_string();
+    let other = json!({"model": PAID, "input": "Two.", "max_output_tokens": 50}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    let authorization = pay_mpp(&d, &challenge);
+    let refused = post_with(
+        &d,
+        "/v1/responses",
+        &other,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_eq!(
+        refused.status,
+        StatusCode::PAYMENT_REQUIRED,
+        "{}",
+        refused.text
+    );
+    assert_eq!(refused.json()["reason"], "digest_mismatch");
+    let refused = post_with(
+        &d,
+        "/v1/chat/completions",
+        &body,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_ne!(refused.status, StatusCode::OK, "{}", refused.text);
+    // Nothing was consumed: the original still runs, once.
+    let paid = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", &authorization)],
+    )
+    .await;
+    assert_eq!(paid.status, StatusCode::OK, "{}", paid.text);
+    assert_eq!(receipts(&d).len(), 1);
+    // A bearer key never goes the paid way, even with MPP on.
+    let keyed = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", "Bearer oak_nope.nope")],
+    )
+    .await;
+    assert_eq!(keyed.status, StatusCode::UNAUTHORIZED, "{}", keyed.text);
+}
+
+#[tokio::test]
+async fn an_unanswered_mpp_payment_is_given_back_and_writes_no_receipt() {
+    let d = deploy_with(Pay::X402AndMpp, true).await;
+    let body = json!({"model": PAID, "input": "Hello?", "max_output_tokens": 10}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    let authorization = pay_mpp(&d, &challenge);
+    for _ in 0..2 {
+        let failed = post_with(
+            &d,
+            "/v1/responses",
+            &body,
+            &[("Authorization", &authorization)],
+        )
+        .await;
+        assert_eq!(failed.status, StatusCode::BAD_GATEWAY, "{}", failed.text);
+    }
+    assert!(receipts(&d).is_empty());
+}
+
+/// #11137: every surface the gateway serves lists exactly the configured
+/// methods; turning one off drops it everywhere.
+#[tokio::test]
+async fn discovery_lists_exactly_the_configured_methods() {
+    for pay in [Pay::None, Pay::X402, Pay::X402AndMpp] {
+        let d = deploy_with(pay, false).await;
+        let document: Value = reqwest::get(format!("{}/v1/openapi.json", d.address))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let listed: Vec<&str> = document["x-openagents-payment-methods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|method| method["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(listed, pay.ids(), "{pay:?}: x-openagents-payment-methods");
+        let schemes = document["components"]["securitySchemes"]
+            .as_object()
+            .unwrap();
+        assert_eq!(schemes.contains_key("x402"), pay != Pay::None, "{pay:?}");
+        assert_eq!(
+            schemes.contains_key("payment"),
+            pay == Pay::X402AndMpp,
+            "{pay:?}"
+        );
+        for path in ["/responses", "/chat/completions"] {
+            let operation = &document["paths"][path]["post"];
+            let offers: Vec<&str> = operation["x-payment-info"]["offers"]
+                .as_array()
+                .map(|offers| {
+                    offers
+                        .iter()
+                        .map(|o| o["protocol"].as_str().unwrap())
+                        .collect()
+                })
+                .unwrap_or_default();
+            assert_eq!(offers, pay.ids(), "{pay:?} {path}: offers");
+            let security: Vec<String> = operation["security"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|r| r.as_object().unwrap().keys().cloned())
+                .filter(|name| name != "bearer")
+                .collect();
+            assert_eq!(security.len(), pay.ids().len(), "{pay:?} {path}: security");
+            let text = operation.to_string();
+            assert_eq!(
+                text.contains("PAYMENT-SIGNATURE"),
+                pay != Pay::None,
+                "{pay:?} {path}"
+            );
+            assert_eq!(
+                text.contains("WWW-Authenticate"),
+                pay == Pay::X402AndMpp,
+                "{pay:?} {path}"
+            );
+        }
+        let description = document["info"]["description"].as_str().unwrap();
+        assert_eq!(description.contains("PAYMENT-SIGNATURE"), pay != Pay::None);
+        assert_eq!(
+            description.contains("Authorization: Payment"),
+            pay == Pay::X402AndMpp
+        );
+
+        // The 402 itself carries the same set.
+        let body = json!({"model": PAID, "input": "Hi.", "max_output_tokens": 10}).to_string();
+        let answer = post(&d, "/v1/responses", &body, None).await;
+        if pay == Pay::None {
+            assert_eq!(answer.status, StatusCode::UNAUTHORIZED);
+            continue;
+        }
+        assert_eq!(answer.status, StatusCode::PAYMENT_REQUIRED);
+        let in_402: Vec<String> = answer.json()["methods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|method| method["id"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(in_402, pay.ids());
+        assert_eq!(answer.header("PAYMENT-REQUIRED").is_some(), true);
+        assert_eq!(
+            answer.header("www-authenticate").is_some(),
+            pay == Pay::X402AndMpp
+        );
     }
 }

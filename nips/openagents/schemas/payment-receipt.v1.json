@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.payment-receipt.v1",
+  "title": "One settled payment, any protocol or rail (docs/payments/agent-payments.md section 3)",
+  "description": "Written once per payment, keyed by its replay key. Never holds a preimage, token, proof, or invoice.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "id", "protocol", "rail", "network", "asset", "amount", "usd_micros", "replay_key", "request_hash", "resource", "payer", "settled_at", "outcome"],
+  "properties": {
+    "v": { "const": "openagents.payment-receipt.v1" },
+    "id": { "type": "string", "minLength": 35, "maxLength": 35, "description": "pr_ and 32 lower-case hex characters of SHA-256(replay_key)." },
+    "protocol": { "enum": ["x402", "mpp", "l402", "cashu", "acp", "ucp", "ap2", "stripe-checkout", "zap"] },
+    "rail": { "enum": ["lightning", "evm", "solana", "tempo", "card", "ecash"] },
+    "network": { "type": "string", "minLength": 1 },
+    "asset": { "type": "string", "minLength": 1 },
+    "amount": { "type": "string", "minLength": 1, "description": "Smallest unit of asset (msat for Lightning)." },
+    "usd_micros": { "type": "integer", "minimum": 0 },
+    "replay_key": { "type": "string", "minLength": 1 },
+    "request_hash": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "resource": { "type": "string", "minLength": 1 },
+    "payer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["account", "nostr", "mandate"],
+      "properties": {
+        "account": { "type": ["string", "null"] },
+        "nostr": { "type": ["string", "null"] },
+        "mandate": { "type": ["string", "null"] }
+      }
+    },
+    "settled_at": { "type": "integer", "minimum": 0 },
+    "outcome": { "enum": ["served", "refunded", "failed_before_answer"] }
+  }
+}

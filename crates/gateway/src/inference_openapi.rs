@@ -18,6 +18,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::routing::{MethodRouter, get};
+use openagents_x402::router::MethodInfo;
 use serde_json::{Value, json};
 
 use crate::serve::ServeState;
@@ -79,7 +80,12 @@ async fn openapi(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Js
                 .map(|host| format!("http://{host}"))
         })
         .unwrap_or_else(|| "https://api.openagents.com".to_owned());
-    Json(document(&origin, state.inference_x402.is_some()))
+    let methods = state
+        .inference_x402
+        .as_ref()
+        .map(crate::inference_x402::Toll::methods)
+        .unwrap_or_default();
+    Json(document(&origin, &methods))
 }
 
 fn error_response(description: &str) -> Value {
@@ -104,13 +110,37 @@ fn param(name: &str, description: &str) -> Value {
            "schema": {"type": "string"}})
 }
 
+/// The security scheme a live method is described under.
+fn scheme_name(method: &MethodInfo) -> &'static str {
+    if method.id == "x402" {
+        "x402"
+    } else {
+        "payment"
+    }
+}
+
+fn has(methods: &[MethodInfo], id: &str) -> bool {
+    methods.iter().any(|method| method.id == id)
+}
+
 fn generation(
     operation_id: &str,
     summary: &str,
     request: &str,
     answer: &str,
     stream_description: &str,
+    methods: &[MethodInfo],
 ) -> Value {
+    let mut paid_headers = serde_json::Map::new();
+    if has(methods, "x402") {
+        paid_headers.insert("PAYMENT-RESPONSE".into(), json!({"description": "On a request paid with x402: the base64 settlement result.", "schema": {"type": "string"}}));
+    }
+    if has(methods, "mpp") {
+        paid_headers.insert("Payment-Receipt".into(), json!({"description": "On a request paid with the `Payment` scheme: the base64url receipt.", "schema": {"type": "string"}}));
+    }
+    if !methods.is_empty() {
+        paid_headers.insert("x-openagents-receipt".into(), json!({"description": "On a paid request: the id of its `openagents.payment-receipt.v1` record.", "schema": {"type": "string"}}));
+    }
     let mut responses = serde_json::Map::new();
     responses.insert(
         "200".into(),
@@ -120,8 +150,7 @@ fn generation(
                 "x-request-id": {"$ref": "#/components/headers/RequestId"},
                 "x-openagents-model": {"description": "The model that answered.", "schema": {"type": "string"}},
                 "x-openagents-upstream": {"description": "The provider that answered.", "schema": {"type": "string"}},
-                "x-openagents-cost-usd": {"description": "What the answer cost, in dollars (not on streams; see the openagents:cost event).", "schema": {"type": "string"}},
-                "PAYMENT-RESPONSE": {"description": "On a request paid with x402: the base64 settlement result.", "schema": {"type": "string"}}
+                "x-openagents-cost-usd": {"description": "What the answer cost, in dollars (not on streams; see the openagents:cost event).", "schema": {"type": "string"}}
             },
             "content": {
                 "application/json": {"schema": {"$ref": format!("#/components/schemas/{answer}")}},
@@ -129,12 +158,40 @@ fn generation(
             }
         }),
     );
+    if let Some(headers) = responses
+        .get_mut("200")
+        .and_then(|ok| ok["headers"].as_object_mut())
+    {
+        headers.extend(paid_headers);
+    }
+    let mut challenge_headers = serde_json::Map::new();
+    if has(methods, "x402") {
+        challenge_headers.insert("PAYMENT-REQUIRED".into(), json!({"description": "Base64 JSON x402 PaymentRequired: one `exact`/`lnbtc` requirement whose `extra.invoice` is a BOLT11 invoice for the request's worst-case price, and `extensions.bazaar`.", "schema": {"type": "string"}}));
+        challenge_headers.insert("PAYMENT-RESPONSE".into(), json!({"description": "Base64 x402 SettlementResponse when a payment was refused.", "schema": {"type": "string"}}));
+    }
+    if has(methods, "mpp") {
+        challenge_headers.insert("WWW-Authenticate".into(), json!({"description": "A `Payment` challenge (method `lightning`, intent `charge`) on the same invoice.", "schema": {"type": "string"}}));
+    }
+    let pay = if methods.is_empty() {
+        "With no key this server answers `401`: it takes no payment per request.".to_owned()
+    } else {
+        format!(
+            "With no key: `payment_required`, with one Lightning invoice for this exact request in every live encoding ({}). Pay it once and send the same bytes again with {}.",
+            methods
+                .iter()
+                .map(|method| method.challenge)
+                .collect::<Vec<_>>()
+                .join(", "),
+            methods
+                .iter()
+                .map(|method| format!("`{}`", method.credential))
+                .collect::<Vec<_>>()
+                .join(" or ")
+        )
+    };
     responses.insert("402".into(), json!({
-        "description": "Pay first. With a key: `insufficient_balance`; add credit. With no key: `payment_required`, and the `PAYMENT-REQUIRED` header holds x402 v2 `exact` terms on Lightning (`lnbtc`) for this exact request. Pay the invoice and send the same bytes again with `PAYMENT-SIGNATURE`.",
-        "headers": {
-            "PAYMENT-REQUIRED": {"description": "Base64 JSON x402 PaymentRequired: one `exact`/`lnbtc` requirement whose `extra.invoice` is a BOLT11 invoice for the request's worst-case price.", "schema": {"type": "string"}},
-            "PAYMENT-RESPONSE": {"description": "Base64 x402 SettlementResponse when a payment was refused.", "schema": {"type": "string"}}
-        },
+        "description": format!("Pay first. With a key: `insufficient_balance`; add credit. {pay}"),
+        "headers": challenge_headers,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentRequiredBody"}}}
     }));
     responses.extend(errors(&[
@@ -154,23 +211,34 @@ fn generation(
             "No provider meets the request's constraints (`no_route`).",
         ),
     ]));
+    let mut security = vec![json!({"bearer": []})];
+    security.extend(
+        methods
+            .iter()
+            .map(|method| json!({scheme_name(method): []})),
+    );
+    let mut parameters = Vec::new();
+    if has(methods, "x402") {
+        parameters.push(json!({"name": "PAYMENT-SIGNATURE", "in": "header", "required": false,
+            "description": "x402 v2 PaymentPayload, base64 JSON: the accepted requirement and `payload.preimage`. Only without a key.",
+            "schema": {"type": "string"}}));
+    }
     json!({
         "operationId": operation_id,
         "summary": summary,
         "tags": ["Inference"],
-        "security": [{"bearer": []}, {"x402": []}],
-        "parameters": [{"name": "PAYMENT-SIGNATURE", "in": "header", "required": false,
-            "description": "x402 v2 PaymentPayload, base64 JSON: the accepted requirement and `payload.preimage`. Only without a key.",
-            "schema": {"type": "string"}}],
+        "security": security,
+        "parameters": parameters,
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{request}")}}}},
         "responses": responses
     })
 }
 
-/// The document, its server at `origin`; `x402` says whether this
-/// deployment takes pay-per-request payment.
+/// The document, its server at `origin`; `methods` are the payment
+/// methods this deployment takes per request (the router's live list), and
+/// only they are described.
 #[must_use]
-pub fn document(origin: &str, x402: bool) -> Value {
+pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
     let keyed = |operation_id: &str, summary: &str, schema: &str, extra: &[(&str, &str)]| {
         let mut responses = serde_json::Map::new();
         responses.insert("200".into(), json_response(summary, schema));
@@ -275,10 +343,22 @@ pub fn document(origin: &str, x402: bool) -> Value {
         &[("403", "Not the workspace's owner or an admin.")],
     );
     own_delete["parameters"] = json!([param("workspace", "The workspace id."), provider]);
-    let x402_note = if x402 {
-        "This server takes x402 pay-per-request payment on the two generation routes."
+    let pay_note = if methods.is_empty() {
+        "This server takes no payment per request; send an API key.".to_owned()
     } else {
-        "This server does not take x402 payment; send an API key."
+        format!(
+            "Or pay per request over Lightning with no account: a request with no key gets `402` with the price and one invoice in every live encoding ({}), and the same request with {} runs.",
+            methods
+                .iter()
+                .map(|method| method.name)
+                .collect::<Vec<_>>()
+                .join(", "),
+            methods
+                .iter()
+                .map(|method| format!("`{}`", method.credential))
+                .collect::<Vec<_>>()
+                .join(" or ")
+        )
     };
     let mut document = json!({
         "openapi": "3.1.0",
@@ -286,7 +366,7 @@ pub fn document(origin: &str, x402: bool) -> Value {
             "title": "OpenAgents API",
             "version": "1.0.0-beta",
             "summary": "One API for many models: Open Responses and OpenAI Chat Completions, routed to a good provider, at the provider's price plus a posted margin.",
-            "description": format!("Send `Authorization: Bearer oak_...` with a key from Settings, or pay per request over Lightning with x402: a request with no key gets `402` with the price and an invoice, and the same request with `PAYMENT-SIGNATURE` runs. {x402_note} Guides: https://openagents.com/docs/api. Command line: `openagents inference`."),
+            "description": format!("Send `Authorization: Bearer oak_...` with a key from Settings. {pay_note} Guides: https://openagents.com/docs/api; for agents: https://openagents.com/docs/api/for-agents. Command line: `openagents inference`."),
             "license": {"name": "CC0-1.0", "identifier": "CC0-1.0"}
         },
         "servers": [{"url": format!("{}/v1", origin.trim_end_matches('/'))}],
@@ -298,7 +378,7 @@ pub fn document(origin: &str, x402: bool) -> Value {
         "paths": {
             "/responses": {
                 "post": generation("createResponse", "Create a response (Open Responses).", "CreateResponse", "Response",
-                    "Open Responses events (`response.created`, deltas, `response.completed`), plus `openagents:route` and `openagents:cost`."),
+                    "Open Responses events (`response.created`, deltas, `response.completed`), plus `openagents:route` and `openagents:cost`.", methods),
                 "get": {
                     "operationId": "responsesWebSocket",
                     "summary": "Open Responses over a WebSocket: upgrade, then send `response.create` messages.",
@@ -310,7 +390,7 @@ pub fn document(origin: &str, x402: bool) -> Value {
             },
             "/chat/completions": {
                 "post": generation("createChatCompletion", "Create a chat completion (OpenAI Chat Completions).", "ChatCompletionRequest", "ChatCompletion",
-                    "Chat Completions chunks (`chat.completion.chunk`).")
+                    "Chat Completions chunks (`chat.completion.chunk`).", methods)
             },
             "/responses/compact": {
                 "post": {
@@ -363,9 +443,7 @@ pub fn document(origin: &str, x402: bool) -> Value {
         "components": {
             "securitySchemes": {
                 "bearer": {"type": "http", "scheme": "bearer", "bearerFormat": "oak_<id>.<secret>",
-                           "description": "An API key from Settings. Requests draw on the account's credit, or the free tier on free models."},
-                "x402": {"type": "apiKey", "in": "header", "name": "PAYMENT-SIGNATURE",
-                         "description": "Pay per request, no account: x402 v2 `exact` on Lightning (`lnbtc`). Send the request with no key to get `402` and the terms in `PAYMENT-REQUIRED`; pay the BOLT11 invoice; send the same bytes again with `PAYMENT-SIGNATURE` (base64 JSON with the accepted terms and `payload.preimage`). The price is the request's worst case from the rate card; set `max_output_tokens` to lower it. A request that gets no answer gives the payment back, so the same signature can be sent again."}
+                           "description": "An API key from Settings. Requests draw on the account's credit, or the free tier on free models."}
             },
             "headers": {
                 "RequestId": {"description": "Our id for the request; `GET /v1/usage/{request_id}` reads it.", "schema": {"type": "string"}}
@@ -374,15 +452,48 @@ pub fn document(origin: &str, x402: bool) -> Value {
         }
     });
     // Advertise payment only where it is armed (the rule Khala's MPP
-    // document kept; docs/inference/api-history.md).
-    if x402 {
+    // document kept; docs/inference/api-history.md): every surface below
+    // comes from the router's live list.
+    document["x-service-info"] = json!({
+        "name": "OpenAgents API",
+        "categories": ["ai", "inference"],
+        "docs": {
+            "homepage": "https://openagents.com/docs/api",
+            "apiReference": format!("{}/v1/openapi.json", origin.trim_end_matches('/')),
+            "llms": "https://openagents.com/llms.txt",
+            "payments": "https://openagents.com/docs/api/for-agents"
+        }
+    });
+    document["x-openagents-payment-methods"] = json!(methods);
+    if !methods.is_empty() {
+        let schemes = &mut document["components"]["securitySchemes"];
+        if has(methods, "x402") {
+            schemes["x402"] = json!({"type": "apiKey", "in": "header", "name": "PAYMENT-SIGNATURE",
+                "description": "Pay per request, no account: x402 v2 `exact` on Lightning (`lnbtc`). Send the request with no key to get `402` and the terms in `PAYMENT-REQUIRED`; pay the BOLT11 invoice; send the same bytes again with `PAYMENT-SIGNATURE` (base64 JSON with the accepted terms and `payload.preimage`). The price is the request's worst case from the rate card; set `max_output_tokens` to lower it. A request that gets no answer gives the payment back, so the same signature can be sent again."});
+        }
+        if has(methods, "mpp") {
+            schemes["payment"] = json!({"type": "http", "scheme": "Payment",
+                "description": "Pay per request, no account: the HTTP `Payment` scheme (draft-httpauth-payment, as MPP uses it) with method `lightning`, intent `charge`. The `402` carries `WWW-Authenticate: Payment ...` on the same invoice as x402; pay it and send `Authorization: Payment <credential>` (the echoed challenge and `payload.preimage`). A paid answer carries `Payment-Receipt`. One invoice pays once, whichever encoding carries it."});
+        }
+        let offers: Vec<Value> = methods
+            .iter()
+            .map(|method| {
+                if method.id == "x402" {
+                    json!({"protocol": "x402", "x402Version": 2, "scheme": "exact", "method": "lightning",
+                           "network": method.network, "asset": "BTC", "transfer": "bolt11",
+                           "credential": method.credential})
+                } else {
+                    json!({"protocol": method.protocol, "method": method.rail, "intent": "charge",
+                           "currency": "sat", "credential": method.credential})
+                }
+            })
+            .collect();
         let info = json!({
-            "protocol": "x402",
-            "x402Version": 2,
-            "scheme": "exact",
-            "asset": "BTC",
-            "transfer": "bolt11",
+            "intent": "charge",
+            "pricing": "dynamic",
+            "currency": "BTC",
             "price": "The request's worst case from GET /v1/rates at its max_output_tokens, in whole sats; quoted in the 402.",
+            "offers": offers,
         });
         for path in ["/responses", "/chat/completions"] {
             document["paths"][path]["post"]["x-payment-info"] = info.clone();
@@ -413,7 +524,10 @@ fn schemas() -> Value {
                         "price_sats": {"type": "integer", "description": "The most this request can cost, in sats."},
                         "price_msat": {"type": "string"},
                         "price_usd": {"type": "string", "description": "The same, in dollars."},
-                        "reason": {"type": "string", "description": "Why a payment was refused (x402 errorReason)."}
+                        "reason": {"type": "string", "description": "Why a payment was refused (x402 errorReason)."},
+                        "methods": {"type": "array", "description": "The live payment methods, in challenge order.", "items": {"type": "object"}},
+                        "challengeId": {"type": "string", "description": "The `Payment` challenge's id, when that method is live."},
+                        "docs": {"type": "string", "description": "How to pay."}
                     }
                 }));
     map.insert("CreateResponse".into(), json!({

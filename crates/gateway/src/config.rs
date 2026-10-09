@@ -288,6 +288,29 @@ pub struct InferenceX402 {
     /// How long an invoice stays payable, seconds.
     #[serde(default = "x402_timeout")]
     pub timeout_secs: u32,
+    /// The HTTP `Payment` scheme (MPP's Lightning `charge`) on the same
+    /// invoice as x402 (#11136). Absent, only x402 is offered and
+    /// advertised.
+    #[serde(default)]
+    pub mpp: Option<InferenceMpp>,
+    /// Where `openagents.payment-receipt.v1` records are written; absent,
+    /// `<registry>/inference/payment-receipts`.
+    #[serde(default)]
+    pub receipts_dir: Option<PathBuf>,
+}
+
+/// The `Payment` scheme's settings.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceMpp {
+    /// The challenge realm; absent, the bound origin's host.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// The challenge-id HMAC key, hex, readable only by this user. Every
+    /// process that settles must share it. Absent,
+    /// `<registry>/inference/payment-challenge.key`, made on first start.
+    #[serde(default)]
+    pub challenge_key_file: Option<PathBuf>,
 }
 
 fn x402_timeout() -> u32 {

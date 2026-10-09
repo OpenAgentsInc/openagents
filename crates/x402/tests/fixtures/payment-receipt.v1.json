@@ -1,0 +1,16 @@
+{
+  "v": "openagents.payment-receipt.v1",
+  "id": "pr_5f0c6a3b1e9d4c2a8b7f6e5d4c3b2a19",
+  "protocol": "x402",
+  "rail": "lightning",
+  "network": "lnbtc:000000000019d6689c085ae165831e93",
+  "asset": "BTC",
+  "amount": "3000",
+  "usd_micros": 2100,
+  "replay_key": "lnbtc:000000000019d6689c085ae165831e93:0b5d5c1b2f8e0f3c4d6a7e9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+  "request_hash": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+  "resource": "POST /v1/responses",
+  "payer": { "account": null, "nostr": null, "mandate": null },
+  "settled_at": 1791590400,
+  "outcome": "served"
+}

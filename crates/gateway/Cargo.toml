@@ -21,6 +21,7 @@ discovery = { path = "../discovery" }
 jev = { path = "../jev" }
 axum = { version = "0.8", features = ["multipart", "ws"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+hex = "0.4"
 hmac = "0.12.1"
 nostr = { path = "../nostr" }
 oa-auth = { path = "../oa-auth" }
@@ -45,6 +46,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+base64 = "0.22"
 commercial-spend = { path = "../commercial-spend" }
 hex = "0.4"
 nostr = { path = "../nostr", features = ["test-invoice"] }

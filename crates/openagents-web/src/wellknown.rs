@@ -38,8 +38,51 @@ pub(crate) fn origin(app: &App) -> String {
     }
 }
 
+/// The agent card's extension naming the ways the API takes payment per
+/// request now; absent when it takes none.
+pub(crate) const PAYMENTS_EXTENSION: &str = "https://openagents.com/ext/api-payments/v1";
+
 async fn agent_card(State(app): State<App>) -> impl IntoResponse {
-    Json(discovery::site::agent_card(&origin(&app)))
+    let methods = crate::payments::live(&app).await;
+    Json(agent_card_with(&origin(&app), &methods))
+}
+
+/// The A2A agent card, with the API's ways to pay per request.
+pub(crate) fn agent_card_with(
+    origin: &str,
+    methods: &[crate::payments::Method],
+) -> serde_json::Value {
+    let mut card = discovery::site::agent_card(origin);
+    if methods.is_empty() {
+        return card;
+    }
+    let extension = serde_json::json!({
+        "uri": PAYMENTS_EXTENSION,
+        "description": "The OpenAgents API (https://api.openagents.com/v1) takes payment per request with no key, by these methods.",
+        "required": false,
+        "params": {
+            "api": "https://api.openagents.com/v1",
+            "docs": format!("{origin}/docs/api/for-agents"),
+            "methods": methods,
+        }
+    });
+    if let Some(capabilities) = card
+        .get_mut("capabilities")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        let extensions = capabilities
+            .entry("extensions")
+            .or_insert_with(|| serde_json::json!([]));
+        if let Some(list) = extensions.as_array_mut() {
+            list.push(extension);
+        }
+    } else if let Some(object) = card.as_object_mut() {
+        object.insert(
+            "capabilities".into(),
+            serde_json::json!({"extensions": [extension]}),
+        );
+    }
+    card
 }
 
 async fn skills_index(State(app): State<App>) -> impl IntoResponse {

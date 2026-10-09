@@ -752,11 +752,26 @@ P1 public API as built (#11065), local only until deployed:
   key so the same proof can be sent again. Stored responses, hosted
   tools, and the WebSocket need a key. `crates/gateway/src/inference_x402.rs`,
   `tests/inference_api.rs`.
+- The payment router (#11136): the keyless path goes through
+  `crates/x402/src/router.rs`. With `inference.x402.mpp` set (`realm`,
+  `challenge_key_file`; the key file is made, mode 0600, on first start
+  when absent), the same `402` also carries `WWW-Authenticate: Payment`
+  (Lightning `charge`) on the same invoice, `Authorization: Payment`
+  settles in the same replay store, and the answer carries
+  `Payment-Receipt`. Every `402` lists the live `methods` and carries the
+  x402 Bazaar extension. Each served paid request writes one
+  `openagents.payment-receipt.v1` (`inference.x402.receipts_dir`, default
+  `<registry>/inference/payment-receipts`) and names it in
+  `x-openagents-receipt`.
 - `GET /v1/openapi.json` (#11078, also at `/openapi.json`, which
   `openagents.com/openapi.json` forwards to): `crates/gateway/src/inference_openapi.rs`;
   `tests/inference_api.rs` fails when a mounted inference path lacks an
-  entry or an entry lacks a path or method. `x-payment-info` appears only
-  when x402 is configured.
+  entry or an entry lacks a path or method. Payment is described only for
+  the router's live methods (#11137): `x-openagents-payment-methods`,
+  `x-service-info`, per-operation `x-payment-info.offers`, one security
+  scheme per method; the website's `llms.txt`, `/auth.md`, catalogs,
+  agent card, docs MCP `list_payment_methods`, and For agents table read
+  that list from this document.
 - `openagents inference MODEL [TEXT]` (#11078): the command-line client
   (`crates/openagents-cli/src/inference.rs`), with `--stream`,
   `--format text|json|events`, `--api responses|chat`, `--json BODY`,
