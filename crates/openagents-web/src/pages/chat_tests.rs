@@ -1070,6 +1070,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
         updated_unix: 1,
         pinned_unix: None,
         archived_unix: None,
+        project: None,
         terminal: Some(crate::chat_store::Terminal {
             computer: "Studio".into(),
             session: "coder-new-1".into(),

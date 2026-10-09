@@ -152,21 +152,21 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
             Command::Appearance,
             Command::Export,
             Command::Resume,
+            Command::Login,
             Command::Help
         ]
     );
     key(&mut app, KeyCode::Up);
     assert_eq!(app.slash_selected, 0);
-    for _ in 0..5 {
+    for _ in 0..6 {
         key(&mut app, KeyCode::Down);
     }
-    assert_eq!(app.slash_selected, 5);
+    assert_eq!(app.slash_selected, 6);
     assert_eq!(app.selected_agent, None);
     assert!(render(&mut app, 80, 24).contains("❯ /help"));
-    key(&mut app, KeyCode::Up);
-    key(&mut app, KeyCode::Up);
-    key(&mut app, KeyCode::Up);
-    key(&mut app, KeyCode::Up);
+    for _ in 0..5 {
+        key(&mut app, KeyCode::Up);
+    }
     key(&mut app, KeyCode::Tab);
     assert_eq!(app.draft.text, "/plugins");
     assert_eq!(app.draft.cursor, "/plugins".len());

@@ -224,6 +224,7 @@ pub(crate) async fn save(
                 updated_unix: now_unix(),
                 pinned_unix: None,
                 archived_unix: None,
+                project: None,
                 terminal: Some(Terminal {
                     computer: computer.clone(),
                     session: session.to_owned(),

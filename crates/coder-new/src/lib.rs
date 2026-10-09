@@ -351,6 +351,9 @@ impl App {
             .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
+            // Offer only the sign-in step that applies (#11045).
+            .filter(|command| *command != slash::Command::Login || self.account.is_none())
+            .filter(|command| *command != slash::Command::Logout || self.account.is_some())
             .filter(|command| {
                 *command != slash::Command::Brainstorm
                     || self.plugins.bundled.brainstorm.preferences.enabled

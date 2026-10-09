@@ -243,6 +243,7 @@ fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversati
         pinned_unix: None,
         archived_unix: None,
         project: project.map(str::to_string),
+        terminal: None,
     }
 }
 
