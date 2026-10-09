@@ -613,7 +613,7 @@ impl Site {
                     return observed;
                 }
             };
-            let working = html.contains("oa-thread-working");
+            let working = working(&html);
             let replies = replies(&html);
             if let Some(reply) = replies.get(nth - 1) {
                 if observed.first_ms.is_none() && !reply.text.is_empty() {
@@ -717,6 +717,17 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
     Some(unescape(&tag[at..end]))
 }
 
+/// Whether the chat's status line says a reply is still on its way: the
+/// `Busy` "Working" indicator inside `#chat-status`.
+fn working(html: &str) -> bool {
+    let Some(at) = html.find("id=\"chat-status\"") else {
+        return false;
+    };
+    let status = &html[at..];
+    let end = status.find("</div>").unwrap_or(status.len());
+    status[..end].contains("oa-busy")
+}
+
 /// One reply between the page's reply markers.
 struct Reply {
     tier: Option<String>,
@@ -791,6 +802,15 @@ mod tests {
             (replies[0].tier.as_deref(), replies[0].text.as_str()),
             (None, "Open")
         );
+    }
+
+    #[test]
+    fn working_is_the_busy_indicator_in_the_status_line() {
+        let busy = r#"<div id="chat-status" class="oa-thread-status" role="status" aria-live="polite"><span class="oa-busy" role="status"><span class="oa-loading-indicator"></span><span class="oa-busy-text">Working</span></span></div>"#;
+        assert!(working(busy));
+        let done = r#"<div id="chat-status" class="oa-thread-status" role="status" aria-live="polite"></div><span class="oa-busy">elsewhere</span>"#;
+        assert!(!working(done));
+        assert!(!working("<p>no status line</p>"));
     }
 
     #[test]

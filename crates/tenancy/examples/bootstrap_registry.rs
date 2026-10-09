@@ -8,8 +8,12 @@
 //! cargo run -p tenancy --example bootstrap_registry -- \
 //!     --registry /tmp/gw-registry --tenant eval \
 //!     --door local-kev --model kev-latest \
-//!     --signature sha256:<published digest>
+//!     --signature sha256:<published digest> \
+//!     [--also-tenant signup]...
 //! ```
+//!
+//! `--also-tenant` adds another tenant with no key (for example the
+//! account service's sign-up tenant); only `--tenant` gets a key.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -46,7 +50,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scope: vec![],
         },
     );
+    let mut also: Vec<String> = Vec::new();
+    let mut args = std::env::args();
+    while let Some(flag) = args.next() {
+        if flag == "--also-tenant" {
+            also.push(args.next().expect("--also-tenant requires a value"));
+        }
+    }
     let mut tenants = BTreeMap::new();
+    for name in also.into_iter().filter(|name| *name != tenant_name) {
+        tenants.insert(
+            name.clone(),
+            Tenant {
+                credential: format!("key-ref:{name}"),
+                principals: vec![],
+                doors: BTreeMap::new(),
+                quota: None,
+            },
+        );
+    }
     tenants.insert(
         tenant_name.clone(),
         Tenant {
