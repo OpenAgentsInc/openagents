@@ -65,9 +65,9 @@ pub fn pinned() -> PinnedFile {
 /// its images at most [`compiled::PHONE_EDGE`] pixels (`everglade_kit --phone`),
 /// or empty while none is published.
 #[rustfmt::skip]
-pub const KIT_PHONE_SHA256: &str = "";
+pub const KIT_PHONE_SHA256: &str = "49a9d36f720acefde4014310f09ea01f56eb79878fd2888b8be3a1cb1e8caa8f";
 /// Transfer size of the phone tier's kit pack; zero while none is published.
-pub const KIT_PHONE_BYTES: u64 = 0;
+pub const KIT_PHONE_BYTES: u64 = 8748100;
 /// The phone tier's kit transfer budget: the plan's 8 MiB.
 pub const KIT_PHONE_BUDGET: u64 = 8 * 1024 * 1024;
 // Retain previous reviewed digests here when changing KIT_PHONE_SHA256.
