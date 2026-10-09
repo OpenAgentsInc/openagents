@@ -4,7 +4,8 @@ First draft, 2026-10-09, for [#11125](https://github.com/OpenAgentsInc/openagent
 For the owner to review. Not a commitment until the owner signs off.
 
 This spec gathers every product promise from the 289-episode
-[video archive](../transcripts/README.md) into one product: **OpenAgents 1.0**,
+[video archive](../transcripts/README.md) and three years of posts on
+[@OpenAgentsInc](https://x.com/OpenAgentsInc) ([second pass](twitter.md)) into one product: **OpenAgents 1.0**,
 on the website, the terminal, the phone, the desktop, and the Verse. The full
 list, with status, evidence, and episode numbers for each promise, is the
 [promise ledger](ledger.md). The new promises registry and the `/promises` and
@@ -28,14 +29,14 @@ join the network without asking us.
 
 ## Where we stand today
 
-From the [ledger](ledger.md) (134 promises):
+From the [ledger](ledger.md) (141 promises):
 
 | Status | Count | Meaning |
 | --- | --- | --- |
-| Live | 5 | In production with evidence |
+| Live | 6 | In production with evidence |
 | Launching | 22 | Built and on staging; ships Monday 10-12 if the smoke test passes |
-| Partial | 68 | Part of it is built, or it's built but not in front of users |
-| Missing | 23 | Nothing a person can use yet |
+| Partial | 73 | Part of it is built, or it's built but not in front of users |
+| Missing | 24 | Nothing a person can use yet |
 | Dropped on purpose | 16 | Set aside, each with a reason ([ledger §N](ledger.md#n-dropped-on-purpose)) |
 
 The pattern: much is built and little has shipped. Most "Partial" rows are
@@ -58,6 +59,30 @@ all of them, even where a feature isn't built yet.
 | 6 | **Open source and open protocols.** Anyone can read the code, run a copy, or join the network without permission. | 001 → 288 |
 | 7 | **Your keys, your data.** Self-custody wallet, private by default, sync only when you turn it on, delete means delete. | 143 → 279 |
 | 8 | **Demand first.** Supply-side markets failed when buyers were missing (GPUtopia, 174; training payouts, 224). Useful paid work comes before markets. | 174 → 247 |
+
+## What the archive adds
+
+The [second pass](twitter.md) read 3,727 of the account's own posts
+(2023-08 to 2026-10) and found 1,435 claims: 473 promises, 274 jabs at named
+competitors, and the rest boasts, principles, and predictions. 91 ledger rows
+now carry links to the posts that made them ([ledger §T](ledger.md#t-references-from-the-x-archive)),
+and 7 rows are new: no ads or tracking cookies (B16), per-helper CPU and memory
+in Coder (C20), no refusals of Coder's own (C21), public head-to-head
+benchmarks (G8), accepted outcomes per dollar (G9), one Apache 2.0 license
+(K7), and desktop speed (L10).
+
+What the posts add is **numbers**. Nearly every jab names something
+measurable: "paid more developers than any lab", "~45% cheaper than Claude
+Code at the same success rate", "faster than Ollama", "$2.50 a pull request".
+The pass turns each into a measure and a phase ([make it true](twitter.md#make-it-true-the-smack-talk-turned-into-measures)).
+One rule follows for launch: **a competitive claim goes out only once its
+evidence is public** ([#11129](https://github.com/OpenAgentsInc/openagents/issues/11129)).
+
+The posts also contradict the current direction in 12 places, most
+importantly Bitcoin-only payments versus the owner's decision to accept every
+payment rail. The recommended wording keeps the oldest form of the promise:
+no token, ever; we pay contributors in Bitcoin; you can pay us any standard
+way. See [decisions](twitter.md#contradictions-and-decisions-for-the-owner).
 
 ## The five surfaces
 
@@ -172,8 +197,8 @@ stranger can install and use it.
 
 - **One account, two doors:** web and terminal, with sync between them (A1–A4, D1–D3).
 - **The agent and Coder:** chat, models, streaming, projects, Coder 1.0 (B1–B7, C1–C5).
-- **Honesty built in:** `/promises` and `/roadmap` generated from this ledger, plus agent-ready files (G6, K1, K2).
-- **Privacy:** provider no-training, 30-day usage deletion, key screening, delete-all (E6, D3, B6).
+- **Honesty built in:** `/promises` and `/roadmap` generated from this ledger, plus agent-ready files (G6, K1, K2). Every competitive claim in launch copy links to its evidence or is cut ([#11129](https://github.com/OpenAgentsInc/openagents/issues/11129)); one Apache 2.0 license, stated once (K7).
+- **Privacy:** provider no-training, 30-day usage deletion, key screening, delete-all, and no ads or tracking cookies, written in the policy (E6, D3, B6, B16).
 - **Traces:** local, and uploaded privately (H1, H2).
 
 ### V1 complete (the rest of "1.0" within about a week)
@@ -181,7 +206,8 @@ stranger can install and use it.
 - iPhone (TestFlight public link) and Android APK, with the phone joining the account's chats (L6, L7, D4).
 - Desktop 1.0 on Mac and Linux, Windows unsigned (L3).
 - The public OpenAgents API in production with a free tier (E1, E2).
-- The Pro plan with cloud computers (B14, C15).
+- The Pro plan with cloud computers, on a public price page (B14, C15).
+- A first public benchmark page with re-run scripts ([#11131](https://github.com/OpenAgentsInc/openagents/issues/11131), G8), and visible provider fallback ([#11132](https://github.com/OpenAgentsInc/openagents/issues/11132), B3).
 
 ### Expanded scope (1.x, after V1)
 
@@ -201,8 +227,8 @@ The owner has moved the launch to **Monday 2026-10-12, web + terminal**
 | **Today, Fri 10-09: basic web update** | Only what doesn't need the new account service: homepage composer and cards ([#11123](https://github.com/OpenAgentsInc/openagents/issues/11123)), agent-ready files ([#11083](https://github.com/OpenAgentsInc/openagents/issues/11083)), docs pages, plain-words copy | Staging smoke passes on those pages |
 | **Mon 10-12: V1 core** | Production account service, GitHub sign-in, sync, projects, signed-in computers, trace upload, privacy; Coder 1.0.0 stable; `/promises` and `/roadmap` | #11094, #11091, #11102, #11122 |
 | **Week of 10-12: V1 complete** | iPhone public TestFlight link (after Apple review), Android APK, phone joins account chats, desktop 1.0, public API, Pro plan | #11093, #11107, #11092/#11120, gateway production host |
-| **Late October: abilities** | Build-with-you abilities, shared registry, public Gym page, attachments, memory, issue-to-PR on the web, walk-away runs | Registry design; Gym page |
-| **November: money** | Wallet in launch copy, published split, author payouts, referrals, paid Pylon jobs, trace sharing | Split decision; payout checks |
+| **Late October: abilities** | Build-with-you abilities, shared registry, public Gym page, attachments, memory, issue-to-PR on the web, walk-away runs; public payouts page ([#11130](https://github.com/OpenAgentsInc/openagents/issues/11130)), full benchmark set, self-host guide ([#11133](https://github.com/OpenAgentsInc/openagents/issues/11133)), whole-account export ([#11134](https://github.com/OpenAgentsInc/openagents/issues/11134)) | Registry design; Gym page |
+| **November: money** | Wallet in launch copy, published split, author payouts, referrals ([#11135](https://github.com/OpenAgentsInc/openagents/issues/11135)), paid Pylon jobs, trace sharing | Split decision; payout checks |
 | **After: the world** | The Verse on every surface, showing real agent work, payments, and levels | Account and payments in the world |
 
 ### Dependencies
@@ -248,6 +274,9 @@ Apple review → iPhone link; Windows signing → Windows desktop
 | 5 | Is the wallet in V1? | **Keep it in the phone beta, self-custody only, out of launch copy** until payouts exist to put money in it. |
 | 6 | Is the Verse a V1 surface? | **No.** Keep it as a playtest. Make it a launch surface when it shows your own agents' real work under your account. |
 | 7 | Should the old dropped promises appear on `/roadmap`? | **No.** List them only in the ledger, so the roadmap stays a short list of things being built. |
+| 8 | How do we word "Bitcoin only" now that we accept every payment rail? | **"No token, ever. We pay contributors in Bitcoin. You can pay us any standard way."** ([twitter.md](twitter.md#contradictions-and-decisions-for-the-owner) decision 1) |
+| 9 | Can launch copy repeat the posts' competitive claims? | **Only with a link to public evidence** (#11129). State the feature, not the comparison, until then. |
+| 10 | Is the web app open source too? | **Yes, everything shipped**, under Apache 2.0; the May 2026 post saying otherwise is superseded (K4, K7). |
 
 ## How this draft was made
 
@@ -264,5 +293,7 @@ Apple review → iPhone link; Windows signing → Windows desktop
   [1.0 launch drafts](../launch/1.0/README.md), the
   [Verse status](../verse/status.md), the
   [gateway doc](../inference/gateway.md), and the open issues on the V1 board.
+- The second pass read 3,727 of the account's own public posts with eight
+  readers in date ranges; method and counts are in [twitter.md](twitter.md#how-this-pass-was-made).
 - Episode transcripts are machine transcriptions. Use the ledger's episode
   numbers to find the source, and check the video before quoting.

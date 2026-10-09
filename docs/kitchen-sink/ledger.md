@@ -6,7 +6,9 @@ promises registry ([#11122](https://github.com/OpenAgentsInc/openagents/issues/1
 is meant to be seeded from it.
 
 Each row is one promise from the [video archive](../transcripts/README.md),
-written as what OpenAgents does for a person. Duplicates across eras are
+written as what OpenAgents does for a person. Rows marked "X only" come from the
+account's public posts ([second pass](twitter.md)); [§T](#t-references-from-the-x-archive)
+links each row to the posts that made it. Duplicates across eras are
 merged, and the episode list shows where each one was made.
 
 ## Status words
@@ -58,6 +60,7 @@ test passes on production.
 | B13 | Answers can include live pieces such as slides, tables, and buttons, not only text. | W D | Partial | Desktop has slides; typed components are planned | 289 | #11113, #11114 |
 | B14 | It is free to start, and a $20 Pro plan unlocks stronger models and more capacity. | W T | Partial | Stripe Pro is built (`29032775fb`); kept out of launch copy | 119, 164, 242, 277, 280 | — |
 | B15 | You can share a team workspace and its chats with teammates. | W | Missing | — | 136, 137 | — |
+| B16 | You never see ads in your chats, and our websites use no tracking cookies. | all | Partial | No ads or third-party trackers today; not yet written in the privacy policy | X only | — |
 
 ## C. Coding with Coder
 
@@ -82,6 +85,8 @@ test passes on production.
 | C17 | Each agent gets its own workspace, with shared build caches, so many agents don't overload your machine. | T D | Partial | Worktree and lease crates; not a user-facing setting | 188, 281 | — |
 | C18 | Another model reviews the work and writes tests in the background. | T | Missing | — | 029, 286 | — |
 | C19 | You see every change as a diff before you accept it. | T D W | Partial | Coder shows edits; no review screen on the web | 117, 119 | — |
+| C20 | You see how much CPU and memory each helper agent is using. | T D | Partial | Coder Terminal measured it per helper (posted 2026-09-04); not checked in 1.0 | X only | — |
+| C21 | Coder adds no refusals of its own; when a model provider refuses, it tells you which one and offers another model. | T W | Partial | Coder acts without asking (C3); refusal reporting not built | X only | #11132 |
 
 ## D. Across your devices
 
@@ -133,6 +138,8 @@ test passes on production.
 | G5 | Improvements to how the agent works are published with their evidence, so everyone's agent gets better. | N | Partial | Measurement records in `docs/extensions/measurements/` | 270, 286, 287 | — |
 | G6 | A public list says which of our claims work today, with proof, and what's coming. | W | Partial | Registry and pages in progress | 234, 237, 246, 248 | #11122 |
 | G7 | You can report something that doesn't work, and it becomes a tracked fix. | M W T | Partial | Report a problem on the phone (NIP-17) | 234, 246, 254 | — |
+| G8 | We publish head-to-head results against the leading coding agents and local runtimes (cost, pass rate, time, speed), with scripts anyone can re-run. | W | Partial | `docs/terminal-bench/README.md` (8 tasks); no public page | 120, 287 | #11131, #11129 |
+| G9 | We publish accepted outcomes per dollar, and later per kilowatt-hour, as our main measure of work. | W | Missing | — | X only | — |
 
 ## H. Traces and your data
 
@@ -182,6 +189,7 @@ test passes on production.
 | K4 | All of it is open source and built in public. | all | Live | This repository | 001, 047, 125, 173, 242 | — |
 | K5 | You can run your own copy of the whole thing. | N | Partial | Open source, but no self-host guide | 129, 242, 289 | — |
 | K6 | Agents can buy from us using standard agent payment protocols. | N | Missing | x402 only | 062, 070 | #11085 |
+| K7 | One open license: everything we publish is under Apache 2.0. | all | Live | `LICENSE` (Apache 2.0) | X only | — |
 
 ## L. Surfaces
 
@@ -196,6 +204,7 @@ test passes on production.
 | L7 | An Android app. | M | Partial | Built; deferred past launch | 149, 151, 289 | #11093 |
 | L8 | Light and dark themes that follow your system. | W D M | Launching (web) | #11100; desktop and phone ship with their releases | — | #11100 |
 | L9 | A crash in one feature never takes down the app or your agents. | D T | Partial | No measured claim | 258 | — |
+| L10 | The desktop opens a file in under a second and switches chats in under 50 ms. | D | Partial | Claimed for the July desktop; not in the release smoke test | X only | #11092 |
 
 ## M. The Verse
 
@@ -232,3 +241,124 @@ by a new issue with demand behind it.
 | X14 | Desktop with no OpenAgents account | 248, 251 | Replaced by one account everywhere (A1). Local-only use of Coder stays. |
 | X15 | Small models running on the phone | 145, 149 | Too slow on Android (149). |
 | X16 | Public investigation agents (Sleuth, OSINT) and public knowledge graph | 043, 044, 146, 154 | Domain experiments with no follow-up. |
+
+## T. References from the X archive
+
+Posts on [@OpenAgentsInc](https://x.com/OpenAgentsInc) where each promise was made or
+boasted, from the [second pass](twitter.md). Rows marked "X only" in the
+Episodes column came from the posts alone. Each link is labeled by its date.
+
+| ID | Posts |
+| --- | --- |
+| A1 | [2025-11-19](https://x.com/OpenAgentsInc/status/1991260906211164529), [2026-03-14](https://x.com/OpenAgentsInc/status/2032635511991341122) |
+| A3 | [2024-04-12](https://x.com/OpenAgentsInc/status/1778822995261141143), [2025-06-12](https://x.com/OpenAgentsInc/status/1933145402712195498) |
+| A6 | [2024-12-05](https://x.com/OpenAgentsInc/status/1864528026765062439), [2026-01-28](https://x.com/OpenAgentsInc/status/2016423268564001059), [2026-04-04](https://x.com/OpenAgentsInc/status/2040481532750492072) |
+| A7 | [2025-12-21](https://x.com/OpenAgentsInc/status/2002589906527531353), [2026-01-30](https://x.com/OpenAgentsInc/status/2017108809748005274), [2026-02-10](https://x.com/OpenAgentsInc/status/2021217246090014922) |
+| A8 | [2026-02-11](https://x.com/OpenAgentsInc/status/2021629941272477809) |
+| B1 | [2024-03-14](https://x.com/OpenAgentsInc/status/1768298996441759994), [2024-05-11](https://x.com/OpenAgentsInc/status/1789360474087117004), [2026-02-20](https://x.com/OpenAgentsInc/status/2024764526294343793), [2026-10-02](https://x.com/OpenAgentsInc/status/2105903502060859718) |
+| B2 | [2024-03-28](https://x.com/OpenAgentsInc/status/1773436254555709783), [2024-04-06](https://x.com/OpenAgentsInc/status/1776665794048409999), [2025-03-18](https://x.com/OpenAgentsInc/status/1901807373980758366) |
+| B3 | [2023-10-20](https://x.com/OpenAgentsInc/status/1715371396090507618), [2024-06-04](https://x.com/OpenAgentsInc/status/1798030930764001624), [2024-08-08](https://x.com/OpenAgentsInc/status/1821597874238423077), [2026-07-17](https://x.com/OpenAgentsInc/status/2078190096486895860) |
+| B8 | [2024-04-10](https://x.com/OpenAgentsInc/status/1778150350383440316) |
+| B9 | [2023-11-17](https://x.com/OpenAgentsInc/status/1725349984952827929), [2024-08-09](https://x.com/OpenAgentsInc/status/1821751383227347101) |
+| B10 | [2024-07-25](https://x.com/OpenAgentsInc/status/1816269923414327630), [2024-08-09](https://x.com/OpenAgentsInc/status/1821751383227347101) |
+| B12 | [2024-12-24](https://x.com/OpenAgentsInc/status/1871390476705947913), [2025-07-20](https://x.com/OpenAgentsInc/status/1947035291316887925), [2026-07-12](https://x.com/OpenAgentsInc/status/2076389242767368497) |
+| B14 | [2024-04-09](https://x.com/OpenAgentsInc/status/1777496991099998302), [2024-12-06](https://x.com/OpenAgentsInc/status/1865112576830693650), [2026-06-04](https://x.com/OpenAgentsInc/status/2062626257443909886) |
+| B15 | [2024-10-11](https://x.com/OpenAgentsInc/status/1844783790293422548), [2026-06-04](https://x.com/OpenAgentsInc/status/2062626257443909886) |
+| B16 | [2024-05-20](https://x.com/OpenAgentsInc/status/1792360190689386537), [2024-10-21](https://x.com/OpenAgentsInc/status/1848211700450726214), [2024-12-30](https://x.com/OpenAgentsInc/status/1873821809386340369) |
+| C1 | [2026-08-27](https://x.com/OpenAgentsInc/status/2092836555756823023) |
+| C2 | [2024-01-03](https://x.com/OpenAgentsInc/status/1742609184875544613), [2025-02-14](https://x.com/OpenAgentsInc/status/1890317831784333595), [2026-09-03](https://x.com/OpenAgentsInc/status/2095552147433587011) |
+| C3 | [2024-12-13](https://x.com/OpenAgentsInc/status/1867596460553822300), [2026-09-03](https://x.com/OpenAgentsInc/status/2095596118080151936) |
+| C5 | [2026-10-02](https://x.com/OpenAgentsInc/status/2106032170699534676) |
+| C6 | [2023-11-17](https://x.com/OpenAgentsInc/status/1725597044981617119), [2024-08-27](https://x.com/OpenAgentsInc/status/1828511026410655781), [2025-02-08](https://x.com/OpenAgentsInc/status/1888019235063927061), [2025-03-09](https://x.com/OpenAgentsInc/status/1898610506035782072) |
+| C7 | [2025-11-11](https://x.com/OpenAgentsInc/status/1988348979072082230), [2026-07-21](https://x.com/OpenAgentsInc/status/2079678476836122916), [2026-09-05](https://x.com/OpenAgentsInc/status/2096058017133261230) |
+| C8 | [2024-08-20](https://x.com/OpenAgentsInc/status/1825938434063741309), [2025-12-21](https://x.com/OpenAgentsInc/status/2002757002863546853), [2025-12-23](https://x.com/OpenAgentsInc/status/2003362087955730508) |
+| C9 | [2025-02-24](https://x.com/OpenAgentsInc/status/1894108039503806831), [2026-09-23](https://x.com/OpenAgentsInc/status/2102773483109335209) |
+| C10 | [2026-06-19](https://x.com/OpenAgentsInc/status/2068102703092543974), [2026-08-31](https://x.com/OpenAgentsInc/status/2094475625306423657) |
+| C11 | [2024-10-11](https://x.com/OpenAgentsInc/status/1844783790293422548) |
+| C12 | [2026-05-19](https://x.com/OpenAgentsInc/status/2056603642229039416), [2026-06-13](https://x.com/OpenAgentsInc/status/2065823704861294932), [2026-09-12](https://x.com/OpenAgentsInc/status/2098638228429365425) |
+| C13 | [2024-07-25](https://x.com/OpenAgentsInc/status/1816269923414327630), [2024-12-06](https://x.com/OpenAgentsInc/status/1865112576830693650) |
+| C14 | [2025-10-24](https://x.com/OpenAgentsInc/status/1981533017999814688), [2025-10-30](https://x.com/OpenAgentsInc/status/1983960929575338281) |
+| C15 | [2026-08-31](https://x.com/OpenAgentsInc/status/2094539323374698817) |
+| C16 | [2026-09-08](https://x.com/OpenAgentsInc/status/2097173500079346163) |
+| C17 | [2026-08-27](https://x.com/OpenAgentsInc/status/2092961098378997790) |
+| C18 | [2026-07-03](https://x.com/OpenAgentsInc/status/2072943871005282406), [2026-07-14](https://x.com/OpenAgentsInc/status/2076953270052852166) |
+| C20 | [2026-09-04](https://x.com/OpenAgentsInc/status/2095902069374763426), [2026-09-05](https://x.com/OpenAgentsInc/status/2096357223253389345) |
+| C21 | [2026-09-03](https://x.com/OpenAgentsInc/status/2095596118080151936), [2026-09-14](https://x.com/OpenAgentsInc/status/2099561282944860387) |
+| D1 | [2025-07-26](https://x.com/OpenAgentsInc/status/1948994586459705695), [2026-09-09](https://x.com/OpenAgentsInc/status/2097558311184842942) |
+| D4 | [2026-07-28](https://x.com/OpenAgentsInc/status/2082182272199897351), [2026-09-09](https://x.com/OpenAgentsInc/status/2097558311184842942) |
+| D5 | [2025-10-30](https://x.com/OpenAgentsInc/status/1983960929575338281) |
+| E1 | [2023-10-16](https://x.com/OpenAgentsInc/status/1713990270872641927), [2023-10-29](https://x.com/OpenAgentsInc/status/1718766857388204090), [2023-11-18](https://x.com/OpenAgentsInc/status/1725727843311579231), [2026-06-24](https://x.com/OpenAgentsInc/status/2069922012428914696) |
+| E2 | [2024-08-12](https://x.com/OpenAgentsInc/status/1823109640357339628), [2026-08-27](https://x.com/OpenAgentsInc/status/2092836555756823023), [2026-09-03](https://x.com/OpenAgentsInc/status/2095596118080151936) |
+| E3 | [2023-11-09](https://x.com/OpenAgentsInc/status/1722650919500759422), [2023-12-21](https://x.com/OpenAgentsInc/status/1737951685270491262), [2026-10-03](https://x.com/OpenAgentsInc/status/2106270735752675797) |
+| E5 | [2024-05-12](https://x.com/OpenAgentsInc/status/1789636246387450357), [2026-09-06](https://x.com/OpenAgentsInc/status/2096606065441862041) |
+| E7 | [2026-06-25](https://x.com/OpenAgentsInc/status/2070013895683506637), [2026-06-27](https://x.com/OpenAgentsInc/status/2070986088915583010) |
+| E9 | [2024-12-14](https://x.com/OpenAgentsInc/status/1867815868131836103), [2025-08-07](https://x.com/OpenAgentsInc/status/1953546661076357463), [2026-03-10](https://x.com/OpenAgentsInc/status/2031255043903549942), [2026-08-28](https://x.com/OpenAgentsInc/status/2093464091952071131) |
+| E10 | [2026-06-23](https://x.com/OpenAgentsInc/status/2069540884622786585) |
+| F1 | [2026-10-02](https://x.com/OpenAgentsInc/status/2105903502060859718) |
+| F2 | [2024-04-21](https://x.com/OpenAgentsInc/status/1782188994094100815), [2026-01-07](https://x.com/OpenAgentsInc/status/2009032724443484301), [2026-09-30](https://x.com/OpenAgentsInc/status/2105372666995868125) |
+| F3 | [2024-01-18](https://x.com/OpenAgentsInc/status/1747994309549318228), [2024-04-17](https://x.com/OpenAgentsInc/status/1780642250411679938), [2025-11-11](https://x.com/OpenAgentsInc/status/1988293182942228779), [2026-10-02](https://x.com/OpenAgentsInc/status/2105903502060859718) |
+| F4 | [2025-04-03](https://x.com/OpenAgentsInc/status/1907805725797052867), [2026-10-02](https://x.com/OpenAgentsInc/status/2105903502060859718) |
+| F5 | [2024-01-12](https://x.com/OpenAgentsInc/status/1745918872866173125) |
+| F6 | [2024-06-11](https://x.com/OpenAgentsInc/status/1800665114573521029) |
+| F7 | [2025-03-13](https://x.com/OpenAgentsInc/status/1900282953244303440), [2025-03-27](https://x.com/OpenAgentsInc/status/1905107323279855799) |
+| G2 | [2024-03-16](https://x.com/OpenAgentsInc/status/1769011829378847194), [2024-08-13](https://x.com/OpenAgentsInc/status/1823455135143518470), [2026-09-23](https://x.com/OpenAgentsInc/status/2102773483109335209) |
+| G3 | [2026-09-15](https://x.com/OpenAgentsInc/status/2099943679444357241), [2026-10-02](https://x.com/OpenAgentsInc/status/2105907276749943119) |
+| G5 | [2026-09-23](https://x.com/OpenAgentsInc/status/2102773483109335209) |
+| G6 | [2026-06-09](https://x.com/OpenAgentsInc/status/2064390975267480060), [2026-06-15](https://x.com/OpenAgentsInc/status/2066601306668810615) |
+| G8 | [2026-03-10](https://x.com/OpenAgentsInc/status/2031255043903549942), [2026-03-28](https://x.com/OpenAgentsInc/status/2037717730707542232), [2026-09-23](https://x.com/OpenAgentsInc/status/2102773483109335209), [2026-09-26](https://x.com/OpenAgentsInc/status/2103695213680091618) |
+| G9 | [2026-06-08](https://x.com/OpenAgentsInc/status/2064074384881463459), [2026-07-20](https://x.com/OpenAgentsInc/status/2079311647068283131) |
+| H2 | [2026-08-06](https://x.com/OpenAgentsInc/status/2085364327427547552) |
+| H3 | [2025-12-19](https://x.com/OpenAgentsInc/status/2002057459574452667), [2026-03-07](https://x.com/OpenAgentsInc/status/2030132739672887561), [2026-09-10](https://x.com/OpenAgentsInc/status/2098051068605215146) |
+| H5 | [2026-08-19](https://x.com/OpenAgentsInc/status/2090129708520235096) |
+| H6 | [2024-04-15](https://x.com/OpenAgentsInc/status/1779907555977769160), [2024-04-19](https://x.com/OpenAgentsInc/status/1781455136675762461) |
+| I1 | [2024-05-28](https://x.com/OpenAgentsInc/status/1795535732032831719), [2024-12-12](https://x.com/OpenAgentsInc/status/1867070611928846640), [2025-05-13](https://x.com/OpenAgentsInc/status/1922303008617984363) |
+| I2 | [2026-04-14](https://x.com/OpenAgentsInc/status/2044072290380333348) |
+| I3 | [2024-01-04](https://x.com/OpenAgentsInc/status/1742952006166225330), [2026-02-16](https://x.com/OpenAgentsInc/status/2023499214995775810), [2026-02-18](https://x.com/OpenAgentsInc/status/2024259092810703136) |
+| I4 | [2023-09-26](https://x.com/OpenAgentsInc/status/1706812003258347630), [2023-12-21](https://x.com/OpenAgentsInc/status/1737946716190740950) |
+| I5 | [2024-01-29](https://x.com/OpenAgentsInc/status/1752049402359754789), [2024-04-20](https://x.com/OpenAgentsInc/status/1781703101327757410), [2024-06-03](https://x.com/OpenAgentsInc/status/1797738481097077001) |
+| I6 | [2023-09-25](https://x.com/OpenAgentsInc/status/1706321126970802366) |
+| I7 | [2023-09-25](https://x.com/OpenAgentsInc/status/1706377244883443852), [2026-06-19](https://x.com/OpenAgentsInc/status/2068102703092543974) |
+| I8 | [2024-02-18](https://x.com/OpenAgentsInc/status/1759278173148135788), [2025-01-08](https://x.com/OpenAgentsInc/status/1876869977581527550), [2026-06-12](https://x.com/OpenAgentsInc/status/2065535602905448870) |
+| I9 | [2025-05-05](https://x.com/OpenAgentsInc/status/1919419077887410389), [2026-01-02](https://x.com/OpenAgentsInc/status/2006956979298685216) |
+| J1 | [2023-09-12](https://x.com/OpenAgentsInc/status/1701628445648736626), [2026-03-12](https://x.com/OpenAgentsInc/status/2032108547333304421), [2026-04-08](https://x.com/OpenAgentsInc/status/2041970265471480298) |
+| J2 | [2026-06-08](https://x.com/OpenAgentsInc/status/2064074384881463459) |
+| J3 | [2024-06-14](https://x.com/OpenAgentsInc/status/1801653533810319867), [2026-03-12](https://x.com/OpenAgentsInc/status/2032108547333304421) |
+| J4 | [2024-08-30](https://x.com/OpenAgentsInc/status/1829632437573259433), [2026-08-03](https://x.com/OpenAgentsInc/status/2084392773701063053) |
+| J5 | [2026-02-24](https://x.com/OpenAgentsInc/status/2026438188198207601), [2026-04-09](https://x.com/OpenAgentsInc/status/2042041267207458964) |
+| J6 | [2026-04-07](https://x.com/OpenAgentsInc/status/2041622770811842943), [2026-04-08](https://x.com/OpenAgentsInc/status/2041992244089999796), [2026-05-13](https://x.com/OpenAgentsInc/status/2054663224612487506) |
+| J7 | [2023-10-03](https://x.com/OpenAgentsInc/status/1709300332453371930), [2023-10-19](https://x.com/OpenAgentsInc/status/1714816527227146342), [2026-04-17](https://x.com/OpenAgentsInc/status/2045235776716411062), [2026-06-11](https://x.com/OpenAgentsInc/status/2065092297641824747) |
+| J8 | [2023-10-05](https://x.com/OpenAgentsInc/status/1710055873572110558) |
+| K1 | [2026-01-30](https://x.com/OpenAgentsInc/status/2017307294585827833), [2026-02-17](https://x.com/OpenAgentsInc/status/2023659999268864077) |
+| K3 | [2024-04-17](https://x.com/OpenAgentsInc/status/1780658055820034099), [2026-10-07](https://x.com/OpenAgentsInc/status/2107913192232178136) |
+| K4 | [2023-10-05](https://x.com/OpenAgentsInc/status/1709873601380323495), [2023-11-07](https://x.com/OpenAgentsInc/status/1721942435125715086), [2026-01-08](https://x.com/OpenAgentsInc/status/2009142870775644644), [2026-06-15](https://x.com/OpenAgentsInc/status/2066601306668810615) |
+| K5 | [2026-04-04](https://x.com/OpenAgentsInc/status/2040237117276586204), [2026-08-27](https://x.com/OpenAgentsInc/status/2092836555756823023) |
+| K6 | [2024-01-26](https://x.com/OpenAgentsInc/status/1750729304504213964), [2026-02-25](https://x.com/OpenAgentsInc/status/2026754692873646279), [2026-06-23](https://x.com/OpenAgentsInc/status/2069212010131112441) |
+| K7 | [2024-04-09](https://x.com/OpenAgentsInc/status/1777692495012405439), [2025-07-24](https://x.com/OpenAgentsInc/status/1948214009615765765), [2026-08-27](https://x.com/OpenAgentsInc/status/2092991734577819698), [2026-10-02](https://x.com/OpenAgentsInc/status/2105903502060859718) |
+| L1 | [2026-06-04](https://x.com/OpenAgentsInc/status/2062555990864564373) |
+| L2 | [2026-08-27](https://x.com/OpenAgentsInc/status/2092991734577819698) |
+| L3 | [2026-07-17](https://x.com/OpenAgentsInc/status/2078193847209742468), [2026-07-18](https://x.com/OpenAgentsInc/status/2078499949105344645), [2026-09-30](https://x.com/OpenAgentsInc/status/2105372666995868125) |
+| L4 | [2026-01-29](https://x.com/OpenAgentsInc/status/2016787108900335736) |
+| L5 | [2026-01-31](https://x.com/OpenAgentsInc/status/2017485395512930730), [2026-03-07](https://x.com/OpenAgentsInc/status/2030156760275677420), [2026-07-11](https://x.com/OpenAgentsInc/status/2075869047560835291) |
+| L6 | [2025-10-30](https://x.com/OpenAgentsInc/status/1983960929575338281), [2026-07-08](https://x.com/OpenAgentsInc/status/2074723427873702347) |
+| L7 | [2024-12-20](https://x.com/OpenAgentsInc/status/1870030269916340610) |
+| L9 | [2026-07-19](https://x.com/OpenAgentsInc/status/2078921380305768953) |
+| L10 | [2026-07-10](https://x.com/OpenAgentsInc/status/2075680613731078265), [2026-07-19](https://x.com/OpenAgentsInc/status/2078687966210204011) |
+| M1 | [2024-08-01](https://x.com/OpenAgentsInc/status/1819071289740644563), [2026-10-06](https://x.com/OpenAgentsInc/status/2107294286328787243) |
+| M2 | [2026-10-07](https://x.com/OpenAgentsInc/status/2107909649299030348) |
+| M4 | [2026-06-21](https://x.com/OpenAgentsInc/status/2068792528481173980) |
+| M5 | [2024-07-11](https://x.com/OpenAgentsInc/status/1811507069398483192) |
+| M6 | [2025-04-28](https://x.com/OpenAgentsInc/status/1916692323150311573), [2025-05-25](https://x.com/OpenAgentsInc/status/1926762604703129707) |
+| X1 | [2024-02-22](https://x.com/OpenAgentsInc/status/1760765338193453150) |
+| X2 | [2024-05-14](https://x.com/OpenAgentsInc/status/1790500162491523138) |
+| X3 | [2024-10-03](https://x.com/OpenAgentsInc/status/1841710204691288356) |
+| X4 | [2024-10-31](https://x.com/OpenAgentsInc/status/1851854221504635125) |
+| X5 | [2026-08-20](https://x.com/OpenAgentsInc/status/2090295429640396967), [2026-08-24](https://x.com/OpenAgentsInc/status/2091887799137866064) |
+| X6 | [2026-04-10](https://x.com/OpenAgentsInc/status/2042450069857693926), [2026-06-11](https://x.com/OpenAgentsInc/status/2065196586817216622) |
+| X7 | [2026-03-07](https://x.com/OpenAgentsInc/status/2030132739672887561) |
+| X8 | [2025-01-24](https://x.com/OpenAgentsInc/status/1882786018836820055), [2025-11-20](https://x.com/OpenAgentsInc/status/1991587456953774451) |
+| X9 | [2026-08-03](https://x.com/OpenAgentsInc/status/2084193142970949903) |
+| X10 | [2026-07-22](https://x.com/OpenAgentsInc/status/2080041664832311499), [2026-08-13](https://x.com/OpenAgentsInc/status/2087924381682933787) |
+| X11 | [2023-09-26](https://x.com/OpenAgentsInc/status/1706812003258347630), [2024-05-30](https://x.com/OpenAgentsInc/status/1796251292798464265) |
+| X13 | [2025-05-17](https://x.com/OpenAgentsInc/status/1923548136762466798) |
+| X15 | [2024-12-14](https://x.com/OpenAgentsInc/status/1867815868131836103) |
+| X16 | [2025-01-04](https://x.com/OpenAgentsInc/status/1875380960658681918) |
