@@ -129,6 +129,14 @@ impl Ledger {
         amount_msat: i64,
         at: i64,
     ) -> Result<Adjustment> {
+        // A provider forfeit is written only by `Ledger::forfeit_pylon_job`,
+        // whose late loss alone may leave payouts running; no other caller
+        // can label a loss as one.
+        if role == "provider" {
+            return Err(Error::Invalid(
+                "a provider share is forfeited only by a pylon check",
+            ));
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;

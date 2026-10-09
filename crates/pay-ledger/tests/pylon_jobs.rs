@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use pay_ledger::compute::{HoldRequest, Receipt as TopUpReceipt, TopUp};
 use pay_ledger::payout::{Invoice, Lookup, Outcome, Policy, Rails, tick};
-use pay_ledger::{Error, Ledger, OPENAGENTS, Payee, Rail, SettlementInput, Split};
+use pay_ledger::{Error, Ledger, OPENAGENTS, Payee, PayoutState, Rail, SettlementInput, Split};
 
 /// After v2 takes effect.
 const AT: i64 = 1_792_022_400;
@@ -294,4 +294,118 @@ fn a_small_balance_sweeps_after_ten_minutes() {
         wallet.0.lock().unwrap().as_slice(),
         [(format!("{:064x}", 9_000), 17_000)]
     );
+}
+
+fn provider_ledger() -> Ledger {
+    let mut ledger = Ledger::in_memory().unwrap();
+    ledger.install_pylon_rule().unwrap();
+    ledger
+        .register_payee(Payee {
+            party: PROVIDER.into(),
+            destination_kind: "lud16".into(),
+            destination_value: "provider@regtest.example".into(),
+            source: "fixture".into(),
+            verified_at: AT,
+        })
+        .unwrap();
+    ledger
+}
+
+#[test]
+fn a_forfeit_against_an_unsent_sweep_holds_payouts() {
+    let mut ledger = provider_ledger();
+    ledger
+        .record_settlement(job(&id(1), &id(101), 600_000))
+        .unwrap();
+    let shares = ledger.available_shares(PROVIDER).unwrap();
+    ledger
+        .reserve_payout("sweep", PROVIDER, &shares, AT + 1)
+        .unwrap();
+    // The sweep is reserved, not sent: the forfeit is a loss, and a failed
+    // sweep would hand the share back, so payouts stop.
+    let late = ledger
+        .forfeit_pylon_job(&id(101), &id(901), AT + 2)
+        .unwrap();
+    assert_eq!((late.reduced_msat, late.loss_msat), (0, 510_000));
+    assert!(ledger.commission_payouts_held().unwrap());
+    // An unknown outcome still holds.
+    ledger
+        .finish_payout("sweep", PayoutState::Unknown, None, None, AT + 3)
+        .unwrap();
+    assert!(ledger.commission_payouts_held().unwrap());
+    // A failed sweep returns the forfeited share to the balance: held.
+    ledger
+        .finish_payout("sweep", PayoutState::Failed, None, None, AT + 4)
+        .unwrap();
+    assert_eq!(ledger.accrued(PROVIDER).unwrap(), 510_000);
+    assert!(ledger.commission_payouts_held().unwrap());
+}
+
+#[test]
+fn a_late_forfeit_of_a_sent_share_keeps_payouts_running() {
+    let mut ledger = provider_ledger();
+    ledger
+        .record_settlement(job(&id(1), &id(101), 600_000))
+        .unwrap();
+    let shares = ledger.available_shares(PROVIDER).unwrap();
+    ledger
+        .reserve_payout("sweep", PROVIDER, &shares, AT + 1)
+        .unwrap();
+    ledger
+        .set_payout_state("sweep", PayoutState::Sending, Some("regtest-ref"), AT + 2)
+        .unwrap();
+    ledger
+        .finish_payout("sweep", PayoutState::Sent, Some(0), None, AT + 2)
+        .unwrap();
+    let late = ledger
+        .forfeit_pylon_job(&id(101), &id(901), AT + 3)
+        .unwrap();
+    assert_eq!(late.loss_msat, 510_000);
+    assert!(!ledger.commission_payouts_held().unwrap());
+    // The swept share cannot be paid twice.
+    assert_eq!(ledger.accrued(PROVIDER).unwrap(), 0);
+    assert!(ledger.available_shares(PROVIDER).unwrap().is_empty());
+}
+
+#[test]
+fn any_other_loss_on_a_pylon_job_still_holds_payouts() {
+    let mut ledger = provider_ledger();
+    ledger
+        .register_payee(Payee {
+            party: OPENAGENTS.into(),
+            destination_kind: "spark".into(),
+            destination_value: "openagents-regtest".into(),
+            source: "fixture".into(),
+            verified_at: AT,
+        })
+        .unwrap();
+    ledger
+        .record_settlement(job(&id(1), &id(101), 600_000))
+        .unwrap();
+    // A provider share is never labeled as forfeited outside a pylon check,
+    // so no other caller can write a loss that skips the hold.
+    assert!(
+        ledger
+            .reduce_payable("bug", &id(1), PROVIDER, "provider", "e", 1, AT)
+            .is_err()
+    );
+    // OpenAgents' own share on the same job, reduced after it was reserved:
+    // an ordinary loss, which holds payouts.
+    let shares = ledger.available_shares(OPENAGENTS).unwrap();
+    ledger
+        .reserve_payout("oa", OPENAGENTS, &shares, AT + 1)
+        .unwrap();
+    let loss = ledger
+        .reduce_payable(
+            "refund",
+            &id(1),
+            OPENAGENTS,
+            "openagents",
+            "proof",
+            1_000,
+            AT + 2,
+        )
+        .unwrap();
+    assert_eq!(loss.loss_msat, 1_000);
+    assert!(ledger.commission_payouts_held().unwrap());
 }

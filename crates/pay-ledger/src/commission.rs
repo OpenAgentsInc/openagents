@@ -688,10 +688,17 @@ fn read_refund(c: &Connection, id: &str) -> Result<Option<Refund>> {
         .transpose()
 }
 
-/// A pylon forfeit that came too late (`role='provider'`, the share was
-/// already swept) leaves nothing unbacked, so it never holds payouts.
+/// Any recorded loss holds payouts, with one exception: a pylon forfeit
+/// that came too late, which leaves nothing unbacked. A loss is that
+/// exception only when all of these hold: it is a provider forfeit written
+/// by [`crate::Ledger::forfeit_pylon_job`] (`id` is `pylon-check:` and its
+/// evidence), the settlement is a pylon job paying that provider, and the
+/// share went out in a payout whose state is `sent`, for at least the loss.
+/// A forfeit that meets a reserved, unknown, or failed payout still holds
+/// payouts, because a failed payout would return the forfeited share to
+/// the provider's balance.
 pub(crate) fn payouts_held_in(c: &Connection) -> Result<bool> {
-    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment WHERE loss_msat>0 AND role!='provider') OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown')) OR EXISTS(SELECT 1 FROM commission_admission a JOIN settlement s ON s.payment_hash=a.payment_hash WHERE NOT EXISTS(SELECT 1 FROM commission_obligation o WHERE o.id=a.id))",[],|r|r.get(0))?)
+    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment a WHERE a.loss_msat>0 AND NOT (a.role='provider' AND a.id='pylon-check:'||a.evidence AND EXISTS(SELECT 1 FROM pylon_job j WHERE j.settlement=a.settlement AND j.provider=a.party) AND (SELECT SUM(x.loss_msat) FROM payable_adjustment x WHERE x.settlement=a.settlement AND x.party=a.party AND x.role='provider')<=COALESCE((SELECT SUM(n.amount_msat) FROM payout_item i JOIN payout p ON p.id=i.payout JOIN native_payout_claim n ON n.payout=i.payout AND n.settlement=i.settlement AND n.party=i.party AND n.role=i.role WHERE i.settlement=a.settlement AND i.party=a.party AND i.role='provider' AND p.state='sent'),0))) OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown')) OR EXISTS(SELECT 1 FROM commission_admission a JOIN settlement s ON s.payment_hash=a.payment_hash WHERE NOT EXISTS(SELECT 1 FROM commission_obligation o WHERE o.id=a.id))",[],|r|r.get(0))?)
 }
 impl Ledger {
     /// Unobserved admitted collections, losses, and unresolved native refund

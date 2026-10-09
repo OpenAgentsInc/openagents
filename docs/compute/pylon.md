@@ -242,7 +242,9 @@ ordinary payout worker (`Policy::pylon_sweeps`: 1,000 sats owed, or the
 oldest share ten minutes old), never per job. `Broker::forfeit` turns a
 trusted checker's `check-fail` on a sold job's receipt into a forfeit of
 that job's unpaid provider share; a share already swept is recorded as a
-loss and is not clawed back. A book takes receipts of one network only, and
+loss and is not clawed back. That late loss keeps payouts running only when
+the sweep is `sent`; against a reserved, unknown, or failed sweep it holds
+every payout, as any other ledger loss does. A book takes receipts of one network only, and
 on `bitcoin` a sweep needs the owner's grant (`paid::Grant`), with every
 payout under its per-payment and daily ceilings.
 
