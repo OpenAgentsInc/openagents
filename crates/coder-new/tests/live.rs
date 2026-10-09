@@ -688,12 +688,43 @@ fn run_component_has_one_command_one_status_row_and_multiline_preview() {
     assert!(rows[1].contains(" · timed_out: false"));
     assert!(rows[2].contains("first"));
     assert!(rows[3].contains("second"));
-    assert!(canvas.contains("… 1 more lines"));
-    assert!(!canvas.contains("sixth"));
+    // The finished card keeps every retained output line; the transcript
+    // scrolls instead of eliding them (#11117).
+    for (row, text) in ["third", "fourth", "fifth", "sixth"].iter().enumerate() {
+        assert!(rows[4 + row].contains(text), "{canvas}");
+    }
+    assert!(!canvas.contains("more lines"));
     assert!(!canvas.contains("value:"));
     for width in [24, 40] {
         render(&mut app, width, 12);
     }
+}
+
+#[test]
+fn page_up_from_the_followed_tail_scrolls_back_from_the_latest_output() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    let output: Vec<String> = (1..=60).map(|line| format!("line {line}")).collect();
+    app.live.entries.push(Entry::Tool {
+        name: "Run".into(),
+        input: serde_json::json!({"command":"seq 60"}),
+        output: serde_json::json!({"exit":0, "output":output.join("\n")}),
+        running: false,
+    });
+    app.scroll = u16::MAX;
+    let latest = render(&mut app, 80, 24);
+    assert!(latest.contains("line 60"));
+    assert_eq!(app.scroll, u16::MAX, "following keeps the tail");
+    key(&mut app, KeyCode::PageUp);
+    assert!(app.scroll < u16::MAX - 5);
+    let back = render(&mut app, 80, 24);
+    assert!(!back.contains("line 60"), "{back}");
+    assert!(back.contains("line 50"), "{back}");
+    assert!(app.handle(Event::Key(KeyEvent::new(
+        KeyCode::End,
+        KeyModifiers::CONTROL
+    ))));
+    assert!(render(&mut app, 80, 24).contains("line 60"));
 }
 
 #[test]

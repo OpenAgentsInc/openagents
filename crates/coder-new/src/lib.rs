@@ -133,6 +133,10 @@ pub struct App {
     main_draft: Draft,
     main_composer: composer_state::ComposerState,
     main_scroll: u16,
+    /// The furthest the shown transcript could scroll at the last frame, so
+    /// scrolling back from the followed tail (`scroll == u16::MAX`) starts
+    /// at the latest output.
+    pub(crate) scroll_max: u16,
     other_draft: Draft,
     return_screen: Screen,
     appearance_return_screen: Screen,
@@ -190,6 +194,14 @@ impl App {
         }
     }
 
+    /// Scroll the transcript back by `rows`, from the latest output when it
+    /// is following the tail.
+    fn scroll_back(&mut self, rows: u16) {
+        if self.scroll == u16::MAX {
+            self.scroll = self.scroll_max;
+        }
+        self.scroll = self.scroll.saturating_sub(rows);
+    }
     fn scroll_main_to_end(&mut self) {
         if self.selected_agent.is_none() {
             self.scroll = u16::MAX;
@@ -1333,7 +1345,7 @@ impl App {
                     && self.resume_picker.is_none() =>
             {
                 match mouse.kind {
-                    MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
+                    MouseEventKind::ScrollUp => self.scroll_back(3),
                     MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
                     _ => {}
                 }
@@ -1692,18 +1704,7 @@ impl App {
                             self.select_agent(None);
                         }
                     }
-                    KeyCode::PageUp => {
-                        self.scroll = self
-                            .scroll
-                            .min(
-                                self.live
-                                    .cache
-                                    .count()
-                                    .saturating_sub(10)
-                                    .min(u16::MAX as usize) as u16,
-                            )
-                            .saturating_sub(5);
-                    }
+                    KeyCode::PageUp => self.scroll_back(5),
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
                     KeyCode::End if ctrl => self.scroll = u16::MAX,
                     KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {

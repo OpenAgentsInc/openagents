@@ -346,6 +346,13 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
             &[],
             &Arc::new(AtomicBool::new(false)),
             &mut |event| {
+                // Run streams its own live output and elapsed time (#11117,
+                // #11118); the output is redirected to a file here, so these
+                // updates carry no child events.
+                if matches!(&event, RuntimeEvent::Tool { name, running: true, .. } if name == "Run")
+                {
+                    return;
+                }
                 let RuntimeEvent::Delegation {
                     id,
                     name,

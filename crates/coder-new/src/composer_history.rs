@@ -377,7 +377,10 @@ impl App {
     }
 
     pub(crate) fn composer_arrow(&mut self, up: bool) {
-        if self.footer_focused {
+        // An open agent conversation is a selected footer row, so the footer
+        // owns Up/Down there: Down opens the next agent and Up the previous
+        // one, back to the main conversation.
+        if self.footer_focused || self.selected_agent.is_some() {
             let count = if self.mode == crate::Mode::Demo {
                 crate::agents::DEMOS.len()
             } else {
@@ -397,7 +400,13 @@ impl App {
             }
             return;
         }
-        if self.draft.vertical(self.composer_width.max(1), up) {
+        // Before the first frame the composer width is unknown (0): move by
+        // logical lines only rather than wrapping at one column.
+        let width = match self.composer_width {
+            0 => u16::MAX,
+            width => width,
+        };
+        if self.draft.vertical(width, up) {
             return;
         }
         if up {

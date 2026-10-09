@@ -43,6 +43,9 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         appearance::render(frame, frame.area(), app);
         return;
     }
+    // Both composers wrap at the terminal width less the prompt gutter, and
+    // Up/Down move through exactly that layout.
+    app.composer_width = frame.area().width.saturating_sub(3).max(1);
     if app.mode == Mode::Demo {
         let mut demo = app.demo_view();
         coder_demo_ui::render(frame, &mut demo);
@@ -51,7 +54,6 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
     let area = frame.area();
     let terminal_width = area.width;
-    app.composer_width = terminal_width.saturating_sub(3).max(1);
     let terminal_x = area.x;
     frame.render_widget(
         Block::default().style(Style::default().bg(t::BG_BASE).fg(t::TEXT_SECONDARY)),
@@ -670,14 +672,9 @@ fn run_lines(
                     .collect(),
                 width,
             );
-            let hidden = 0;
+            // The whole retained output (bounded and redacted upstream) stays
+            // in the transcript, where PageUp/PageDown review it (#11117).
             lines.extend(rows);
-            if hidden > 0 {
-                lines.push(Line::from(span(
-                    format!("   … {hidden} more lines"),
-                    t::GRAY,
-                )));
-            }
         }
     }
     lines
@@ -980,6 +977,7 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let max_scroll = count
         .saturating_sub(usize::from(area.height))
         .min(usize::from(u16::MAX)) as u16;
+    app.scroll_max = max_scroll;
     let following = app.scroll == u16::MAX;
     let position = app.scroll.min(max_scroll);
     if !following {
