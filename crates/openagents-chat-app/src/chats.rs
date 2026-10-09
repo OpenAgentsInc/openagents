@@ -719,7 +719,7 @@ async fn catalog_page(
     };
     match observe(client, &make).await? {
         Observation::Catalog(page) => Ok(page),
-        _ => Err("The computer answered with the wrong page.".into()),
+        _ => Err("Couldn't load this chat. Try again.".into()),
     }
 }
 

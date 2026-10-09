@@ -519,16 +519,18 @@ impl Cards {
             // A run on this computer shows its own events
             // (`crate::coder_run`); only a handoff to a host's policy says
             // where it went.
-            reply.notice = (coder.host != crate::coder_run::LOCAL).then(|| (
-                "coder-dispatched".into(),
-                format!(
-                    "Task sent to Coder{}. The computer's auto-start policy controls execution.",
-                    coder
-                        .project
-                        .as_ref()
-                        .map_or(String::new(), |project| format!(" in {project}")),
-                ),
-            ));
+            reply.notice = (coder.host != crate::coder_run::LOCAL).then(|| {
+                (
+                    "coder-dispatched".into(),
+                    format!(
+                        "Task sent to Coder{}.",
+                        coder
+                            .project
+                            .as_ref()
+                            .map_or(String::new(), |project| format!(" in {project}")),
+                    ),
+                )
+            });
         }
         if let Some((key, value)) = reply.notice {
             rows.push(Node {

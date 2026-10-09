@@ -69,19 +69,19 @@ impl Reader {
                 .as_ref()
                 .is_some_and(|old| old != &page.incarnation)
         {
-            return Err("This session changed. Refresh it before reading further.".into());
+            return Err("This session changed. Refresh to keep reading.".into());
         }
         if page.chunks.len() > 128 {
-            return Err("The session page exceeds its record limit.".into());
+            return Err("Couldn't read this session. Try again.".into());
         }
         let mut bytes = 0usize;
         for chunk in &page.chunks {
             if chunk.raw_base64.len() > 11 * 1024 {
-                return Err("The session record exceeds its byte limit.".into());
+                return Err("Couldn't read this session. Try again.".into());
             }
             let raw = base64::engine::general_purpose::STANDARD
                 .decode(&chunk.raw_base64)
-                .map_err(|_| "The session page has invalid source bytes.")?;
+                .map_err(|_| "Couldn't read this session. Try again.")?;
             bytes += raw.len();
             if raw.len() > 8 * 1024
                 || bytes > 32 * 1024
@@ -96,7 +96,7 @@ impl Reader {
                         chunk.record_offset,
                     )
             {
-                return Err("The session page has invalid record boundaries.".into());
+                return Err("Couldn't read this session. Try again.".into());
             }
         }
         for chunk in &page.chunks {
@@ -392,7 +392,7 @@ impl Session {
             {
                 Ok(Some(snapshot))
             }
-            _ => Err("The computer answered another saved-session request.".into()),
+            _ => Err("Couldn't open this session. Try again.".into()),
         };
         match result {
             Ok(snapshot) => {

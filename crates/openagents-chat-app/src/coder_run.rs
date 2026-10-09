@@ -814,7 +814,7 @@ impl Run {
                 self.reviewer.published(Ok(*publication));
             }
             _ => {
-                self.error = Some("Coder answered another request.".into());
+                self.error = Some("Something went wrong. Try again.".into());
             }
         }
         self.sync_decision();

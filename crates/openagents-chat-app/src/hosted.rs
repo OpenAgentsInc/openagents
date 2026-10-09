@@ -367,7 +367,7 @@ async fn result(
         Follow::Publish => {
             let published = hosted::parse_publish_output(&payload["output"])
                 .map(|output| Some(output.result.id))
-                .map_err(|_| "Our computers' answer didn't read.".to_owned());
+                .map_err(|_| "We couldn't read our computers' answer.".to_owned());
             lock(live).published = Some(published);
         }
         Follow::Run => {
@@ -376,7 +376,7 @@ async fn result(
                     let opened = sealed(socket, world, &output.sealed.id).await;
                     Ok(opened.unwrap_or_else(|| Outcome::from_output(&output)))
                 }
-                Err(_) => Err(("Our computers' answer didn't read.".to_owned(), true)),
+                Err(_) => Err(("We couldn't read our computers' answer.".to_owned(), true)),
             };
             lock(live).outcome = Some(outcome);
         }

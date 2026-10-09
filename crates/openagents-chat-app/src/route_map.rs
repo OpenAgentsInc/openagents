@@ -661,7 +661,7 @@ impl Map {
             "front".into(),
             Kind::Front,
             "OpenAgents",
-            "Reads every message first and decides, in one typed judgment, where it goes.",
+            "Reads every message first and decides where it goes.",
             None,
         );
         b.nodes[front].weight = 1.0;
@@ -896,7 +896,7 @@ impl Map {
                 Kind::Knowledge,
                 "Coding knowledge",
                 &format!(
-                    "{} cited entries (methods, edge cases, slips, environments, command guides) Coder's runs retrieve; {} admitted.",
+                    "{} entries Coder looks up while it works (methods, edge cases, slips, environments, command guides); {} in use.",
                     coding.entries, coding.admitted
                 ),
                 Some(coder),
@@ -1229,7 +1229,15 @@ impl Map {
                         &entry.id,
                         path("The entry", &entry.path),
                     ));
-                    fields.push(Field::new("Status", entry.status.clone()));
+                    fields.push(Field::new(
+                        "Status",
+                        match entry.status.as_str() {
+                            "admitted" => "In use".to_owned(),
+                            "candidate" => "Under review".to_owned(),
+                            "withdrawn" => "Withdrawn".to_owned(),
+                            other => other.to_owned(),
+                        },
+                    ));
                     fields.push(Field::new(
                         "Reviewed answer",
                         if entry.answer {
@@ -1239,7 +1247,7 @@ impl Map {
                         },
                     ));
                 } else if id == "product" {
-                    let admitted = self
+                    let in_use = self
                         .sources
                         .knowledge
                         .product
@@ -1248,10 +1256,7 @@ impl Map {
                         .count();
                     fields.push(Field::linked(
                         "Entries",
-                        format!(
-                            "{} ({admitted} admitted)",
-                            self.sources.knowledge.product.len()
-                        ),
+                        format!("{} ({in_use} in use)", self.sources.knowledge.product.len()),
                         path("The entries", "knowledge/openagents"),
                     ));
                     let kb = &self.sources.product_kb;
@@ -1277,7 +1282,7 @@ impl Map {
                     fields.push(Field::linked(
                         "Entries",
                         format!(
-                            "{} ({} admitted, {} candidates)",
+                            "{} ({} in use, {} under review)",
                             coding.entries, coding.admitted, coding.candidates
                         ),
                         path("The entries", &coding.path),
@@ -1326,7 +1331,7 @@ impl Map {
                     "Engines",
                     self.sources.engines.len().to_string(),
                 ));
-                fields.push(Field::new("Plugins it can admit", plugins.to_string()));
+                fields.push(Field::new("Plugins it can use", plugins.to_string()));
                 fields.push(Field::linked(
                     "Adopted into everyone's Coder",
                     self.nodes

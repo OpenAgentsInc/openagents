@@ -849,7 +849,7 @@ async fn back_within(
         .map_err(|error| error.to_string())?;
     match observed {
         Observation::Page(page) => Ok(page),
-        Observation::Catalog(_) => Err("The computer answered with the wrong page.".into()),
+        Observation::Catalog(_) => Err("Couldn't load this chat. Try again.".into()),
     }
 }
 

@@ -4953,7 +4953,7 @@ fn outside_words(computer: &str, project: Option<&str>) -> String {
         |p| format!("Coder task for {p}"),
     );
     format!(
-        "This thread's {task} ran on {computer} outside its OpenAgents host, so this phone can't \
+        "This thread's {task} ran on {computer} outside the OpenAgents app, so this phone can't \
          open or stop it. Follow it on {computer} with openagents chat follow."
     )
 }

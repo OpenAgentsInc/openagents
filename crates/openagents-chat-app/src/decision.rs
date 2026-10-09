@@ -24,7 +24,7 @@
 //! exact command, a risk chip, the reason, and the working directory, after
 //! AgentCraft's permission body (`PermissionBody.java`; reimplemented, not
 //! copied). When the host offers a standing rule for the step, the panel
-//! adds **Always allow for this seat** and shows the rule's exact text: the
+//! adds **Always allow** and shows the rule's exact text: the
 //! host records that rule and applies it, never the panel
 //! ([`Flow::always`]).
 //!
@@ -44,7 +44,7 @@ pub const ALLOWED: &str = "Approved.";
 /// The answer an approval's **Deny** sends.
 pub const DENIED: &str = "Denied.";
 /// The option that keeps a standing rule for the seat.
-pub const ALWAYS: &str = "Always allow for this seat";
+pub const ALWAYS: &str = "Always allow";
 /// What a page the person passed over answers.
 const NO_ANSWER: &str = "No answer.";
 /// The panel's card color, the transcript's card.
@@ -101,7 +101,7 @@ pub struct Prompt {
     /// Why the engine asks; may be empty.
     pub reason: String,
     pub risk: Risk,
-    /// The exact standing rule **Always allow for this seat** records, or
+    /// The exact standing rule **Always allow** records, or
     /// `None` when the host offers none, as for a high-risk step.
     pub always: Option<String>,
 }
@@ -109,7 +109,7 @@ pub struct Prompt {
 impl Prompt {
     /// The prompt as Markdown, for a surface that draws text: the tool and
     /// its risk, the command in a code block, the reason, the directory,
-    /// and what **Always allow for this seat** covers.
+    /// and what **Always allow** covers.
     #[must_use]
     pub fn markdown(&self) -> String {
         let fence = "`".repeat(longest_run(&self.command, '`').max(2) + 1);
@@ -216,7 +216,7 @@ impl Flow {
     }
 
     /// The decision for an approval whose step the host named: **Allow
-    /// once**, **Always allow for this seat** when the host offers a
+    /// once**, **Always allow** when the host offers a
     /// standing rule, and **Deny**.
     #[must_use]
     pub fn approval_step(text: &str, prompt: Prompt) -> Self {
@@ -502,10 +502,10 @@ impl Flow {
             &format!("{key}-hint"),
             match self.kind {
                 Kind::Approval if self.always_offered() => {
-                    "Allow once never widens the task's grant. Always allow keeps the rule above on the host for this seat only; the host applies it, and a high-risk step still asks each time."
+                    "Always allow saves the rule above on your computer. Risky steps still ask every time."
                 }
                 Kind::Approval => {
-                    "Allow once never widens the task's grant. You can also answer in your own words below."
+                    "You can also answer in your own words below."
                 }
                 Kind::Question if page.options.is_empty() => "Answer below.",
                 Kind::Question => "Pick an option or press its number, or type your own answer below.",

@@ -259,9 +259,7 @@ impl Link for Live {
                 Code::Conflict => {
                     Refusal::Refused("Wait for a complete saved reply before running Coder.".into())
                 }
-                Code::Forbidden => {
-                    Refusal::Refused("This reply has no current Coder offer.".into())
-                }
+                Code::Forbidden => Refusal::Refused("This reply can no longer start Coder.".into()),
                 Code::MissingRight => {
                     Refusal::Refused("This phone may not do that on this computer.".into())
                 }

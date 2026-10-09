@@ -26,6 +26,9 @@ pub mod wake;
 pub mod watchers;
 
 #[cfg(test)]
+mod copy_guard_tests;
+
+#[cfg(test)]
 mod gym_fixture {
     pub const REPORT: &str = include_str!("../../openagents-mobile/fixtures/gym-report.json");
 }

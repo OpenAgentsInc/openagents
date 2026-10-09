@@ -269,7 +269,7 @@ impl Overlay {
                 entry(
                     "confirm",
                     "Archive this chat",
-                    "The conversation is retained",
+                    "Find it later in Archived",
                     Action::Archive,
                     registry
                         .iter()

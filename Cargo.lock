@@ -10194,6 +10194,7 @@ dependencies = [
  "image",
  "nostr",
  "nostr-transport",
+ "oa-copy",
  "oa-tokens",
  "openagents-chat",
  "openagents-connect",

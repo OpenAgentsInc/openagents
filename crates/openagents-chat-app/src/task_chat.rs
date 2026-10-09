@@ -428,7 +428,7 @@ impl Session {
             .is_none_or(|request| !mutation(request))
         {
             self.failed = None;
-            self.error = Some("The task trace changed. Reading its current steps.".into());
+            self.error = Some("This task changed. Showing the latest steps.".into());
         }
         self.revision += 1;
     }
@@ -645,7 +645,7 @@ impl Session {
                 (Operation::ReviewTask { .. }, _) => {
                     let why = match &result {
                         Err(error) => error.clone(),
-                        _ => "The computer answered another request.".into(),
+                        _ => "Couldn't load the changes. Try again.".into(),
                     };
                     self.reviewer.read(
                         Err(crate::changes::ReadFailure::Failed(why)),
@@ -669,7 +669,7 @@ impl Session {
                 (Operation::PublishTask { .. }, _) => {
                     self.reviewer.published(Err(match &result {
                         Err(error) => error.clone(),
-                        _ => "The computer did not publish the change.".into(),
+                        _ => "Couldn't publish the change. Try again.".into(),
                     }));
                     self.revision += 1;
                     return false;
@@ -862,10 +862,7 @@ impl Session {
                 }
             }
             _ => {
-                self.fail(
-                    request,
-                    "The computer answered another task request.".into(),
-                );
+                self.fail(request, "Something went wrong. Try again.".into());
             }
         }
         accepted
