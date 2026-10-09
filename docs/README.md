@@ -12,6 +12,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Reach every surface from one command | [The `openagents` command](cli/README.md) |
 | Use the terminal and follow the workbench release | [Terminal user guide](terminal/README.md), [Grid/standalone and Everglade roadmap](terminal/workbench-roadmap.md), [issue directory and project](terminal/issue-roadmap.md), [smart terminal specification](terminal/smart-terminal.md) |
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
+| See every UI system and component across platforms | [UI inventory](ui/inventory.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
 | See what ships to playtesters and what comes next | [Launch roadmap, 2026-09-29](roadmap/2026-09-29-launch-roadmap.md), [playtesting program](game/playtesting.md) |
