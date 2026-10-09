@@ -32,6 +32,7 @@
 pub mod actions;
 pub mod catalog;
 pub mod content;
+pub mod css_classes;
 mod css_lower;
 pub mod forms;
 pub mod icons;

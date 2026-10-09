@@ -230,6 +230,30 @@ fn sha256_known_answers() {
     );
 }
 
+#[test]
+fn bundled_stylesheet_stays_within_its_byte_budget() {
+    use crate::css_classes::STYLESHEET_BUDGET_BYTES;
+    let size = stylesheet().len();
+    assert!(
+        size <= STYLESHEET_BUDGET_BYTES,
+        "openagents-ui.css is {size} bytes, over the {STYLESHEET_BUDGET_BYTES}-byte budget"
+    );
+}
+
+/// No component, in any variant the catalog shows, carries a class that no
+/// rule in the bundled stylesheet styles: a dead class is either a missing
+/// rule or a leftover to delete.
+#[test]
+fn every_class_the_catalog_renders_has_a_rule() {
+    let defined = crate::css_classes::selector_classes(stylesheet());
+    let used = crate::css_classes::markup_classes(&crate::catalog::render().into_string());
+    let missing: Vec<_> = used
+        .difference(&defined)
+        .filter(|class| crate::css_classes::needs_rule(class))
+        .collect();
+    assert!(missing.is_empty(), "classes with no rule: {missing:?}");
+}
+
 /// Dependency-free SHA-256 (FIPS 180-4), for the vendored asset check.
 fn sha256_hex(data: &[u8]) -> String {
     const K: [u32; 64] = [
