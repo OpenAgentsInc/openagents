@@ -1,0 +1,35 @@
+[package]
+name = "oa-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OpenAgents sign-in: GitHub OAuth (authorization code + PKCE), profile reading, account resolution over tenancy, and a fake GitHub for tests (docs/auth)."
+
+[features]
+# An in-process fake GitHub (authorize, token, user, emails) for tests and
+# the local fixture.
+fake = ["dep:axum", "dep:tokio"]
+# A small account service over the tenancy stores, for local fixtures only.
+local = ["dep:axum", "dep:tokio"]
+
+[dependencies]
+axum = { version = "0.8", optional = true }
+base64 = "0.22"
+oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+tenancy = { path = "../tenancy" }
+tokio = { version = "1", features = ["net", "rt", "sync"], optional = true }
+url = "2"
+
+[dev-dependencies]
+oa-auth = { path = ".", features = ["fake", "local"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }
+
+[lints]
+workspace = true
