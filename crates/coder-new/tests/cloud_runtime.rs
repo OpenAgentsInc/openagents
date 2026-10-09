@@ -10,7 +10,14 @@ fn headless_binary_reports_revision_and_uses_the_same_settings_commands() {
     assert!(manifest.status.success());
     let manifest: Value = serde_json::from_slice(&manifest.stdout).unwrap();
     assert_eq!(manifest["schema"], "openagents.coder.cloud-runtime.v1");
-    assert_eq!(manifest["revision"].as_str().unwrap().len(), 40);
+    // The full commit the binary was built from: build.rs widens a short
+    // `CODER_BUILD_COMMIT` and reads `HEAD` from the repository files when
+    // the Git command cannot, so no checkout layout stamps "unknown".
+    let revision = manifest["revision"].as_str().unwrap();
+    assert!(
+        revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "revision is not a full commit: {revision}"
+    );
     let root = tempfile::tempdir().unwrap();
     let args = [
         "--json",
