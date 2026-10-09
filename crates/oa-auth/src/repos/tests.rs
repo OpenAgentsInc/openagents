@@ -80,6 +80,11 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
     );
     assert_eq!(found.body()["github"]["state"], "connected");
     assert_eq!(found.body()["projects"][0]["repository"], "acme/storefront");
+    assert_eq!(Status::from_body(&found.body()), Some(found.clone()));
+    assert_eq!(
+        Status::from_body(&json!({"github": {"state": "odd"}})),
+        None
+    );
     // Another account sees nothing of it.
     assert!(status(dir.path(), "acct_b").unwrap().projects.is_empty());
 

@@ -104,6 +104,25 @@ impl Status {
         };
         json!({"github": github, "projects": self.projects})
     }
+
+    /// Read [`Status::body`] back (the web server's side).
+    #[must_use]
+    pub fn from_body(body: &Value) -> Option<Self> {
+        let github = &body["github"];
+        let login = || github["login"].as_str().map(str::to_string);
+        let access = match github["state"].as_str()? {
+            "none" => Access::None,
+            "connected" => Access::Connected {
+                login: login()?,
+                private: github["private"].as_bool().unwrap_or(false),
+            },
+            "reconnect" => Access::Reconnect { login: login()? },
+            _ => return None,
+        };
+        let projects: Vec<Project> = serde_json::from_value(body["projects"].clone()).ok()?;
+        (projects.len() <= MAX_PROJECTS && projects.iter().all(|p| project_id(&p.id)))
+            .then_some(Self { access, projects })
+    }
 }
 
 /// Why a repository call did not complete. Carries no token or provider
