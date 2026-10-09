@@ -33,6 +33,11 @@ INVITE_ONLY = json.dumps(
     {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
     separators=(",", ":"),
 )
+# Third-party analytics settings the coder-serve sidecar must not carry
+# (privacy policy section 5: openagents.com measures use without
+# third-party analytics). The Secret Manager secret
+# openagents-posthog-project-token is no longer referenced.
+THIRD_PARTY_ANALYTICS = {"POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"}
 SYSTEM = ("serving.knative.dev/", "client.knative.dev/", "run.googleapis.com/operation-id",
           "run.googleapis.com/ingress-status", "run.googleapis.com/urls",
           "run.googleapis.com/creator", "run.googleapis.com/lastModifier")
@@ -94,11 +99,13 @@ def main():
     ])
     web["volumeMounts"] = [{"name": "webstate", "mountPath": "/state"}]
     # The coder-serve sidecar's secrets from Secret Manager, not plain values.
+    # No third-party analytics (privacy policy section 5): the sidecar gets
+    # no PostHog token or host, so it sends no PostHog events.
     serve = next((c for c in containers if c["name"] == "coder-serve"), None)
     if serve is not None:
+        serve["env"] = [e for e in serve.get("env", []) if e["name"] not in THIRD_PARTY_ANALYTICS]
         set_env(serve, [
             secret("coder-github-client-secret", "CODER_GITHUB_CLIENT_SECRET"),
-            secret("openagents-posthog-project-token", "POSTHOG_PROJECT_TOKEN"),
         ])
 
     gateway = {

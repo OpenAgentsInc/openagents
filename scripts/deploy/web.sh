@@ -221,11 +221,18 @@ if "OPENAGENTS_WEB_ANALYTICS_KEY" not in env:
                                                 "key": "latest"}}})
 # The coder-serve sidecar's secrets come from Secret Manager, never as
 # plain values in the spec (same values; a no-op once the live spec has it).
-SIDECAR_SECRETS = {"CODER_GITHUB_CLIENT_SECRET": "coder-github-client-secret",
-                   "POSTHOG_PROJECT_TOKEN": "openagents-posthog-project-token"}
+SIDECAR_SECRETS = {"CODER_GITHUB_CLIENT_SECRET": "coder-github-client-secret"}
+# No third-party analytics (privacy policy section 5): the sidecar gets no
+# PostHog token or host, so it sends no PostHog events (a no-op once the
+# live spec lacks them).
+THIRD_PARTY_ANALYTICS = ("POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST")
 for c in spec["containers"]:
     if c["name"] != "coder-serve":
         continue
+    dropped = [e["name"] for e in c.get("env", []) if e["name"] in THIRD_PARTY_ANALYTICS]
+    c["env"] = [e for e in c.get("env", []) if e["name"] not in THIRD_PARTY_ANALYTICS]
+    for name in dropped:
+        sys.stderr.write(f"  coder-serve {name} removed (no third-party analytics)\n")
     for e in c.get("env", []):
         if e["name"] in SIDECAR_SECRETS and "value" in e:
             del e["value"]
