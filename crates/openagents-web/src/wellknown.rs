@@ -19,7 +19,15 @@ pub(crate) fn routes() -> Router<App> {
         .route("/.well-known/agent-card.json", get(agent_card))
         .route("/.well-known/agent-skills/index.json", get(skills_index))
         .route(SKILL_PATH, get(skill))
+        .route("/.well-known/security.txt", get(security_txt))
+        .route("/security.txt", get(security_txt))
 }
+
+/// Where to report a security problem (RFC 9116).
+pub(crate) const SECURITY_CONTACT: &str = "mailto:chris+security@openagents.com";
+/// RFC 9116 requires an expiry under a year away; a test fails a month
+/// before it lapses so it gets renewed.
+pub(crate) const SECURITY_EXPIRES: &str = "2027-10-01T00:00:00Z";
 
 /// The origin the documents name: the first public host, else this
 /// machine's loopback address.
@@ -36,6 +44,16 @@ async fn agent_card(State(app): State<App>) -> impl IntoResponse {
 
 async fn skills_index(State(app): State<App>) -> impl IntoResponse {
     Json(crate::agent_ready::skills_index(&origin(&app)))
+}
+
+async fn security_txt(State(app): State<App>) -> impl IntoResponse {
+    let origin = origin(&app);
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        format!(
+            "Contact: {SECURITY_CONTACT}\nExpires: {SECURITY_EXPIRES}\nPreferred-Languages: en\nCanonical: {origin}/.well-known/security.txt\n"
+        ),
+    )
 }
 
 async fn skill() -> impl IntoResponse {

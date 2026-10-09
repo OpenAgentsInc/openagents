@@ -2891,3 +2891,30 @@ async fn the_api_alias_goes_to_the_gateway_without_cookies() {
     assert_eq!(echoed["cookie"], "");
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
+
+/// `security.txt` names the security contact and an expiry at least a
+/// month away (RFC 9116), at both the well-known and the legacy path.
+#[tokio::test]
+async fn security_txt_names_the_contact_and_has_not_lapsed() {
+    let root = tempfile::tempdir().unwrap();
+    for path in ["/.well-known/security.txt", "/security.txt"] {
+        let (status, body) = get(router(config(root.path().into())), path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            body.contains("Contact: mailto:chris+security@openagents.com"),
+            "{body}"
+        );
+        assert!(body.contains("Expires: "), "{body}");
+    }
+    let expires = std::time::UNIX_EPOCH
+        + std::time::Duration::from_secs(
+            // 2027-10-01T00:00:00Z
+            1_822_348_800,
+        );
+    assert_eq!(crate::wellknown::SECURITY_EXPIRES, "2027-10-01T00:00:00Z");
+    let month = std::time::Duration::from_secs(30 * 24 * 3600);
+    assert!(
+        std::time::SystemTime::now() + month < expires,
+        "renew SECURITY_EXPIRES in wellknown.rs"
+    );
+}
