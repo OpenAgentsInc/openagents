@@ -810,7 +810,7 @@ These are also in the workspace `NEEDS_OWNER.md`.
 | 6 | Code home | New `crates/inference` library, mounted in `crates/gateway` (section 12) |
 | 7 | The private Pro door service | Fold it into an adapter and retire `pro.openagents.com` after P1 |
 | 8 | Credit routes whose data terms are unverified | Keep them out of `strict` until verified, even though it slows credit burn |
-| 9 | Free tier size | A fixed number of free requests per new key per day, on free-capacity models only |
+| 9 | Free tier size | A fixed number of free requests per account per day (not per key, so making more keys adds none), on free-capacity models only |
 | 10 | Public model ids for the Pro door's models | Plain `openai/gpt-5.6-*` ids; the rate card names the upstream as "OpenAgents (Pro)" rather than the proxy vendor, matching the Pro door's own rule |
 | 11 | The Khala name (episodes 242–245) | Not a product or model name: the roadmap lists Khala as historical. `openagents/auto` stays the routed model. Accept `openagents/khala` and `khala` as unlisted aliases of `openagents/auto`, so tool configs written for the June endpoint keep working |
 | 12 | Free tier paid for with data (episodes 243 and 245) | No. The free tier keeps `strict` and keeps no text, like every request. Any trace sharing for pay is a separate opt-in product with its own terms, not a condition of the free tier |
