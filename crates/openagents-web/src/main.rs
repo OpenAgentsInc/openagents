@@ -5,7 +5,7 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON] \
-[--github-oauth PRIVATE_JSON] [--github-redirect URL]";
+[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,6 +60,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
             "--github-redirect" => github_redirect = Some(value),
+            "--environments" => {
+                let studio =
+                    coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
+                config.environments =
+                    Some(coder_environment_operator::studio::Studio::open(studio).await?);
+                println!("Environments are on at /environments");
+            }
             "--pilot-config" => {
                 config.pilot = Some(std::sync::Arc::new(openagents_web::pilot::Intake::load(
                     std::path::Path::new(&value),

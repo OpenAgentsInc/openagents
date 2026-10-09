@@ -162,6 +162,30 @@ fn read_path(path: &Path) -> Vec<Record> {
         .collect()
 }
 
+/// A system message made fit to show a person: sentences that narrate
+/// internals ([`oa_copy::violations`]) are left out, and the whole message
+/// goes to the server log so nothing is lost. `fallback` stands in when no
+/// sentence is left.
+pub fn plain(text: &str, fallback: &str) -> String {
+    let text = text.trim();
+    if text.is_empty() {
+        return fallback.to_owned();
+    }
+    let kept: Vec<&str> = text
+        .split_inclusive(". ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && oa_copy::violations(s, &[]).is_empty())
+        .collect();
+    if kept.len() != text.split_inclusive(". ").count() {
+        eprintln!("environments: {text}");
+    }
+    if kept.is_empty() {
+        fallback.to_owned()
+    } else {
+        tail_of(&kept.join(" "), 600)
+    }
+}
+
 /// Keep the end of `text`, at most [`MAX_EXCERPT`] bytes, on a character
 /// boundary.
 pub fn tail(text: &str) -> String {
@@ -207,6 +231,18 @@ fn bounded(entry: Entry) -> Entry {
             ok,
             revision,
             output: tail(&output),
+        },
+        // System messages a person reads; the model keeps the whole text.
+        Entry::Failed { reason } => Entry::Failed {
+            reason: plain(&reason, "The setup stopped."),
+        },
+        Entry::Build { stage, detail } => Entry::Build {
+            stage,
+            detail: plain(&detail, "The build stopped."),
+        },
+        Entry::Verify { stage, detail } => Entry::Verify {
+            stage,
+            detail: plain(&detail, "The check stopped."),
         },
         other => other,
     }
@@ -255,6 +291,19 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert!(again.read("env-2").is_empty());
+    }
+
+    #[test]
+    fn plain_messages_leave_out_machine_talk() {
+        assert_eq!(
+            plain(
+                "The clean build failed. The admitted digest drifted. Try again.",
+                "x"
+            ),
+            "The clean build failed. Try again."
+        );
+        assert_eq!(plain("The cursor moved.", "It stopped."), "It stopped.");
+        assert_eq!(plain("", "It stopped."), "It stopped.");
     }
 
     #[test]

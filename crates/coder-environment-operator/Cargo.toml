@@ -16,6 +16,7 @@ coder-environment-build = { path = "../coder-environment-build" }
 coder-environment-setup = { path = "../coder-environment-setup" }
 coder-environment-verify = { path = "../coder-environment-verify" }
 coder-working-computer = { path = "../coder-working-computer" }
+oa-copy = { path = "../oa-copy" }
 serde = { version = "1", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"

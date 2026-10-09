@@ -220,7 +220,9 @@ fn view(environment: &str, r: Record) -> Run {
         state,
         events: r.events,
         reply,
-        error: r.error,
+        error: r
+            .error
+            .map(|e| crate::activity::plain(&e, "The run failed.")),
         created_ms: r.created_ms,
     }
 }

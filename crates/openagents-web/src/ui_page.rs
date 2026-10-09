@@ -63,7 +63,7 @@ impl Nav {
 
 /// The destinations the left panel shows, in order. A destination is added
 /// here when its page exists (`Nav::Environments` with `/environments`).
-pub const NAV: &[Nav] = &[];
+pub const NAV: &[Nav] = &[Nav::Environments];
 
 /// One page: title, current section, content, and optional shell slots.
 #[must_use]
@@ -216,6 +216,9 @@ impl UiPage {
                     .shortcut("Control+N", "⌃N"),
             );
         for nav in NAV {
+            if *nav == Nav::Environments && !crate::environments::shown() {
+                continue;
+            }
             sidebar = sidebar.nav(
                 NavItem::new(nav.label(), nav.href())
                     .icon(nav.icon().size(IconSize::Md))

@@ -26,7 +26,7 @@
 pub mod claude;
 pub mod github;
 
-use crate::activity::{CheckLine, Entry, Logs, Record};
+use crate::activity::{CheckLine, Entry, Logs, Record, plain};
 use crate::agent::{Agent, Brief, Phase, State};
 use crate::{Custody, Owners, Providers, now_ms};
 use coder_environment::promotion::Review;
@@ -512,6 +512,11 @@ impl Studio {
 
     /// Add an environment for a resolved repository and start its setup.
     pub fn create(&self, resolved: &github::Resolved) -> Result<String, String> {
+        self.add(resolved)
+            .map_err(|e| plain(&e, "The environment couldn't be added. Try again."))
+    }
+
+    fn add(&self, resolved: &github::Resolved) -> Result<String, String> {
         let now = now_ms();
         let full = resolved.repository.full();
         let id = format!(
@@ -637,6 +642,7 @@ impl Studio {
         answer
             .await
             .map_err(|_| "Environments are not running right now.".to_owned())?
+            .map_err(|e| plain(&e, "Saving didn't go through. Try again."))
     }
 
     /// Start a Claude Code run on the environment's saved version.
@@ -647,13 +653,15 @@ impl Studio {
         }
         let key = Config::secret(&self.config.claude_key)
             .ok_or("Add your Anthropic API key to run Claude Code here.")?;
-        self.runs.start(
-            &env,
-            prompt,
-            &self.config.machines.workdir,
-            &self.config.size(),
-            Some(key),
-        )
+        self.runs
+            .start(
+                &env,
+                prompt,
+                &self.config.machines.workdir,
+                &self.config.size(),
+                Some(key),
+            )
+            .map_err(|e| plain(&e, "Claude Code didn't start. Try again."))
     }
 
     pub fn claude_run(&self, id: &str, run: &str) -> Option<claude::Run> {

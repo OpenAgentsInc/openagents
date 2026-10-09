@@ -22,6 +22,7 @@ pub mod cloud;
 mod components;
 mod composer;
 mod demo;
+mod environments;
 mod layout;
 mod markdown;
 mod pages;
@@ -116,6 +117,10 @@ pub struct Config {
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
+    /// Repository environments set up by an agent, saved, and used by
+    /// Claude Code (`--environments PRIVATE_JSON`); absence leaves the
+    /// Environments pages unavailable and out of the left panel.
+    pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
 }
 
 impl Config {
@@ -144,6 +149,7 @@ impl Config {
             cloud_build: None,
             cloud_byo: None,
             pilot: None,
+            environments: None,
         }
     }
 }
@@ -193,6 +199,7 @@ pub fn router(config: Config) -> Router {
         .merge(chat_html::routes())
         .merge(composer::routes())
         .merge(demo::routes())
+        .merge(environments::routes(&app))
         .merge(cloud::routes())
         .merge(auth::routes())
         .merge(settings::routes())
@@ -235,7 +242,12 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
         .to_owned();
     let local = hosts.local(&host);
     let path = request.uri().path();
-    let browser = path == "/app" || path.starts_with("/app/");
+    // Environments drive machines and models on this host's own accounts,
+    // so they stay on the local address like the task browser.
+    let browser = path == "/app"
+        || path.starts_with("/app/")
+        || path == "/environments"
+        || path.starts_with("/environments/");
     // Intake requests can carry contact content. An unconfigured host must
     // refuse them locally rather than forwarding them to another service.
     let intake = path == "/pilot" || path.starts_with("/pilot/");
