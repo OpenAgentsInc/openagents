@@ -8,6 +8,8 @@ description = "Durable remote Coder jobs and explicitly selected cloud execution
 
 [dependencies]
 atif = { path = "../atif" }
+# The project's selected environment version a new job pins (ENV-06).
+coder-environment = { path = "../coder-environment" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-host = { path = "../coder-host", default-features = false }
 libc = "0.2"

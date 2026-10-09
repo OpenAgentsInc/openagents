@@ -2899,6 +2899,7 @@ dependencies = [
  "boat",
  "coder-access",
  "coder-engine-status",
+ "coder-environment",
  "coder-host",
  "libc",
  "secret-screen",

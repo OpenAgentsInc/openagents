@@ -216,9 +216,22 @@ struct Fake {
     lost: bool,
     running: bool,
     cleanup_unknown: bool,
+    /// The saved image each provision started from (ENV-06).
+    provisioned: Arc<Mutex<Vec<Option<String>>>>,
+    image_missing: Arc<AtomicBool>,
 }
 impl Backend for Fake {
-    async fn provision(&self, _: &mut Record) -> crate::Result<String> {
+    async fn resolve(&self, r: &mut Record) -> crate::Result<()> {
+        if r.environment.is_some() && self.image_missing.load(Ordering::SeqCst) {
+            return Err("Synthetic saved image is missing.".into());
+        }
+        Ok(())
+    }
+    async fn provision(&self, r: &mut Record) -> crate::Result<String> {
+        self.provisioned
+            .lock()
+            .unwrap()
+            .push(r.environment.as_ref().map(|p| p.image.image_id.clone()));
         Ok("synthetic-resource".into())
     }
     async fn dispatch(&self, _: &Record) -> crate::Result<crate::Task> {
@@ -957,3 +970,6 @@ fn a_claude_plan_login_runs_one_turn_while_own_keys_run_in_parallel() {
             .unwrap(),
     );
 }
+
+#[path = "operator_environment_tests.rs"]
+mod environment;

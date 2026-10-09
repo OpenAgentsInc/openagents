@@ -20,9 +20,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub mod capture;
 pub mod evidence;
+pub mod promotion;
 pub mod store;
 pub mod transition;
 
+pub use promotion::{
+    Candidate, HistoryRow, Review, ReviewStamp, SelectionChange, SelectionKind, VersionPin,
+};
 pub use transition::{Applied, Command, Effect, Refusal, apply};
 
 pub const SCHEMA: &str = "openagents.environment.v1";
@@ -470,6 +474,9 @@ pub struct EnvironmentVersion {
     pub verification_run: RunLink,
     pub plan_digest: String,
     pub evidence_digest: String,
+    /// The review that approved this exact candidate (ENV-06).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<ReviewStamp>,
     pub created_ms: u64,
 }
 
@@ -506,6 +513,9 @@ pub struct Environment {
     pub verifications: Vec<VerificationAttempt>,
     pub versions: Vec<EnvironmentVersion>,
     pub selection: Selection,
+    /// Every move of `selection`, oldest first (ENV-06).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selections: Vec<SelectionChange>,
     pub requests: BTreeMap<String, RequestEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retired_ms: Option<u64>,
@@ -546,6 +556,7 @@ impl Environment {
             verifications: vec![],
             versions: vec![],
             selection: Selection::default(),
+            selections: vec![],
             requests: BTreeMap::new(),
             retired_ms: None,
             created_ms: now_ms,
@@ -611,6 +622,7 @@ impl Environment {
             || self.verifications.len() > MAX_ATTEMPTS
             || self.versions.len() > MAX_VERSIONS
             || self.requests.len() > MAX_REQUESTS
+            || self.selections.len() > promotion::MAX_SELECTIONS
         {
             return Err("The environment record exceeds its bounds.");
         }
@@ -639,6 +651,25 @@ impl Environment {
         {
             return Err("The selected version does not exist.");
         }
+        for (i, s) in self.selections.iter().enumerate() {
+            let previous = i
+                .checked_sub(1)
+                .map(|p| self.selections[p].version_id.clone());
+            if self.version(&s.version_id).is_none()
+                || s.previous != previous
+                || i.checked_sub(1)
+                    .is_some_and(|p| self.selections[p].revision >= s.revision)
+            {
+                return Err("The selection history is broken.");
+            }
+        }
+        if let Some(last) = self.selections.last() {
+            if last.revision != self.selection.revision
+                || self.selection.active.as_deref() != Some(last.version_id.as_str())
+            {
+                return Err("The selection history disagrees with the selection.");
+            }
+        }
         Ok(())
     }
 
@@ -654,6 +685,7 @@ impl Environment {
             && (self.retired_ms.is_none() || next.retired_ms == self.retired_ms)
             && next.recipes.starts_with(&self.recipes)
             && next.versions.starts_with(&self.versions)
+            && next.selections.starts_with(&self.selections)
             && next.builds.len() >= self.builds.len()
             && next.verifications.len() >= self.verifications.len()
             && self.builds.iter().zip(&next.builds).all(|(a, b)| {

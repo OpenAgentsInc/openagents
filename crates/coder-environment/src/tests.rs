@@ -124,11 +124,27 @@ fn start_verify(request: &str, build_id: &str) -> Command {
         plan_digest: d('e'),
     }
 }
-fn save(request: &str, verification: &str, draft: u64) -> Command {
+/// The review a reviewer grants after seeing `verification`'s candidate on
+/// `e`. When `e` cannot propose it (already saved, not passed), the review
+/// carries the candidate that was displayed on the verified record.
+pub(crate) fn review(e: &Environment, id: &str, verification: &str) -> Review {
+    let candidate = e.propose(verification).unwrap_or_else(|_| {
+        let mut c = verified().propose("verify-1").unwrap();
+        c.verification_id = verification.into();
+        c
+    });
+    Review {
+        id: id.into(),
+        actor: "reviewer-1".into(),
+        candidate,
+        granted_ms: 1,
+        expires_ms: 1_000_000,
+    }
+}
+fn save(e: &Environment, request: &str, verification: &str) -> Command {
     Command::SaveVersion {
         request_id: request.into(),
-        verification_id: verification.into(),
-        expected_draft_revision: draft,
+        review: review(e, &format!("rev-{request}"), verification),
     }
 }
 
@@ -161,7 +177,7 @@ fn verified() -> Environment {
 #[test]
 fn saved_version_links_exact_source_recipe_build_and_verifier_runs() {
     let e = verified();
-    let (e, effect) = step(&e, save("req-s1", "verify-1", 1));
+    let (e, effect) = step(&e, save(&e, "req-s1", "verify-1"));
     assert_eq!(
         effect,
         Effect::VersionSaved {
@@ -184,6 +200,7 @@ fn saved_version_links_exact_source_recipe_build_and_verifier_runs() {
         ("verify-1", &run("job-v1"))
     );
     assert_eq!(v.evidence_digest, d('9'));
+    assert_eq!(v.review.as_ref().unwrap().actor, "reviewer-1");
 
     let (e, effect) = step(
         &e,
@@ -199,7 +216,8 @@ fn saved_version_links_exact_source_recipe_build_and_verifier_runs() {
         Effect::Selected {
             version_id: "v1".into(),
             selection_revision: 1,
-            previous: None
+            previous: None,
+            change: SelectionKind::Selected,
         }
     );
 }
@@ -254,18 +272,18 @@ fn stale_draft_revisions_are_refused_and_lost_replies_replay() {
 #[test]
 fn a_recipe_edit_stales_an_unsaved_build_and_saved_versions_never_change() {
     let e = verified();
-    let (saved, _) = step(&e, save("req-s1", "verify-1", 1));
+    let (saved, _) = step(&e, save(&e, "req-s1", "verify-1"));
     let v1 = saved.version("v1").unwrap().clone();
 
     // Saving the same verification again: replay by request, refusal otherwise.
     assert_eq!(
-        replay(&saved, save("req-s1", "verify-1", 1)),
+        replay(&saved, save(&saved, "req-s1", "verify-1")),
         Effect::VersionSaved {
             version_id: "v1".into()
         }
     );
     assert_eq!(
-        refuse(&saved, save("req-s2", "verify-1", 1)),
+        refuse(&saved, save(&saved, "req-s2", "verify-1")),
         Refusal::AlreadySaved("v1".into())
     );
 
@@ -276,10 +294,10 @@ fn a_recipe_edit_stales_an_unsaved_build_and_saved_versions_never_change() {
     };
     let (edited, _) = step(&e, edit.clone());
     assert_eq!(
-        refuse(&edited, save("req-s1", "verify-1", 2)),
-        Refusal::StaleBuild {
-            build_recipe: 1,
-            draft: 2
+        refuse(&edited, save(&edited, "req-s1", "verify-1")),
+        Refusal::StaleDraft {
+            expected: 1,
+            current: 2
         }
     );
 
@@ -299,7 +317,7 @@ fn a_recipe_edit_stales_an_unsaved_build_and_saved_versions_never_change() {
             evidence: crate::evidence::EvidenceStatus::CompleteWithRedactions,
         }),
     );
-    let (e2, _) = step(&e2, save("req-s2b", "verify-2", 2));
+    let (e2, _) = step(&e2, save(&e2, "req-s2b", "verify-2"));
     assert_eq!(e2.version("v1").unwrap(), &v1);
     assert_eq!(e2.version("v2").unwrap().parent.as_deref(), Some("v1"));
     assert_eq!(e2.version("v2").unwrap().recipe_revision, 2);
@@ -400,7 +418,7 @@ fn unknown_outcomes_stay_visible_and_block_dependent_work_until_reconciled() {
     );
     assert_eq!(e.unresolved(), vec!["verify-1"]);
     assert_eq!(
-        refuse(&e, save("req-s1", "verify-1", 1)),
+        refuse(&e, save(&e, "req-s1", "verify-1")),
         Refusal::NotPassed("verify-1".into())
     );
     assert_eq!(
@@ -494,7 +512,10 @@ fn requests_are_idempotent_and_reused_ids_conflict() {
 
 #[test]
 fn concurrent_selections_against_one_revision_have_one_winner() {
-    let (e, _) = step(&verified(), save("req-s1", "verify-1", 1));
+    let (e, _) = {
+        let e = verified();
+        step(&e, save(&e, "req-s1", "verify-1"))
+    };
     let select = |request: &str, expected| Command::Select {
         request_id: request.into(),
         expected_selection_revision: expected,
@@ -682,7 +703,10 @@ fn incomplete_evidence_never_passes_verification_or_saves_a_version() {
         Some(sealed.digest.as_str())
     );
     assert_eq!(
-        refuse(&e, save("req-s1", "verify-1", 1)),
+        refuse(&e, save(&e, "req-s1", "verify-1")),
         Refusal::NotPassed("verify-1".into())
     );
 }
+
+#[path = "promotion_tests.rs"]
+mod promotion_tests;

@@ -140,6 +140,12 @@ pub struct Record {
     pub artifact_error: Option<String>,
     #[serde(default)]
     pub turns: Vec<Value>,
+    /// The exact saved environment version this job started with, resolved
+    /// once at admission (ENV-06). Later selection changes never alter it;
+    /// a startup failure on its image is a failure, never a fallback to
+    /// the base template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<coder_environment::VersionPin>,
 }
 impl Record {
     pub fn new(id: &str, spec: Spec) -> Result<Self> {
@@ -167,6 +173,7 @@ impl Record {
             artifacts: None,
             artifact_error: None,
             turns: vec![],
+            environment: None,
         })
     }
 }
@@ -529,7 +536,21 @@ pub async fn drive<B: Backend>(
         lease.save(record)?;
     }
     if record.state == State::Created {
-        backend.resolve(record).await?;
+        if let Err(error) = backend.resolve(record).await {
+            if let Some(pin) = &record.environment {
+                // The pinned image cannot start: a definite failure that
+                // never falls back to the base template. Nothing was
+                // provisioned, so there is nothing to clean up.
+                record.state = State::Failed;
+                record.error = Some(format!(
+                    "Environment {} version {} cannot start: {error}",
+                    pin.environment, pin.version_id
+                ));
+                record.cleanup_complete = true;
+                lease.save(record)?;
+            }
+            return Err(error);
+        }
         record.spec.validate()?;
     }
     if record.state == State::Created || record.state == State::Provisioning {

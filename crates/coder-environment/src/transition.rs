@@ -35,13 +35,20 @@ pub enum Command {
         verification_id: String,
         observation: VerificationObservation,
     },
-    /// Seal a passed verification into an immutable version.
-    SaveVersion {
+    /// Seal a reviewed, passed verification into an immutable version.
+    /// The review names the exact candidate it approved; any change since
+    /// it was displayed refuses the save. Selection is not changed.
+    SaveVersion { request_id: String, review: Review },
+    /// Reviewed Save plus a fenced selection update in one retained
+    /// change: the new immutable version and the moved pointer are
+    /// separate records, and both or neither are retained.
+    Promote {
         request_id: String,
-        verification_id: String,
-        expected_draft_revision: u64,
+        expected_selection_revision: u64,
+        review: Review,
     },
-    /// Select a saved version for later project work.
+    /// Select a saved version for later project work. Selecting an earlier
+    /// version is a rollback; no version is ever rewritten.
     Select {
         request_id: String,
         expected_selection_revision: u64,
@@ -134,11 +141,18 @@ pub enum Effect {
     VersionSaved {
         version_id: String,
     },
+    Promoted {
+        version_id: String,
+        selection_revision: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        previous: Option<String>,
+    },
     Selected {
         version_id: String,
         selection_revision: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         previous: Option<String>,
+        change: SelectionKind,
     },
     Retired,
 }
@@ -182,6 +196,15 @@ pub enum Refusal {
     NotPassed(String),
     NotLinked(String),
     AlreadySaved(String),
+    /// The reviewed candidate differs from the current one in this field.
+    StaleReview(&'static str),
+    /// The review grant's validity window has passed.
+    ReviewExpired(String),
+    /// The review grant already saved a version.
+    ReviewUsed {
+        review: String,
+        version: String,
+    },
     Retired,
     Limit(&'static str),
 }
@@ -225,6 +248,14 @@ impl fmt::Display for Refusal {
             Self::NotPassed(id) => write!(f, "Verification {id} has not passed."),
             Self::NotLinked(id) => write!(f, "{id} has no linked run."),
             Self::AlreadySaved(id) => write!(f, "This verification was already saved as {id}."),
+            Self::StaleReview(field) => write!(
+                f,
+                "The reviewed candidate's {field} changed since it was displayed; review it again."
+            ),
+            Self::ReviewExpired(id) => write!(f, "Review {id} has expired; review it again."),
+            Self::ReviewUsed { review, version } => {
+                write!(f, "Review {review} already saved {version}.")
+            }
             Self::Retired => f.write_str("The environment is retired."),
         }
     }
@@ -271,22 +302,42 @@ pub fn apply(env: &Environment, command: &Command, now_ms: u64) -> Result<Applie
             verification_id,
             observation,
         } => observe_verification(&mut next, verification_id, observation, now_ms)?,
-        Command::SaveVersion {
+        Command::SaveVersion { request_id, review } => {
+            let version_id = save_version(&mut next, request_id, review, now_ms)?;
+            changed(Effect::VersionSaved { version_id })
+        }
+        Command::Promote {
             request_id,
-            verification_id,
-            expected_draft_revision,
-        } => save_version(
-            &mut next,
-            request_id,
-            verification_id,
-            *expected_draft_revision,
-            now_ms,
-        )?,
+            expected_selection_revision,
+            review,
+        } => {
+            live(&next)?;
+            fence_selection(&next, *expected_selection_revision)?;
+            let version_id = save_version(&mut next, request_id, review, now_ms)?;
+            let (selection_revision, previous) = move_selection(
+                &mut next,
+                &version_id,
+                SelectionKind::Promoted,
+                request_id,
+                now_ms,
+            )?;
+            changed(Effect::Promoted {
+                version_id,
+                selection_revision,
+                previous,
+            })
+        }
         Command::Select {
-            request_id: _,
+            request_id,
             expected_selection_revision,
             version_id,
-        } => select(&mut next, *expected_selection_revision, version_id)?,
+        } => select(
+            &mut next,
+            *expected_selection_revision,
+            version_id,
+            request_id,
+            now_ms,
+        )?,
         Command::Retire => {
             if env.retired_ms.is_some() {
                 Done::Same(Effect::Retired)
@@ -328,6 +379,7 @@ fn request_id(command: &Command) -> Option<&str> {
         Command::StartBuild { request_id, .. }
         | Command::StartVerification { request_id, .. }
         | Command::SaveVersion { request_id, .. }
+        | Command::Promote { request_id, .. }
         | Command::Select { request_id, .. } => Some(request_id),
         _ => None,
     }
@@ -767,105 +819,123 @@ fn observe_verification(
 fn save_version(
     env: &mut Environment,
     request_id: &str,
-    verification_id: &str,
-    expected: u64,
+    review: &Review,
     now_ms: u64,
-) -> Result<Done, Refusal> {
+) -> Result<String, Refusal> {
     live(env)?;
-    if expected != env.draft_revision {
+    review.validate().map_err(Refusal::Invalid)?;
+    if now_ms > review.expires_ms {
+        return Err(Refusal::ReviewExpired(review.id.clone()));
+    }
+    if review.candidate.environment != env.id {
+        return Err(Refusal::StaleReview("environment"));
+    }
+    if let Some(v) = env
+        .versions
+        .iter()
+        .find(|v| v.review.as_ref().is_some_and(|r| r.id == review.id))
+    {
+        return Err(Refusal::ReviewUsed {
+            review: review.id.clone(),
+            version: v.id.clone(),
+        });
+    }
+    if review.candidate.recipe_revision != env.draft_revision {
         return Err(Refusal::StaleDraft {
-            expected,
+            expected: review.candidate.recipe_revision,
             current: env.draft_revision,
         });
     }
-    let v = env
-        .verification(verification_id)
-        .ok_or_else(|| Refusal::UnknownVerification(verification_id.into()))?;
-    if let Some(saved) = env
-        .versions
-        .iter()
-        .find(|s| s.verification_id == verification_id)
-    {
-        return Err(Refusal::AlreadySaved(saved.id.clone()));
-    }
-    let (VerificationState::Passed, Some(evidence_digest), Some(status)) =
-        (v.state, &v.evidence_digest, v.evidence_status)
-    else {
-        return Err(Refusal::NotPassed(verification_id.into()));
-    };
-    if !status.complete() {
-        return Err(Refusal::NotPassed(verification_id.into()));
-    }
-    let verification_run = v
-        .run
-        .clone()
-        .ok_or_else(|| Refusal::NotLinked(verification_id.into()))?;
-    let b = env
-        .build(&v.build_id)
-        .ok_or_else(|| Refusal::UnknownBuild(v.build_id.clone()))?;
-    let build_run = b
-        .run
-        .clone()
-        .ok_or_else(|| Refusal::NotLinked(b.id.clone()))?;
-    if b.recipe_revision != env.draft_revision {
-        return Err(Refusal::StaleBuild {
-            build_recipe: b.recipe_revision,
-            draft: env.draft_revision,
-        });
-    }
-    if b.image.as_ref() != Some(&v.image) {
-        return Err(Refusal::ImageConflict(b.id.clone()));
+    let current = env.propose(&review.candidate.verification_id)?;
+    if let Some(field) = review.candidate.changed_field(&current) {
+        return Err(Refusal::StaleReview(field));
     }
     if env.versions.len() >= MAX_VERSIONS {
         return Err(Refusal::Limit("The environment retains too many versions."));
     }
-    let recipe = &env
-        .recipe(b.recipe_revision)
-        .ok_or(Refusal::Invalid(
-            "The build names a missing recipe revision.",
-        ))?
-        .recipe;
     let number = env.versions.len() as u64 + 1;
     let version = EnvironmentVersion {
         id: version_id(number),
         number,
         request_id: request_id.into(),
         parent: env.versions.last().map(|p| p.id.clone()),
-        recipe_revision: b.recipe_revision,
-        recipe_digest: b.recipe_digest.clone(),
-        source: b.source.clone(),
-        base: recipe.base.clone(),
-        runtime: recipe.runtime.clone(),
-        image: v.image.clone(),
-        build_id: b.id.clone(),
-        build_run,
-        verification_id: v.id.clone(),
-        verification_run,
-        plan_digest: v.plan_digest.clone(),
-        evidence_digest: evidence_digest.clone(),
+        recipe_revision: current.recipe_revision,
+        recipe_digest: current.recipe_digest,
+        source: current.source,
+        base: current.base,
+        runtime: current.runtime,
+        image: current.image,
+        build_id: current.build_id,
+        build_run: current.build_run,
+        verification_id: current.verification_id,
+        verification_run: current.verification_run,
+        plan_digest: current.plan_digest,
+        evidence_digest: current.evidence_digest,
+        review: Some(review.stamp()),
         created_ms: now_ms,
     };
-    let version_id = version.id.clone();
+    let id = version.id.clone();
     env.versions.push(version);
-    Ok(changed(Effect::VersionSaved { version_id }))
+    Ok(id)
 }
 
-fn select(env: &mut Environment, expected: u64, version_id: &str) -> Result<Done, Refusal> {
-    live(env)?;
+fn fence_selection(env: &Environment, expected: u64) -> Result<(), Refusal> {
     if expected != env.selection.revision {
         return Err(Refusal::StaleSelection {
             expected,
             current: env.selection.revision,
         });
     }
-    if env.version(version_id).is_none() {
-        return Err(Refusal::UnknownVersion(version_id.into()));
+    Ok(())
+}
+
+fn move_selection(
+    env: &mut Environment,
+    version_id: &str,
+    kind: SelectionKind,
+    request_id: &str,
+    now_ms: u64,
+) -> Result<(u64, Option<String>), Refusal> {
+    if env.selections.len() >= crate::promotion::MAX_SELECTIONS {
+        return Err(Refusal::Limit(
+            "The environment retains too many selection changes.",
+        ));
     }
     let previous = env.selection.active.replace(version_id.into());
     env.selection.revision += 1;
+    env.selections.push(SelectionChange {
+        revision: env.selection.revision,
+        kind,
+        version_id: version_id.into(),
+        previous: previous.clone(),
+        request_id: request_id.into(),
+        at_ms: now_ms,
+    });
+    Ok((env.selection.revision, previous))
+}
+
+fn select(
+    env: &mut Environment,
+    expected: u64,
+    version_id: &str,
+    request_id: &str,
+    now_ms: u64,
+) -> Result<Done, Refusal> {
+    live(env)?;
+    fence_selection(env, expected)?;
+    let target = env
+        .version(version_id)
+        .ok_or_else(|| Refusal::UnknownVersion(version_id.into()))?
+        .number;
+    let kind = match env.active() {
+        Some(active) if target < active.number => SelectionKind::RolledBack,
+        _ => SelectionKind::Selected,
+    };
+    let (selection_revision, previous) = move_selection(env, version_id, kind, request_id, now_ms)?;
     Ok(changed(Effect::Selected {
         version_id: version_id.into(),
-        selection_revision: env.selection.revision,
+        selection_revision,
         previous,
+        change: kind,
     }))
 }

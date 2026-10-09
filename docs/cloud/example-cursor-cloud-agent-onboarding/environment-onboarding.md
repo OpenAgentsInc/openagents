@@ -595,6 +595,37 @@ blocks new verifiers for the environment. An owner restart that loses the
 live evidence ends the run incomplete, and its machines are still cleaned
 up. Qualification on real Boat is part of ENV-08.
 
+ENV-06 lives in [`coder-environment`](../../../crates/coder-environment/src/promotion.rs)
+and the operator job path in [`coder-cloud`](../../../crates/coder-cloud/src/operator.rs).
+`Environment::propose` returns the exact `Candidate` a Save would record
+(recipe revision and digest, source pin, base and runtime pins, image
+identity with snapshot and manifest digest, build and verifier run links,
+plan and evidence digests) without side effects. A reviewer grants a
+bounded `Review` naming that displayed candidate. `SaveVersion` and
+`Promote` recompute the candidate and refuse with `StaleReview(field)` if
+anything changed, `StaleDraft` after a recipe edit, `ReviewExpired`, or
+`ReviewUsed` when the grant already saved a version. Save creates the
+immutable version with its review stamp; `Promote` also moves the
+selection under `expected_selection_revision`, retaining both or neither,
+so concurrent promotions have one winner and the loser leaves no version.
+Every pointer move is a retained `SelectionChange` (`promoted`, `selected`,
+`rolled_back`); rollback is a `Select` of an earlier version and never
+rewrites one. `Environment::history` lists saved versions newest first with
+their selection marks. Request IDs replay the original result after a lost
+reply and conflict when reused for a different operation.
+
+The operator reads `<state>/environments` once when it admits a new job
+(`Store::selected`; two live environments selecting for one project are
+refused as ambiguous) and retains the `VersionPin` on the job record.
+Continuations, retries, and queued jobs keep that pin; selection changes
+never reach them. With a pin, Boat starts the job from exactly the saved
+named image after checking that it still holds the sealed snapshot. A
+missing or replaced image fails the job without provisioning; it never
+falls back to the profile or daily runtime template. Pins apply only to a
+job the operator policy already admits, in Boat Coder mode; other profiles
+are refused while a version is selected. A selection is not customer
+availability.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

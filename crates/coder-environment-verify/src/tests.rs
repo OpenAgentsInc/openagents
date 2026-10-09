@@ -461,8 +461,19 @@ async fn the_exact_image_passes_on_fresh_machines_without_repair() {
             "env-1",
             &EnvCommand::SaveVersion {
                 request_id: "save-1".into(),
-                verification_id: a.id.clone(),
-                expected_draft_revision: 1,
+                review: coder_environment::Review {
+                    id: "review-1".into(),
+                    actor: "reviewer".into(),
+                    candidate: h
+                        .verifier
+                        .environments
+                        .read("env-1")
+                        .unwrap()
+                        .propose(&a.id)
+                        .unwrap(),
+                    granted_ms: 19_000,
+                    expires_ms: 21_000,
+                },
             },
             20_000,
         )
@@ -498,19 +509,14 @@ async fn a_failed_check_fails_on_the_baseline_and_never_forks() {
     assert_eq!(a.state, VerificationState::Failed);
     assert!(a.evidence_status.is_some());
     // A failed verification never saves.
-    assert!(
+    // A failed verification never saves: there is no candidate to review.
+    assert_eq!(
         h.verifier
             .environments
-            .apply(
-                "env-1",
-                &EnvCommand::SaveVersion {
-                    request_id: "save-1".into(),
-                    verification_id: a.id.clone(),
-                    expected_draft_revision: 1,
-                },
-                20_000,
-            )
-            .is_err()
+            .read("env-1")
+            .unwrap()
+            .propose(&a.id),
+        Err(coder_environment::Refusal::NotPassed(a.id.clone()))
     );
 }
 

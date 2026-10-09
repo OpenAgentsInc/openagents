@@ -187,6 +187,17 @@ impl Boat {
 }
 impl Backend for Boat {
     async fn resolve(&self, r: &mut Record) -> Result<()> {
+        if let Some(pin) = &r.environment {
+            let snapshots = self
+                .client
+                .list_named_snapshots()
+                .await
+                .map_err(|e| e.to_string())?
+                .snapshots;
+            let image = pinned_image(pin, &snapshots)?;
+            r.binding = json!({"origin":self.client.origin(), "template":image, "environment":pin.version_id});
+            return Ok(());
+        }
         if r.spec.mode == Mode::Coder && r.spec.template.is_none() {
             let snapshots = self
                 .client
@@ -205,12 +216,21 @@ impl Backend for Boat {
                 return Err("The configured Boat origin differs from the retained job.".into());
             }
         }
-        let template = r
-            .spec
-            .template
-            .clone()
-            .or_else(|| r.binding["template"].as_str().map(str::to_owned));
-        r.binding = json!({"origin":self.client.origin(), "template":template});
+        let template = match &r.environment {
+            // Exactly the saved image; never the profile or daily template.
+            Some(pin) => Some(pin.image.image_id.clone()),
+            None => r
+                .spec
+                .template
+                .clone()
+                .or_else(|| r.binding["template"].as_str().map(str::to_owned)),
+        };
+        r.binding = match &r.environment {
+            Some(pin) => {
+                json!({"origin":self.client.origin(), "template":template, "environment":pin.version_id})
+            }
+            None => json!({"origin":self.client.origin(), "template":template}),
+        };
         let reply = self
             .client
             .create(&CreateParams {
@@ -673,6 +693,30 @@ mod tests {
     }
 }
 
+/// The saved version's own named image, still holding its sealed snapshot.
+fn pinned_image(
+    pin: &coder_environment::VersionPin,
+    snapshots: &[NamedSnapshot],
+) -> Result<String> {
+    let found = snapshots.iter().find(|s| s.name == pin.image.image_id);
+    match found {
+        Some(s)
+            if s.status == "ready"
+                && (pin.image.snapshot_id.is_none() || s.snapshot_id == pin.image.snapshot_id) =>
+        {
+            Ok(s.name.clone())
+        }
+        Some(_) => Err(format!(
+            "The saved image {} no longer holds the sealed snapshot of version {}.",
+            pin.image.image_id, pin.version_id
+        )),
+        None => Err(format!(
+            "The saved image {} of version {} is missing.",
+            pin.image.image_id, pin.version_id
+        )),
+    }
+}
+
 /// Interactive images have their own namespace; issue-runner caches stay separate.
 fn runtime_template(snapshots: &[NamedSnapshot]) -> Option<String> {
     snapshots
@@ -709,5 +753,59 @@ mod image_tests {
             Some("oa-coder-runtime-20261006")
         );
         assert!(runtime_template(&snapshots[..1]).is_none());
+    }
+
+    #[test]
+    fn a_pinned_version_starts_only_from_its_own_sealed_snapshot() {
+        let d = |c: char| c.to_string().repeat(64);
+        let pin = coder_environment::VersionPin {
+            environment: "env-1".into(),
+            version_id: "v1".into(),
+            number: 1,
+            selection_revision: 1,
+            recipe_revision: 1,
+            recipe_digest: d('a'),
+            source: coder_environment::SourcePin {
+                repository: None,
+                revision: "0".repeat(40),
+                digest: d('b'),
+            },
+            base: coder_environment::ImagePin {
+                provider: coder_environment::Provider::Boat,
+                image_id: "oa-coder-runtime-20261006".into(),
+                digest: d('c'),
+            },
+            runtime: coder_environment::ArtifactPin {
+                revision: "rt-1".into(),
+                digest: d('d'),
+            },
+            image: coder_environment::ImageIdentity {
+                provider: coder_environment::Provider::Boat,
+                image_id: "oaenv-build-1".into(),
+                snapshot_id: Some("snap-1".into()),
+                manifest_digest: d('e'),
+            },
+            plan_digest: d('f'),
+            evidence_digest: d('9'),
+        };
+        let named = |name: &str, status: &str, snapshot: &str| NamedSnapshot {
+            name: name.into(),
+            status: status.into(),
+            snapshot_id: Some(snapshot.into()),
+            ..Default::default()
+        };
+        let runtime = named("oa-coder-runtime-20261006", "ready", "snap-r");
+        assert_eq!(
+            pinned_image(
+                &pin,
+                &[runtime.clone(), named("oaenv-build-1", "ready", "snap-1")]
+            )
+            .unwrap(),
+            "oaenv-build-1"
+        );
+        // Missing, replaced, or not ready: a failure, never the runtime image.
+        assert!(pinned_image(&pin, std::slice::from_ref(&runtime)).is_err());
+        assert!(pinned_image(&pin, &[named("oaenv-build-1", "ready", "snap-2")]).is_err());
+        assert!(pinned_image(&pin, &[named("oaenv-build-1", "pending", "snap-1")]).is_err());
     }
 }

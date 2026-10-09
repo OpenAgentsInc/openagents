@@ -4,7 +4,7 @@
 //! Reads open files read-only and never create directories, locks, or
 //! markers.
 
-use crate::{Applied, Command, Environment, Refusal, apply, valid_id};
+use crate::{Applied, Command, Environment, ProjectLink, Refusal, VersionPin, apply, valid_id};
 use std::{
     fmt,
     fs::{self, File, OpenOptions},
@@ -28,6 +28,8 @@ pub enum StoreError {
     },
     /// The new record would rewrite immutable history.
     Immutable,
+    /// More than one live environment selects a version for one project.
+    Ambiguous,
     Corrupt(&'static str),
     Io(&'static str),
     Refused(Refusal),
@@ -44,6 +46,9 @@ impl fmt::Display for StoreError {
                 "The environment is at revision {current}, not the expected {expected}."
             ),
             Self::Immutable => f.write_str("Saved environment history cannot change."),
+            Self::Ambiguous => f.write_str(
+                "More than one environment selects a version for this project; retire one.",
+            ),
             Self::Corrupt(m) | Self::Io(m) => f.write_str(m),
             Self::Refused(r) => r.fmt(f),
         }
@@ -108,6 +113,22 @@ impl Store {
         }
         rows.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
         Ok(rows)
+    }
+
+    /// The exact version a job admitted now for `project` starts with, or
+    /// `None` when no live environment selects one. Read once at job
+    /// admission; the job keeps the returned pin. No side effects.
+    pub fn selected(&self, project: &ProjectLink) -> Result<Option<VersionPin>> {
+        let mut pins = self
+            .list()?
+            .into_iter()
+            .filter(|e| &e.project == project)
+            .filter_map(|e| e.pin());
+        let pin = pins.next();
+        if pins.next().is_some() {
+            return Err(StoreError::Ambiguous);
+        }
+        Ok(pin)
     }
 
     pub fn lease(&self, id: &str) -> Result<Lease> {

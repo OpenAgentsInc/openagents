@@ -407,7 +407,7 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
             Duration::from_millis(250),
             &mut |_| {},
         ));
-        if result.is_err() {
+        if result.is_err() && !record.state.terminal() {
             record.error=Some("The operator execution is unresolved. Reconcile this original job; another task was not submitted.".into());
             let _ = lease.save(&record);
         }
@@ -701,6 +701,40 @@ impl Operator {
             source.input().map_err(|_| Code::Stale)?;
         }
         Ok(p)
+    }
+    /// The project's selected environment version for a new job, read once
+    /// from `<state>/environments` (ENV-06). The job keeps this exact pin;
+    /// existing and queued jobs never re-read it. A selected version only
+    /// changes the image of a job the operator policy already admits.
+    fn selected_environment(
+        &self,
+        a: &dto::Admission,
+        p: &Profile,
+    ) -> Result<Option<coder_environment::VersionPin>> {
+        let root = self.0.root.join("environments");
+        if fs::symlink_metadata(&root).is_err() {
+            return Ok(None);
+        }
+        private(&root, true)?;
+        let pin = coder_environment::store::Store::under(root)
+            .selected(&coder_environment::ProjectLink {
+                workspace: a.workspace.clone(),
+                project: a.project.clone(),
+            })
+            .map_err(|e| match e {
+                coder_environment::store::StoreError::Ambiguous => Code::Conflict,
+                _ => Code::Unavailable,
+            })?;
+        if let Some(pin) = &pin {
+            // Saved images are Boat images that carry the Coder runtime.
+            if p.placement != Placement::Boat
+                || p.mode != Mode::Coder
+                || pin.image.provider != coder_environment::Provider::Boat
+            {
+                return Err(Code::Unsupported);
+            }
+        }
+        Ok(pin)
     }
     fn job_admission(&self, id: &str) -> Result<AdmittedJob> {
         dto::alias(id).map_err(|e| e.code)?;
@@ -1176,8 +1210,10 @@ impl Operator {
                 if intent.timeout_seconds > p.max_timeout_seconds || lease.exists() {
                     return Err(Code::Conflict);
                 }
-                Record::new(&job, spec(&p, &intent.prompt, intent.timeout_seconds))
-                    .map_err(|_| Code::Malformed)?
+                let mut r = Record::new(&job, spec(&p, &intent.prompt, intent.timeout_seconds))
+                    .map_err(|_| Code::Malformed)?;
+                r.environment = self.selected_environment(&admission, &p)?;
+                r
             }
             Operation::CloudContinue { intent } => {
                 let (r, _, _) = self.exact(&principal.device, &intent.scope)?;
