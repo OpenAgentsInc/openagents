@@ -3,7 +3,7 @@ use crate::coder_tab::Availability;
 use crate::eval_cards::{Button, CardView, Compare, Item, SheetView, Tone};
 use crate::gym::{Gym, Here};
 use openagents_chat::router::{Meta, Offer, Screen};
-use rust_native::style::{Color, Space, Style, TextWeight};
+use rust_native::style::{Space, Style, TextWeight};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -270,10 +270,7 @@ pub fn card<I>(view: &CardView, mut intent: impl FnMut(&str) -> I) -> Node<I> {
     Node {
         key: prefix.clone(),
         style: Style {
-            background: Some(crate::visual::pick(
-                Color::rgb(26, 29, 34),
-                crate::visual::current().selected,
-            )),
+            background: Some(crate::visual::inks().card),
             padding_top: Some(Space::Md),
             padding_bottom: Some(Space::Md),
             padding_start: Some(Space::Md),
@@ -411,10 +408,7 @@ pub fn sheet<I>(view: &SheetView, mut intent: impl FnMut(&str) -> I) -> Node<I> 
     Node {
         key: prefix,
         style: Style {
-            background: Some(crate::visual::pick(
-                Color::rgb(26, 29, 34),
-                crate::visual::current().selected,
-            )),
+            background: Some(crate::visual::inks().card),
             padding_top: Some(Space::Md),
             padding_bottom: Some(Space::Md),
             padding_start: Some(Space::Md),

@@ -1743,11 +1743,14 @@ fn tool_row(tool: Tool) -> Node<()> {
     }
 }
 
+/// Receded text, from the theme seam ([`crate::visual::inks`]).
 fn gray() -> Color {
-    crate::visual::pick(Color::rgb(153, 153, 153), crate::visual::current().muted)
+    crate::visual::inks().quiet
 }
+
+/// The card fill, from the theme seam.
 fn card_fill() -> Color {
-    crate::visual::pick(Color::rgb(26, 29, 34), crate::visual::current().selected)
+    crate::visual::inks().card
 }
 
 fn message(key: &str, role: MessageRole, text: &str) -> Node<()> {

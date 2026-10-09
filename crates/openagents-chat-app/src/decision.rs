@@ -47,11 +47,6 @@ pub const DENIED: &str = "Denied.";
 pub const ALWAYS: &str = "Always allow";
 /// What a page the person passed over answers.
 const NO_ANSWER: &str = "No answer.";
-/// The panel's card color, the transcript's card.
-/// A card's fill on the dark look, or Coder Light's surface.
-fn card_fill() -> Color {
-    crate::visual::pick(Color::rgb(26, 29, 34), crate::visual::current().selected)
-}
 
 /// What the waiting task asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,10 +81,11 @@ impl Risk {
     /// Coder Light so the chip's dark label reads.
     #[must_use]
     pub fn color(self) -> Color {
+        let inks = crate::visual::inks();
         match self {
-            Self::Low => crate::visual::pick(Color::rgb(46, 92, 64), Color::rgb(120, 190, 150)),
-            Self::Medium => crate::visual::pick(Color::rgb(122, 92, 28), Color::rgb(230, 180, 100)),
-            Self::High => crate::visual::pick(Color::rgb(128, 40, 40), Color::rgb(230, 130, 130)),
+            Self::Low => inks.risk_low,
+            Self::Medium => inks.risk_medium,
+            Self::High => inks.risk_high,
         }
     }
 }
@@ -551,7 +547,7 @@ impl Flow {
             node: Node {
                 key,
                 style: Style {
-                    background: Some(card_fill()),
+                    background: Some(crate::visual::inks().card),
                     padding_top: Some(Space::Md),
                     padding_bottom: Some(Space::Md),
                     padding_start: Some(Space::Md),

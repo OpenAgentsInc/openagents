@@ -370,6 +370,87 @@ pub fn pick(dark: Color, light: Color) -> Color {
     }
 }
 
+/// The few colors the shared Rust Native views (the phones' chat, its
+/// cards and panels, and the change pane) name outright, in one scheme.
+///
+/// [`Inks::DARK`] keeps the values those views always painted on the
+/// phones' black, so the dark look is unchanged; [`Inks::LIGHT`] is Coder
+/// Light's roles from the token table (#11028). Views read [`inks`] when
+/// they build, so a tree built after [`set_scheme`] paints in the new look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Inks {
+    /// Primary text and buttons.
+    pub text: Color,
+    /// Status lines, tool rows, and other receded text.
+    pub quiet: Color,
+    /// A card or panel's fill in the transcript.
+    pub card: Color,
+    /// A warning note.
+    pub warning: Color,
+    /// Added and removed lines in a change.
+    pub added: Color,
+    pub removed: Color,
+    /// A landing badge: landed, waiting on someone, or failed.
+    pub done: Color,
+    pub open: Color,
+    pub attention: Color,
+    /// An approval's risk chip fill: low, medium, high.
+    pub risk_low: Color,
+    pub risk_medium: Color,
+    pub risk_high: Color,
+}
+
+impl Inks {
+    /// The phones' established dark values.
+    pub const DARK: Inks = Inks {
+        text: Color::rgb(255, 255, 255),
+        quiet: Color::rgb(153, 153, 153),
+        card: Color::rgb(26, 29, 34),
+        warning: Color::rgb(229, 192, 123),
+        added: Color::rgb(163, 190, 140),
+        removed: Color::rgb(191, 120, 120),
+        done: Color::rgb(87, 196, 128),
+        open: Color::rgb(232, 176, 72),
+        attention: Color::rgb(232, 98, 92),
+        risk_low: Color::rgb(46, 92, 64),
+        risk_medium: Color::rgb(122, 92, 28),
+        risk_high: Color::rgb(128, 40, 40),
+    };
+
+    /// Coder Light. Text roles are the intent text tokens (WCAG AA on the
+    /// light canvas); fills are the soft intent backgrounds, so the
+    /// default (dark) label stays readable on them.
+    pub const LIGHT: Inks = Inks {
+        text: token(LIGHT_TOKENS.content),
+        quiet: token(LIGHT_TOKENS.content_secondary),
+        card: token(LIGHT_TOKENS.surface),
+        warning: token(LIGHT_TOKENS.warning),
+        added: token(LIGHT_TOKENS.success),
+        removed: token(LIGHT_TOKENS.danger),
+        done: token(LIGHT_TOKENS.success),
+        open: token(LIGHT_TOKENS.warning),
+        attention: token(LIGHT_TOKENS.danger),
+        risk_low: token(LIGHT_TOKENS.success_container),
+        risk_medium: token(LIGHT_TOKENS.warning_container),
+        risk_high: token(LIGHT_TOKENS.danger_container),
+    };
+
+    /// The inks for `scheme`.
+    #[must_use]
+    pub const fn of(scheme: Scheme) -> &'static Inks {
+        match scheme {
+            Scheme::Light => &Inks::LIGHT,
+            Scheme::Dark => &Inks::DARK,
+        }
+    }
+}
+
+/// The inks for the scheme the app paints with.
+#[must_use]
+pub fn inks() -> &'static Inks {
+    Inks::of(scheme())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,6 +461,21 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    /// The shared views' inks: the dark set is what the phones always
+    /// painted, the light set Coder Light's roles.
+    #[test]
+    fn the_inks_follow_the_scheme() {
+        assert_eq!(Inks::of(Scheme::Dark), &Inks::DARK);
+        assert_eq!(Inks::of(Scheme::Light), &Inks::LIGHT);
+        assert_eq!(Inks::DARK.text, Color::rgb(255, 255, 255));
+        assert_eq!(Inks::DARK.quiet, Color::rgb(153, 153, 153));
+        let tokens = oa_tokens::Palette::LIGHT;
+        assert_eq!(Inks::LIGHT.text, token(tokens.content));
+        assert_eq!(Inks::LIGHT.quiet, token(tokens.content_secondary));
+        assert_eq!(Inks::LIGHT.card, token(tokens.surface));
+        assert_eq!(Inks::LIGHT.risk_high, token(tokens.danger_container));
+    }
 
     /// The dark look is the chat's established dark values; the light look
     /// is Coder Light from the shared token table, at the same geometry.
