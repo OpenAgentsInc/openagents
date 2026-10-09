@@ -1068,13 +1068,16 @@ fn content(chat: &Conversation, before: Option<usize>, chips: Markup) -> Markup 
 }
 
 /// One stored message as a thread turn. Assistant text is rendered Markdown
-/// (the renderer escapes it); user and status text is escaped as written.
-fn turn(message: &Message, index: usize) -> ThreadMessage {
+/// (the renderer escapes it), followed by the plugin cards its answer came
+/// with (`plugins`, `docs/web/plugin-card.md`); user and status text is
+/// escaped as written.
+fn turn(message: &Message, index: usize, plugins: &[String]) -> ThreadMessage {
     match message.role {
         Role::User => ThreadMessage::user(&message.text),
-        Role::Assistant => ThreadMessage::assistant(MarkdownRoot::new(PreEscaped(
-            crate::markdown::render(&message.text),
-        )))
+        Role::Assistant => ThreadMessage::assistant(html! {
+            (MarkdownRoot::new(PreEscaped(crate::markdown::render(&message.text))))
+            (crate::suggestions::plugin_cards(plugins))
+        })
         .author("OpenAgents"),
         Role::Tool => ThreadMessage::status(&message.text),
     }
@@ -1096,7 +1099,7 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
             a hidden href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" data-oa-scroll-tail {}
         }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
-            (turn(message, index + start))
+            (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
         }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.pending.is_some() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}

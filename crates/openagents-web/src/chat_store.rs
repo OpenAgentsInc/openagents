@@ -127,14 +127,14 @@ pub(crate) struct Request {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudRequest>,
     /// What the router said about the answer that the chips under it read:
-    /// its prepared answer, follow-ups, and offers to run Coder or open a
-    /// screen (`openagents_chat::suggestions::chip_meta`). Older records
-    /// have none.
+    /// its prepared answer, follow-ups, offers to run Coder or open a
+    /// screen, and the plugins it shows as cards
+    /// (`openagents_chat::suggestions::chip_meta`). Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply: Option<openagents_chat::router::Meta>,
 }
 
-/// The most follow-ups or offers a retained answer keeps.
+/// The most follow-ups, offers, or plugin cards a retained answer keeps.
 const MAX_REPLY_CHIPS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1182,6 +1182,8 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
         if let Some(reply) = &request.reply
             && (reply.followups.len() > MAX_REPLY_CHIPS
                 || reply.offers.len() > MAX_REPLY_CHIPS
+                || reply.plugins.len() > MAX_REPLY_CHIPS
+                || reply.plugins.iter().any(|slug| !bounded_text(slug, 64))
                 || reply
                     .answer
                     .as_ref()
