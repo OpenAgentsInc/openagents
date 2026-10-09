@@ -287,3 +287,132 @@ fn a_journaled_unsettled_effect_reconciles_once_and_revocation_refuses_everythin
         assert!(!text.contains(CONTACT));
     }
 }
+
+impl Owner {
+    /// Bind `principal` with an optional service evidence root.
+    fn bind_as(&self, principal: &str, credential: &Path, evidence: Option<&Path>) {
+        private_file(
+            &self.config,
+            &serde_json::to_vec(&json!({
+                "schema":CONFIG_SCHEMA,"root":self.host,"journal":self.dir.join("journal"),
+                "evidence":evidence,
+                "bindings":[{"id":"alice-sales","account":"alice","workspace":"alice-personal",
+                "members_epoch":3,"principal":principal,"credential":credential,
+                "client_digest":digest(SITE.as_bytes()),"effects":["create"]}]
+            }))
+            .unwrap(),
+        );
+    }
+}
+
+#[test]
+fn records_delivery_audit_and_claims_are_fenced_and_scoped_to_one_record() {
+    use crate::task::sales::tests::service_fixture::{self as fixture, Comparison, retain};
+    let owner = owner(&[Effect::Create]);
+    let service = Service::open_with_clock(&owner.config, clock).unwrap();
+    let lead = apply(&service, "lead-one", &create("lead-one")).body["result"]["lead"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut second: Value = serde_json::from_slice(&create("lead-two")).unwrap();
+    second["operation"]["input"]["contact"] = json!("email:unrelated@synthetic.invalid");
+    let other = apply(&service, "lead-two", &serde_json::to_vec(&second).unwrap());
+    let other = other.body["result"]["lead"].as_str().unwrap().to_owned();
+
+    // The pipeline owner records one accepted service sale on the first record.
+    let evidence = owner.dir.join("evidence");
+    std::fs::create_dir(&evidence).unwrap();
+    std::fs::set_permissions(&evidence, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let comparison = Comparison {
+        manifest: retain(&evidence, "comparison.json", b"synthetic manifest"),
+        report: retain(&evidence, "comparison-report.json", b"synthetic report"),
+        candidate: retain(&evidence, "candidate.patch", b"synthetic candidate"),
+        check: retain(&evidence, "independent-check", b"synthetic check"),
+        decision: retain(&evidence, "buyer-decision", b"synthetic decision"),
+        frozen_checks: vec![retain(&evidence, "frozen-command", b"synthetic frozen")],
+    };
+    let admission = fixture::admission(
+        &evidence,
+        1000,
+        &lead,
+        "synthetic-account",
+        "offer-v1",
+        comparison,
+    );
+    let mut store = Store::open_with_clock(&owner.host, clock).unwrap();
+    let admin = store
+        .authenticate(&Store::read_credential(&owner.owner).unwrap())
+        .unwrap();
+    let admit = json!({"schema":crate::task::sales::COMMAND_SCHEMA,"id":"admit-sale","lead":lead,
+        "expected_revision":1,"operation":{"kind":"record_service_sale","admission":admission}});
+    store
+        .apply_with_evidence_root(
+            &admin,
+            &serde_json::to_vec(&admit).unwrap(),
+            Some(&evidence),
+        )
+        .unwrap();
+    drop(store);
+
+    // Records carry the retained sale and no contact.
+    let records = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"records","after":null,"limit":10}),
+    );
+    assert_eq!(records.status, 200, "{}", records.body);
+    let first = records.body["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["summary"]["id"] == json!(lead))
+        .unwrap();
+    assert_eq!(
+        first["services"][0]["admission"]["invoice"]["id"],
+        "synthetic-invoice"
+    );
+    assert_eq!(first["services"][0]["facts"]["support_human"], "operator");
+
+    // The delivery handoff is reread only from a configured root, by digest.
+    let delivery = json!({"kind":"delivery","lead":lead,"sale":"synthetic-sale"});
+    let unconfigured = call(&service, SITE, actor(), delivery.clone());
+    assert_eq!(unconfigured.body["result"]["unavailable"], "not_configured");
+    owner.bind_as("writer-a", &owner.dir.join("writer-a"), Some(&evidence));
+    let read = call(&service, SITE, actor(), delivery.clone());
+    assert_eq!(read.status, 200, "{}", read.body);
+    let handoff = &read.body["result"]["handoff"];
+    assert_eq!(handoff["support"]["responsible_human"], "operator");
+    assert_eq!(
+        handoff["support"]["included_work"],
+        "one synthetic correction"
+    );
+    assert!(!read.body.to_string().contains("synthetic support contact"));
+    std::fs::write(evidence.join("service-handoff.json"), b"{}").unwrap();
+    let changed = call(&service, SITE, actor(), delivery);
+    assert_eq!(changed.body["result"]["unavailable"], "unreadable");
+    assert!(changed.body["result"]["handoff"].is_null());
+
+    // A writer reads no owner audit, claim register, or weekly review.
+    for op in [
+        json!({"kind":"audit","lead":lead}),
+        json!({"kind":"claims"}),
+        json!({"kind":"weekly"}),
+    ] {
+        assert_eq!(error(&call(&service, SITE, actor(), op)), "access_denied");
+    }
+
+    // The owner's audit is scoped to the one record asked for.
+    owner.bind_as("operator", &owner.owner, None);
+    let audit = call(&service, SITE, actor(), json!({"kind":"audit","lead":lead}));
+    assert_eq!(audit.status, 200, "{}", audit.body);
+    let entries = audit.body["result"].as_array().unwrap();
+    assert!(entries.len() >= 2);
+    assert!(entries.iter().all(|e| e["lead"] == json!(lead)));
+    assert!(!audit.body.to_string().contains(&other));
+    let claims = call(&service, SITE, actor(), json!({"kind":"claims"}));
+    assert_eq!(claims.body["result"]["register"], json!([]));
+    let weekly = call(&service, SITE, actor(), json!({"kind":"weekly"}));
+    assert_eq!(weekly.status, 200);
+    assert!(weekly.body["result"].is_null());
+}

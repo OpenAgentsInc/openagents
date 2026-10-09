@@ -16,7 +16,13 @@
 //! Refusals are fixed codes; no contact, record body, or credential enters an
 //! error, a list summary, or the journal's file name.
 
-use super::{Lead, PermissionState, Receipt, Result, Role, Stage, Store, digest};
+use super::claims::{Decision, RegisterEntry};
+use super::{
+    Audit, CustomerDecision, DataBoundary, Lead, PermissionState, Receipt, Result, Role, Stage,
+    Store, digest,
+};
+use receipts::sales_funnel::Journey;
+use receipts::service_sale::Sale;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -34,6 +40,9 @@ const CONFIG_MAX: u64 = 64 * 1024;
 const JOURNAL_MAX: usize = 256;
 const JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
 const BINDINGS_MAX: usize = 64;
+const AUDIT_MAX: usize = 200;
+const HISTORY_MAX: usize = 300;
+const WEEKLY_MAX: u64 = 1024 * 1024;
 
 /// The effects a binding may admit. Operations outside this set (service
 /// sales, acquisition, partners, funnel journeys) need their own reviewed
@@ -75,6 +84,22 @@ struct Config {
     /// A private directory for retry journals, outside the pipeline directory.
     journal: PathBuf,
     bindings: Vec<Binding>,
+    /// The private service evidence root. Delivery documents are reread here
+    /// by their retained digest; none is configured means none is shown.
+    #[serde(default)]
+    evidence: Option<PathBuf>,
+    /// The owner's explicit weekly review sources, rebuilt on each read.
+    #[serde(default)]
+    weekly: Option<WeeklySources>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WeeklySources {
+    /// The private weekly manifest.
+    input: PathBuf,
+    /// The private evidence root the manifest names.
+    evidence_root: PathBuf,
 }
 
 /// One owner-provisioned browser actor/workspace binding.
@@ -140,6 +165,220 @@ pub enum Op {
     Apply { request: String, command: String },
     /// Settle a journaled request whose reply was lost.
     Reconcile { request: String, digest: String },
+    /// Contact-free records with their retained service sales and consented
+    /// journeys, each fenced by the store's retention and recipients.
+    Records { after: Option<String>, limit: usize },
+    /// One retained sale's delivery handoff, reread by its exact digest.
+    Delivery { lead: String, sale: String },
+    /// The owner audit scoped to one readable record; no other record's
+    /// entries are returned.
+    Audit { lead: String },
+    /// The owner's claim register and review history.
+    Claims,
+    /// The owner's weekly review, rebuilt from current sources.
+    Weekly,
+}
+
+/// One record's commercial projection without contact, source text, or the
+/// assigned-agent records.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordView {
+    pub summary: Summary,
+    pub account: String,
+    pub workflow: String,
+    pub source_at: u64,
+    /// Whether public intake created this record.
+    pub intake: bool,
+    /// Whether a canonical acquisition source is recorded.
+    pub acquisition: bool,
+    pub customer_decision: Option<CustomerDecision>,
+    pub data: DataBoundary,
+    pub services: Vec<Sale>,
+    pub journeys: Vec<Journey>,
+}
+
+impl RecordView {
+    fn of(lead: &Lead) -> Self {
+        Self {
+            summary: Summary::of(lead),
+            account: lead.details.account.clone(),
+            workflow: lead.details.workflow.clone(),
+            source_at: lead.source_at,
+            intake: lead.intake.is_some(),
+            acquisition: lead.acquisition.is_some(),
+            customer_decision: lead.details.customer_decision.clone(),
+            data: lead.details.data.clone(),
+            services: lead.service_sales.values().cloned().collect(),
+            journeys: lead.funnel_journeys.values().cloned().collect(),
+        }
+    }
+}
+
+/// A delivery handoff's operating fields. Paths, contact references, and
+/// document bodies stay with the owner.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Handoff {
+    pub id: String,
+    pub version: String,
+    pub delivered_at: Option<u64>,
+    pub dependencies: Vec<Dependency>,
+    pub known_limits: Vec<String>,
+    pub retained_artifacts: Vec<Retained>,
+    pub support: Support,
+    pub cleanup_plan: Vec<Cleanup>,
+    pub reuse_default: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Dependency {
+    pub id: String,
+    pub version_or_digest: String,
+    pub scope: String,
+    pub readiness: String,
+    pub unavailable_reason: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Retained {
+    pub id: String,
+    pub controller: String,
+    pub retain_until: Option<u64>,
+    pub purpose: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Support {
+    pub responsible_human: String,
+    pub business_hours: String,
+    pub response_boundary: String,
+    pub included_work: String,
+    pub out_of_scope_route: String,
+    pub ends_at: Option<u64>,
+}
+
+/// One planned offboarding item. The handoff plans it; only a separately
+/// verified cleanup report can show it done.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Cleanup {
+    pub id: String,
+    pub class: String,
+    pub responsible_human: String,
+    pub due_at: Option<u64>,
+}
+
+impl Handoff {
+    fn parse(bytes: &[u8]) -> Option<Self> {
+        let doc: Value = serde_json::from_slice(bytes).ok()?;
+        if doc["schema"] != "openagents.sales.delivery-handoff.v1" {
+            return None;
+        }
+        let list = |field: &str| -> Vec<Value> {
+            doc[field]
+                .as_array()
+                .map(|a| a.iter().take(32).cloned().collect())
+                .unwrap_or_default()
+        };
+        let support = &doc["support"];
+        Some(Self {
+            id: text(&doc["id"]),
+            version: text(&doc["version"]),
+            delivered_at: doc["delivered_at"].as_u64(),
+            dependencies: list("dependencies")
+                .iter()
+                .map(|d| Dependency {
+                    id: text(&d["id"]),
+                    version_or_digest: text(&d["version_or_digest"]),
+                    scope: text(&d["scope"]),
+                    readiness: text(&d["readiness"]),
+                    unavailable_reason: text(&d["unavailable_reason"]),
+                })
+                .collect(),
+            known_limits: list("known_limits").iter().map(text).collect(),
+            retained_artifacts: list("retained_artifacts")
+                .iter()
+                .map(|r| Retained {
+                    id: text(&r["id"]),
+                    controller: text(&r["controller"]),
+                    retain_until: r["retain_until"].as_u64(),
+                    purpose: text(&r["purpose"]),
+                })
+                .collect(),
+            support: Support {
+                responsible_human: text(&support["responsible_human"]),
+                business_hours: text(&support["business_hours"]),
+                response_boundary: text(&support["response_boundary"]),
+                included_work: text(&support["included_work"]),
+                out_of_scope_route: text(&support["out_of_scope_route"]),
+                ends_at: support["ends_at"].as_u64(),
+            },
+            cleanup_plan: list("cleanup_plan")
+                .iter()
+                .map(|c| Cleanup {
+                    id: text(&c["id"]),
+                    class: text(&c["class"]),
+                    responsible_human: text(&c["responsible_human"]),
+                    due_at: c["due_at"].as_u64(),
+                })
+                .collect(),
+            reuse_default: text(&doc["reuse_default"]),
+        })
+    }
+}
+
+/// A bounded single-line string, or empty when absent or not a string.
+fn text(value: &Value) -> String {
+    value
+        .as_str()
+        .map(|s| {
+            s.chars()
+                .filter(|c| !c.is_control())
+                .take(256)
+                .collect::<String>()
+        })
+        .unwrap_or_default()
+}
+
+/// One retained sale's delivery document as the owner rereads it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Delivery {
+    pub sale: String,
+    pub handoff_sha256: String,
+    pub handoff: Option<Handoff>,
+    /// Why no handoff is shown: `not_configured` or `unreadable`.
+    pub unavailable: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Claims {
+    pub register: Vec<RegisterEntry>,
+    pub history: Vec<Decision>,
+}
+
+/// The owner's weekly review rebuilt from current, custody-checked sources.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Weekly {
+    pub manifest_digest: String,
+    pub period_start: u64,
+    pub period_end: u64,
+    pub generated_at: u64,
+    pub gaps: Vec<String>,
+    pub limitations: Vec<String>,
+    pub contribution_scope: String,
+    pub commercial_activation_attested: bool,
+    pub finance_included: bool,
+    /// Cohort rows exactly as the review computes them.
+    pub cohorts: Vec<Value>,
+    /// Journey rows, including failed and unknown history.
+    pub journeys: Vec<Value>,
 }
 
 /// A record's pipeline position without contact or private text.
@@ -384,6 +623,115 @@ impl Service {
                 let receipt =
                     self.apply(&config, binding, &mut store, &access, &request, command)?;
                 Ok(json!(receipt))
+            }
+            Op::Records { after, limit } => {
+                if after.as_deref().is_some_and(|a| !record_id(a)) {
+                    return Err(Code::InvalidRequest);
+                }
+                let leads = store
+                    .list(&access, after.as_deref(), limit)
+                    .map_err(|_| Code::InvalidRequest)?;
+                Ok(json!(leads.iter().map(RecordView::of).collect::<Vec<_>>()))
+            }
+            Op::Delivery { lead, sale } => {
+                if !record_id(&lead) || super::id(&sale).is_err() {
+                    return Err(Code::InvalidRequest);
+                }
+                // Retention and recipients fence the sale like any read.
+                let sale = store
+                    .service_show(&access, &lead, &sale)
+                    .map_err(|_| Code::AccessDenied)?;
+                let handoff = &sale.admission.sources.handoff;
+                let (document, unavailable) = match &config.evidence {
+                    None => (None, Some("not_configured")),
+                    Some(root) => match super::service::Reader::new(Some(root))
+                        .and_then(|mut reader| reader.read(handoff))
+                        .ok()
+                        .and_then(|bytes| Handoff::parse(&bytes))
+                    {
+                        Some(document) => (Some(document), None),
+                        None => (None, Some("unreadable")),
+                    },
+                };
+                Ok(json!(Delivery {
+                    sale: sale.admission.id.clone(),
+                    handoff_sha256: handoff.sha256.clone(),
+                    handoff: document,
+                    unavailable: unavailable.map(String::from),
+                }))
+            }
+            Op::Audit { lead } => {
+                if !record_id(&lead) {
+                    return Err(Code::InvalidRequest);
+                }
+                store.show(&access, &lead).map_err(|_| Code::AccessDenied)?;
+                let mut scoped: Vec<Audit> = Vec::new();
+                let mut after = 0;
+                loop {
+                    let page = store
+                        .audit(&access, after, 100)
+                        .map_err(|_| Code::AccessDenied)?;
+                    let Some(last) = page.last() else { break };
+                    after = last.sequence;
+                    scoped.extend(page.into_iter().filter(|a| a.lead == lead));
+                }
+                let keep = scoped.len().saturating_sub(AUDIT_MAX);
+                Ok(json!(scoped.split_off(keep)))
+            }
+            Op::Claims => {
+                let register = store
+                    .claim_register(&access)
+                    .map_err(|_| Code::AccessDenied)?;
+                let mut history = Vec::new();
+                while history.len() < HISTORY_MAX {
+                    let page = store
+                        .claim_history(&access, history.len(), 100)
+                        .map_err(|_| Code::AccessDenied)?;
+                    if page.is_empty() {
+                        break;
+                    }
+                    history.extend(page);
+                }
+                history.truncate(HISTORY_MAX);
+                Ok(json!(Claims { register, history }))
+            }
+            Op::Weekly => {
+                if role != Role::Owner {
+                    return Err(Code::AccessDenied);
+                }
+                let Some(sources) = &config.weekly else {
+                    return Ok(Value::Null);
+                };
+                let mut bytes = Vec::new();
+                super::super::private_open(&sources.input, false, false)
+                    .map_err(|_| Code::Unavailable)?
+                    .take(WEEKLY_MAX + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|_| Code::Unavailable)?;
+                let report =
+                    gym::sales_weekly::rebuild(&sources.evidence_root, &bytes, (self.clock)())
+                        .map_err(|_| Code::Refused)?;
+                if report.manifest.owner != access.principal() {
+                    return Err(Code::AccessDenied);
+                }
+                // A snapshot older than current custody (a refund, deletion,
+                // suppression, or expired retention) refuses the review.
+                store
+                    .authorize_funnel_snapshots(&access, &report.sources)
+                    .map_err(|_| Code::Stale)?;
+                Ok(json!(Weekly {
+                    manifest_digest: report.manifest_digest.clone(),
+                    period_start: report.manifest.period_start,
+                    period_end: report.manifest.period_end,
+                    generated_at: report.manifest.generated_at,
+                    gaps: report.manifest.gaps.clone(),
+                    limitations: report.limitations.clone(),
+                    contribution_scope: report.contribution_scope.clone(),
+                    commercial_activation_attested: report.commercial_activation_attested,
+                    finance_included: report.finances.is_some(),
+                    cohorts: report.cohorts.iter().map(|c| json!(c)).collect(),
+                    journeys: report.journeys.iter().map(|j| json!(j)).collect(),
+                }))
             }
             Op::Reconcile { request, digest } => {
                 super::id(&request).map_err(|_| Code::InvalidRequest)?;

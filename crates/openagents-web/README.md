@@ -509,6 +509,30 @@ lost reply shows **Outcome unknown** with **Retry the same request**, which
 reconciles with the owner by identity and digest. Public pilot intake stays
 create-only and separate.
 
+### Sales modules
+
+Each delegation links the read-only modules **Evidence and claims**
+(`/cloud/app/sales/ID/evidence`), **Pilots and delivery** (`.../pilots`, with
+`.../leads/LEAD/services/SALE` for one delivery), **Invoices and
+fulfillment** (`.../invoices`), and **Journeys and weekly review**
+(`.../journeys`), plus a per-record audit (`.../leads/LEAD/audit`). They read
+the adapter's `records`, `delivery`, `claims`, `weekly`, and `audit`
+operations; the owner's retention, suppression, and recipient checks fence
+every answer. Agreements, acceptances, support, invoices, payments, and
+fulfillment appear as separate exact records; unknown, disputed, and failed
+outcomes stay listed. The claim register, weekly review, and audit are
+owner-role only, and the audit returns one record's entries. No module has a
+form: none signs, pays, publishes, books, qualifies, accepts, or cleans up.
+Pilot views compare against the pinned `docs/sales/` kits by digest.
+
+Two optional owner-side binding fields enable more detail. `"evidence"` names
+the private service evidence root; delivery handoffs are reread there by
+their retained digest (dependencies, known limits, retained artifacts,
+support, and the planned offboarding, which stays unverified until a
+verified cleanup record exists). `"weekly":{"input":...,"evidence_root":...}`
+names the owner's private weekly manifest; the review is rebuilt on each read
+and refused when its sources are stale against current custody.
+
 ## Billing statements and commercial lanes
 
 `/cloud/app/billing` is reachable once a workspace is selected. Each lane is

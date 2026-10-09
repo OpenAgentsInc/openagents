@@ -218,6 +218,26 @@ pub struct ClaimView {
     pub reviewed_sha256: Option<String>,
     pub verdict: Verdict,
 }
+/// One retained claim revision as the owner's register shows it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterEntry {
+    pub pin: Pin,
+    pub source: Pin,
+    pub purpose: Purpose,
+    pub reviewer: String,
+    pub reviewed_at: u64,
+    pub reviewed_sha256: String,
+    pub review_sha256: String,
+    pub expires_at: u64,
+    pub expired: bool,
+    /// Whether this is the claim's newest reviewed revision.
+    pub head: bool,
+    pub withdrawn: bool,
+    pub source_withdrawn: bool,
+    /// The verdict recorded at review; reads may later invalidate it.
+    pub verdict: Verdict,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DraftPin {
@@ -1066,6 +1086,48 @@ impl Store {
         )?;
         next.claims.withdrawn.insert(subject);
         self.persist(next)
+    }
+    /// Every retained claim revision with its review pin, recorded verdict,
+    /// expiry, and withdrawal, newest pin first within each claim. No source
+    /// root, evidence path, or reviewed document body is returned.
+    pub fn claim_register(&mut self, access: &Access) -> Result<Vec<RegisterEntry>> {
+        self.refresh()?;
+        self.admin(access)?;
+        let now = (self.clock)();
+        let claims = &self.state.claims;
+        let mut out: Vec<RegisterEntry> = claims
+            .claims
+            .values()
+            .map(|record| {
+                let pin = &record.input.pin;
+                let source = &record.input.source;
+                let source_key = format!("source:{}:{}", source.id, source.revision);
+                RegisterEntry {
+                    pin: pin.clone(),
+                    source: source.clone(),
+                    purpose: record.input.purpose,
+                    reviewer: record.owner.clone(),
+                    reviewed_at: record.reviewed_at,
+                    reviewed_sha256: record.input_sha256.clone(),
+                    review_sha256: record.input.review.sha256.clone(),
+                    expires_at: record.input.expires_at,
+                    expired: record.input.expires_at <= now,
+                    head: claims.claim_heads.get(&pin.id) == Some(&pin.revision),
+                    withdrawn: claims
+                        .withdrawn
+                        .contains(&format!("claim:{}:{}", pin.id, pin.revision)),
+                    source_withdrawn: claims.withdrawn.contains(&source_key),
+                    verdict: record.reviewed.clone(),
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.pin
+                .id
+                .cmp(&b.pin.id)
+                .then(b.pin.revision.cmp(&a.pin.revision))
+        });
+        Ok(out)
     }
     pub fn claim_history(
         &mut self,

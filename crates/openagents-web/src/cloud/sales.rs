@@ -37,6 +37,9 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[path = "sales_views.rs"]
+mod views;
+
 pub const SCHEMA: &str = "openagents.cloud.sales-delegations.v1";
 const JOURNAL_SCHEMA: &str = "openagents.cloud.sales-web-requests.v1";
 const UNAVAILABLE: &str = "The sales delegation configuration is unavailable or changed.";
@@ -718,6 +721,7 @@ pub(super) fn routes() -> Router<App> {
             "/cloud/app/sales/{id}/leads/{lead}/stage",
             post(change_stage),
         )
+        .merge(views::routes())
 }
 
 pub(crate) fn available(app: &App, viewer: &Viewer) -> bool {
@@ -797,12 +801,15 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             .standing(&context.viewer, delegation.id())
             .await
         {
-            Ok(standing) => content.push_str(&format!(
-                "<p>Principal {} · {} · {}</p>",
-                escape(&standing.principal),
-                role_label(standing.role),
-                effects_label(&standing.effects),
-            )),
+            Ok(standing) => {
+                content.push_str(&format!(
+                    "<p>Principal {} · {} · {}</p>",
+                    escape(&standing.principal),
+                    role_label(standing.role),
+                    effects_label(&standing.effects),
+                ));
+                content.push_str(&views::nav(delegation.id(), ""));
+            }
             Err(Failure::Session(error)) => return refused(error),
             Err(error) => {
                 content.push_str(&format!(
@@ -921,6 +928,23 @@ async fn record(
         escape(&found.details.workflow),
         found.revision,
     );
+    content.push_str(&views::nav(&id, ""));
+    if !found.service_sales.is_empty() {
+        content.push_str("<h3>Service records</h3><ul>");
+        for sale in found.service_sales.keys() {
+            content.push_str(&format!(
+                "<li><a href=\"{base}/services/{}\">{}</a> · see Pilots and delivery and Invoices and fulfillment</li>",
+                escape(sale),
+                escape(sale),
+            ));
+        }
+        content.push_str("</ul>");
+    }
+    if standing.role == Role::Owner {
+        content.push_str(&format!(
+            "<p><a href=\"{base}/audit\">Audit for this record</a></p>"
+        ));
+    }
     let writable = standing.effects.contains(&Effect::Update)
         && match standing.role {
             Role::Owner => true,

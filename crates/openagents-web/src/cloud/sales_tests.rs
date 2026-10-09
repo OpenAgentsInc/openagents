@@ -393,3 +393,6 @@ async fn the_owner_adapter_refuses_browser_requests_and_unbound_callers() {
     assert!(text.contains(&owner.lead));
     assert!(!text.contains(CONTACT));
 }
+
+#[path = "sales_views_tests.rs"]
+mod views;

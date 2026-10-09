@@ -1644,7 +1644,7 @@ pub(crate) mod tests {
             "/src/task/sales/funnel_tests.rs"
         ));
     }
-    mod service_fixture {
+    pub(crate) mod service_fixture {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../receipts/tests/support/service_sale.rs"
