@@ -176,11 +176,47 @@ their own GitHub app:
 - **Device code** (SSH sessions, headless): the app shows a short code and
   `openagents.com/device`; the person enters it while signed in and approves;
   the app polls and receives its session.
+  Built (#11045); see [Device sign-in](#device-sign-in-built) below.
 - **Phone**: the app opens the same `/auth/app` URL in the system browser
   session and receives the code through its registered universal link.
 
 App sessions are separate sessions on the same account, listed in Settings
 and revocable one by one.
+
+### Device sign-in (built)
+
+RFC 8628's shape. Code: `tenancy::sessions` (`sessions/device.rs`: grants
+and app sessions), `oa_auth::device` (the account-service routes, served by
+the gateway and `oa_auth::local`), `openagents-web` (`device.rs`,
+`cloud/session/device.rs`), `openagents-login` (the client), and
+`coder-new` (`account.rs`).
+
+| Where | Route | What |
+| --- | --- | --- |
+| Website | `POST /device/code` `{app, computer}` | `device_code`, `user_code` (`BCDF-GHJK`), `verification_uri` (`{origin}/device`), `verification_uri_complete`, `expires_in` (600), `interval` (5) |
+| Website | `GET /device[?code=]` | Signed in (sign-in comes back here): "Sign in to Coder on <computer>?", Approve / Deny |
+| Website | `POST /device/token` `{device_code}` | `{access_token, token_type, expires_in, account}`, or `authorization_pending`, `slow_down` (+5 s, with `interval`), `access_denied`, `expired_token`, `invalid_grant` |
+| Website | `POST /device/sign-out` (app's bearer) | Ends the app's own token |
+| Website | Settings → Computers, `POST /settings/computers/remove` | Lists signed-in apps; Remove ends one |
+| Account service | `POST /v1/sessions/device`, `/device/poll`, `/device/lookup`, `/device/decide`; `GET /v1/account/sessions`; `DELETE /v1/account/sessions/{id}` | The same, over the stores; lookup and decide need a browser session (not an app's own) |
+
+- Both codes are stored only as SHA-256 digests in `sessions.json`; a grant
+  lasts 10 minutes and issues one session, once. User codes are 8 letters
+  from `BCDFGHJKLMNPQRSTVWXZ` (no vowels, no look-alikes); typing is
+  case- and dash-insensitive.
+- The app's token is an ordinary `sess_` user session labeled with the app
+  and computer, lasting 30 days, so every account route takes it.
+- `coder-new login` / `logout` and `/login` / `/logout` keep it in
+  `~/.openagents/coder-new/account.json` (0600, folder 0700); it is never
+  printed or written to session files. `OPENAGENTS_ORIGIN` points the
+  client at another site (`https`, or `http://127.0.0.1:PORT`).
+
+Try it locally with the GitHub fixture ([github.md](github.md#local-testing))
+on `127.0.0.1:4301`, signed in there, then:
+
+```sh
+OPENAGENTS_ORIGIN=http://127.0.0.1:4301 cargo run -p coder-new -- login --state "$TMPDIR/coder-login"
+```
 
 ## Security
 
