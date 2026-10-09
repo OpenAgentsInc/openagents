@@ -2797,6 +2797,7 @@ dependencies = [
  "openagents-desktop",
  "openagents-x402",
  "openrouter",
+ "openui-lang",
  "plugin",
  "private-fs",
  "pylon",
@@ -3414,6 +3415,7 @@ dependencies = [
  "oa-copy",
  "openagents-login",
  "openrouter",
+ "openui-lang",
  "ratatui",
  "reqwest 0.12.28",
  "secret-screen",
@@ -7950,6 +7952,7 @@ dependencies = [
  "model-access",
  "nostr",
  "openrouter",
+ "openui-lang",
  "private-fs",
  "secp256k1 0.31.1",
  "serde",
@@ -10657,6 +10660,7 @@ dependencies = [
  "openagents-chat",
  "openagents-ui",
  "openagents-wallet",
+ "openui-lang",
  "pay-ledger",
  "pulldown-cmark",
  "receipts",
@@ -10714,6 +10718,14 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "openui-lang"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "orbclient"
@@ -12916,6 +12928,7 @@ version = "0.1.0"
 dependencies = [
  "code-highlight",
  "markdown-stream",
+ "openui-lang",
  "paper-mono",
  "pulldown-cmark",
  "serde",

@@ -456,6 +456,7 @@ pub fn build(
             .collect(),
         evidence: Vec::new(),
         answer: None,
+        ui: None,
         body: format!(
             "## Details\n\n{}\n\n## How to check\n\n{}",
             clean(&written.details),

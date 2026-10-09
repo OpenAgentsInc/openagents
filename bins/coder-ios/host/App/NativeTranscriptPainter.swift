@@ -359,6 +359,8 @@ struct NativeRowDisplay: Decodable {
         /// A `surface` widget's resource and spoken label.
         let resource: String?
         let label: String?
+        /// A `link` widget's `https` URL.
+        let url: String?
 
         var frame: CGRect { CGRect(x: x, y: y, width: w, height: h) }
     }
@@ -1099,6 +1101,16 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
                 return nil
             }
             return drawn
+        case "link":
+            // Rust admits only `https` URLs (`rust_native::markdown::opens`);
+            // the scheme is checked again before the system browser opens it.
+            guard let url = widget.url.flatMap(URL.init(string:)), url.scheme?.lowercased() == "https" else {
+                return nil
+            }
+            let button = UIButton(type: .custom)
+            button.addAction(UIAction { _ in UIApplication.shared.open(url) }, for: .touchUpInside)
+            button.isAccessibilityElement = false
+            return button
         case "earlier":
             guard widget.loading != true else { return nil }
             let button = UIButton(type: .custom)

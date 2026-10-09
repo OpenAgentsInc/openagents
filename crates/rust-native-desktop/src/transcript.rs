@@ -473,7 +473,7 @@ impl Transcript {
                 {
                     let row = self.frame.display(self.frame.find(&pressed.0)?)?;
                     let destination = &row.links.get(pressed.1)?.destination;
-                    if !destination.is_empty() {
+                    if rust_native::markdown::opens(destination) {
                         return Some(Action::OpenLink(destination.clone()));
                     }
                 }
@@ -919,9 +919,13 @@ impl Transcript {
                             );
                         }
                     }
+                    // A link's target is its text, drawn with the runs; a
+                    // click on it is hit-tested against the row's links.
                     WidgetKind::Button { .. }
                     | WidgetKind::Toggle { .. }
-                    | WidgetKind::Earlier { .. } => {}
+                    | WidgetKind::Earlier { .. }
+                    | WidgetKind::Link { .. }
+                    | WidgetKind::Surface { .. } => {}
                 }
             }
         }

@@ -71,7 +71,7 @@ pub enum ColorRole {
     Secondary,
     /// Tertiary marks, such as a disclosure chevron.
     Tertiary,
-    /// Inert link text.
+    /// Link text.
     Link,
     /// A user's message bubble.
     Bubble,
@@ -175,8 +175,9 @@ pub struct Rect {
     pub stroke: Option<Ink>,
 }
 
-/// An inert link's hit rectangle. Nothing opens the destination unless the
-/// application separately admits it.
+/// A link's hit rectangle. A link whose destination
+/// [`crate::markdown::opens`] admits also has a [`WidgetKind::Link`] tap
+/// target; any other destination is never opened.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Link {
     pub x: f32,
@@ -213,6 +214,11 @@ pub enum WidgetKind {
     Spinner,
     /// The control that loads older rows.
     Earlier { loading: bool },
+    /// A tap target over a link's text that opens `url`, an `https` URL
+    /// ([`crate::markdown::opens`]), in the system browser. The text under
+    /// it is already drawn; the adapter adds only the target. A link inside
+    /// a region that scrolls sideways has none.
+    Link { url: String },
     /// A surface the adapter draws itself, such as a link's preview card,
     /// in the box the layout reserved for it: a [`crate::view::Element::Surface`]
     /// with a `min_height` in its style. Its label is the spoken text.

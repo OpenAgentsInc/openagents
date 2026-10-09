@@ -284,12 +284,18 @@ followups = ["meta.github", "meta.pricing"]
 
 [[answer]]
 id = "meta.coder.website"
-version = 2
+version = 3
 routes = ["meta"]
 place = "web"
 when = "The user asks what Coder is or how Coder works, in general"
 examples = ["how does coder work", "what actually happens when you dispatch coder"]
-text = "Coder is our coding agent. It runs in your terminal on your own computer, where it reads and edits your files and runs commands. Install it with `curl -fsSL https://openagents.com/cli/install.sh | bash` (Windows: https://openagents.com/download), then run `coder` in your project. After `coder login`, `/sync on` saves its chats to your account, so they show here too."
+text = "Coder is our coding agent. It runs in your terminal on your own computer, where it reads and edits your files and runs commands; get it at https://openagents.com/download."
+ui = """
+root = Steps([install, run, signin])
+install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
+run = Step("Run it in your project", [CodeBlock("coder", "bash")])
+signin = Step("Sign in and turn on sync, so its chats show here too", [CodeBlock("coder login", "bash"), Button("Approve sign-in", href="/device", style="secondary"), CodeBlock("/sync on")])
+"""
 chip = "What is Coder?"
 sources = ["crates/coder-new/README.md", "crates/openagents-web/src/pages/download.rs", "docs/auth/README.md"]
 followups = ["meta.github", "meta.pricing"]
@@ -309,12 +315,22 @@ followups = ["meta.who"]
 
 [[answer]]
 id = "meta.codebase"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks how to connect, link, or add their codebase, code, project, or repository so we can work on it, in general; not a question only about GitHub, and not a specific change to make"
 not_for = "A specific task in a repository, such as fixing a bug or opening a pull request; how we work with GitHub in general (meta.github)"
 examples = ["How do I connect my codebase?", "how do i hook up my code", "how can you work on my project", "connect my codebase"]
-text = "Two ways. On the web: sign in at https://openagents.com/projects, connect GitHub, and add a repository. On your own computer: install Coder with `curl -fsSL https://openagents.com/cli/install.sh | sh` (Windows: `irm https://openagents.com/cli/install.ps1 | iex`), run `coder login` and approve it at https://openagents.com/device, then `cd` into your repo and run `coder`. Type `/sync on` to see those chats on the web too."
+text = "Two ways: add a GitHub repository at https://openagents.com/projects, or use Coder in it on your own computer."
+ui = """
+root = Columns([web, computer])
+web = Card("On the web", [Text("Sign in, connect GitHub, and pick a repository to add as a project."), github, login])
+github = Button("Connect GitHub", href="/auth/github/repos?access=private", show="signed_in")
+login = Button("Log in to connect", href="/login?return_to=/projects", show="signed_out")
+computer = Card("On your computer", [Steps([install, signin, sync])])
+install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
+signin = Step("Sign in, then approve it on the web", [CodeBlock("coder login", "bash"), Button("Approve sign-in", href="/device", style="secondary")])
+sync = Step("Run Coder in your repository and turn on sync to see its chats on the web", [CodeBlock("coder", "bash"), CodeBlock("/sync on")])
+"""
 chip = "How do I connect my codebase?"
 sources = ["crates/openagents-web/src/projects/mod.rs", "crates/openagents-web/src/pages/download.rs", "scripts/install/coder.sh", "knowledge/openagents/openagents.connect-codebase.md"]
 followups = ["meta.coder", "meta.plugins"]
@@ -347,13 +363,20 @@ followups = ["meta.coder"]
 
 [[answer]]
 id = "meta.github.website"
-version = 2
+version = 3
 routes = ["meta"]
 place = "web"
 when = "The user asks us to connect to, sign in to, or link their GitHub account, asks how to connect or add a GitHub repository, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
 not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
 examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub", "how do I connect a github repo", "how do i connect to repo?"]
-text = "We work with GitHub two ways. Here on openagents.com, sign in with GitHub, open Projects at https://openagents.com/projects, and connect GitHub to add your repositories as projects; chats you start in a project are grouped under it. And Coder, our coding agent, works in your terminal on your own computer, with that computer's own git and GitHub login: get it at https://openagents.com/download."
+text = "We work with GitHub two ways: add your repositories as projects at https://openagents.com/projects, or use Coder with your own computer's git and GitHub login (https://openagents.com/download)."
+ui = """
+root = Columns([web, computer])
+web = Card("Here on openagents.com", [Text("Connect GitHub and pick a repository. Chats you start in a project are grouped under it."), github, login])
+github = Button("Connect GitHub", href="/auth/github/repos?access=private", show="signed_in")
+login = Button("Sign in with GitHub", href="/login?return_to=/projects", show="signed_out")
+computer = Card("On your computer", [Text("Coder, our coding agent, works in your terminal with that computer's git and GitHub login."), Button("Get Coder", href="/download", style="secondary")])
+"""
 chip = "How do you work with GitHub?"
 sources = ["docs/auth/github.md", "crates/openagents-web/src/projects/mod.rs", "crates/coder-new/README.md"]
 followups = ["meta.coder", "meta.pricing"]

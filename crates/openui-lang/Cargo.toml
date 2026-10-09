@@ -1,0 +1,16 @@
+[package]
+name = "openui-lang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OpenUI Lang, the declarative subset: a streaming parser, the component catalog, and validation into a typed tree that every chat surface draws (#11113)."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

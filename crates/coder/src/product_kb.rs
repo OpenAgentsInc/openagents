@@ -402,7 +402,9 @@ pub fn state(lookup: &Lookup, entries: &[&knowledge::Entry]) -> Value {
                     "title": entry.title,
                     "summary": entry.summary,
                     "covers": entry.applies_when,
-                    "answer": entry.answer,
+                    // The answer as a reader gets it, its components as
+                    // Markdown, so Jev judges the whole of it.
+                    "answer": served(entry).map(|text| openui_lang::embed::fallback(&text)),
                 }),
             )
         })
@@ -528,7 +530,7 @@ pub fn read(
                 text: reference.text,
                 source: entry.cites.first().cloned().unwrap_or_default(),
                 relevance: relevance(n),
-                answer: if chosen { entry.answer.clone() } else { None },
+                answer: if chosen { served(entry) } else { None },
                 off_computer: entry.tags.iter().any(|tag| tag == OFF_COMPUTER_TAG),
                 in_app: entry.tags.iter().any(|tag| tag == product::IN_APP_TAG),
             }
@@ -545,6 +547,17 @@ pub fn read(
         embed_ms: 0,
         judge_ms: 0,
     }
+}
+
+/// What the chat shows when `entry`'s reviewed answer is served whole: the
+/// answer, followed by its components when it has them (#11187).
+#[must_use]
+pub fn served(entry: &knowledge::Entry) -> Option<String> {
+    let answer = entry.answer.as_deref()?;
+    Some(match &entry.ui {
+        Some(ui) => crate::router::bank::with_ui(answer, ui),
+        None => answer.to_owned(),
+    })
 }
 
 /// The references a grounded reply is given: the passages' entries.

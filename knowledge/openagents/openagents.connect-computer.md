@@ -1,6 +1,6 @@
 ---
 id: openagents.connect-computer
-version: 4
+version: 5
 kind: product
 title: "Connecting a computer"
 summary: >-
@@ -17,13 +17,16 @@ applies_when: >-
   (openagents.tailnet) and not where to download the apps
   (openagents.get-the-app).
 answer: >-
-  Connect a computer by installing Coder on it. On macOS or Linux, run `curl
-  -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in
-  PowerShell, run `irm https://openagents.com/cli/install.ps1 | iex`. Then run
-  `coder login`, approve its code at https://openagents.com/device, and type
-  `/sync on` in Coder. Its chats then show in your left panel on
-  openagents.com with the computer's name, and while Coder is open you can
-  reply to them from the website.
+  Connect a computer by installing Coder on it and signing it in at
+  https://openagents.com/device; its chats then show in your left panel on
+  openagents.com.
+ui: |
+  root = Stack([guide, steps])
+  guide = Button("Connect your terminal", href="/settings/terminal", show="signed_in")
+  steps = Steps([install, signin, sync])
+  install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
+  signin = Step("Sign in, then approve it on the web", [CodeBlock("coder login", "bash"), Button("Approve sign-in", href="/device", style="secondary")])
+  sync = Step("Turn on sync in Coder, so you can reply from the website while it's open", [CodeBlock("/sync on")])
 status: admitted
 author: openagents
 provenance:
@@ -33,6 +36,7 @@ provenance:
     - crates/coder-new/src/account.rs
     - crates/coder-new/src/account_sync.rs
     - crates/openagents-web/src/device.rs
+    - crates/openagents-web/src/terminal_connect.rs
     - docs/coder/guides/link-devices.md
     - docs/coder/design/2026-09-29-auto-pairing.md
     - crates/openagents-cli/src/connect.rs
@@ -43,6 +47,7 @@ evidence:
   - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
   - "2026-10-09: v4: OpenAgents for Mac is not out at 1.0, so phone pairing names the commands that draw the code (`openagents host serve --iroh --control`, then `openagents connect invite`), checked against crates/openagents-cli/src/connect.rs."
+  - "2026-10-09: v5 (#11187): a short answer with components (ui): a Connect your terminal button for the guided Settings page, the install command for each system with Copy, `coder login` with an Approve sign-in button, and `/sync on`; checked against download.rs and crates/openagents-web/src/terminal_connect.rs."
 ---
 
 ## Answer

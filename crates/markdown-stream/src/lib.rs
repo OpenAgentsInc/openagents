@@ -30,6 +30,8 @@
 //! one-shot render. Raw HTML is still a renderer's concern: the web renderer
 //! shows it as text.
 
+pub mod autolink;
+
 use std::borrow::Cow;
 use std::ops::Range;
 

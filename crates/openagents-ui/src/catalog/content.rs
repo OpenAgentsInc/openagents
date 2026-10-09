@@ -201,3 +201,47 @@ pub(super) fn link_cards(_pane: Pane) -> Markup {
         )))
     }
 }
+
+/// What an answer draws inline: how to connect a codebase, two ways side by
+/// side, with tabs for each system's install command and numbered steps.
+pub(super) fn answers(pane: Pane) -> Markup {
+    use crate::actions::ButtonLink;
+    use crate::content::{AnswerCard, AnswerColumns, AnswerSteps, Tabs};
+    use maud::Render;
+    let tabs = Tabs::new(
+        &format!("catalog-{}-os", pane.name().replace(' ', "-")),
+        "Install command",
+    )
+    .tab_for(
+        "unix",
+        "macOS and Linux",
+        CodeBlock::new("curl -fsSL https://openagents.com/cli/install.sh | bash").language("bash"),
+    )
+    .tab_for(
+        "windows",
+        "Windows",
+        CodeBlock::new("irm https://openagents.com/cli/install.ps1 | iex").language("powershell"),
+    );
+    let steps = AnswerSteps::new()
+        .step("Install Coder", vec![tabs.render()])
+        .step(
+            "Sign in",
+            vec![
+                CodeBlock::new("coder login").language("bash").render(),
+                ButtonLink::new("Approve sign-in", "/device")
+                    .variant(ButtonVariant::Outline)
+                    .color(Color::Secondary)
+                    .render(),
+            ],
+        );
+    let columns = AnswerColumns::new()
+        .child(
+            AnswerCard::new("On the web")
+                .child(html! { p { "Connect GitHub and pick a repository." } })
+                .child(ButtonLink::new("Connect GitHub", "/projects")),
+        )
+        .child(AnswerCard::new("On your computer").child(steps));
+    html! {
+        (specimen("AnswerColumns AnswerCard AnswerSteps Tabs", "Connect a codebase", MarkdownRoot::new(columns)))
+    }
+}

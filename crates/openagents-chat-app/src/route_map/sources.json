@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@c81c3764a2f3",
+  "bank": "chat-answers-v1@5f318e29b725",
   "routes": [
     {
       "id": "meta",
@@ -509,7 +509,7 @@
     },
     {
       "id": "meta.coder.website",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -543,7 +543,7 @@
     },
     {
       "id": "meta.codebase",
-      "version": 1,
+      "version": 2,
       "routes": [
         "meta"
       ],
@@ -590,7 +590,7 @@
     },
     {
       "id": "meta.github.website",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],

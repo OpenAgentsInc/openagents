@@ -246,6 +246,12 @@ pub struct Entry {
     /// the rule that advice always carries the page or the one command to
     /// run ([`knowledge::product::unlinked_instruction`]).
     pub unlinked: Option<String>,
+    /// Components drawn under the text, as OpenUI Lang statements
+    /// (`openui_lang`, #11187): buttons that start a flow, copyable
+    /// commands, numbered steps. [`Entry::render`] appends them to the text
+    /// as a fenced `openui-lang` block; the text stays a short lead whose
+    /// links still work where the components cannot draw.
+    pub ui: Option<String>,
     /// The bank has this entry's `.website` variant, so the website shows that
     /// instead ([`Bank::parse`] sets it; never written in the file).
     #[serde(skip)]
@@ -281,7 +287,11 @@ impl Entry {
     /// no text or a slot has no value.
     #[must_use]
     pub fn render(&self, facts: &Facts) -> Option<String> {
-        fill(self.text.as_deref()?, &self.facts, facts)
+        let text = fill(self.text.as_deref()?, &self.facts, facts)?;
+        Some(match &self.ui {
+            Some(ui) => with_ui(&text, ui),
+            None => text,
+        })
     }
 
     /// The stem and its generic end, filled, or `None`.
@@ -315,6 +325,48 @@ impl Entry {
     pub fn offer(&self) -> Option<super::Offer> {
         self.offer.as_ref().and_then(EntryOffer::offer)
     }
+}
+
+/// `text` followed by `ui` as a fenced `openui-lang` block.
+#[must_use]
+pub fn with_ui(text: &str, ui: &str) -> String {
+    format!(
+        "{}\n\n```{}\n{}\n```",
+        text.trim_end(),
+        openui_lang::LANG,
+        ui.trim()
+    )
+}
+
+/// The longest lead an entry with components may have: one or two short
+/// sentences, since the components carry the steps.
+pub const MAX_LEAD_CHARS: usize = 200;
+
+/// Every rule the components `ui` break: they must parse whole with no
+/// fixes, and every word in them must be plain language.
+#[must_use]
+pub fn ui_problems(ui: &str) -> Vec<String> {
+    let document = openui_lang::parse(ui);
+    let mut out: Vec<String> = document
+        .diagnostics
+        .iter()
+        .map(|d| match &d.statement {
+            Some(statement) => format!("ui `{statement}`: {}", d.message),
+            None => format!("ui: {}", d.message),
+        })
+        .collect();
+    match &document.root {
+        None => out.push("ui draws nothing".into()),
+        Some(root) => {
+            for hit in oa_copy::violations(&openui_lang::embed::plain(root), &[]) {
+                out.push(format!(
+                    "ui machine talk ({:?} in \"{}\")",
+                    hit.term, hit.context
+                ));
+            }
+        }
+    }
+    out
 }
 
 fn fill(text: &str, slots: &BTreeMap<String, String>, facts: &Facts) -> Option<String> {
@@ -695,6 +747,24 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             }
             if offer.label.trim().is_empty() {
                 push(id, "the offer has no label".into());
+            }
+        }
+        if let Some(ui) = &entry.ui {
+            for problem in ui_problems(ui) {
+                push(id, problem);
+            }
+            if entry.stem.is_some() {
+                push(id, "ui goes with a whole text, not a stem".into());
+            }
+            if entry
+                .text
+                .as_deref()
+                .is_some_and(|text| text.chars().count() > MAX_LEAD_CHARS)
+            {
+                push(
+                    id,
+                    format!("with ui, the text is a lead of at most {MAX_LEAD_CHARS} characters"),
+                );
             }
         }
         if let Some(verdict) = &entry.verdict

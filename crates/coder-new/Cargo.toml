@@ -9,6 +9,8 @@ description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
 markdown-stream = { path = "../markdown-stream" }
+# A reply's component blocks, shown as their Markdown fallback (#11187).
+openui-lang = { path = "../openui-lang" }
 coder-cloud = { path = "../coder-cloud" }
 atif = { path = "../atif" }
 brainstorm-client = { path = "../brainstorm-client" }

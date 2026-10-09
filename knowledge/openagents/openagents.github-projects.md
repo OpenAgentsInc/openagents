@@ -1,6 +1,6 @@
 ---
 id: openagents.github-projects
-version: 2
+version: 3
 kind: product
 title: "Connecting a GitHub repository"
 summary: >-
@@ -15,13 +15,14 @@ applies_when: >-
   GitHub" means on openagents.com. Not how Coder uses git on a connected
   computer, and not signing in itself.
 answer: >-
-  Sign in with GitHub at https://openagents.com/login, then open Projects at
-  https://openagents.com/projects and connect GitHub. GitHub asks for access
-  to private repositories only if you include them; public only asks for
-  nothing new. Pick a repository to add it as a project. Chats you start from
-  the project, or with it picked under the message box, are grouped under it
-  in the left panel, and a chat's menu can move it there. If GitHub access
-  ends, your projects stay and say Reconnect GitHub.
+  Sign in with GitHub, connect GitHub in Projects at
+  https://openagents.com/projects, and pick a repository; chats you start in
+  a project are grouped under it in the left panel.
+ui: |
+  root = Card("Connect a GitHub repository", [Text("GitHub asks for access to private repositories only if you include them. If its access ends, your projects stay and offer to reconnect."), github, public, login])
+  github = Button("Connect GitHub", href="/auth/github/repos?access=private", show="signed_in")
+  public = Button("Public repositories only", href="/auth/github/repos?access=public", style="secondary", show="signed_in")
+  login = Button("Sign in with GitHub", href="/login?return_to=/projects", show="signed_out")
 status: admitted
 author: openagents
 provenance:
@@ -34,6 +35,7 @@ provenance:
 evidence:
   - "2026-10-09: written from the cited documents and code and checked against them (#11034); the answer text awaits the owner's copy review."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
+  - "2026-10-09: v3 (#11187): a short answer with components (ui): Connect GitHub and Public repositories only buttons that start the connect flow when signed in, and Sign in with GitHub when not; checked against crates/openagents-web/src/projects/mod.rs."
 ---
 
 ## Answer

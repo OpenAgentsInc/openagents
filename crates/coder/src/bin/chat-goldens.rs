@@ -762,10 +762,34 @@ fn replies(html: &str) -> Vec<Reply> {
             tier: attribute(&tag, "data-oa-tier"),
             route: attribute(&tag, "data-oa-route"),
             answer: attribute(&tag, "data-oa-answer"),
-            text: plain(body),
+            text: with_links(&plain(body), body),
             after: plain(&open[end..after_end]).chars().take(200).collect(),
         });
         rest = &open[end.max(1)..];
+    }
+    out
+}
+
+/// `text` followed by the target of each link in `html` that the text does
+/// not already show, site paths made absolute: a button or a linked label
+/// reads as where it goes (#11187).
+fn with_links(text: &str, html: &str) -> String {
+    let mut out = text.to_owned();
+    let mut rest = html;
+    while let Some(at) = rest.find("<a ") {
+        let tag = &rest[at..];
+        let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
+        if let Some(href) = attribute(&format!(" {tag}"), "href") {
+            let shown = if href.starts_with('/') {
+                format!("https://openagents.com{href}")
+            } else {
+                href
+            };
+            if !out.contains(&shown) {
+                out.push_str(&format!(" {shown}"));
+            }
+        }
+        rest = &rest[at + 3..];
     }
     out
 }

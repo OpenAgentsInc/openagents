@@ -1,0 +1,229 @@
+/* Answer components (content/answer.rs): a titled card, cards side by side,
+   numbered steps, and tabs, drawn inside a reply. Colors come from the
+   semantic tokens, so they follow Coder Light and Coder Noir. The columns
+   frame is a size container, so the cards sit side by side only where the
+   reply column has room, and stack on a phone. */
+
+.oa-answer-columns-frame {
+  container-type: inline-size;
+  width: 100%;
+  margin-block: calc(var(--spacing) * 3);
+}
+
+.oa-answer-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--spacing) * 3);
+}
+
+@container (min-width: 36rem) {
+  .oa-answer-columns {
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    grid-auto-flow: column;
+  }
+}
+
+.oa-answer-columns__item {
+  display: flex;
+  min-width: 0;
+}
+
+.oa-answer-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+  box-sizing: border-box;
+  min-width: 0;
+  margin-block: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-elevated);
+}
+
+.oa-answer-columns__item > .oa-answer-card {
+  margin-block: 0;
+}
+
+.oa-markdown .oa-answer-card__title,
+.oa-answer-card__title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-text-md-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.3;
+}
+
+.oa-answer-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+}
+
+.oa-answer-card__body > *,
+.oa-answer-step__body > * {
+  max-width: 100%;
+  margin: 0;
+}
+
+.oa-answer-card__body > .oa-code-block,
+.oa-answer-card__body > .oa-tabs,
+.oa-answer-card__body > .oa-answer-steps,
+.oa-answer-step__body > .oa-code-block,
+.oa-answer-step__body > .oa-tabs {
+  align-self: stretch;
+}
+
+.oa-markdown .oa-answer-steps,
+.oa-answer-steps {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-markdown .oa-answer-step,
+.oa-answer-step {
+  display: grid;
+  grid-template-columns: calc(var(--spacing) * 6) minmax(0, 1fr);
+  column-gap: calc(var(--spacing) * 3);
+  margin: 0;
+  padding: 0;
+}
+
+.oa-answer-step__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 6);
+  height: calc(var(--spacing) * 6);
+  border-radius: 999px;
+  background: light-dark(var(--gray-100), var(--gray-200));
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-answer-step__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+}
+
+.oa-markdown .oa-answer-step__title,
+.oa-answer-step__title {
+  margin: 0;
+  padding-top: calc(var(--spacing) * 0.5);
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.4;
+}
+
+/* Tabs: native radios; the checked one's panel shows. */
+.oa-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+}
+
+.oa-tabs__list {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 0.5);
+  padding: calc(var(--spacing) * 0.5);
+  border-radius: var(--radius-lg);
+  background: light-dark(var(--gray-100), var(--gray-200));
+}
+
+.oa-tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--spacing) * 7);
+  padding-inline: calc(var(--spacing) * 3);
+  border-radius: calc(var(--radius-lg) - 2px);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  user-select: none;
+}
+
+.oa-tabs__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.oa-tabs__tab:has(.oa-tabs__input:checked) {
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.4));
+}
+
+.oa-tabs__tab:has(.oa-tabs__input:focus-visible) {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.oa-tabs__panel {
+  min-width: 0;
+}
+
+.oa-tabs__panel > .oa-code-block,
+.oa-markdown .oa-tabs__panel > .oa-code-block {
+  margin: 0;
+}
+
+.oa-markdown .oa-tabs__panel-label,
+.oa-tabs__panel-label {
+  margin: 0 0 calc(var(--spacing) * 1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+/* Where :has() works, only the checked tab's panel shows and the tab row
+   names it; elsewhere every panel shows under its own name. */
+@supports selector(:has(*)) {
+  .oa-tabs__panel,
+  .oa-tabs__panel-label {
+    display: none;
+  }
+
+  .oa-tabs:has(.oa-tabs__input[data-tab="0"]:checked) > .oa-tabs__panel[data-tab="0"],
+  .oa-tabs:has(.oa-tabs__input[data-tab="1"]:checked) > .oa-tabs__panel[data-tab="1"],
+  .oa-tabs:has(.oa-tabs__input[data-tab="2"]:checked) > .oa-tabs__panel[data-tab="2"],
+  .oa-tabs:has(.oa-tabs__input[data-tab="3"]:checked) > .oa-tabs__panel[data-tab="3"],
+  .oa-tabs:has(.oa-tabs__input[data-tab="4"]:checked) > .oa-tabs__panel[data-tab="4"],
+  .oa-tabs:has(.oa-tabs__input[data-tab="5"]:checked) > .oa-tabs__panel[data-tab="5"] {
+    display: block;
+  }
+}
+
+@supports not selector(:has(*)) {
+  .oa-tabs__list {
+    display: none;
+  }
+}
+
+.oa-tabs__label {
+  white-space: nowrap;
+}
+
+/* A button in a reply is a control, not a text link. */
+.oa-markdown .oa-answer-ui a.oa-button,
+.oa-markdown .oa-answer-card a.oa-button {
+  text-decoration: none;
+}

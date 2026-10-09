@@ -51,7 +51,8 @@ enum AlignX {
 }
 
 /// One styled range of a paragraph. `code` draws an inline-code background;
-/// `link` records an inert destination.
+/// `link` records the destination, which a `link` widget opens when
+/// [`crate::markdown::opens`] admits it.
 struct Piece {
     style: TextStyle,
     start: usize,

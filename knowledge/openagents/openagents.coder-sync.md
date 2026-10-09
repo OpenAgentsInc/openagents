@@ -1,6 +1,6 @@
 ---
 id: openagents.coder-sync
-version: 2
+version: 3
 kind: product
 title: "Signing in to Coder and syncing its chats"
 summary: >-
@@ -17,13 +17,16 @@ applies_when: >-
   or how to sign Coder out. Not how to install Coder
   (openagents.install-coder).
 answer: >-
-  Run `coder login` (or type `/login` in Coder) and approve its short code at
-  https://openagents.com/device while signed in. Then type `/sync on` in Coder
-  to save its chats to your account: they show in the website's left panel
-  with your computer's name. `/sync all` adds earlier chats, `/sync off`
-  stops, and `/sync delete` removes this computer's chats. Messages that look
-  like they hold a password or key are left out. While Coder is open with sync
-  on, you can reply to those chats from the website.
+  Sign Coder in with `coder login` and approve its code at
+  https://openagents.com/device; then `/sync on` shows its chats in the
+  website's left panel, where you can reply while Coder is open.
+ui: |
+  root = Stack([steps, more])
+  steps = Steps([login, approve, sync])
+  login = Step("Sign in from your terminal", [CodeBlock("coder login", "bash"), Text("Or type /login inside Coder.")])
+  approve = Step("Approve its code while signed in", [Button("Approve sign-in", href="/device")])
+  sync = Step("Save its chats to your account", [CodeBlock("/sync on")])
+  more = Text("/sync all adds earlier chats, /sync off stops, and /sync delete removes this computer's chats. Messages that look like they hold a password or key are left out.")
 status: admitted
 author: openagents
 provenance:
@@ -35,6 +38,7 @@ provenance:
 evidence:
   - "2026-10-09: written from the cited documents and code and checked against them (#11045, #11046, #11047, #11048, chat goldens); the answer text awaits the owner's copy review."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
+  - "2026-10-09: v3 (#11187): a short answer with components (ui): `coder login`, an Approve sign-in button for openagents.com/device, and `/sync on`, each copyable; checked against the cited sources."
 ---
 
 ## Answer

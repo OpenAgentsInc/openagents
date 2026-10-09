@@ -1,6 +1,6 @@
 ---
 id: openagents.web-account
-version: 2
+version: 3
 kind: product
 title: "Signing in on openagents.com"
 summary: >-
@@ -23,6 +23,10 @@ answer: >-
   any browser where you sign in, chats you started signed out move to your
   account, and you can add your GitHub repositories as projects, save your own
   Claude key in Settings, and sign in to Coder.
+ui: |
+  root = Stack([signin, settings])
+  signin = Button("Sign in with GitHub", href="/login", show="signed_out")
+  settings = Button("Open Settings", href="/settings", style="secondary", show="signed_in")
 status: admitted
 author: openagents
 provenance:
@@ -35,6 +39,7 @@ provenance:
 evidence:
   - "2026-10-09: written from the cited documents and code and checked against them (#11039, #11045, chat goldens); the answer text awaits the owner's copy review."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
+  - "2026-10-09: v3 (#11187): a Sign in with GitHub button for a signed-out reader and Open Settings for a signed-in one (ui); checked against crates/openagents-web/src/auth.rs."
 ---
 
 ## Answer

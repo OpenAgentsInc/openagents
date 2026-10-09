@@ -1,6 +1,6 @@
 ---
 id: openagents.connect-codebase
-version: 1
+version: 2
 kind: product
 title: "Connecting your codebase"
 summary: >-
@@ -14,12 +14,17 @@ applies_when: >-
   their own code. Not a specific change to make in a repository, and not
   only how GitHub sign-in or projects work (openagents.github-projects).
 answer: >-
-  Two ways. On the web: sign in at https://openagents.com/projects, connect
-  GitHub, and add a repository. On your own computer: install Coder with
-  `curl -fsSL https://openagents.com/cli/install.sh | sh` (Windows:
-  `irm https://openagents.com/cli/install.ps1 | iex`), run `coder login`
-  and approve it at https://openagents.com/device, then `cd` into your repo
-  and run `coder`. Type `/sync on` to see those chats on the web too.
+  Two ways: add a GitHub repository at https://openagents.com/projects, or
+  use Coder in it on your own computer.
+ui: |
+  root = Columns([web, computer])
+  web = Card("On the web", [Text("Sign in, connect GitHub, and pick a repository to add as a project."), github, login])
+  github = Button("Connect GitHub", href="/auth/github/repos?access=private", show="signed_in")
+  login = Button("Log in to connect", href="/login?return_to=/projects", show="signed_out")
+  computer = Card("On your computer", [Steps([install, signin, sync])])
+  install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
+  signin = Step("Sign in, then approve it on the web", [CodeBlock("coder login", "bash"), Button("Approve sign-in", href="/device", style="secondary")])
+  sync = Step("Run Coder in your repository and turn on sync to see its chats on the web", [CodeBlock("coder", "bash"), CodeBlock("/sync on")])
 status: admitted
 author: openagents
 provenance:
@@ -32,11 +37,12 @@ provenance:
     - docs/auth/github.md
 evidence:
   - "2026-10-09: written for the starter question 'How do I connect my codebase?' (#11095) from the cited code and documents, and checked against them; it matches the prepared answer meta.codebase."
+  - "2026-10-09: v2 (#11187): the answer is a one-line lead, and its steps are components (ui): a Connect GitHub button, the install command for each system with Copy, coder login with an Approve sign-in button, and /sync on; the same as meta.codebase v2, checked against the cited sources."
 ---
 
 ## Answer
 
-Two ways. On the web: sign in at https://openagents.com/projects, connect GitHub, and add a repository. On your own computer: install Coder with `curl -fsSL https://openagents.com/cli/install.sh | sh` (Windows: `irm https://openagents.com/cli/install.ps1 | iex`), run `coder login` and approve it at https://openagents.com/device, then `cd` into your repo and run `coder`. Type `/sync on` to see those chats on the web too.
+Two ways: add a GitHub repository at https://openagents.com/projects, or use Coder in it on your own computer. On the web, sign in, connect GitHub at https://openagents.com/projects, and pick a repository. On your own computer, install Coder (`curl -fsSL https://openagents.com/cli/install.sh | bash`, or on Windows `irm https://openagents.com/cli/install.ps1 | iex`), run `coder login` and approve it at https://openagents.com/device, then run `coder` in your repository and type `/sync on` to see its chats on the web.
 
 ## Details
 

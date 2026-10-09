@@ -906,8 +906,9 @@ impl TranscriptCache {
             let entry = crate::live::Entry::Assistant {
                 elapsed_ms: None,
                 // Only the part that renders cleanly so far: no half-written
-                // fence, table row, link, or emphasis shows raw (#11112).
-                text: markdown_stream::renderable(&chat.partial).into_owned(),
+                // fence, table row, link, emphasis, or component statement
+                // shows raw (#11112, #11187).
+                text: markdown_stream::renderable(&shown(&chat.partial)).into_owned(),
                 model: chat.partial_model.clone(),
             };
             if self
@@ -974,7 +975,7 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     if !app.live.partial.is_empty() {
         reply_lines(
             &mut lines,
-            &markdown_stream::renderable(&app.live.partial),
+            &markdown_stream::renderable(&shown(&app.live.partial)),
             app.live.partial_model.as_deref(),
             None,
             width,
@@ -1059,7 +1060,7 @@ fn reply_lines(
     elapsed_ms: Option<u64>,
     width: u16,
 ) {
-    lines.extend(message_body(text, width));
+    lines.extend(message_body(&shown(text), width));
     let elapsed = elapsed_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.0));
     let footer = match (model, elapsed) {
         (Some(model), Some(elapsed)) => {
@@ -1072,6 +1073,17 @@ fn reply_lines(
         (None, None) => return,
     };
     lines.push(Line::from(span(truncate(&footer, width), t::GRAY)).right_aligned());
+}
+
+/// A reply as the terminal shows it: each component block
+/// (```` ```openui-lang ````) as its Markdown fallback, with links written
+/// out, numbered steps, and each command a code block (#11187).
+fn shown(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains(openui_lang::LANG) {
+        std::borrow::Cow::Owned(openui_lang::embed::fallback(text))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
 }
 
 fn composer_rail_text(text: &str, width: u16) -> String {
@@ -1245,5 +1257,42 @@ mod streaming_tests {
             );
         }
         assert!(shown("Intro\n\n```rust\nfn main").contains("fn main"));
+    }
+
+    const BLOCK: &str = "Connect it here.\n\n```openui-lang\nroot = Card(\"On your computer\", [Steps([install]), Button(\"Approve sign-in\", href=\"/device\")])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\n```\n";
+
+    /// A component block shows as readable Markdown: numbered steps, the
+    /// command, and the link written out; never its statements (#11187).
+    #[test]
+    fn a_component_block_shows_as_markdown() {
+        let mut lines = Vec::new();
+        super::reply_lines(&mut lines, BLOCK, None, None, 80);
+        let text = lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        for expected in [
+            "Install Coder",
+            "curl -fsSL https://openagents.com/cli/install.sh | bash",
+            "https://openagents.com/device",
+        ] {
+            assert!(text.contains(expected), "{expected}: {text}");
+        }
+        for raw in ["root =", "Steps(", "openui-lang"] {
+            assert!(!text.contains(raw), "{raw}: {text}");
+        }
+        // While it streams, no statement or half-written command shows.
+        for (at, _) in BLOCK.char_indices() {
+            let text = shown(&BLOCK[..at]);
+            for raw in ["root", "Card(", "href"] {
+                assert!(
+                    !text.contains(raw),
+                    "{:?} shows {raw}: {text}",
+                    &BLOCK[..at]
+                );
+            }
+            assert!(!text.contains("curl") || text.contains("bash"), "{text}");
+        }
     }
 }

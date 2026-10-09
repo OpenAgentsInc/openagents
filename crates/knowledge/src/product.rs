@@ -165,6 +165,18 @@ pub fn check(entries: &[Entry], root: Option<&Path>) -> Vec<Problem> {
                 problem(format!("the cite `{cite}` names no file in the repository"));
             }
         }
+        if let Some(ui) = &entry.ui {
+            if entry.answer.is_none() {
+                problem("it has ui but no answer for the ui to follow".to_string());
+            }
+            let document = openui_lang::parse(ui);
+            if document.root.is_none() {
+                problem("its ui draws nothing".to_string());
+            }
+            for diagnostic in document.diagnostics {
+                problem(format!("its ui: {}", diagnostic.message));
+            }
+        }
         match &entry.answer {
             None => {}
             Some(answer) if answer.chars().count() > MAX_ANSWER_CHARS => problem(format!(

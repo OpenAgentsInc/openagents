@@ -1,9 +1,17 @@
 //! Markdown parsed in Rust into a closed block tree for a native adapter.
 //!
 //! The application parses; the adapter only lays out typed blocks and inline
-//! spans. Links stay inert text with a destination the adapter may show;
-//! images appear as their alternative text; raw HTML is dropped. Nothing in a
-//! document can load a resource or run code.
+//! spans. A link carries its destination; the adapter opens it only when
+//! [`opens`] admits it (an `https` URL), and never loads anything on its
+//! own. Bare URLs and `openagents.com` paths in text become links
+//! ([`markdown_stream::autolink`]), and a site path such as `/projects`
+//! points at `https://openagents.com`. Images appear as their alternative
+//! text; raw HTML is dropped. Nothing in a document can load a resource or
+//! run code.
+//!
+//! A reply's component blocks (```` ```openui-lang ````, #11187) are drawn as
+//! their Markdown fallback: links, numbered steps, and each command a code
+//! block with its copy control ([`openui_lang::embed::fallback`]).
 //!
 //! [`IncrementalMarkdown`] keeps a streaming message's blocks current while
 //! text arrives, reparsing only the tail, and offers a mended display copy of
@@ -16,6 +24,7 @@ pub use incremental::IncrementalMarkdown;
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 /// Text styles on one inline run.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,8 +40,8 @@ pub struct Span {
     /// Inline code.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub code: bool,
-    /// A link's destination, shown but not opened unless the application
-    /// separately admits it.
+    /// A link's destination. An adapter opens it only when [`opens`]
+    /// admits it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
 }
@@ -179,9 +188,83 @@ pub fn depth(blocks: &[Block]) -> usize {
         .unwrap_or(0)
 }
 
-/// Parse CommonMark with tables, strikethrough, and task lists.
+/// Parse CommonMark with tables, strikethrough, and task lists. A
+/// component block becomes its Markdown fallback first ([`shown`]).
 pub fn parse(markdown: &str) -> Vec<Block> {
-    parse_starts(markdown).0
+    parse_starts(&shown(markdown), false).0
+}
+
+/// The Markdown drawn for `text`: `text` itself, with each component block
+/// (```` ```openui-lang ````) replaced by its Markdown fallback. A block
+/// still streaming in shows only its finished parts.
+pub fn shown(text: &str) -> Cow<'_, str> {
+    if text.contains(openui_lang::LANG) {
+        Cow::Owned(openui_lang::embed::fallback(text))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+/// Where a site path points.
+const SITE: &str = "https://openagents.com";
+
+/// Whether an adapter may open `destination`: only an `https` URL with a
+/// host. The adapter opens it in the system browser.
+pub fn opens(destination: &str) -> bool {
+    destination
+        .get(..8)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+        && destination[8..]
+            .chars()
+            .next()
+            .is_some_and(char::is_alphanumeric)
+        && !destination.chars().any(char::is_whitespace)
+}
+
+/// A link destination as drawn: a site path (`/projects`) points at
+/// `https://openagents.com`; anything else is kept as written.
+fn destination(url: &str) -> String {
+    if url.starts_with('/') && !url.starts_with("//") {
+        format!("{SITE}{url}")
+    } else {
+        url.to_owned()
+    }
+}
+
+/// `spans` with each bare URL in plain text made a link. With `growing`, a
+/// URL that runs to the end of the last span may still be streaming in, so
+/// it stays text.
+fn autolinked(spans: Vec<Span>, growing: bool) -> Vec<Span> {
+    let last = spans.len().saturating_sub(1);
+    let mut out = Vec::with_capacity(spans.len());
+    for (index, span) in spans.into_iter().enumerate() {
+        if span.code || span.link.is_some() {
+            out.push(span);
+            continue;
+        }
+        let found = markdown_stream::autolink::find(&span.text, growing && index == last);
+        if found.is_empty() {
+            out.push(span);
+            continue;
+        }
+        let piece = |text: &str, link: Option<String>| Span {
+            text: text.to_owned(),
+            link,
+            ..span.clone()
+        };
+        let mut at = 0;
+        for link in found {
+            if link.range.start > at {
+                out.push(piece(&span.text[at..link.range.start], None));
+            }
+            out.push(piece(&span.text[link.range.clone()], Some(link.href)));
+            at = link.range.end;
+        }
+        if at < span.text.len() {
+            out.push(piece(&span.text[at..], None));
+        }
+    }
+    out
 }
 
 /// Where a top-level block begins: the byte offset of the line it starts on,
@@ -192,8 +275,10 @@ struct Start {
     before: usize,
 }
 
-/// Parse `markdown` and report where each top-level block begins.
-fn parse_starts(markdown: &str) -> (Vec<Block>, Vec<Start>) {
+/// Parse `markdown` and report where each top-level block begins. With
+/// `streaming`, the text may still grow, so a bare URL at its very end
+/// stays text.
+fn parse_starts(markdown: &str, streaming: bool) -> (Vec<Block>, Vec<Start>) {
     let options =
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let mut builder = Builder::default();
@@ -214,6 +299,7 @@ fn parse_starts(markdown: &str) -> (Vec<Block>, Vec<Start>) {
             Event::End(_) => depth = depth.saturating_sub(1),
             _ => {}
         }
+        builder.at_end = streaming && range.end >= markdown.len();
         builder.event(event);
     }
     (builder.finish(), starts)
@@ -250,6 +336,10 @@ struct Builder {
     /// The open leaf: a heading level, a paragraph, a code block, or a cell.
     leaf: Option<Leaf>,
     style: Style,
+    /// The current event reaches the end of a source still streaming in.
+    at_end: bool,
+    /// The open leaf's last text reached the end of a streaming source.
+    growing: bool,
 }
 
 enum Leaf {
@@ -302,6 +392,7 @@ impl Builder {
             // Inline text outside a paragraph, as in a tight list item.
             self.leaf = Some(Leaf::Paragraph);
         }
+        self.growing = self.at_end && !code;
         let span = Span {
             text: text.to_owned(),
             bold: self.style.bold > 0,
@@ -325,7 +416,8 @@ impl Builder {
     }
 
     fn close_leaf(&mut self) {
-        let spans = std::mem::take(&mut self.spans);
+        let spans = autolinked(std::mem::take(&mut self.spans), self.growing);
+        self.growing = false;
         match self.leaf.take() {
             Some(Leaf::Heading(level)) => self.push_block(Block::Heading { level, spans }),
             Some(Leaf::Paragraph) if !spans.is_empty() => {
@@ -451,7 +543,7 @@ impl Builder {
             Tag::Emphasis => self.style.italic += 1,
             Tag::Strong => self.style.bold += 1,
             Tag::Strikethrough => self.style.strike += 1,
-            Tag::Link { dest_url, .. } => self.style.link.push(dest_url.to_string()),
+            Tag::Link { dest_url, .. } => self.style.link.push(destination(&dest_url)),
             // An image shows its alternative text, which follows as text.
             Tag::Image { .. } => {}
             _ => {}
@@ -649,5 +741,125 @@ mod tests {
         let doc = parse("<script>x</script>\n\n- a\n  - b\n    > c\n");
         assert!(matches!(&doc[0], Block::Paragraph { spans } if spans[0].code));
         assert!(depth(&doc) >= 4);
+    }
+
+    fn links(blocks: &[Block]) -> Vec<(String, String)> {
+        fn walk(blocks: &[Block], out: &mut Vec<(String, String)>) {
+            for block in blocks {
+                match block {
+                    Block::Heading { spans, .. } | Block::Paragraph { spans } => out.extend(
+                        spans
+                            .iter()
+                            .filter_map(|s| Some((s.text.clone(), s.link.clone()?))),
+                    ),
+                    Block::List { items, .. } => {
+                        for item in items {
+                            walk(&item.blocks, out);
+                        }
+                    }
+                    Block::Quote { blocks } => walk(blocks, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(blocks, &mut out);
+        out
+    }
+
+    #[test]
+    fn bare_urls_and_site_paths_become_links() {
+        let doc = parse(
+            "Open **https://openagents.com/projects** or openagents.com/device, then [the docs](/docs).\n\n\
+             - see https://example.test/a_b.\n\n\
+             Not `https://in.code/x`, not [https://a.test](https://b.test).\n\n\
+             ```\nhttps://in.block/x\n```\n",
+        );
+        assert_eq!(
+            links(&doc),
+            [
+                (
+                    "https://openagents.com/projects".into(),
+                    "https://openagents.com/projects".into()
+                ),
+                (
+                    "openagents.com/device".into(),
+                    "https://openagents.com/device".into()
+                ),
+                ("the docs".into(), "https://openagents.com/docs".into()),
+                (
+                    "https://example.test/a_b".into(),
+                    "https://example.test/a_b".into()
+                ),
+                ("https://a.test".into(), "https://b.test".into()),
+            ]
+        );
+        let Block::Paragraph { spans } = &doc[0] else {
+            panic!("paragraph")
+        };
+        // The link keeps the text's style, and the text around it stays.
+        assert!(spans[1].bold && spans[1].link.is_some());
+        assert_eq!(spans[0].text, "Open ");
+        assert_eq!(
+            super::plain(&doc).lines().next(),
+            Some("Open https://openagents.com/projects or openagents.com/device, then the docs.")
+        );
+    }
+
+    #[test]
+    fn only_https_destinations_open() {
+        assert!(opens("https://openagents.com/device"));
+        assert!(opens("HTTPS://example.test"));
+        for no in [
+            "http://example.test",
+            "/projects",
+            "javascript:alert(1)",
+            "https://",
+            "https:///x",
+            "https://a b",
+            "",
+        ] {
+            assert!(!opens(no), "{no}");
+        }
+    }
+
+    const REPLY: &str = "Connect it on the web or on your computer.\n\n```openui-lang\n\
+root = Columns([web, computer])\n\
+web = Card(\"On the web\", [Text(\"Pick a repository.\"), Button(\"Connect GitHub\", href=\"/projects\")])\n\
+computer = Card(\"On your computer\", [Steps([install, login])])\n\
+install = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\n\
+login = Step(\"Sign in\", [CodeBlock(\"coder login\", \"bash\")])\n\
+```\n";
+
+    #[test]
+    fn a_component_block_is_drawn_as_its_fallback() {
+        let doc = parse(REPLY);
+        let text = super::plain(&doc);
+        assert!(!text.contains("root ="), "{text}");
+        assert!(!text.contains("Columns("), "{text}");
+        assert!(
+            links(&doc).contains(&(
+                "Connect GitHub".into(),
+                "https://openagents.com/projects".into()
+            )),
+            "{doc:?}"
+        );
+        let Some(Block::List {
+            ordered: true,
+            items,
+            ..
+        }) = doc.iter().find(|b| matches!(b, Block::List { .. }))
+        else {
+            panic!("numbered steps: {doc:?}")
+        };
+        assert_eq!(items.len(), 2);
+        assert!(items[0].blocks.contains(&Block::Code {
+            language: Some("bash".into()),
+            text: "curl -fsSL https://openagents.com/cli/install.sh | bash\n".into()
+        }));
+        assert!(items[1].blocks.contains(&Block::Code {
+            language: Some("bash".into()),
+            text: "coder login\n".into()
+        }));
     }
 }

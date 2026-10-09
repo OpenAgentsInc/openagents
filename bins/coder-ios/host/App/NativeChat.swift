@@ -42,7 +42,8 @@ struct NativeComposerChoice: Decodable, Equatable, Hashable {
     let label: String
 }
 
-/// One inline run of parsed Markdown. A link destination is never opened.
+/// One inline run of parsed Markdown. A link opens only when its
+/// destination is an `https` URL, in the system browser.
 struct NativeMarkdownSpan: Decodable, Hashable {
     let text: String
     let bold: Bool
@@ -632,11 +633,14 @@ final class NativeMarkdownCache {
             ]
             if span.code { attributes[.backgroundColor] = NativeChatPalette.inlineCode }
             if span.strike { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-            // A link is styled but carries no `.link` attribute, so it stays
-            // inert.
-            if span.link != nil {
+            // Only an `https` destination becomes a `.link` that opens, as
+            // `rust_native::markdown::opens` admits; any other stays inert.
+            if let link = span.link {
                 attributes[.foregroundColor] = NativeChatPalette.link
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                if let url = URL(string: link), url.scheme?.lowercased() == "https", url.host != nil {
+                    attributes[.link] = url
+                }
             }
             result.append(NSAttributedString(string: span.text, attributes: attributes))
         }
@@ -683,6 +687,10 @@ private struct NativeInlineText: UIViewRepresentable {
         view.isSelectable = true
         view.isScrollEnabled = false
         view.dataDetectorTypes = []
+        view.linkTextAttributes = [
+            .foregroundColor: NativeChatPalette.link,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ]
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.textContainer.widthTracksTextView = true
@@ -746,8 +754,11 @@ private struct NativeInlineText: UIViewRepresentable {
 
         func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem,
                       defaultAction: UIAction) -> UIAction? {
-            // Nothing in a document opens a destination.
-            nil
+            // Only an `https` link opens, in the system browser.
+            if case .link(let url) = textItem.content, url.scheme?.lowercased() == "https" {
+                return UIAction { _ in UIApplication.shared.open(url) }
+            }
+            return nil
         }
     }
 }

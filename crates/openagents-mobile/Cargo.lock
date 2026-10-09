@@ -5609,6 +5609,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openui-lang"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ordered-float"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6799,6 +6806,7 @@ version = "0.1.0"
 dependencies = [
  "code-highlight",
  "markdown-stream",
+ "openui-lang",
  "paper-mono",
  "pulldown-cmark",
  "serde",

@@ -129,6 +129,11 @@ pub struct Entry {
     /// entry may carry so the chat can show it as it is. `None` for every
     /// other kind of entry, and for a product entry without one.
     pub answer: Option<String>,
+    /// Components shown under the answer, as OpenUI Lang statements
+    /// (`openui-lang`, #11187): buttons that start a flow, copyable
+    /// commands, numbered steps. Written as a literal (`|`) block; only a
+    /// product entry with an answer carries them.
+    pub ui: Option<String>,
     /// The Markdown after the front matter.
     pub body: String,
     /// `sha256:` and the hex SHA-256 of the whole file.
@@ -149,6 +154,7 @@ const KEYS: &[&str] = &[
     "provenance",
     "evidence",
     "answer",
+    "ui",
 ];
 
 /// `sha256:` and the hex SHA-256 of `bytes`.
@@ -248,6 +254,11 @@ impl Entry {
                 .map(str::trim)
                 .filter(|a| !a.is_empty())
                 .map(str::to_string),
+            ui: get("ui")
+                .and_then(Value::text)
+                .map(str::trim)
+                .filter(|ui| !ui.is_empty())
+                .map(str::to_string),
             body,
             digest: digest(text.as_bytes()),
         })
@@ -306,6 +317,16 @@ impl Entry {
         ));
         if let Some(answer) = &self.answer {
             out.push_str(&format!("answer: >-\n{}\n", folded(answer)));
+        }
+        if let Some(ui) = &self.ui {
+            out.push_str("ui: |\n");
+            for line in ui.lines() {
+                if line.trim().is_empty() {
+                    out.push('\n');
+                } else {
+                    out.push_str(&format!("  {line}\n"));
+                }
+            }
         }
         out.push_str(&format!("status: {}\n", self.status));
         out.push_str(&format!("author: {}\n", inline(&self.author)));

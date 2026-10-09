@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 workbench = { path = "../workbench" }
+openui-lang = { path = "../openui-lang" }
 codex-transport = { path = "../codex-transport" }
 # The codebase index file is gzip-compressed.
 flate2 = "1"

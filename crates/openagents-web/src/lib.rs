@@ -34,6 +34,7 @@ mod device;
 mod docs_mcp;
 mod environments;
 mod layout;
+mod answer_ui;
 mod markdown;
 mod pages;
 pub mod palette;

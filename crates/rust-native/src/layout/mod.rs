@@ -904,7 +904,36 @@ fn lay(
         }
     };
     ctx.out.height = height;
+    link_targets(&mut ctx.out);
     ctx.out
+}
+
+/// A [`display::WidgetKind::Link`] over each link that opens, outside the
+/// regions that scroll sideways (a widget does not scroll with them).
+fn link_targets(out: &mut RowDisplay) {
+    let targets: Vec<display::Widget> = out
+        .links
+        .iter()
+        .enumerate()
+        .filter(|(number, link)| {
+            let number = *number as u32;
+            crate::markdown::opens(&link.destination)
+                && !out
+                    .scrollers
+                    .iter()
+                    .any(|s| (s.links[0]..s.links[1]).contains(&number))
+        })
+        .map(|(_, link)| display::Widget {
+            x: link.x,
+            y: link.y,
+            w: link.w,
+            h: link.h,
+            kind: display::WidgetKind::Link {
+                url: link.destination.clone(),
+            },
+        })
+        .collect();
+    out.widgets.extend(targets);
 }
 
 fn hash_of(value: &impl Hash) -> u64 {

@@ -1728,7 +1728,14 @@ fn turn(
     plugins: &[String],
     reply: Option<&openagents_chat::router::Meta>,
     streaming: bool,
+    signed_in: bool,
 ) -> ThreadMessage {
+    // A chat an account owns is read signed in; an answer's buttons for
+    // the other case are left out.
+    let reader = crate::markdown::Reader {
+        signed_in: Some(signed_in),
+        id: format!("chat-message-{index}"),
+    };
     match message.role {
         Role::User => ThreadMessage::user(&message.text),
         Role::Assistant => ThreadMessage::assistant(html! {
@@ -1737,9 +1744,9 @@ fn turn(
                 data-oa-route=[reply.and_then(|r| r.route.as_deref())]
                 data-oa-answer=[reply.and_then(|r| r.answer.as_deref())] {}
             @if streaming {
-                (MarkdownRoot::new(PreEscaped(crate::markdown::render_streaming(&message.text))).streaming(true))
+                (MarkdownRoot::new(PreEscaped(crate::markdown::render_streaming_for(&message.text, &reader))).streaming(true))
             } @else {
-                (MarkdownRoot::new(PreEscaped(crate::markdown::render_reply(&message.text))))
+                (MarkdownRoot::new(PreEscaped(crate::markdown::render_reply_for(&message.text, &reader))))
             }
             (crate::suggestions::plugin_cards(plugins))
             span hidden data-oa-reply-end {}
@@ -1784,6 +1791,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 crate::suggestions::message_plugins(chat, message),
                 crate::suggestions::message_reply(chat, message),
                 streaming(chat, message),
+                crate::chat_store::is_account_owner(&chat.owner),
             ))
             (work::rows(chat, index + start + 1, links))
         }

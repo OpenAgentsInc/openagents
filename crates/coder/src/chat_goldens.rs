@@ -451,7 +451,7 @@ pub fn grade(set: &Set, case: &Case<'_>, observed: Observed) -> Grade {
         (false, None, None) => mk("answer", Status::Skip, "not observed"),
     });
     match &observed.text {
-        Some(text) => checks.extend(text_checks(set, golden, text)),
+        Some(text) => checks.extend(text_checks(set, golden, &readable(text))),
         None => checks.push(mk("text", Status::Skip, "no reply text in this mode")),
     }
     let budget = set.budget(golden.speed);
@@ -548,7 +548,7 @@ pub fn check(
                         continue;
                     }
                 };
-                for failed in text_checks(set, golden, &text)
+                for failed in text_checks(set, golden, &readable(&text))
                     .into_iter()
                     .filter(|c| c.status == Status::Fail)
                 {
@@ -587,8 +587,16 @@ pub fn note_answers(corpus: &knowledge::product::Corpus) -> BTreeMap<String, Str
         .base
         .entries
         .iter()
-        .filter_map(|entry| Some((entry.id.clone(), entry.answer.clone()?)))
+        .filter_map(|entry| Some((entry.id.clone(), crate::product_kb::served(entry)?)))
         .collect()
+}
+
+/// An answer's text as the checks read it: each component block replaced
+/// by its Markdown ([`openui_lang::embed::fallback`]), so its buttons'
+/// links, its commands, and its steps are read like the prose.
+#[must_use]
+pub fn readable(text: &str) -> String {
+    openui_lang::embed::fallback(text)
 }
 
 /// The website's bank facts: the worker's own, on the website.

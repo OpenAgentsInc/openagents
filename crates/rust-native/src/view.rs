@@ -151,8 +151,8 @@ pub enum Element<I> {
         note: Option<String>,
         children: Vec<Node<I>>,
     },
-    /// Markdown the application parsed. Links stay inert unless the
-    /// application separately admits them.
+    /// Markdown the application parsed. Only a link that
+    /// [`crate::markdown::opens`] admits opens, in the system browser.
     Markdown {
         blocks: Vec<crate::markdown::Block>,
     },

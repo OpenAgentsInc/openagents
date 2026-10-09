@@ -268,7 +268,15 @@ fn download_guidance_matches_the_published_apps() {
             "{id} must bump its version."
         );
         assert!(entry.cites.iter().any(|cite| cite == download_source));
-        for text in [entry.answer.as_deref().unwrap(), &entry.body] {
+        // The answer as served: its text and its components (#11187).
+        let components = entry
+            .ui
+            .as_deref()
+            .and_then(|ui| openui_lang::parse(ui).root)
+            .map(|root| openui_lang::embed::markdown(&root))
+            .unwrap_or_default();
+        let served = format!("{}\n\n{components}", entry.answer.as_deref().unwrap());
+        for text in [served.as_str(), &entry.body] {
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
             for claim in claims {
                 assert!(

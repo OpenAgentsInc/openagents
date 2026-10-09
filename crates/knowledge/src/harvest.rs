@@ -890,6 +890,7 @@ pub async fn harvest_record<P: Propose, E: Embed>(
                 .collect(),
             evidence: Vec::new(),
             answer: None,
+            ui: None,
             body: proposal.body.trim().to_string(),
             digest: String::new(),
         };

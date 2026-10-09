@@ -8,9 +8,12 @@ package com.openagents.app
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.InputFilter
@@ -18,7 +21,9 @@ import android.text.InputType
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextUtils
+import android.text.TextPaint
 import android.text.TextWatcher
+import android.text.style.ClickableSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
@@ -26,6 +31,7 @@ import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -230,10 +236,19 @@ class ChatViews(
         context.text("", size, color).apply {
             text = styled(spans)
             setTextIsSelectable(true)
-            // Links stay inert: they are styled, never opened.
+            // Text is never linked by the platform; only the `https` links
+            // Rust parsed open, on a tap that selects nothing.
             linksClickable = false
             autoLinkMask = 0
             setLineSpacing(context.dpf(2f), 1f)
+            setOnTouchListener { view, event ->
+                if (event.action != MotionEvent.ACTION_UP || hasSelection()) return@setOnTouchListener false
+                val at = getOffsetForPosition(event.x, event.y)
+                val link = (text as? Spanned)?.getSpans(at, at, OpenLink::class.java)?.firstOrNull()
+                    ?: return@setOnTouchListener false
+                link.onClick(view)
+                true
+            }
         }
 
     fun styled(spans: JSONArray): CharSequence {
@@ -249,6 +264,8 @@ class ChatViews(
             if (span.optBoolean("strike")) mark(StrikethroughSpan())
             if (span.optBoolean("code")) { mark(BackgroundColorSpan(Palette.INLINE_CODE)); mark(TypefaceSpan("monospace")) }
             if (span.textOrNull("link") != null || span.has("link")) { mark(ForegroundColorSpan(Palette.LINK)); mark(UnderlineSpan()) }
+            span.textOrNull("link")?.let(Uri::parse)?.takeIf { it.scheme.equals("https", ignoreCase = true) }
+                ?.let { mark(OpenLink(it)) }
         }
         return builder
     }
@@ -665,4 +682,17 @@ class Composer(private val context: Context, private val send: (String, String) 
         if (!busy || !stoppable) return
         (root.getTag(R.id.native_key) as? String)?.let { stop(it) }
     }
+}
+
+/** An `https` link that opens in the system browser. Its color and underline are separate spans. */
+private class OpenLink(private val url: Uri) : ClickableSpan() {
+    override fun onClick(widget: View) {
+        val open = Intent(Intent.ACTION_VIEW, url)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // With no browser installed, the tap does nothing.
+        try { widget.context.startActivity(open) } catch (ignored: ActivityNotFoundException) {}
+    }
+
+    override fun updateDrawState(ds: TextPaint) {}
 }

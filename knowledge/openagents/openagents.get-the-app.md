@@ -1,6 +1,6 @@
 ---
 id: openagents.get-the-app
-version: 8
+version: 9
 kind: product
 title: "Getting the apps"
 summary: >-
@@ -14,13 +14,14 @@ applies_when: >-
   it's in the App Store or Play Store.
 answer: >-
   https://openagents.com/download has Coder, our coding agent for your
-  terminal, with the `openagents` command-line program, for macOS, Linux, and
-  Windows, each installed with one command. On macOS or Linux, run `curl -fsSL
-  https://openagents.com/cli/install.sh | bash`. The iPhone app is in beta on
-  TestFlight: open https://testflight.apple.com/join/dvQdns5B on your iPhone.
-  The Android and desktop apps aren't on the download page right now; you can
-  build them from source at https://github.com/OpenAgentsInc/openagents. And
-  you can chat with us right here on openagents.com.
+  terminal, for macOS, Linux, and Windows; the iPhone app is in beta on
+  TestFlight, and you can chat with us right here.
+ui: |
+  root = Stack([apps, source])
+  apps = Columns([coder, phone])
+  coder = Card("Coder for your terminal", [Text("Installs with the openagents command-line program."), Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex"), Button("Download page", href="/download", style="secondary")])
+  phone = Card("iPhone", [Text("The app is in beta on TestFlight. Open the link on your iPhone."), Button("Join the beta", href="https://testflight.apple.com/join/dvQdns5B")])
+  source = Text("The Android and desktop apps aren't on the download page yet; build them from source at https://github.com/OpenAgentsInc/openagents.")
 status: admitted
 author: openagents
 provenance:
@@ -39,6 +40,7 @@ evidence:
   - "2026-10-09: v6: the install command's result is Coder and the `openagents` command; the engine Coder runs with is part of Coder, not a separate download."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
   - "2026-10-09: v8: the iPhone app ships on TestFlight (https://testflight.apple.com/join/dvQdns5B, the link the download page and /connect give), not as a source build; checked against the cited sources."
+  - "2026-10-09: v9 (#11187): a short answer with components (ui): the install command for each system with Copy, the download page, the TestFlight link, and the source link; checked against the cited sources."
 ---
 
 ## Answer

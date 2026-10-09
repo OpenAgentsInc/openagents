@@ -1311,3 +1311,42 @@ fn a_surface_with_a_height_reserves_a_box_for_the_adapter() {
     // Without a height the label shows, and the adapter draws nothing.
     assert!(layout.display(1).unwrap().widgets.is_empty());
 }
+
+/// Each link that opens (`https`) gets a tap target over its text; any
+/// other link stays inert (#11187).
+#[test]
+fn https_links_get_tap_targets() {
+    let mut layout = TranscriptLayout::new();
+    let reply = message(
+        "m",
+        MessageRole::Assistant,
+        "Approve it at openagents.com/device or read [the guide](/docs). \
+         Not [this](http://plain.test) or [that](mailto:a@b.test).",
+    );
+    layout
+        .update(update(vec![reply], 900.0), &mut FixedMeasurer::default())
+        .unwrap();
+    let display = layout.display(0).unwrap();
+    assert_eq!(display.links.len(), 4);
+    let targets: Vec<_> = display
+        .widgets
+        .iter()
+        .filter_map(|w| match &w.kind {
+            WidgetKind::Link { url } => Some((url.as_str(), w.x, w.w)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        targets.iter().map(|t| t.0).collect::<Vec<_>>(),
+        [
+            "https://openagents.com/device",
+            "https://openagents.com/docs"
+        ]
+    );
+    // Each target covers its link's text.
+    assert_eq!(
+        (targets[0].1, targets[0].2),
+        (display.links[0].x, display.links[0].w)
+    );
+    assert!(targets.iter().all(|t| t.2 > 0.0));
+}

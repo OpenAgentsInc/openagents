@@ -1,6 +1,6 @@
 ---
 id: openagents.install-coder
-version: 7
+version: 8
 kind: product
 title: "Getting Coder on a computer"
 summary: >-
@@ -14,11 +14,14 @@ applies_when: >-
   using Coder. Not how to sign Coder in to their account
   (openagents.coder-sync).
 answer: >-
-  Install Coder from https://openagents.com/download. On macOS or Linux, run
-  `curl -fsSL https://openagents.com/cli/install.sh | bash`; on Windows, in
-  PowerShell, run `irm https://openagents.com/cli/install.ps1 | iex`. It
-  installs `coder` and the `openagents` command together. Then run `coder`
-  from your project folder. Run the install command again to update.
+  Coder installs with one command, together with the `openagents` command,
+  from https://openagents.com/download; run it again to update.
+ui: |
+  root = Stack([steps, page])
+  steps = Steps([install, run])
+  install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
+  run = Step("Run it in your project folder", [CodeBlock("coder", "bash")])
+  page = Button("Download page", href="/download", style="secondary")
 status: admitted
 author: openagents
 provenance:
@@ -35,6 +38,7 @@ evidence:
   - "2026-10-09: v5 (chat goldens): the download page offers the Coder terminal and the OpenAgents command-line program with one-line installers, not the Mac app, so the answer gives the install commands from download.rs; checked against it and scripts/install/coder.sh."
   - "2026-10-09: v6: Coder is one download; the engine it runs with is part of Coder, not a separate install, so the answer names only `coder` and `openagents`; checked against download.rs and scripts/install/coder.sh."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
+  - "2026-10-09: v8 (#11187): a one-line answer with components (ui): the install command for each system with Copy, `coder` in the project folder, and the download page; checked against download.rs."
 ---
 
 ## Answer

@@ -16,8 +16,16 @@
 //! blocks are not enabled in [`super::parse`], so they need no rule. The
 //! parity tests stream corpora in random pieces and compare every step with a
 //! full parse.
+//!
+//! Once the source has a component block (```` ```openui-lang ````), each
+//! update parses its Markdown fallback ([`super::shown`]). The fallback
+//! usually grows at its end like the source, so only its tail is reparsed;
+//! when it changes earlier, as when a statement fills in a forward
+//! reference, it is parsed whole.
 
-use super::{Block, Start, mend, parse, parse_starts};
+#[cfg(test)]
+use super::parse;
+use super::{Block, Start, mend, parse_starts, shown};
 use std::borrow::Cow;
 
 /// A Markdown source that grows while a reply streams, with its parsed
@@ -27,10 +35,16 @@ use std::borrow::Cow;
 /// [`display_blocks`](Self::display_blocks) replaces the last block with a
 /// mended copy that closes half-written emphasis, code, and links, so the
 /// tail doesn't reflow when the closing marker arrives. The mended copy is
-/// for display only: links in it stay inert, and a link whose destination is
-/// still streaming has an empty destination.
+/// for display only: a link whose destination is still streaming has an
+/// empty destination, and a bare URL at the very end stays text until
+/// something follows it.
 #[derive(Clone, Debug, Default)]
 pub struct IncrementalMarkdown {
+    /// The text as received.
+    raw: String,
+    /// The source has a component block, so `source` is its fallback.
+    ui: bool,
+    /// The Markdown parsed: `raw`, or its fallback.
     source: String,
     blocks: Vec<Block>,
     starts: Vec<Start>,
@@ -49,9 +63,9 @@ impl IncrementalMarkdown {
         markdown
     }
 
-    /// The whole source.
+    /// The whole source, as received.
     pub fn source(&self) -> &str {
-        &self.source
+        &self.raw
     }
 
     /// The exact blocks of the whole source, never mended.
@@ -95,6 +109,54 @@ impl IncrementalMarkdown {
             self.reparsed = 0;
             return;
         }
+        let mut from = self.raw.len().saturating_sub(openui_lang::LANG.len());
+        while !self.raw.is_char_boundary(from) {
+            from -= 1;
+        }
+        self.raw.push_str(text);
+        self.ui = self.ui || self.raw[from..].contains(openui_lang::LANG);
+        if self.ui {
+            let shown = shown(&self.raw).into_owned();
+            self.show(&shown);
+        } else {
+            self.extend(text);
+        }
+    }
+
+    /// Replace the source. When `source` extends the current source, only
+    /// the tail is reparsed.
+    pub fn set(&mut self, source: &str) {
+        if let Some(rest) = source.strip_prefix(self.raw.as_str()) {
+            self.append(rest);
+            return;
+        }
+        self.raw.clear();
+        self.raw.push_str(source);
+        self.ui = source.contains(openui_lang::LANG);
+        let shown = shown(source).into_owned();
+        self.show(&shown);
+    }
+
+    /// Parse `shown`, the Markdown for the whole source, reparsing only its
+    /// tail when it extends what was parsed before.
+    fn show(&mut self, shown: &str) {
+        if let Some(rest) = shown.strip_prefix(self.source.as_str()) {
+            self.extend(rest);
+            return;
+        }
+        self.source.clear();
+        self.source.push_str(shown);
+        self.references = shown.contains("]:");
+        self.reparse(0);
+    }
+
+    /// Parse `text` added to the end of the Markdown.
+    fn extend(&mut self, text: &str) {
+        if text.is_empty() {
+            self.stable = self.blocks.len();
+            self.reparsed = 0;
+            return;
+        }
         let old = self.source.len();
         self.references = self.references
             || text.contains("]:")
@@ -106,19 +168,6 @@ impl IncrementalMarkdown {
         } else {
             self.reparse(index);
         }
-    }
-
-    /// Replace the source. When `source` extends the current source, only
-    /// the tail is reparsed.
-    pub fn set(&mut self, source: &str) {
-        if let Some(rest) = source.strip_prefix(self.source.as_str()) {
-            self.append(rest);
-            return;
-        }
-        self.source.clear();
-        self.source.push_str(source);
-        self.references = source.contains("]:");
-        self.reparse(0);
     }
 
     /// The first start to reparse from after text is appended to a source
@@ -144,7 +193,7 @@ impl IncrementalMarkdown {
             },
             _ => self.starts[index],
         };
-        let (tail, starts) = parse_starts(&self.source[offset..]);
+        let (tail, starts) = parse_starts(&self.source[offset..], false);
         self.reparsed = self.source.len() - offset;
         let old = self.blocks.split_off(before);
         let same = old.iter().zip(&tail).take_while(|(a, b)| a == b).count();
@@ -162,7 +211,8 @@ impl IncrementalMarkdown {
     /// render cleanly: a half table row, a table header without its
     /// delimiter row, a bare list or heading marker
     /// ([`markdown_stream::renderable`], the cut every chat surface shares;
-    /// #11112). An open code block is already drawn as code.
+    /// #11112). An open code block is already drawn as code. A bare URL at
+    /// the very end may still be growing, so it stays text.
     fn mend(&mut self) {
         self.display = self.starts.last().and_then(|last| {
             let source = &self.source[last.offset..];
@@ -174,13 +224,26 @@ impl IncrementalMarkdown {
             } else {
                 markdown_stream::renderable(shown)
             };
-            if mended.is_none() && cut.len() == source.len() {
+            if mended.is_none() && cut.len() == source.len() && !growing_url(source) {
                 return None;
             }
-            let tail = parse(&cut);
+            let tail = parse_starts(&cut, true).0;
             (tail[..] != self.blocks[last.before..]).then_some((last.before, tail))
         });
     }
+}
+
+/// Whether `text` ends in a bare URL that more text could still extend.
+fn growing_url(text: &str) -> bool {
+    let word = text
+        .char_indices()
+        .rev()
+        .find(|(_, c)| c.is_whitespace())
+        .map_or(0, |(at, c)| at + c.len_utf8());
+    let word = &text[word..];
+    !word.is_empty()
+        && markdown_stream::autolink::find(word, true).len()
+            != markdown_stream::autolink::find(word, false).len()
 }
 
 #[cfg(test)]
@@ -412,7 +475,8 @@ trailing
         let Block::Paragraph { spans } = &markdown.blocks()[0] else {
             panic!("paragraph")
         };
-        assert_eq!(spans[0].link.as_deref(), Some("/x"));
+        // A site path points at the site.
+        assert_eq!(spans[0].link.as_deref(), Some("https://openagents.com/x"));
     }
 
     fn display_spans(markdown: &IncrementalMarkdown) -> Vec<Span> {
@@ -579,6 +643,82 @@ trailing
             );
             assert_eq!(markdown.blocks(), parse(source), "{source:?}");
         }
+    }
+
+    fn link_targets(blocks: &[Block]) -> Vec<String> {
+        blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph { spans } => spans.clone(),
+                _ => vec![],
+            })
+            .filter_map(|span| span.link)
+            .collect()
+    }
+
+    #[test]
+    fn a_bare_url_is_linked_only_once_it_ends() {
+        let source = "Sign in at https://openagents.com/device, then come back.";
+        let end = source.find(',').expect("comma");
+        let mut markdown = IncrementalMarkdown::default();
+        for (at, _) in source.char_indices().skip(1) {
+            markdown.set(&source[..at]);
+            assert_eq!(markdown.blocks(), parse(&source[..at]));
+            let shown = link_targets(&markdown.display_blocks());
+            if at <= end {
+                // Still growing: no partial URL is ever a link.
+                assert!(shown.is_empty(), "{:?}: {shown:?}", &source[..at]);
+            } else if at > end + 1 {
+                assert_eq!(
+                    shown,
+                    ["https://openagents.com/device"],
+                    "{:?}",
+                    &source[..at]
+                );
+            }
+        }
+        markdown.set(source);
+        assert_eq!(
+            link_targets(markdown.blocks()),
+            ["https://openagents.com/device"]
+        );
+        // An ended reply whose last word is a URL is linked by a full parse.
+        assert_eq!(
+            link_targets(&parse("Go to openagents.com/device")),
+            ["https://openagents.com/device"]
+        );
+    }
+
+    #[test]
+    fn a_streaming_component_block_never_shows_its_statements() {
+        let reply = "Connect it here.\n\n```openui-lang\n\
+root = Stack([web, steps])\n\
+web = Card(\"On the web\", [Button(\"Connect GitHub\", href=\"/projects\")])\n\
+steps = Steps([Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])])\n\
+```\n\nThat's all.";
+        let mut markdown = IncrementalMarkdown::default();
+        for (at, _) in reply.char_indices().skip(1) {
+            markdown.append(&reply[markdown.source().len()..at]);
+            assert_eq!(markdown.source(), &reply[..at]);
+            assert_eq!(markdown.blocks(), parse(&reply[..at]), "{:?}", &reply[..at]);
+            let shown = crate::markdown::plain(&markdown.display_blocks());
+            for raw in ["root", "Stack(", "Card(", "href", "openui"] {
+                assert!(
+                    !shown.contains(raw),
+                    "{:?} shows {raw}: {shown}",
+                    &reply[..at]
+                );
+            }
+            // A half-written command never shows.
+            assert!(
+                !shown.contains("curl") || shown.contains("install.sh | bash"),
+                "{shown}"
+            );
+        }
+        markdown.set(reply);
+        let shown = crate::markdown::plain(&markdown.display_blocks());
+        assert!(shown.contains("Connect GitHub"), "{shown}");
+        assert!(shown.contains("That's all."), "{shown}");
     }
 
     #[test]

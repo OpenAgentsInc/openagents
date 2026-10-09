@@ -227,8 +227,8 @@ content must never be presented as a live acknowledgment.
 Inline Markdown uses native selectable attributed text and preserves source
 whitespace, with **Show original Markdown** as an exact-source fallback.
 This first adapter does not implement a complete CommonMark block renderer;
-headings, tables, and fenced blocks retain their source syntax. Links are inert
-in the reader. Tool
+headings, tables, and fenced blocks retain their source syntax. Only `https`
+links open, in the system browser. Tool
 expansion and full-text paging are Rust-projected controls, not a second set
 of Swift domain operations. A UI activation carries only view instance,
 revision, and node identity; Rust resolves the current intent.

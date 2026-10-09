@@ -7,15 +7,18 @@ package com.openagents.app
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -509,6 +512,20 @@ internal class RowView(context: Context) : FrameLayout(context) {
             if (widget.json.optBoolean("checked")) Palette.SUCCESS else Palette.SECONDARY)
         "working" -> WorkingDots(context)
         "spinner" -> ProgressBar(context).apply { isIndeterminate = true; scaleX = 0.8f; scaleY = 0.8f }
+        // A link's text is already painted; this is its tap target. Rust admits
+        // only `https` URLs (`rust_native::markdown::opens`), checked again here.
+        "link" -> Uri.parse(widget.json.optString("url")).takeIf { it.scheme.equals("https", ignoreCase = true) }?.let { url ->
+            View(context).apply {
+                importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+                setOnClickListener {
+                    val open = Intent(Intent.ACTION_VIEW, url)
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // With no browser installed, the tap does nothing.
+                    try { context.startActivity(open) } catch (ignored: ActivityNotFoundException) {}
+                }
+            }
+        }
         "earlier" -> if (widget.json.optBoolean("loading")) null else View(context).apply {
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             setOnClickListener { loadEarlier() }

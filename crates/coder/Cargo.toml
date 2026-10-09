@@ -10,6 +10,7 @@ publish.workspace = true
 atif = { path = "../atif" }
 # The machine-talk guard over the answer bank's copy (#11031).
 oa-copy = { path = "../oa-copy" }
+openui-lang = { path = "../openui-lang" }
 # The disk cleanup monitor reads the task store through `task::background_facts`.
 background = { path = "../background" }
 capability = { path = "../capability" }
