@@ -41,7 +41,10 @@ pub(crate) fn routes() -> Router<App> {
         )
         .route(crate::api_keys::REVOKE, post(crate::api_keys::revoke))
         .route(crate::api_keys::OWN, post(crate::api_keys::own_save))
-        .route(crate::api_keys::OWN_REMOVE, post(crate::api_keys::own_remove))
+        .route(
+            crate::api_keys::OWN_REMOVE,
+            post(crate::api_keys::own_remove),
+        )
         .route(crate::plan::EXTRA, post(extra_hours))
         .route(crate::plan::SUBSCRIBE, post(subscribe))
         .route(crate::plan::MANAGE, post(manage))

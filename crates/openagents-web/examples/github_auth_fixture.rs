@@ -65,7 +65,8 @@ async fn main() -> Result<(), String> {
     // GitHub links, chats, and saved keys carry over a restart.
     let reopened = directory.join("accounts").is_dir();
     if !reopened {
-        std::fs::create_dir(&directory).map_err(|_| "fixture directory must be new or a fixture's own")?;
+        std::fs::create_dir(&directory)
+            .map_err(|_| "fixture directory must be new or a fixture's own")?;
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .map_err(|_| "fixture directory permissions failed")?;
     }
