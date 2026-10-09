@@ -66,6 +66,8 @@ const OWNED_EXACT: [&str; 47] = [
     "/ui",
     "/demo",
     "/cloud",
+    "/login",
+    "/signup",
     "/.well-known/apple-app-site-association",
     "/.well-known/assetlinks.json",
     "/.well-known/agent-card.json",
@@ -88,7 +90,8 @@ const OWNED_EXACT: [&str; 47] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 11] = [
+const OWNED_PREFIXES: [&str; 12] = [
+    "/auth/",
     "/docs/",
     "/studios/blue-rush/",
     "/demo/",

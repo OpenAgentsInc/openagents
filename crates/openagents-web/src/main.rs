@@ -4,7 +4,8 @@ use std::path::PathBuf;
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-sales PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--cloud-team PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
+[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-sales PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--cloud-team PRIVATE_JSON] [--pilot-config PRIVATE_JSON] \
+[--github-oauth PRIVATE_JSON] [--github-redirect URL]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,6 +15,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();
     let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
+    let mut github_oauth: Option<PathBuf> = None;
+    let mut github_redirect: Option<String> = None;
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -68,6 +71,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     openagents_web::cloud::team::Qualification::load(std::path::Path::new(&value))?,
                 ));
             }
+            // The OAuth App's private file ({client_id, client_secret,
+            // token_encryption_key}); the web server reads the client id only.
+            "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
+            "--github-redirect" => github_redirect = Some(value),
             "--pilot-config" => {
                 config.pilot = Some(std::sync::Arc::new(openagents_web::pilot::Intake::load(
                     std::path::Path::new(&value),
@@ -75,6 +82,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => return Err(USAGE.into()),
         }
+    }
+    if let Some(path) = github_oauth {
+        // The callback defaults to the Cloud origin's /auth/github/callback.
+        let redirect = match (github_redirect, config.cloud.as_deref()) {
+            (Some(url), _) => url,
+            (None, Some(cloud)) => format!("{}{}", cloud.origin(), oa_auth::CALLBACK_PATH),
+            (None, None) => {
+                return Err("--github-oauth needs --cloud-config (or --github-redirect)".into());
+            }
+        };
+        config.github = Some(std::sync::Arc::new(oa_auth::GithubApp::load(
+            &path,
+            &redirect,
+            oa_auth::Endpoints::default(),
+        )?));
+        println!("GitHub sign-in returns to {redirect}");
     }
     let shared_chats = chat_bucket.is_some();
     if let Some(bucket) = chat_bucket {

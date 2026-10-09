@@ -31,6 +31,7 @@ hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 jev = { path = "../jev" }
 libc = "0.2"
 maud = { version = "=0.27.0", features = ["axum"] }
+oa-auth = { path = "../oa-auth" }
 openagents-chat = { path = "../openagents-chat" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
@@ -59,6 +60,8 @@ coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
 nostr = { path = "../nostr" }
+oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
+tenancy = { path = "../tenancy" }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }

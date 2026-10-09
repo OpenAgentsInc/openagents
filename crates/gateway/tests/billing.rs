@@ -100,6 +100,7 @@ fn account_config() -> config::Accounts {
         signup_tenant: Some("acme".to_string()),
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
+        github: None,
         anonymous: None,
     }
 }

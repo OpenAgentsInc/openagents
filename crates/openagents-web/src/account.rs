@@ -6,6 +6,10 @@
 //! request's handler; [`crate::ui_page::UiPage`] reads it with
 //! [`current`]. Visitors without the session cookie cost nothing, and
 //! HTMX fragments, scripts, streams and posts skip it.
+//!
+//! Sign-in is checked once per request: the whole request runs inside
+//! [`crate::cloud::session::shared`], so a Cloud page's own
+//! `authenticate` reuses the view this lookup read (docs/auth).
 
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, Method, header};
@@ -45,15 +49,17 @@ pub fn current() -> Account {
 
 /// Resolves the account for a page request and runs the handler with it.
 pub(crate) async fn scope(State(app): State<App>, request: Request, next: Next) -> Response {
-    // Cloud pages authenticate the session themselves; resolving it here too
-    // would read the account service twice per page. Until one sign-in check
-    // per request is shared (docs/auth), they skip this lookup.
-    let account = if request.uri().path().starts_with("/cloud/") {
-        Account::Unknown
-    } else {
-        resolve(&app, request.method(), request.headers()).await
-    };
-    ACCOUNT.scope(account, next.run(request)).await
+    crate::cloud::session::shared(async move {
+        let account = resolve(&app, request.method(), request.headers()).await;
+        ACCOUNT.scope(account, next.run(request)).await
+    })
+    .await
+}
+
+/// Whether this server can sign people in: a Cloud account connection,
+/// and either GitHub sign-in or the Cloud app build.
+pub(crate) fn sign_in_available(app: &App) -> bool {
+    app.config.cloud.is_some() && (app.config.github.is_some() || crate::cloud::ready(app))
 }
 
 async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> Account {
@@ -63,7 +69,7 @@ async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> Account {
     let Some(service) = app.config.cloud.as_deref() else {
         return Account::Unknown;
     };
-    if !crate::cloud::ready(app) {
+    if !sign_in_available(app) {
         return Account::Unknown;
     }
     if !has_session(headers) {

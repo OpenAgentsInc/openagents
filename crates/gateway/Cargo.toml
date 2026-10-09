@@ -21,6 +21,7 @@ axum = { version = "0.8", features = ["multipart"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hmac = "0.12.1"
 nostr = { path = "../nostr" }
+oa-auth = { path = "../oa-auth" }
 pay-ledger = { path = "../pay-ledger" }
 receipts = { path = "../receipts" }
 ring = "0.17"

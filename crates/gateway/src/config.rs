@@ -425,6 +425,22 @@ pub struct Accounts {
     /// was.
     #[serde(default)]
     pub anonymous: Option<Anonymous>,
+    /// GitHub sign-in (docs/auth): the OAuth App's private credentials file
+    /// and its registered callback URL. Absent leaves GitHub sign-in off.
+    /// New accounts land on `signup_tenant`, which must be set too.
+    #[serde(default)]
+    pub github: Option<GithubSignIn>,
+}
+
+/// The OAuth App behind `POST /v1/sessions/github`.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GithubSignIn {
+    /// `{"client_id", "client_secret", "token_encryption_key"}`, mode 0600.
+    pub credentials: std::path::PathBuf,
+    /// The callback URL registered with the OAuth App, for example
+    /// `https://openagents.com/auth/github/callback`.
+    pub redirect_url: String,
 }
 
 /// The operator-funded anonymous budget: a stated bound the public

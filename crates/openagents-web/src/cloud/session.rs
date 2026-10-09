@@ -16,6 +16,40 @@ const WORKSPACE_COOKIE: &str = "oa_cloud_workspace";
 const LOGIN_COOKIE: &str = "oa_cloud_login";
 const TICKET_SECONDS: u64 = 600;
 
+tokio::task_local! {
+    /// The views [`CloudSession::authenticate`] already read during this
+    /// request, so the account menu and a Cloud page check sign-in once.
+    static VIEWS: std::cell::RefCell<Vec<(String, Option<String>, Viewer)>>;
+}
+
+/// Run one request's work with a shared sign-in check: every
+/// [`CloudSession::authenticate`] inside `work` for the same cookies reads
+/// the account service once. The cache lives only as long as `work`.
+pub async fn shared<F: std::future::Future>(work: F) -> F::Output {
+    VIEWS.scope(std::cell::RefCell::new(Vec::new()), work).await
+}
+
+fn cached(token: &str, selected: Option<&str>) -> Option<Viewer> {
+    VIEWS
+        .try_with(|views| {
+            views
+                .borrow()
+                .iter()
+                .find(|(t, s, v)| t == token && s.as_deref() == selected && v.expires_at > now())
+                .map(|(_, _, viewer)| viewer.clone())
+        })
+        .ok()
+        .flatten()
+}
+
+fn remember(token: &str, selected: Option<&str>, viewer: &Viewer) {
+    let _ = VIEWS.try_with(|views| {
+        views
+            .borrow_mut()
+            .push((token.into(), selected.map(Into::into), viewer.clone()));
+    });
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Configuration {
@@ -83,6 +117,7 @@ pub struct WorkspaceSelection {
 }
 
 /// A request's current native view; its client never enters serialized HTML.
+#[derive(Clone)]
 pub struct Viewer {
     pub account_id: String,
     pub account_label: String,
@@ -287,6 +322,79 @@ impl CloudSession {
         })
     }
 
+    /// Finish a GitHub sign-in: hand the authorization code and its PKCE
+    /// verifier to the account service, which exchanges them with GitHub,
+    /// finds or creates the account, and issues a session (docs/auth). The
+    /// web server never sees the GitHub token.
+    pub async fn sign_in_github(&self, code: &str, verifier: &str) -> Result<SessionGrant> {
+        if code.is_empty()
+            || code.len() > 256
+            || !code
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+            || !(43..=128).contains(&verifier.len())
+            || !verifier
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.~".contains(&b))
+        {
+            return Err(SessionError::InvalidRequest);
+        }
+        self.ready()?;
+        let response = self
+            .http
+            .post(format!("{}/v1/sessions/github", self.account_service))
+            // The account service talks to GitHub twice or three times.
+            .timeout(Duration::from_secs(20))
+            .json(&serde_json::json!({"code": code, "code_verifier": verifier}))
+            .send()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        if !status.is_success() {
+            return Err(match status.as_u16() {
+                400 | 401 | 403 => SessionError::Unauthenticated,
+                409 => SessionError::Conflict,
+                _ => SessionError::Unavailable,
+            });
+        }
+        #[derive(Deserialize)]
+        struct WireSession {
+            id: String,
+            kind: String,
+            account: Option<String>,
+            expires_at: u64,
+        }
+        #[derive(Deserialize)]
+        struct Wire {
+            session: WireSession,
+            token: String,
+        }
+        let wire: Wire = (bytes.len() <= 64 * 1024)
+            .then(|| serde_json::from_slice(&bytes).ok())
+            .flatten()
+            .ok_or(SessionError::Unavailable)?;
+        if !session_token(&wire.token) {
+            return Err(SessionError::Unavailable);
+        }
+        let viewer = self.read_view(&wire.token, None).await?;
+        if viewer.session_id != wire.session.id
+            || wire.session.kind != "user"
+            || wire.session.account.as_deref() != Some(&viewer.account_id)
+            || wire.session.expires_at != viewer.expires_at
+        {
+            return Err(SessionError::Conflict);
+        }
+        Ok(SessionGrant {
+            viewer,
+            token: jev::ApiKey::new(wire.token),
+            secure: self.secure,
+        })
+    }
+
     /// Redeem one recovery token at the native account owner. The token is
     /// sent once, in the body only, with no retry; the replacement account
     /// key is returned once and never stored here.
@@ -351,7 +459,13 @@ impl CloudSession {
         if selected.as_ref().is_some_and(|id| !identifier(id)) {
             return Err(SessionError::InvalidRequest);
         }
-        self.read_view(&token, selected.as_deref()).await
+        if let Some(viewer) = cached(&token, selected.as_deref()) {
+            self.ready()?;
+            return Ok(viewer);
+        }
+        let viewer = self.read_view(&token, selected.as_deref()).await?;
+        remember(&token, selected.as_deref(), &viewer);
+        Ok(viewer)
     }
 
     async fn read_view(&self, token: &str, selected: Option<&str>) -> Result<Viewer> {

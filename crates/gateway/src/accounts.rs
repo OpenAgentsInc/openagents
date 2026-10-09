@@ -51,6 +51,8 @@ const INVITE_TTL_MAX: u64 = 2_592_000;
 pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     let mut routes = vec![
         ("/v1/sessions", post(sign_in)),
+        ("/v1/sessions/github", post(github_sign_in)),
+        ("/v1/account/identities/github", post(github_link)),
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
         ("/v1/account", get(account_view)),
@@ -408,6 +410,8 @@ pub(crate) fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response 
                 S::Terms(_) => (StatusCode::BAD_REQUEST, "invalid_terms"),
             }
         }
+        R::LastCredential(_) => (StatusCode::CONFLICT, "last_credential"),
+        R::ProviderLinked { .. } => (StatusCode::CONFLICT, "provider_linked"),
         R::EmptyField(field) => {
             return refused(
                 StatusCode::BAD_REQUEST,
@@ -635,6 +639,103 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
             "token": issued.once,
         }),
     )
+}
+
+/// The configured GitHub OAuth client, read from its private file on use.
+fn github(state: &ServeState) -> Result<oa_auth::Github, Response> {
+    let Some(config) = accounts_config(state).github.as_ref() else {
+        return Err(refused(
+            StatusCode::NOT_FOUND,
+            "github_disabled",
+            "GitHub sign-in isn't set up on this service.",
+        ));
+    };
+    oa_auth::GithubCredentials::load(
+        &config.credentials,
+        &config.redirect_url,
+        oa_auth::Endpoints::default(),
+    )
+    .and_then(oa_auth::Github::new)
+    .map_err(|_| {
+        unavailable(
+            "github_unavailable",
+            "GitHub sign-in isn't available right now. Try again later.",
+        )
+    })
+}
+
+fn auth_refused(error: oa_auth::AuthError) -> Response {
+    refused(
+        StatusCode::from_u16(error.status()).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        error.code(),
+        error.to_string(),
+    )
+}
+
+/// `POST /v1/sessions/github` — `{code, code_verifier}` from the web
+/// server's GitHub callback. Exchanges the code with GitHub, finds the
+/// account linked to that GitHub user or creates it (with a personal
+/// workspace on the sign-up tenant), and issues a session. The GitHub
+/// token is discarded; see docs/auth.
+async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) -> Response {
+    let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "signup_disabled",
+            "This service doesn't offer sign-up.",
+        );
+    };
+    let github = match github(&state) {
+        Ok(github) => github,
+        Err(response) => return response,
+    };
+    let Ok(request) = serde_json::from_value::<oa_auth::service::CodeRequest>(body) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send `code` and `code_verifier`.",
+        );
+    };
+    match oa_auth::service::sign_in(&state.dir, &github, &tenant, &request).await {
+        Ok(signed) => answered(StatusCode::OK, oa_auth::service::signed_in_body(&signed)),
+        Err(error) => auth_refused(error),
+    }
+}
+
+/// `POST /v1/account/identities/github` — link the GitHub account behind
+/// `{code, code_verifier}` to the signed-in account. A GitHub account that
+/// already belongs to another account is refused with `identity_taken`.
+async fn github_link(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let principal = match principal(&state, &headers) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
+    let account = match member_account(&principal) {
+        Ok(account) => account.to_string(),
+        Err(response) => return response,
+    };
+    let github = match github(&state) {
+        Ok(github) => github,
+        Err(response) => return response,
+    };
+    let Ok(request) = serde_json::from_value::<oa_auth::service::CodeRequest>(body) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send `code` and `code_verifier`.",
+        );
+    };
+    match oa_auth::service::link(&state.dir, &github, &account, &request).await {
+        Ok(identity) => answered(
+            StatusCode::OK,
+            json!({"identity": {"provider": "github", "login": identity.profile.login, "account": identity.account}}),
+        ),
+        Err(error) => auth_refused(error),
+    }
 }
 
 /// The anonymous half of sign-in: a session against the funded budget.

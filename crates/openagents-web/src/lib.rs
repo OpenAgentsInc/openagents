@@ -12,6 +12,7 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+mod auth;
 pub mod ask;
 pub mod backend;
 mod chat_html;
@@ -98,6 +99,10 @@ pub struct Config {
     pub components_build: Option<PathBuf>,
     /// Explicit native account adapter; absence leaves the Cloud workspace unavailable.
     pub cloud: Option<Arc<cloud::session::CloudSession>>,
+    /// GitHub sign-in (`--github-oauth`): the OAuth App's client id and
+    /// callback URL. With `cloud`, the header offers Log in and Sign up and
+    /// `/login` continues with GitHub (docs/auth).
+    pub github: Option<Arc<oa_auth::GithubApp>>,
     /// Explicit account/workspace bindings to separately granted resident hosts.
     pub cloud_hosts: Option<Arc<cloud::hosts::Hosts>>,
     /// Rust/Wasm private-view lifecycle assets.
@@ -139,6 +144,7 @@ impl Config {
             bunny: None,
             components_build: None,
             cloud: None,
+            github: None,
             cloud_hosts: None,
             cloud_build: None,
             cloud_retail: None,
@@ -196,6 +202,7 @@ pub fn router(config: Config) -> Router {
         .merge(composer::routes())
         .merge(demo::routes())
         .merge(cloud::routes())
+        .merge(auth::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
@@ -241,7 +248,11 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     let intake = path == "/pilot" || path.starts_with("/pilot/");
     // Cloud credentials and private work must stay on this Rust surface,
     // including when an unconfigured Host header would use the legacy proxy.
-    let cloud = path == "/cloud" || path.starts_with("/cloud/");
+    let cloud = path == "/cloud"
+        || path.starts_with("/cloud/")
+        || path == "/login"
+        || path == "/signup"
+        || path.starts_with("/auth/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
         || path == "/ask"

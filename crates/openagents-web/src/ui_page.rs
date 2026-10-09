@@ -30,7 +30,6 @@ use crate::theme;
 /// Where the account menu's entries go (the signed-in Cloud pages).
 const SETTINGS: &str = "/cloud/app/settings";
 const BILLING: &str = "/cloud/app/billing";
-const SIGN_IN: &str = "/cloud/sign-in";
 const SIGN_OUT: &str = "/cloud/sign-out";
 
 /// One page: title, current section, content, and optional shell slots.
@@ -191,7 +190,13 @@ impl UiPage {
             .current(current == Some(DOCS));
         // A page whose policy allows no form gets no sign-out form.
         let forms = self.toggle;
-        let sidebar = match self.account.unwrap_or_else(crate::account::current) {
+        let account = self.account.unwrap_or_else(crate::account::current);
+        // Signed out on a server that signs people in: Log in and Sign up
+        // in the header, returning to this page (docs/auth).
+        let signed_out = account == Account::SignedOut;
+        let log_in = crate::auth::login_href(&self.return_to, false);
+        let sign_up = crate::auth::login_href(&self.return_to, true);
+        let sidebar = match account {
             Account::SignedIn { name, sign_out } => {
                 let mut menu = AccountMenu::new(name)
                     .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
@@ -219,7 +224,7 @@ impl UiPage {
             }
             Account::SignedOut => sidebar
                 .bottom(docs)
-                .bottom(NavItem::new("Sign in", SIGN_IN).icon(Icon::EnterLogin.size(IconSize::Md))),
+                .bottom(NavItem::new("Log in", &log_in).icon(Icon::EnterLogin.size(IconSize::Md))),
             Account::Unknown => sidebar.bottom(docs),
         };
         let toggle = self.toggle.then(|| {
@@ -241,6 +246,16 @@ impl UiPage {
         let actions = html! {
             @if let Some(actions) = &self.actions { (actions) }
             (download)
+            @if signed_out {
+                (ButtonLink::new("Log in", &log_in)
+                    .size(ControlSize::Sm)
+                    .pill(true))
+                (ButtonLink::new("Sign up", &sign_up)
+                    .color(Color::Secondary)
+                    .variant(ButtonVariant::Outline)
+                    .size(ControlSize::Sm)
+                    .pill(true))
+            }
             @if let Some(toggle) = toggle { (toggle) }
         };
         let mut shell = AppShell::new()
@@ -499,11 +514,18 @@ mod tests {
         assert!(!strict.contains("<form") && !strict.contains(">Sign out<"));
         // Signed out: Docs and a sign-in link.
         let html = page(Account::SignedOut);
-        assert!(html.contains("href=\"/cloud/sign-in\"") && html.contains(">Sign in</span>"));
+        assert!(html.contains("href=\"/login\"") && html.contains(">Log in</span>"));
+        // ...and Log in and Sign up beside Download in the header.
+        let header = &html[html.find("Download").unwrap()..];
+        assert!(header.contains(">Log in<") && header.contains("href=\"/signup\""));
         assert!(html.contains("href=\"/docs\"") && !html.contains("oa-account"));
         // No sign-in on this server: Docs only.
         let html = page(Account::Unknown);
-        assert!(!html.contains("/cloud/sign-in") && html.contains("href=\"/docs\""));
+        assert!(
+            !html.contains("/login")
+                && !html.contains("/signup")
+                && html.contains("href=\"/docs\"")
+        );
     }
 
     #[test]

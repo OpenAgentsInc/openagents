@@ -48,6 +48,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         signup_tenant: Some("acme".to_string()),
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
+        github: None,
         anonymous,
     }
 }
@@ -1768,6 +1769,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             signup_tenant: None,
             session_ttl_secs: 28_800,
             recovery_ttl_secs: 3_600,
+            github: None,
             anonymous: None,
         }),
         false,
@@ -1840,6 +1842,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,
+            github: None,
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),
