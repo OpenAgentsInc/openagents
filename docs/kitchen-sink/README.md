@@ -103,7 +103,7 @@ everything you have running on your other devices.
 | Abilities | Build a new ability with the agent; browse the shared registry; Gym results | F1, F2, G1 |
 | Money | Pro plan by card; later wallet, earnings, and payouts | B14, I1–I7 |
 | Proof | `/promises` (what works, with proof), `/roadmap` (what's next), changelog, stats | G6, H6, J6 |
-| For agents | `llms.txt`, agent card, OpenAPI, docs MCP, pay-per-request API | K1–K3, K6, E1–E4 |
+| For agents | `llms.txt`, agent card, OpenAPI, docs MCP, pay-per-request API, every agent payment protocol | K1–K9, E1–E4 |
 | Window into the Verse | `/everglade` in the browser | M1 |
 
 ### Terminal (`coder`)
@@ -182,9 +182,9 @@ agents doing real work, and where progress and play run on verified work.
 | Plugins and skills | New abilities built with you, tested, shared with everyone | Evals from chat work; registry missing | F1–F7 |
 | Gym, evals, Jev | Measure what helps, publish the evidence, show progress | Internal; Jev's % done in Coder | G1–G7 |
 | Markets, Pylon, compute | Sell spare compute; paid jobs for your agent | Pylon runs free jobs; paid earning paused | J1–J8 |
-| Payments, wallet, Lightning, x402 | Self-custody wallet; card for Pro; pay per request; payouts to authors | Phone wallet in beta; card and x402 built; payouts owner-only | I1–I9 |
+| Payments, wallet, Lightning, x402 | Self-custody wallet; card for Pro; pay per request; payouts to authors; agents pay and get paid any way (x402, MPP, L402, Cashu, ACP, UCP, AP2, Nostr, stablecoins), sellers paid directly | Phone wallet in beta; card, x402, and the `Payment` scheme built; payouts owner-only; the rest planned ([agent payments](../payments/agent-payments.md)) | I1–I11, J9 |
 | Traces, data, privacy | Every run recorded; private unless shared; later, sell your data | Local traces live; upload launching | H1–H6, E6 |
-| Agent-ready web | Any agent can read our docs, API, and skills and pay us | Built; waiting on deploy | K1–K3, K6 |
+| Agent-ready web | Any agent can read our docs, API, and skills, and pay us any way it knows | Built; waiting on deploy; payment methods beyond x402 planned | K1–K9 |
 | Open source | Read, fork, self-host | Live | K4, K5 |
 
 ## V1: what "OpenAgents version one" must include

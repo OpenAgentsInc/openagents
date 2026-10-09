@@ -106,7 +106,7 @@ test passes on production.
 | --- | --- | --- | --- | --- | --- | --- |
 | E1 | One OpenAI-compatible API key reaches many models, and any coding tool can point at it. | N T | Partial | Gateway built, 17/17 acceptance on staging; production not deployed | 241, 242, 243, 289 | #11094 |
 | E2 | The API has a free tier with real limits. | N | Partial | Built on the gateway | 119, 242 | — |
-| E3 | Agents can pay per request without an account. | N | Partial | x402 on the gateway (`c383d9fcd1`) | 062, 063, 070, 086 | #11077, #11085 |
+| E3 | Agents can pay per request without an account. | N | Partial | x402 on Lightning built on the gateway (`c383d9fcd1`), not live; the `Payment` scheme (MPP) on the same invoice is next | 062, 063, 070, 086 | #11077, #11136 |
 | E4 | You set your own spending limits. | N W | Partial | User-set limits on the gateway | 147, 206 | #11077 |
 | E5 | You say what you care about (cost, speed, privacy) and the agent picks models to match. | all | Partial | Auto router; no preference setting | 269, 286 | #11079 |
 | E6 | We ask model providers not to train on or keep your chats, and usage records are deleted after 30 days. | W T | Launching | Privacy policy updated 10-09 | 046, 245 | #11040–#11044 |
@@ -158,13 +158,15 @@ test passes on production.
 | --- | --- | --- | --- | --- | --- | --- |
 | I1 | You get a Bitcoin wallet where only you hold the keys, for small amounts. | M D | Partial | Spark wallet on the phone (beta in review); out of launch copy | 143, 153, 169, 173, 207, 212 | #11093 |
 | I2 | You can send sats just by asking. | all | Partial | Shown in 289; not in launch | 212, 289 | — |
-| I3 | Your agent can pay and get paid, under rules and budgets you approve. | M N | Partial | Agent payment approvals on the phone | 042, 047, 141, 147, 212 | — |
-| I4 | You can pay by card. | W | Partial | Stripe Pro subscription built | 037, 064, 116 | — |
+| I3 | Your agent can pay and get paid, under rules and budgets you approve. | M N | Partial | Agent payment approvals on the phone; budgets and approvals designed in PR #11088 (SOV/CAP/POL) | 042, 047, 141, 147, 212 | #11146 |
+| I4 | You can pay by card. | W N | Partial | Stripe Pro subscription built; agents by card through MPP `stripe`, ACP, and UCP are planned | 037, 064, 116 | #11142, #11143, #11144 |
 | I5 | Earnings go to your Lightning address automatically. | N | Partial | Splits and payouts built on the pay host; owner-only so far | 064, 092, 096, 098 | — |
 | I6 | The revenue split between authors, providers, and OpenAgents is published. | W | Missing | No current split | 037, 097, 098 | — |
 | I7 | Bring someone in and earn a share of what they pay, for as long as they pay. | N | Missing | Red in the old registry | 037, 125, 150, 153, 229, 239 | — |
-| I8 | Bitcoin is the only money. There is no token. | all | Live | Policy across every payment path | 001, 200, 220, 230 | — |
+| I8 | There is no OpenAgents token. Bitcoin is our own money. | all | Live | Policy across every payment path. Revised 2026-10-09 (owner: "pay in any different way"): agents may also pay by card and dollar stablecoins, which settle to dollars; we never issue a token. Was "Bitcoin is the only money." | 001, 200, 220, 230 | #11141 |
 | I9 | You can hold dollar-pegged balances backed by Bitcoin. | N | Missing | Taproot Assets work lives in `tap-ldk` | 096, 173, 200 | — |
+| I10 | Your agents can pay any service that asks for payment (x402, MPP, L402, Cashu), from your wallet and within your budget. | T M N | Missing | Designed in [agent payments](../payments/agent-payments.md); `openagents inference --pay x402` pays our own API | — | #11146 |
+| I11 | Every payment, any method, gets the same receipt, and shows in your usage and on `/stats`. | W N | Missing | Receipt model in [agent payments](../payments/agent-payments.md) §3 | — | #11138 |
 
 ## J. Markets, compute, and earning
 
@@ -178,6 +180,7 @@ test passes on production.
 | J6 | A public stats page shows the network's size, work done, and money paid. | W | Partial | `/stats` | 203, 221, 224, 227 | #11081 |
 | J7 | Paid bounties fund outside contributors. | W | Missing | No bounty page | 001, 043, 088, 216 | — |
 | J8 | Fan one job out to many machines at once. | N | Missing | — | 202, 203, 214 | — |
+| J9 | Sellers on the network, starting with compute providers, are paid straight to their own wallet; OpenAgents never holds their money. | N | Missing | Non-custodial merchant profile merged as a proposal (PR #11088), with BuyerAttestation test vectors | — | #11149 |
 
 ## K. Agent-ready and open
 
@@ -188,8 +191,10 @@ test passes on production.
 | K3 | Everything you can do in an app, you can do from the command line or API. | T N | Partial | `openagents-cli` over Nostr; `/docs/api` | 067, 085, 100, 203, 289 | — |
 | K4 | All of it is open source and built in public. | all | Live | This repository | 001, 047, 125, 173, 242 | — |
 | K5 | You can run your own copy of the whole thing. | N | Partial | Open source, but no self-host guide | 129, 242, 289 | — |
-| K6 | Agents can buy from us using standard agent payment protocols. | N | Missing | x402 only | 062, 070 | #11085 |
+| K6 | Agents can pay us any way they already know: x402, MPP, L402, Cashu, ACP, UCP, AP2, Lightning, Nostr, card, and stablecoins. | N | Partial | Owner, 2026-10-09: support everything. x402 and the `Payment` scheme on Lightning built (gateway, pay front); the rest planned in [agent payments](../payments/agent-payments.md) | 062, 070 | #11085, #11136, #11139–#11145 |
 | K7 | One open license: everything we publish is under Apache 2.0. | all | Live | `LICENSE` (Apache 2.0) | X only | — |
+| K8 | Agents find every way to pay us where they look: OpenAPI, the API and AI catalogs, the agent card, `/.well-known/ucp`, `/.well-known/acp.json`, MCP, and Nostr. | N | Partial | `/docs/api/for-agents` and `/auth.md` name the methods; generated discovery is next | — | #11137, #11147 |
+| K9 | Agents can sign in with their own Nostr key. | N | Missing | NIP-98 checked on the pay host only | — | #11148 |
 
 ## L. Surfaces
 
