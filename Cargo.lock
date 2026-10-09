@@ -10448,6 +10448,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-login"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "openagents-spark"
 version = "0.1.0"
 dependencies = [
