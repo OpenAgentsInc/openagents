@@ -108,6 +108,38 @@ lists the state layout and restart recovery. A configured package is not
 deployed-origin availability. That requires the owner-run Boat qualification
 recorded in `NEEDS_OWNER.md`.
 
+The optional dedicated GCE adapter (ENV-09,
+[`coder_working_computer::gce`](../../crates/coder-working-computer/src/gce.rs))
+replaces Boat with one isolated GCE instance per setup, builder, and verifier
+machine. It never uses the shared Coder pool:
+
+```json
+{
+  "schema": "openagents.environment.owners.v1",
+  "provider": "gce",
+  "workdir": "/home/coder/repo",
+  "gce": {
+    "project": "openagentsgemini",
+    "zone": "us-central1-a",
+    "machine": "c3-standard-8",
+    "disk_gb": 200,
+    "base": {"project": "openagentsgemini", "name": "oa-coder-host-20261001", "id": "1234567890123456789"}
+  },
+  "credential_names": ["GH_TOKEN"],
+  "tick_seconds": 15
+}
+```
+
+`base` is one exact image name and its numeric GCE ID (`gcloud compute images
+describe NAME --format='value(id)'`), never a family. A recipe for this
+adapter pins the same base (`GceImage::pin`). The host runs `gcloud` with its
+current account and reaches instances over the pool's SSH key through IAP.
+Its account needs instance, disk, and image create/delete rights in the
+project. Instances get no service account and no API scopes. The janitor
+writes `<root>/cloud-operator/environment-gce/reconciliation.json` with every
+owned instance and image, their sizes and run times, and the orphan instances
+it deleted. It never deletes an image.
+
 ## Existing cloud lanes
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)

@@ -17,8 +17,7 @@ use coder_environment::evidence::{
 use coder_environment::store::{Store as EnvStore, StoreError as EnvStoreError};
 use coder_environment::transition::BuildObservation;
 use coder_environment::{
-    BuildState, Command as EnvCommand, Effect, ImageIdentity, Provider as Kind, RunLink, Stage,
-    digest,
+    BuildState, Command as EnvCommand, Effect, ImageIdentity, RunLink, Stage, digest,
 };
 use coder_environment_setup::{GIT_CREDENTIALS, embeds_url_credential, git_auth_env};
 use coder_working_computer::boat::COMMAND_DIR;
@@ -293,6 +292,11 @@ impl<P: Commands + Images> Builder<P> {
                 "The recipe names a credential a builder may never carry.",
             ));
         }
+        // The builder boots exactly the recipe's pinned base on this provider.
+        self.computers
+            .provider
+            .admits_base(&recipe.base)
+            .map_err(BuildError::Refused)?;
         let script = self.read_script(&recipe.install.digest)?;
         if embeds_url_credential(&script) {
             return Err(BuildError::Refused(
@@ -354,8 +358,9 @@ impl<P: Commands + Images> Builder<P> {
                 absolute_ms: window,
             },
         };
-        let computer =
+        let mut computer =
             Computer::for_build(spec, &env.id, &build_id, now_ms).map_err(BuildError::Refused)?;
+        computer.provider = self.computers.provider.kind();
         match self.computers.store.read(&computer_id) {
             Ok(existing) if existing.purpose == computer.purpose => {}
             Ok(_) => {
@@ -1015,7 +1020,7 @@ impl<P: Commands + Images> Builder<P> {
                     builder: resource.into(),
                 };
                 Some(ImageIdentity {
-                    provider: Kind::Boat,
+                    provider: self.computers.provider.kind(),
                     image_id: record.name.clone(),
                     snapshot_id: Some(snapshot.clone()),
                     manifest_digest: manifest.digest(),

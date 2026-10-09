@@ -10,6 +10,7 @@
 //! never arbitrary files.
 
 use crate::{Checkpoint, Computer, ServiceDecl};
+use coder_environment::{ImagePin, Provider as ProviderKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -210,6 +211,21 @@ pub struct Inspection {
 
 #[allow(async_fn_in_trait)]
 pub trait Provider {
+    /// Which provider this is. Owners stamp it on the computers they create
+    /// and on the image identities they seal.
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::Boat
+    }
+    /// Whether a builder on this provider may start from `base`, a recipe's
+    /// pinned base image. A recipe pinned to another provider is refused;
+    /// a provider that boots a configured base also refuses any other one.
+    fn admits_base(&self, base: &ImagePin) -> Result<(), &'static str> {
+        if base.provider == self.kind() {
+            Ok(())
+        } else {
+            Err("The recipe's base image belongs to another provider.")
+        }
+    }
     /// Create under a retained operation identity; repeating the same
     /// identity must return the same resource, never a second one.
     async fn create(&self, computer: &Computer, operation: &str) -> Outcome<String>;
@@ -248,6 +264,12 @@ pub trait Provider {
 /// One provider shared by several owners (setup, build, and verify over
 /// the same provider state) through an `Arc`.
 impl<P: Provider> Provider for std::sync::Arc<P> {
+    fn kind(&self) -> ProviderKind {
+        (**self).kind()
+    }
+    fn admits_base(&self, base: &ImagePin) -> Result<(), &'static str> {
+        (**self).admits_base(base)
+    }
     async fn create(&self, computer: &Computer, operation: &str) -> Outcome<String> {
         (**self).create(computer, operation).await
     }

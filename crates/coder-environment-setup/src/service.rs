@@ -250,8 +250,9 @@ impl<P: Commands> Setup<P> {
                 absolute_ms: window,
             },
         };
-        let computer = Computer::for_setup(spec, &env.id, now_ms)
+        let mut computer = Computer::for_setup(spec, &env.id, now_ms)
             .map_err(|m| SetupError::Refused(Refusal::Invalid(m)))?;
+        computer.provider = self.computers.provider.kind();
         match self.computers.store.read(&computer_id) {
             Ok(existing)
                 if existing.purpose == computer.purpose && existing.chat == computer.chat => {}

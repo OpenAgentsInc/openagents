@@ -120,6 +120,7 @@ fn the_config_is_explicit_and_bounded() {
         schema: SCHEMA.into(),
         provider: ProviderKind::Boat,
         workdir: "/workspace/repo".into(),
+        gce: None,
         template: None,
         credential_names: ["GH_TOKEN".to_string()].into(),
         tick_seconds: 15,
@@ -150,12 +151,43 @@ fn the_config_is_explicit_and_bounded() {
     ] {
         assert!(bad.validate().is_err(), "{bad:?}");
     }
-    assert!(
-        serde_json::from_str::<Config>(
-            r#"{"schema":"openagents.environment.owners.v1","provider":"gce","workdir":"/w"}"#
-        )
-        .is_err()
-    );
+    // The GCE adapter needs its own section, and only with its provider.
+    let gce: Config = serde_json::from_str(
+        r#"{"schema":"openagents.environment.owners.v1","provider":"gce","workdir":"/w"}"#,
+    )
+    .unwrap();
+    assert!(gce.validate().is_err());
+    let section = coder_working_computer::gce::GceConfig {
+        project: "oa-test".into(),
+        zone: "us-central1-a".into(),
+        machine: "c3-standard-8".into(),
+        disk_gb: 100,
+        base: coder_working_computer::gce::GceImage {
+            project: "oa-test".into(),
+            name: "oa-coder-host-1".into(),
+            id: "42".into(),
+        },
+    };
+    let gce = Config {
+        provider: ProviderKind::Gce,
+        gce: Some(section.clone()),
+        ..good.clone()
+    };
+    gce.validate().unwrap();
+    let back: Config = serde_json::from_str(&serde_json::to_string(&gce).unwrap()).unwrap();
+    assert_eq!(back, gce);
+    for bad in [
+        Config {
+            gce: Some(section.clone()),
+            ..good.clone()
+        },
+        Config {
+            template: Some("oa-coder-runtime-1".into()),
+            ..gce.clone()
+        },
+    ] {
+        assert!(bad.validate().is_err(), "{bad:?}");
+    }
 }
 
 #[tokio::test]
@@ -243,3 +275,6 @@ async fn a_restarted_owner_recovers_a_build_mid_install() {
     let r = owners.recover(3_000).await;
     assert!(r.builds.is_empty() && r.verifications.is_empty() && r.setup.is_empty());
 }
+
+#[path = "gce_tests.rs"]
+mod gce_tests;

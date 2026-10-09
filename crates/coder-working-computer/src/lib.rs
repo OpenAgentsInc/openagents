@@ -33,6 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub mod boat;
 pub mod decide;
 pub mod driver;
+pub mod gce;
 pub mod provider;
 pub mod store;
 pub mod transition;

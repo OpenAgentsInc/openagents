@@ -103,6 +103,9 @@ impl Config {
             return Err("The environments state directory must be absolute.".into());
         }
         self.machines.validate()?;
+        if self.machines.provider != crate::ProviderKind::Boat {
+            return Err("Environments set up here run on Boat.".into());
+        }
         if !coder_environment::valid_id(&self.owner.workspace)
             || !coder_environment::valid_id(&self.owner.principal)
         {

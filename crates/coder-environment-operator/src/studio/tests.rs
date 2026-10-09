@@ -73,6 +73,7 @@ fn config(state: &Path) -> Config {
         machines: crate::Config {
             schema: crate::SCHEMA.into(),
             provider: crate::ProviderKind::Boat,
+            gce: None,
             workdir: "/home/user/repo".into(),
             template: Some("oa-coder-runtime-20261008".into()),
             credential_names: BTreeSet::new(),

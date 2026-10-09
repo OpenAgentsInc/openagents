@@ -380,6 +380,28 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
 }
 
 #[tokio::test]
+async fn a_base_pinned_to_another_provider_never_allocates() {
+    let mut r = recipe(SCRIPT, &["GH_TOKEN"]);
+    r.base.provider = Provider::Gce;
+    let h = harness_with(r);
+    let refused = h.builder.start(&request("req-1", 1), 1_000).await;
+    assert!(
+        matches!(refused, Err(BuildError::Refused(_))),
+        "{refused:?}"
+    );
+    assert_eq!(count(&h, "create"), 0);
+}
+
+#[tokio::test]
+async fn the_image_identity_names_the_builders_provider() {
+    let h = harness();
+    let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();
+    assert_eq!(job.image.unwrap().provider, Provider::Boat);
+    let c = h.builder.computers.store.read(&job.computer).unwrap();
+    assert_eq!(c.provider, Provider::Boat);
+}
+
+#[tokio::test]
 async fn a_recipe_edit_marks_earlier_builds_stale() {
     let h = harness();
     let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();

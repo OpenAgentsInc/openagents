@@ -57,6 +57,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod activity;
 pub mod agent;
 pub mod boat;
+pub mod gce;
 pub mod studio;
 
 pub const SCHEMA: &str = "openagents.environment.owners.v1";
@@ -174,12 +175,25 @@ pub struct Providers<P> {
     pub verify: P,
 }
 
+/// A provider-specific reconciliation run on recovery visits (the GCE
+/// adapter's orphan sweep and usage report, [`gce::janitor`]). It decides
+/// its own cadence; `Ok(None)` means it did not run this visit.
+pub type Janitor = Arc<
+    dyn Fn(
+            Layout,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, String>>>>
+        + Send
+        + Sync,
+>;
+
 /// The three owners over one [`Layout`].
 pub struct Owners<P> {
     pub layout: Layout,
     pub setup: Arc<Setup<P>>,
     pub builder: Arc<Builder<P>>,
     pub verifier: Arc<Verifier<P>>,
+    janitor: Option<Janitor>,
 }
 
 /// What one recovery visit did, by record ID. Errors are kept per record
@@ -189,6 +203,9 @@ pub struct Recovery {
     pub setup: Vec<String>,
     pub builds: Vec<String>,
     pub verifications: Vec<String>,
+    /// What the provider's janitor did, when it ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub janitor: Option<String>,
     pub errors: Vec<String>,
 }
 
@@ -236,7 +253,14 @@ impl<P: Commands + Images> Owners<P> {
             setup: Arc::new(setup),
             builder: Arc::new(builder),
             verifier: Arc::new(verifier),
+            janitor: None,
         })
+    }
+
+    /// Run `janitor` on recovery visits.
+    pub fn with_janitor(mut self, janitor: Option<Janitor>) -> Self {
+        self.janitor = janitor;
+        self
     }
 
     /// Retain a protected artifact (a check plan or check script) by its
@@ -359,6 +383,12 @@ impl<P: Commands + Images> Owners<P> {
                 }
             }
             Err(e) => out.errors.push(format!("verifications: {e}")),
+        }
+        if let Some(janitor) = &self.janitor {
+            match janitor(self.layout.clone()).await {
+                Ok(summary) => out.janitor = summary,
+                Err(e) => out.errors.push(format!("Provider cleanup: {e}")),
+            }
         }
         out
     }
@@ -485,8 +515,12 @@ where
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub schema: String,
-    /// The only provider admitted in this release.
+    /// Boat, or the optional dedicated GCE adapter (ENV-09).
     pub provider: ProviderKind,
+    /// The GCE adapter's project, zone, shape, and pinned base image;
+    /// required with `"provider": "gce"` and refused otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gce: Option<coder_working_computer::gce::GceConfig>,
     /// The checkout directory inside each machine.
     pub workdir: String,
     /// The interactive runtime template fresh setup and builder machines
@@ -508,6 +542,7 @@ fn default_tick() -> u64 {
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     Boat,
+    Gce,
 }
 impl Config {
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -530,6 +565,23 @@ impl Config {
             .find(|n| !coder_working_computer::credential_name_allowed(n))
         {
             return Err(format!("Credential name {n} is not admitted."));
+        }
+        match (self.provider, &self.gce) {
+            (ProviderKind::Boat, None) => {}
+            (ProviderKind::Gce, Some(gce)) => {
+                gce.validate()?;
+                if self.template.is_some() {
+                    return Err(
+                        "A GCE setup boots its pinned base image; leave template out.".into(),
+                    );
+                }
+            }
+            (ProviderKind::Boat, Some(_)) => {
+                return Err("The gce section needs \"provider\": \"gce\".".into());
+            }
+            (ProviderKind::Gce, None) => {
+                return Err("The GCE provider needs a gce section.".into());
+            }
         }
         if !(1..=3600).contains(&self.tick_seconds) {
             return Err("tick_seconds must be 1 to 3600.".into());
