@@ -336,13 +336,13 @@ async fn the_legal_pages_carry_the_published_text() {
     let (status, terms) = get(router(config(root.path().into())), "/terms").await;
     assert_eq!(status, StatusCode::OK);
     assert!(terms.contains("<h1>Terms of Service</h1>"), "{terms}");
-    assert!(terms.contains("Last updated: 2026-09-03"));
+    assert!(terms.contains("Last updated: 2026-10-09"));
     assert!(terms.contains("OpenAgents, Inc. (“OpenAgents,” “we,” “us,” or “our”)"));
     assert!(terms.contains("governed by the laws of the State of Texas"));
     let (status, privacy) = get(router(config(root.path().into())), "/privacy").await;
     assert_eq!(status, StatusCode::OK);
     assert!(privacy.contains("<h1>Privacy Policy</h1>"), "{privacy}");
-    assert!(privacy.contains("You may ask us not to use the content you submit"));
+    assert!(privacy.contains("On a paid plan, you may ask us not to use the content you submit"));
     assert!(privacy.contains("mailto:chris@openagents.com"));
 }
 

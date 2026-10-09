@@ -3,7 +3,7 @@
 //!
 //! Every document is compiled into the binary, so a deploy cannot fail to
 //! copy one and leave a page answering `404`. The terms and the policy are
-//! the text openagents.com published, last updated 2026-09-03, unchanged.
+//! the text openagents.com published, last updated 2026-10-09.
 //! The docs are the user guide to OpenAgents, grouped into sections, in
 //! `content/docs/`.
 
@@ -290,12 +290,12 @@ mod tests {
     /// name the way out of it, as the published text does.
     #[test]
     fn the_legal_text_is_the_published_text() {
-        assert!(TERMS.starts_with("# Terms of Service\nLast updated: 2026-09-03"));
-        assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-09-03"));
+        assert!(TERMS.starts_with("# Terms of Service\nLast updated: 2026-10-09"));
+        assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-10-09"));
         assert!(TERMS.contains("train, fine-tune, and evaluate the models and tools we run"));
         assert!(PRIVACY.contains("To train, fine-tune, and evaluate models we run or develop"));
-        assert!(PRIVACY.contains("You may ask us not to use the content you submit"));
-        assert!(TERMS.contains("You may ask us to stop using your content this way"));
+        assert!(PRIVACY.contains("On a paid plan, you may ask us not to use the content you submit"));
+        assert!(TERMS.contains("On a paid plan, you may ask us to stop using your content this way"));
         for document in [TERMS, PRIVACY] {
             assert!(document.contains("do not sell your"));
             assert!(document.contains("1101 W 34th St. #581, Austin, TX 78705"));

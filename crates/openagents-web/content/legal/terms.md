@@ -1,5 +1,5 @@
 # Terms of Service
-Last updated: 2026-09-03
+Last updated: 2026-10-09
 
 OpenAgents, Inc. (“OpenAgents,” “we,” “us,” or “our”) makes these Terms of Service available to explain the terms by which you may access and use our products and services, [https://openagents.com](https://openagents.com) , and other related products and services that link to these Terms of Service, including Coder and Coder Terminal (collectively, the “Platform”). By accessing, browsing, or otherwise using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree, do not access or use the Platform.
 
@@ -48,7 +48,7 @@ We may investigate and take action against anyone who, in our sole discretion, v
 
 **Your content.** You retain ownership of your User Content. You represent that you have the rights necessary to submit it. To operate the Platform, you grant us a worldwide, non-exclusive, royalty-free license to host, process, transmit, and display your User Content as needed to provide the service, and to create aggregated or de-identified data from it.
 
-**Improving our products.** You also grant us a license to use your User Content, and the data the Platform records about how you use it, to improve our products and develop new ones: to fix defects, measure quality, build benchmarks and test sets, and train, fine-tune, and evaluate the models and tools we run. We do not sell your User Content, and we do not give it to a third party to train that party's models except where you direct us to send a request to a model provider so it can answer. You may ask us to stop using your content this way by writing to us, as the [Privacy Policy](https://openagents.com/privacy) describes; the rest of this license stays in force so we can run the Platform for you.
+**Improving our products.** You also grant us a license to use your User Content, and the data the Platform records about how you use it, to improve our products and develop new ones: to fix defects, measure quality, build benchmarks and test sets, and train, fine-tune, and evaluate the models and tools we run. We do not sell your User Content, and we do not give it to a third party to train that party's models except where you direct us to send a request to a model provider so it can answer. On a paid plan, you may ask us to stop using your content this way; opt-outs are set up by agreement with us, as the [Privacy Policy](https://openagents.com/privacy) describes; the rest of this license stays in force so we can run the Platform for you.
 
 **Model inputs and outputs.** As between you and OpenAgents, you are responsible for the prompts and inputs you submit through the API and for your use of any outputs. Outputs may be subject to the terms of the underlying model providers. You are responsible for evaluating outputs before relying on them.
 
