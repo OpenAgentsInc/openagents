@@ -442,6 +442,40 @@ pub fn credential_in_document(document: &serde_json::Value) -> Option<&'static s
     }
 }
 
+/// Replace every string (and object key) in `document` that
+/// [`credential_in_document`] would still refuse with
+/// `[redacted:credential]`, whole. Redaction replaces matches inside a
+/// string; once the markers are taken out, what is left can still read as
+/// a credential (a match split around a redacted part, a key name), and an
+/// upload refused for that helps nobody. Returns how many were replaced.
+pub fn scrub_document(document: &mut serde_json::Value) -> u32 {
+    const SCRUBBED: &str = "[redacted:credential]";
+    let flagged = |text: &str| credential_in(&without_markers(text)).is_some();
+    match document {
+        serde_json::Value::String(text) => {
+            if flagged(text) {
+                *text = SCRUBBED.to_owned();
+                1
+            } else {
+                0
+            }
+        }
+        serde_json::Value::Array(values) => values.iter_mut().map(scrub_document).sum(),
+        serde_json::Value::Object(fields) => {
+            let mut count = 0;
+            let keys: Vec<String> = fields.keys().filter(|key| flagged(key)).cloned().collect();
+            for (index, key) in keys.into_iter().enumerate() {
+                if let Some(value) = fields.remove(&key) {
+                    fields.insert(format!("{SCRUBBED}{index}"), value);
+                    count += 1;
+                }
+            }
+            count + fields.values_mut().map(scrub_document).sum::<u32>()
+        }
+        _ => 0,
+    }
+}
+
 impl Screen {
     /// Redacts every string in `document`, at every depth: credential
     /// shapes, this host's exact credential values, and personal data
@@ -470,6 +504,29 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_still_reads_as_a_credential_is_scrubbed_whole() {
+        let key = format!("sk-{}", "a1".repeat(12));
+        // A match that only forms once a marker is taken out (the bearer
+        // marker, then a long word on the next line), and an object key.
+        let mut joined = format!(
+            "curl -H Authorization: Bearer {}\nabcdefghijklmnopqrstuvwxyz0123",
+            "t0k3n".repeat(6)
+        );
+        joined = redact(&joined);
+        assert!(joined.contains("[redacted:bearer]"));
+        let mut document = serde_json::json!({
+            "steps": [{"message": joined, "ok": "plain text"}],
+            key.clone(): 1,
+        });
+        assert!(credential_in_document(&document).is_some());
+        assert_eq!(scrub_document(&mut document), 2);
+        assert_eq!(credential_in_document(&document), None);
+        assert_eq!(document["steps"][0]["ok"], "plain text");
+        assert_eq!(document["steps"][0]["message"], "[redacted:credential]");
+        assert!(!document.to_string().contains(&key));
+    }
 
     #[test]
     fn a_document_is_redacted_at_every_depth_and_then_passes() {

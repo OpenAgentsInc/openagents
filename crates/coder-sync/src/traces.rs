@@ -35,7 +35,13 @@ pub fn prepare(mut document: Value, screen: &Screen) -> Result<Prepared, String>
     if !document.get("steps").is_some_and(Value::is_array) {
         return Err("That isn't an ATIF trace: it has no steps.".into());
     }
-    let left_out = screen.redact_document(&mut document);
+    let mut left_out = screen.redact_document(&mut document);
+    // What the website would still refuse goes out whole, so a long
+    // session is never refused for one string (#11154).
+    let scrubbed = secret_screen::scrub_document(&mut document);
+    if scrubbed > 0 {
+        *left_out.entry("credential".to_owned()).or_default() += scrubbed;
+    }
     let bytes =
         serde_json::to_vec(&document).map_err(|_| "Couldn't read the trace.".to_string())?;
     if bytes.len() > MAX_BYTES {
