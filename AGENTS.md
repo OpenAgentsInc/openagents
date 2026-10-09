@@ -35,6 +35,25 @@ build's entry at the top of `CHANGELOG` in
 script refuses a dirty checkout or a build number App Store Connect already
 has. Report the build number and the script's last line.
 
+## User-facing copy (owner, 2026-10-08)
+
+Never put **machine talk** in anything a user sees: web pages, native views,
+served docs, onboarding, notices, errors, or CLI messages meant for end
+users. Machine talk narrates the system's internals instead of telling the
+person what happened or what they can do: internal words (retained,
+projection, superseded, canonical, admitted, provenance, epoch, reconcile,
+digest, lane, journal, original bytes, ...), narration of internal steps,
+reassurance about guarantees nobody asked about, and hedged legalistic
+phrasing. The test: would a normal person using a chat app say this sentence
+out loud? If not, rewrite it in plain words or say nothing. Precise terms stay
+in docs, logs, protocols, and code. Each surface's tests run the `oa-copy`
+guard (`oa_copy::violations`) over the text users see; extend its lexicon
+rather than weakening a surface's allowlist. See #11031.
+
+Also: no agent-written walls of text in the product (design the flow as UI
+instead), and comment out any control that doesn't work yet rather than
+showing a placeholder.
+
 ## Velocity (owner, 2026-10-01)
 
 Ship small changes fast. The default check for a change is `cargo test -p`

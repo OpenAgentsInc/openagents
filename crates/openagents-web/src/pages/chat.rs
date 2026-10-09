@@ -1038,7 +1038,8 @@ async fn events(
                 Ok(v) if v.conversation.revision > cursor => {
                     let revision = v.conversation.revision;
                     let missed = revision.saturating_sub(cursor + 1);
-                    let body=html! { @if missed>0 {p.oa-thread-notice {"Resumed from the retained snapshot; " (missed) " intermediate projections were superseded. All original messages remain available."}} (messages(&v.conversation,None)) }.into_string();
+                    let _ = missed; // A resume re-renders the full transcript; nothing to announce.
+                    let body = html! { (messages(&v.conversation,None)) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))

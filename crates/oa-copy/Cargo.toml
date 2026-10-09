@@ -1,0 +1,9 @@
+[package]
+name = "oa-copy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The machine-talk guard: words and phrases that must never reach user-facing copy (#11031)."
+
+[dependencies]
