@@ -214,7 +214,7 @@ automation account, from the repository root:
 
 ## Follow-ups
 
-- `tenancy::keys::save` writes `keys.json` through one fixed temporary
+- #11150: `tenancy::keys::save` writes `keys.json` through one fixed temporary
   name without a lock, so two keys issued at the same moment can lose one.
   It predates this change (one process has the same race).
 - Each `--restart` smoke run leaves one test account behind, now that
