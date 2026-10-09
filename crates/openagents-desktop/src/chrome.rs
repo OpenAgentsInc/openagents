@@ -869,13 +869,15 @@ fn engine_row(
     detail: &str,
     meter: Option<(&str, u8)>,
 ) -> Node<Intent> {
-    // One line: the model is shortened to the row's room (about 6 points
-    // a character at 12 points), and the hover text has it whole.
+    // One line: the model is shortened to the row's room, and the hover
+    // text has it whole. Rows draw in Paper Mono, whose every character
+    // advances 0.606 em (about 7.3 points at 12 points).
+    const ADVANCE: f32 = 12.0 * 0.606;
     let room = sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX)
         - 16.0
         - 16.0
         - if meter.is_some() { 76.0 } else { 0.0 };
-    let budget = ((room / 6.0) as usize).saturating_sub(name.chars().count() + 2);
+    let budget = ((room / ADVANCE) as usize).saturating_sub(name.chars().count() + 2);
     let detail = if detail.chars().count() > budget {
         let mut short: String = detail.chars().take(budget.saturating_sub(1)).collect();
         short.push('…');
