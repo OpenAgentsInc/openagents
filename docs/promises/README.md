@@ -70,9 +70,11 @@ own additions). The import followed the ledger's own status table:
 - Live and Launching rows became `shipped` and `launching`, each with the
   evidence that proves it and the link or command to try it. C4 (edit queued
   messages) stays `next` while #11121 is open. G6 (this page) is `launching`.
-- Partial rows became `next`, and Missing rows `later`: they aren't in front
-  of users yet. Use `partial` only for something people can use today, in
-  part, with evidence for that part.
+- Partial and Missing rows aren't in front of users yet. `next` holds only
+  what's planned for the next two weeks: a row in the spec's V1 core or V1
+  complete, or one with an open issue on the V1 board (project 22). Every
+  other row is `later` (owner, 2026-10-09). Use `partial` only for something
+  people can use today, in part, with evidence for that part.
 - Dropped rows became `dropped`, with the ledger's reason as the `note`.
 - Surfaces: W `web`, T `terminal`, M `mobile`, D `desktop`, V `verse`,
   N `network`, and "all" is web, terminal, mobile, and desktop.

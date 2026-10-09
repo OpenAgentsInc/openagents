@@ -14,7 +14,8 @@
 #              network, verse
 #   status     shipped (works today; "live" also reads as this), launching
 #              (new in today's 1.0 release), partial (works in part),
-#              next, later ("missing" also reads as this), or dropped
+#              next (only the next two weeks: V1 core, V1 complete, or an
+#              open issue on project 22), later ("missing" reads as this), or dropped
 #              (on purpose; listed at the end of /roadmap with its note)
 #   link or command
 #              the one place to try it (shipped, launching, and partial
@@ -150,7 +151,7 @@ id = "A5"
 group = "A"
 statement = "Your username and public profile match your GitHub name."
 surfaces = ["web"]
-status = "next"
+status = "later"
 episodes = [274]
 
 [[promise]]
@@ -158,7 +159,7 @@ id = "A6"
 group = "A"
 statement = "One recovery phrase gives you both your identity on the open network and your Bitcoin wallet."
 surfaces = ["mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [82, 143, 144, 207, 208]
 
 [[promise]]
@@ -166,7 +167,7 @@ id = "A7"
 group = "A"
 statement = "Your agents get their own identity and keys."
 surfaces = ["network", "verse"]
-status = "next"
+status = "later"
 episodes = [199, 209, 235, 275]
 
 [[promise]]
@@ -174,7 +175,7 @@ id = "A8"
 group = "A"
 statement = "You can export all your data and leave whenever you want."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [129, 227]
 
 [[promise]]
@@ -267,7 +268,7 @@ id = "B8"
 group = "B"
 statement = "You can paste a link or ask a question that needs the web, and the agent reads the page."
 surfaces = ["web", "terminal"]
-status = "next"
+status = "later"
 episodes = [67, 69, 73, 76, 44]
 
 [[promise]]
@@ -307,7 +308,7 @@ id = "B13"
 group = "B"
 statement = "Answers can include live pieces such as slides, tables, and buttons, not only text."
 surfaces = ["web", "desktop"]
-status = "next"
+status = "later"
 issues = [11113, 11114]
 episodes = [289]
 
@@ -408,7 +409,7 @@ id = "C6"
 group = "C"
 statement = "Hand it a GitHub issue and get back a tested pull request."
 surfaces = ["terminal", "web"]
-status = "next"
+status = "later"
 episodes = [20, 25, 30, 123, 161, 228, 287]
 
 [[promise]]
@@ -416,7 +417,7 @@ id = "C7"
 group = "C"
 statement = "It hands parts of a job to Codex, Claude, Devin, or other agents and combines the results."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 issues = [11096]
 episodes = [195, 198, 264, 267, 278]
 
@@ -425,7 +426,7 @@ id = "C8"
 group = "C"
 statement = "Give it a list of work and walk away; it keeps going, even overnight."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 episodes = [31, 167, 195, 199, 228, 250, 281]
 
 [[promise]]
@@ -433,7 +434,7 @@ id = "C9"
 group = "C"
 statement = "It looks around cheaply before calling an expensive model, so the same work costs less."
 surfaces = ["terminal"]
-status = "next"
+status = "later"
 episodes = [285, 286, 287]
 
 [[promise]]
@@ -441,7 +442,7 @@ id = "C10"
 group = "C"
 statement = "It picks the cheapest model that still gets each task done."
 surfaces = ["terminal", "network"]
-status = "next"
+status = "later"
 issues = [11079]
 episodes = [219, 287]
 
@@ -450,7 +451,7 @@ id = "C11"
 group = "C"
 statement = "You can bring your own keys, subscriptions, models, and computers."
 surfaces = ["terminal", "web"]
-status = "next"
+status = "later"
 issues = [11111]
 episodes = [219, 244, 277]
 
@@ -459,7 +460,7 @@ id = "C12"
 group = "C"
 statement = "When one of your accounts hits its limit, it moves to the next."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 episodes = [225, 246, 250]
 
 [[promise]]
@@ -467,7 +468,7 @@ id = "C13"
 group = "C"
 statement = "It understands your whole repository without you picking files."
 surfaces = ["terminal"]
-status = "next"
+status = "later"
 episodes = [23, 107, 122, 156, 160]
 
 [[promise]]
@@ -493,7 +494,7 @@ id = "C16"
 group = "C"
 statement = "Your agent can drive a computer made for agents (browser, screen, phone emulator)."
 surfaces = ["desktop", "terminal"]
-status = "next"
+status = "later"
 issues = [11124]
 episodes = [270, 280, 281, 283]
 
@@ -502,7 +503,7 @@ id = "C17"
 group = "C"
 statement = "Each agent gets its own workspace with shared build caches, so many agents don't overload your machine."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 episodes = [188, 281]
 
 [[promise]]
@@ -518,7 +519,7 @@ id = "C19"
 group = "C"
 statement = "You see every change as a diff before you accept it."
 surfaces = ["terminal", "desktop", "web"]
-status = "next"
+status = "later"
 episodes = [117, 119]
 
 [[promise]]
@@ -526,7 +527,7 @@ id = "C20"
 group = "C"
 statement = "You see how much CPU and memory each helper agent is using."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 posts = [
   { date = "2026-09-04", url = "https://x.com/OpenAgentsInc/status/2095902069374763426" },
   { date = "2026-09-05", url = "https://x.com/OpenAgentsInc/status/2096357223253389345" },
@@ -611,7 +612,7 @@ id = "D6"
 group = "D"
 statement = "You get a phone notification when an agent needs you."
 surfaces = ["mobile"]
-status = "next"
+status = "later"
 episodes = [160, 183, 190]
 
 [[promise]]
@@ -662,7 +663,7 @@ id = "E5"
 group = "E"
 statement = "You say what you care about (cost, speed, privacy) and the agent picks models to match."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 issues = [11079]
 episodes = [269, 286]
 
@@ -695,7 +696,7 @@ id = "E8"
 group = "E"
 statement = "The app never claims a model it didn't use; you get the model you picked or a visible failure."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [250]
 
 [[promise]]
@@ -703,7 +704,7 @@ id = "E9"
 group = "E"
 statement = "You can run open models on your own machine or a friend's."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 issues = [11080]
 episodes = [145, 194, 219]
 
@@ -720,7 +721,7 @@ id = "F1"
 group = "F"
 statement = "When the agent can't do something, it builds the ability with you, tests it, and you approve it."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [211, 289]
 
 [[promise]]
@@ -745,7 +746,7 @@ id = "F4"
 group = "F"
 statement = "The agent finds the tools it needs itself, ranked by proven results."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [87, 102, 285, 286]
 
 [[promise]]
@@ -753,7 +754,7 @@ id = "F5"
 group = "F"
 statement = "Plugins run sandboxed, with only the access you grant."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [48, 102, 214]
 
 [[promise]]
@@ -761,7 +762,7 @@ id = "F6"
 group = "F"
 statement = "Developers write plugins in many languages."
 surfaces = ["network"]
-status = "next"
+status = "later"
 episodes = [48, 53, 68]
 
 [[promise]]
@@ -769,7 +770,7 @@ id = "F7"
 group = "F"
 statement = "You connect outside tools through MCP."
 surfaces = ["terminal", "desktop"]
-status = "next"
+status = "later"
 issues = [11084]
 episodes = [144, 165, 168, 195]
 
@@ -778,7 +779,7 @@ id = "G1"
 group = "G"
 statement = "Gym measures agents and plugins, and anyone can inspect the results."
 surfaces = ["web", "terminal"]
-status = "next"
+status = "later"
 episodes = [65, 287, 289]
 
 [[promise]]
@@ -786,7 +787,7 @@ id = "G2"
 group = "G"
 statement = "We publish benchmark results with the setup, costs, and failures, not only scores."
 surfaces = ["web"]
-status = "next"
+status = "later"
 episodes = [120, 121, 186, 287]
 
 [[promise]]
@@ -794,7 +795,7 @@ id = "G3"
 group = "G"
 statement = "You earn experience, levels, and leaderboard places for verified work, never for wasted spending."
 surfaces = ["web", "terminal", "mobile", "desktop", "verse"]
-status = "next"
+status = "later"
 episodes = [185, 270, 284]
 
 [[promise]]
@@ -810,7 +811,7 @@ id = "G5"
 group = "G"
 statement = "Improvements to how the agent works are published with their evidence, so everyone's agent gets better."
 surfaces = ["network"]
-status = "next"
+status = "later"
 episodes = [270, 286, 287]
 
 [[promise]]
@@ -833,7 +834,7 @@ id = "G7"
 group = "G"
 statement = "You can report something that doesn't work, and it becomes a tracked fix."
 surfaces = ["mobile", "web", "terminal"]
-status = "next"
+status = "later"
 episodes = [234, 246, 254]
 
 [[promise]]
@@ -923,7 +924,7 @@ id = "I1"
 group = "I"
 statement = "You get a Bitcoin wallet where only you hold the keys, for small amounts."
 surfaces = ["mobile", "desktop"]
-status = "next"
+status = "later"
 issues = [11093]
 episodes = [143, 153, 169, 173, 207, 212]
 
@@ -932,7 +933,7 @@ id = "I2"
 group = "I"
 statement = "You can send sats just by asking."
 surfaces = ["web", "terminal", "mobile", "desktop"]
-status = "next"
+status = "later"
 episodes = [212, 289]
 
 [[promise]]
@@ -940,7 +941,7 @@ id = "I3"
 group = "I"
 statement = "Your agent can pay and get paid, under rules and budgets you approve."
 surfaces = ["mobile", "network"]
-status = "next"
+status = "later"
 issues = [11146]
 episodes = [42, 47, 141, 147, 212]
 
@@ -949,7 +950,7 @@ id = "I4"
 group = "I"
 statement = "You can pay by card."
 surfaces = ["web", "network"]
-status = "next"
+status = "later"
 issues = [11142, 11143, 11144]
 episodes = [37, 64, 116]
 
@@ -958,7 +959,7 @@ id = "I5"
 group = "I"
 statement = "Earnings go to your Lightning address automatically."
 surfaces = ["network"]
-status = "next"
+status = "later"
 episodes = [64, 92, 96, 98]
 
 [[promise]]
@@ -1019,7 +1020,7 @@ id = "J1"
 group = "J"
 statement = "You can sell your computer's spare power for Bitcoin with one \"Go Online\" switch."
 surfaces = ["desktop", "terminal", "network"]
-status = "next"
+status = "later"
 issues = [11080]
 episodes = [144, 174, 178, 201, 214, 221]
 
@@ -1028,7 +1029,7 @@ id = "J2"
 group = "J"
 statement = "Providers are paid for accepted work, not for being online."
 surfaces = ["network"]
-status = "next"
+status = "later"
 issues = [11082]
 episodes = [224, 232, 237]
 
@@ -1037,7 +1038,7 @@ id = "J3"
 group = "J"
 statement = "Anyone can join the markets by following open specs, without our permission."
 surfaces = ["network"]
-status = "next"
+status = "later"
 episodes = [203, 215, 266, 267, 288]
 
 [[promise]]
@@ -1065,7 +1066,7 @@ id = "J6"
 group = "J"
 statement = "A public stats page shows the network's size, work done, and money paid."
 surfaces = ["web"]
-status = "next"
+status = "later"
 issues = [11081]
 episodes = [203, 221, 224, 227]
 
@@ -1126,7 +1127,7 @@ id = "K3"
 group = "K"
 statement = "Everything you can do in an app, you can do from the command line or API."
 surfaces = ["terminal", "network"]
-status = "next"
+status = "later"
 episodes = [67, 85, 100, 203, 289]
 
 [[promise]]
@@ -1147,7 +1148,7 @@ id = "K5"
 group = "K"
 statement = "You can run your own copy of the whole thing."
 surfaces = ["network"]
-status = "next"
+status = "later"
 episodes = [129, 242, 289]
 
 [[promise]]
@@ -1235,7 +1236,7 @@ id = "L4"
 group = "L"
 statement = "The desktop shows many chats and terminals side by side in panes."
 surfaces = ["desktop"]
-status = "next"
+status = "later"
 issues = [11124]
 episodes = [118, 123, 179, 185]
 
@@ -1244,7 +1245,7 @@ id = "L5"
 group = "L"
 statement = "Fast, game-like controls with hotkeys that stay put."
 surfaces = ["desktop", "terminal"]
-status = "next"
+status = "later"
 episodes = [170, 171, 246, 249, 251]
 
 [[promise]]
@@ -1282,7 +1283,7 @@ id = "L9"
 group = "L"
 statement = "A crash in one feature never takes down the app or your agents."
 surfaces = ["desktop", "terminal"]
-status = "next"
+status = "later"
 episodes = [258]
 
 [[promise]]
@@ -1290,7 +1291,7 @@ id = "L10"
 group = "L"
 statement = "The desktop opens a file in under a second and switches chats in under 50 ms."
 surfaces = ["desktop"]
-status = "next"
+status = "later"
 issues = [11092]
 posts = [
   { date = "2026-07-10", url = "https://x.com/OpenAgentsInc/status/2075680613731078265" },
@@ -1302,7 +1303,7 @@ id = "M1"
 group = "M"
 statement = "A shared 3D world where you meet other people and agents."
 surfaces = ["verse", "web", "desktop", "mobile"]
-status = "next"
+status = "later"
 episodes = [116, 177, 189, 240, 284]
 
 [[promise]]
@@ -1310,7 +1311,7 @@ id = "M2"
 group = "M"
 statement = "You watch your agents do real repository work there, and answer them or approve merges."
 surfaces = ["verse"]
-status = "next"
+status = "later"
 episodes = [116, 240, 284]
 
 [[promise]]
@@ -1318,7 +1319,7 @@ id = "M3"
 group = "M"
 statement = "You own named agents with jobs and a place to work in the world."
 surfaces = ["verse"]
-status = "next"
+status = "later"
 episodes = [270, 284]
 
 [[promise]]
@@ -1334,7 +1335,7 @@ id = "M5"
 group = "M"
 statement = "Guilds, quests, and trades tied to real verified work."
 surfaces = ["verse"]
-status = "next"
+status = "later"
 episodes = [116, 200, 284]
 
 [[promise]]
@@ -1342,7 +1343,7 @@ id = "M6"
 group = "M"
 statement = "You command agents the way you command units in a strategy game."
 surfaces = ["verse", "desktop"]
-status = "next"
+status = "later"
 episodes = [170, 171, 178, 199, 283, 284]
 
 [[promise]]
@@ -1350,7 +1351,7 @@ id = "M7"
 group = "M"
 statement = "A terminal inside the world that you can share."
 surfaces = ["verse"]
-status = "next"
+status = "later"
 episodes = [116, 284]
 
 [[promise]]
