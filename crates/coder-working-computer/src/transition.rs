@@ -42,6 +42,10 @@ pub enum Command {
     StartTurn {
         generation: u64,
     },
+    /// The running turn's owner is alive.
+    Heartbeat {
+        generation: u64,
+    },
     /// The fence: the computer quiesces for this generation's checkpoint.
     FinishTurn {
         generation: u64,
@@ -223,6 +227,12 @@ fn maybe_awake(c: &mut Computer, now: u64) {
         touch(c, now);
     }
 }
+/// Count a failed boot toward the breaker.
+fn boot_failed(c: &mut Computer, now: u64) {
+    c.boot_failures.push(now);
+    let extra = c.boot_failures.len().saturating_sub(MAX_BOOT_FAILURES);
+    c.boot_failures.drain(..extra);
+}
 fn latest_create_mut(c: &mut Computer) -> Option<&mut CreateAttempt> {
     c.creates.last_mut()
 }
@@ -289,7 +299,10 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
                     new_boot(&mut n, value.clone(), BootOrigin::Created, now);
                     n.phase = Phase::Booting;
                 }
-                Outcome::Failed { reason: r } => n.phase = Phase::Failed { reason: reason(r) },
+                Outcome::Failed { reason: r } => {
+                    boot_failed(&mut n, now);
+                    n.phase = Phase::Failed { reason: reason(r) }
+                }
                 Outcome::Unknown { reason: r } => {
                     n.phase = Phase::Unknown {
                         reason: format!("create: {}", reason(r)),
@@ -358,6 +371,7 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
                         at_ms: now,
                     });
                     b.stop_reason = Some(StopReason::FailedBoot);
+                    boot_failed(&mut n, now);
                     n.phase = Phase::Stopped;
                 }
                 Outcome::Unknown { reason: r } => {
@@ -379,6 +393,7 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
             }
             n.boot_mut().unwrap().credentials = Some(fact_of(outcome, Clone::clone, now));
             if let Outcome::Failed { reason: r } = outcome {
+                boot_failed(&mut n, now);
                 n.phase = Phase::Failed {
                     reason: format!("credentials: {}", reason(r)),
                 };
@@ -429,10 +444,27 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
                 });
             }
             n.turn.dispatched = *generation;
+            n.turn.heartbeat_ms = now;
             n.phase = Phase::Turn {
                 generation: *generation,
             };
             touch(&mut n, now);
+            true
+        }
+        Command::Heartbeat { generation } => {
+            let Phase::Turn { generation: g } = c.phase else {
+                return Err(wrong(c));
+            };
+            if g != *generation {
+                return Err(Refusal::StaleGeneration {
+                    fence: g,
+                    observed: *generation,
+                });
+            }
+            if now <= c.turn.heartbeat_ms {
+                return Ok(Applied::Unchanged);
+            }
+            n.turn.heartbeat_ms = now;
             true
         }
         Command::FinishTurn { generation } => {

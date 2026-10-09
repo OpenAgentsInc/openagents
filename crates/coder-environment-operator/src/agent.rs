@@ -38,8 +38,8 @@ use coder_environment_verify::plan::{
     Assertions, Check, CheckKind, CheckPlan, Idempotence, PLAN_SCHEMA, SourceStep, Startup,
 };
 use coder_environment_verify::service::VerifyRequest;
-use coder_working_computer::Principal;
 use coder_working_computer::provider::{Commands, Images};
+use coder_working_computer::{HEARTBEAT_EVERY_MS, Principal};
 use codex_transport::{Reply, Request, Transport, TransportError};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -298,7 +298,27 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
     /// Run the setup as far as it can go now: until it waits for the
     /// person, is ready to save, is saved, or failed. Returns the state it
     /// stopped in (also retained).
-    pub async fn run(&self, brief: &Brief, mut state: State) -> State {
+    ///
+    /// While it runs, the setup turn's computer hears a heartbeat every
+    /// [`HEARTBEAT_EVERY_MS`] however long a step takes, so only a loop
+    /// that is gone leaves the turn silent (#11059).
+    pub async fn run(&self, brief: &Brief, state: State) -> State {
+        let session = state.session();
+        let beat = async {
+            let mut every = tokio::time::interval(Duration::from_millis(HEARTBEAT_EVERY_MS));
+            every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                every.tick().await;
+                let _ = self.owners.setup.heartbeat(&session, now_ms()).await;
+            }
+        };
+        tokio::select! {
+            state = self.steps(brief, state) => state,
+            _ = beat => unreachable!("the heartbeat never ends"),
+        }
+    }
+
+    async fn steps(&self, brief: &Brief, mut state: State) -> State {
         loop {
             match state.phase.clone() {
                 Phase::Starting => self.start(brief, &mut state).await,

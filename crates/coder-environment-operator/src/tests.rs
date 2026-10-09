@@ -278,3 +278,44 @@ async fn a_restarted_owner_recovers_a_build_mid_install() {
 
 #[path = "gce_tests.rs"]
 mod gce_tests;
+
+/// What a silent setup and a machine that keeps failing to start tell the
+/// person is plain (#11059).
+#[test]
+fn liveness_and_breaker_messages_are_plain() {
+    let stalled = coder_environment_setup::service::STALLED;
+    assert!(oa_copy::violations(stalled, &[]).is_empty(), "{stalled}");
+    let mut c = coder_working_computer::Computer::new(
+        coder_working_computer::Spec {
+            id: "computer-1".into(),
+            owner: Principal {
+                workspace: "ws-1".into(),
+                principal: "user-1".into(),
+            },
+            chat: "chat-1".into(),
+            project: coder_environment::ProjectLink {
+                workspace: "ws-1".into(),
+                project: "proj-1".into(),
+            },
+            source: coder_environment::SourcePin {
+                repository: Some("example/repo".into()),
+                revision: "a".repeat(40),
+                digest: "b".repeat(64),
+            },
+            base: None,
+            size: "small".into(),
+            credential_names: Default::default(),
+            services: vec![],
+            bounds: coder_working_computer::Bounds {
+                idle_ms: 600_000,
+                observed_extension_ms: 0,
+                absolute_ms: 3_600_000,
+            },
+        },
+        0,
+    )
+    .unwrap();
+    c.boot_failures = vec![0, 1_000, 2_000];
+    let message = coder_working_computer::decide::breaker_message(&c, 3_000).unwrap();
+    assert!(oa_copy::violations(&message, &[]).is_empty(), "{message}");
+}
