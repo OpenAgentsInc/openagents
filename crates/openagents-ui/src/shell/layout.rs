@@ -916,7 +916,6 @@ impl Render for AppShell {
                         }
                     }
                     div class="oa-main-frame" {
-                        div class="oa-main-top-fade" aria-hidden="true" {}
                         div class="oa-main-viewport" {
                             main id=(main_id) class="oa-workspace" tabindex="-1" {
                                 @if let Some(content) = &self.content { (content) }

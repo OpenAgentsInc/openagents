@@ -303,7 +303,8 @@ fn app_mode_docks_the_composer_and_drops_the_footer() {
     let app = shell.mode(MainMode::App).render().into_string();
     assert!(app.contains(r#"data-mode="app""#) && !app.contains("legal"));
     assert!(app.contains(r#"<div class="oa-main-composer"><section class="oa-composer""#));
-    assert!(app.contains(r#"class="oa-main-top-fade" aria-hidden="true""#));
+    // No fade over the top of the content: the header is see-through.
+    assert!(!app.contains("oa-main-top-fade"));
 }
 
 #[test]

@@ -11,7 +11,6 @@
   --height-token-nav-row: 2.25rem;
   --padding-row-x: calc(var(--spacing) * 2.5);
   --padding-row-y: calc(var(--spacing) * 1.5);
-  --top-fade: calc(var(--spacing) * 6);
   --thread-content-max-width: 48rem;
 }
 
@@ -872,14 +871,6 @@ html:has(> body.oa-body) {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-}
-.oa-main-top-fade {
-  position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 1;
-  height: var(--top-fade);
-  background: linear-gradient(to bottom, var(--color-surface), transparent);
-  pointer-events: none;
 }
 .oa-main-viewport {
   position: relative;
