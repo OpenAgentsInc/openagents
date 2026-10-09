@@ -37,8 +37,9 @@ no revenue) and [Episode 289](../transcripts/289.md):
 
 ## 1. What the API is
 
-OpenAgents is a composable general agent (289). Behind an API means a caller
-gets the whole agent, not a model: the knowledge base, the router, the
+OpenAgents is an open network of agents you work with through one
+conversation (289). Behind an API means a caller gets that whole network, not
+a model: the knowledge base, the router, the
 plugins, Coder, the eval system, the wallet, and background rules.
 
 **One call is the product.** `POST /v1/messages` takes a message and an

@@ -1,25 +1,27 @@
 ---
 id: openagents.overview
-version: 7
+version: 8
 kind: product
 title: "What OpenAgents is"
 summary: >-
-  OpenAgents is a general agent you chat with on the web, in the terminal,
-  on desktop, and on your phone; Coder does the code work, a router picks
-  the best of many models for each message, and plugins add abilities.
+  OpenAgents is an open network of agents you work with through one
+  conversation on the web, in the terminal, on desktop, and on your phone;
+  each message goes to whatever in the network serves it best, Coder does
+  the code work, and plugins add abilities.
 tags: [overview, app, product, website, off-computer]
 applies_when: >-
   The user asks what OpenAgents is, what the product or the app is for, or
   what it does overall; not who is answering in this chat, and not which
   AI model powers the chat.
 answer: >-
-  OpenAgents is a general agent you can chat with on the web, in your
-  terminal, on desktop, and on your phone. We answer questions, explain
-  things, and help you plan and write. Work in your code goes to Coder,
-  our coding agent, which runs in your terminal on your own computer:
-  get it at https://openagents.com/download. Each message goes to whichever of
-  many models fits it best, and plugins add new abilities, like handing
-  work to Claude Code or Codex. Everything is open source, at
+  OpenAgents is an open network of agents you work with through one
+  conversation: on the web, in your terminal, on desktop, and on your
+  phone. Ask a question, plan, or write, and each message goes to whatever
+  in the network serves it best: one of many models, a specialist agent, or
+  a computer. Work in your code goes
+  to Coder, our coding agent, which runs in your terminal on your own
+  computer: get it at https://openagents.com/download. Plugins add new
+  abilities, like handing work to Claude Code or Codex. Everything is open source, at
   https://github.com/OpenAgentsInc/openagents.
 status: admitted
 author: openagents
@@ -40,11 +42,12 @@ evidence:
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
   - "2026-10-09: v6: the iPhone app ships on TestFlight (https://testflight.apple.com/join/dvQdns5B, the link the download page and /connect give), not as a source build; checked against the cited sources."
   - "2026-10-09: v7 (#11095): the answer to the starter question 'What is OpenAgents?': a general agent on web, terminal, desktop, and phone; Coder does the code work; many models, routed per message; plugins such as handing work to Claude Code or Codex. It matches the prepared answer meta.who."
+  - "2026-10-09: v8: the owner's framing: OpenAgents is an open network of agents you work with through one conversation, not one agent or a general agent; each message goes to whatever in the network serves it best. It matches the prepared answer meta.who v4 and the What is OpenAgents doc."
 ---
 
 ## Answer
 
-OpenAgents is a general agent you can chat with on the web, in your terminal, on desktop, and on your phone. We answer questions, explain things, and help you plan and write. Work in your code goes to Coder, our coding agent, which runs in your terminal on your own computer: get it at https://openagents.com/download. Each message goes to whichever of many models fits it best, and plugins add new abilities, like handing work to Claude Code or Codex. Everything is open source, at https://github.com/OpenAgentsInc/openagents.
+OpenAgents is an open network of agents you work with through one conversation: on the web, in your terminal, on desktop, and on your phone. Ask a question, plan, or write, and each message goes to whatever in the network serves it best: one of many models, a specialist agent, or a computer. Work in your code goes to Coder, our coding agent, which runs in your terminal on your own computer: get it at https://openagents.com/download. Plugins add new abilities, like handing work to Claude Code or Codex. Everything is open source, at https://github.com/OpenAgentsInc/openagents.
 
 ## Details
 

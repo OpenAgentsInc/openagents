@@ -39,8 +39,8 @@ the [Terminal](/docs/terminal), `/plugins` turns each plugin on or off.
 
 ## Why plugins
 
-OpenAgents is one general agent made of many specialized parts. Anyone
-can add a part, and a part only becomes one of Coder's defaults after it
+OpenAgents is an open network of agents: one conversation in front, many
+specialized parts behind it. Anyone can add a part, and a part only becomes one of Coder's defaults after it
 was measured with and without, rerun by other people, and shown to help
 on someone else's tests. The argument is in
 [The Return of the General Agent](https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-10-01-the-return-of-the-general-agent.md).

@@ -843,7 +843,7 @@ mod tests {
         // The chat-answers-v1 entries that shipped in coder::first are
         // here, at the versions that shipped, so logged tags still resolve.
         for (id, version) in [
-            ("meta.who", 3),
+            ("meta.who", 4),
             ("meta.model", 3),
             ("meta.capabilities", 3),
             ("meta.limits_chat", 3),

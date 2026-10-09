@@ -974,7 +974,7 @@ retained [transcript archive](../transcripts/README.md) describe it:
 
 The [Coder-era review](revenue-roadmap.md#what-the-background-changes) adds
 episodes 275–289: dependable daily use, cloud placement, trusted devices,
-measured System One work, and the composable general agent. Coder supplies
+measured System One work, and the open network of agents behind one conversation. Coder supplies
 the first concrete buyer workflow; successful plugins extend it into other
 work without requiring every surface or market to launch together.
 

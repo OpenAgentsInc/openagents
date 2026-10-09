@@ -45,8 +45,8 @@
           "answers": ["meta.who.website", "openagents.overview"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["OpenAgents"], ["Coder"], ["many models"], ["plugin"]],
-          "forbidden": ["computer you connect", "Gemini", "Vercel", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
+          "required": [["OpenAgents"], ["network of agents"], ["one conversation"], ["Coder"], ["many models"], ["plugin"]],
+          "forbidden": ["general agent", "one agent you", "computer you connect", "Gemini", "Vercel", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
         },
         {
           "id": "starters.models",
@@ -91,8 +91,8 @@
           "answers": ["meta.who.website"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["OpenAgents"], ["https://openagents.com/download"]],
-          "forbidden": ["computer you connect"]
+          "required": [["OpenAgents"], ["network of agents"], ["https://openagents.com/download"]],
+          "forbidden": ["general agent", "one agent you", "computer you connect"]
         },
         {
           "id": "about.overview",

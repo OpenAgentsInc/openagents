@@ -4,12 +4,12 @@ Draft for the owner (#11104). Nothing here is posted. Post only after every
 platform named in it is live; if one slips, take it out of the post rather
 than saying "soon".
 
-## X (one post, 275 characters)
+## X (one post, 279 characters)
 
 ```text
 OpenAgents 1.0 is out.
 
-One agent you can chat with on the web, in your terminal, on your desktop (Mac, Linux, Windows), and on iPhone and Android.
+An open network of agents you work with in one conversation: web, terminal, desktop (Mac, Linux, Windows), iPhone, and Android.
 
 Sign in on the web and your chats follow you. Turn on sync and your terminal chats show up there too.
 
@@ -21,9 +21,11 @@ openagents.com/download
 **1.** OpenAgents 1.0 is out. Web, terminal, desktop (Mac, Linux, Windows),
 iPhone, and Android. Get it at openagents.com/download.
 
-**2.** OpenAgents is a composable general agent. You chat with one agent. It
-answers from our knowledge base. In the terminal or the desktop app, ask it
-to work on your code and it starts Coder in your project.
+**2.** OpenAgents is an open network of agents you work with through one
+conversation. Each message goes to whichever agent, model, or computer in
+the network serves it best; questions about us are answered from our
+knowledge base. In the terminal or the desktop app, ask for work on your
+code and Coder starts in your project.
 
 **3.** On the web, sign in with GitHub. Your chats belong to your account now,
 not a browser cookie. Pin, rename, archive, search, and delete them. Delete

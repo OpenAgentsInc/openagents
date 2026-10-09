@@ -1,7 +1,7 @@
 # OpenAgents API
 
-Design notes for putting OpenAgents itself, the composable general agent,
-behind an API that partner apps, websites, other agents, and self-hosters
+Design notes for putting OpenAgents itself, the open network of agents
+behind one conversation, behind an API that partner apps, websites, other agents, and self-hosters
 can call. Nothing here is implemented as a public API yet. The public face is
 plain HTTP with an API key; Nostr stays inside our own front, as the CLI
 hides it today; payment is x402.

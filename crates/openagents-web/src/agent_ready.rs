@@ -30,8 +30,8 @@ use crate::pages::content::{DOCS, PRIVACY, SECTIONS, TERMS};
 pub(crate) const SITE: &str = "https://openagents.com";
 
 /// What OpenAgents is, in one line: the docs' own opening sentence.
-pub(crate) const DESCRIPTION: &str = "OpenAgents is one agent you can chat with from anywhere: \
-this website, your Mac, your iPhone, or a terminal.";
+pub(crate) const DESCRIPTION: &str = "OpenAgents is an open network of agents you work with \
+through one conversation, from anywhere: this website, your phone, or a terminal.";
 
 /// The public docs MCP server's address on this site.
 pub(crate) const MCP_PATH: &str = "/mcp/docs";
@@ -1047,7 +1047,9 @@ mod tests {
         assert!(cut.chars().count() <= 201 && cut.ends_with('…'), "{cut}");
         assert_eq!(
             summary(DOCS[0].1).split(':').next(),
-            Some("OpenAgents is one agent you can chat with from anywhere")
+            Some(
+                "OpenAgents is an open network of agents you work with through one conversation, from anywhere"
+            )
         );
     }
 

@@ -5110,7 +5110,7 @@ mod tests {
         assert_eq!(bodies[0]["status"], "processing");
         assert_eq!(bodies[1]["type"], "judgment");
         assert_eq!(bodies[1]["tier"], "canned");
-        assert_eq!(bodies[1]["answer"], "meta.who@3");
+        assert_eq!(bodies[1]["answer"], "meta.who@4");
         assert!(bodies[1]["opener"].is_null());
         assert_eq!(bodies[2]["type"], "partial");
         assert_eq!(bodies[2]["seq"], 0);
@@ -5121,7 +5121,7 @@ mod tests {
         assert_eq!(result["type"], "result");
         assert_eq!(result["text"], text);
         assert_eq!(result["model"], "bank:chat-answers-v1");
-        assert_eq!(result["answer"], "meta.who@3");
+        assert_eq!(result["answer"], "meta.who@4");
         assert_eq!(result["tier"], "canned");
         // The reply is done long before the model would have begun.
         assert!(*at < Duration::from_millis(1_000), "{at:?}");

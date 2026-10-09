@@ -6,8 +6,8 @@ runbooks describe shipped behavior; dated reports preserve measured outcomes.
 The [documentation index](README.md), [complete catalog](catalog.md), and
 [glossary](glossary.md) separate those roles.
 
-The direction is one composable general agent that people can embed in
-their workflows, use across their devices, extend with reusable components,
+The direction is an open network of agents that people work with through one
+conversation, embed in their workflows, use across their devices, extend with reusable components,
 and hire through an open network. Coder is the anchor coding capability. Agent labor is
 a high-priority parallel track. Shared knowledge and reusable programs should
 improve accepted work across operators; their existence alone is not a network
