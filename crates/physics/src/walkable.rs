@@ -619,6 +619,16 @@ fn traverse(
     Ok((character.feet - goal).length() < 0.08)
 }
 
+/// Blocker boxes (props and corpses) use their own shape identity. A corpse
+/// keeps its actor's life, so sharing the living capsule's shape 0 would let a
+/// character supported by one be carried by the other's unrelated pose frame.
+pub const BLOCKER_SHAPE: u32 = 1;
+pub fn blocker_key(life: Life) -> ColliderKey {
+    ColliderKey {
+        life,
+        shape: BLOCKER_SHAPE,
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Entry {
     life: Life,
@@ -751,10 +761,7 @@ impl Blockers {
             .filter(|e| e.alive)
             .map(|e| {
                 Ok(MeshCollider {
-                    key: ColliderKey {
-                        life: e.life,
-                        shape: 0,
-                    },
+                    key: blocker_key(e.life),
                     layers: 1,
                     usage: Usage::Blocking,
                     mesh: Mesh::from_box(e.min, e.max)?,

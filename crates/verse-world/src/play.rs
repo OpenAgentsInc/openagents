@@ -4765,10 +4765,7 @@ mod body_lifetime_tests {
         );
         assert!(
             g.query_scene
-                .pose(physics::queries::ColliderKey {
-                    life: physical,
-                    shape: 0
-                })
+                .pose(physics::walkable::blocker_key(physical))
                 .is_some()
         );
         assert!(
@@ -4813,10 +4810,7 @@ mod body_lifetime_tests {
         );
         assert!(
             g.query_scene
-                .pose(physics::queries::ColliderKey {
-                    life: physical,
-                    shape: 0
-                })
+                .pose(physics::walkable::blocker_key(physical))
                 .is_none()
         );
         assert!(!g.bodies.remove(physical));

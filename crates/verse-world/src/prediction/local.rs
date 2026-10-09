@@ -3226,4 +3226,96 @@ mod tests {
         assert!(local.advance(0.1).is_err());
         assert!(local.pose().is_none());
     }
+
+    #[test]
+    fn a_corpse_support_never_carries_by_the_living_capsule_pose() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        // Retained 600-second battle (run 1, player 15, actor 241): the applied
+        // confirmation stood the player 0.24 m up on actor 240's corpse, whose
+        // box has an identity pose. The client's scene still held that life's
+        // living capsule, posed at the actor. Replaying from the baseline then
+        // carried the player by the actor's whole position (3.47 m, no input).
+        let (mut local, mut baseline, source) = setup();
+        let dead = Life {
+            instance: 7,
+            entity: 240,
+            generation: 1,
+        };
+        let actor_feet = glam::DVec3::new(-0.42, 0., 3.47);
+        let feet = glam::DVec3::new(-0.157, 0., 4.139);
+        // The client's last geometry: the actor alive, its capsule at its body.
+        let mut client = source.clone();
+        let settings = physics::character::Settings::default();
+        client.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: dead,
+                shape: 0,
+            },
+            layers: 2,
+            usage: Usage::Blocking,
+            pose: Pose {
+                position: actor_feet + glam::DVec3::Y * 0.9,
+                rotation: glam::DQuat::IDENTITY,
+            },
+            geometry: GeometrySnapshot::Capsule {
+                a: glam::DVec3::Y * (0.35 - 0.9),
+                b: glam::DVec3::Y * (0.9 - 0.35),
+                radius: 0.35,
+            },
+        });
+        // Authority: the actor died, and its corpse is a navigation blocker.
+        let mut blockers = physics::walkable::Blockers::new(7);
+        blockers
+            .upsert(
+                dead,
+                actor_feet + glam::DVec3::new(-0.35, 0., -0.8),
+                actor_feet + glam::DVec3::new(0.35, 0.24, 0.8),
+            )
+            .unwrap();
+        let mut authority = source.compile(7).unwrap();
+        for collider in blockers.colliders().unwrap() {
+            authority.insert(collider).unwrap();
+        }
+        let mut on_ground = physics::character::Character::new(feet);
+        on_ground
+            .step(
+                &client.compile(7).unwrap(),
+                Filter::blocking(7),
+                settings,
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert!(on_ground.support.is_some_and(|s| s.life.entity == 0));
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.character = on_ground;
+        local.observe(baseline, &client, 2, 2).unwrap();
+        local.advance(4. / 120.).unwrap();
+        let mut on_corpse = physics::character::Character::new(feet + glam::DVec3::Y * 0.24);
+        on_corpse
+            .step(
+                &authority,
+                Filter::blocking(7),
+                settings,
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert_eq!(on_corpse.support.map(|s| s.life), Some(dead));
+        let mut confirmed = baseline;
+        confirmed.character = on_corpse;
+        confirmed.physics_step = 4;
+        confirmed.world_step = 4;
+        confirmed.applied_sequence = 1;
+        assert!(local.observe_applied(confirmed, 3, 3).unwrap());
+        local.advance(1. / 120.).unwrap();
+        let moved = local.pose().unwrap().position.as_dvec3() - on_corpse.feet;
+        assert!(
+            glam::DVec2::new(moved.x, moved.z).length() < 0.01,
+            "Prediction carried the player {moved:?} with no input"
+        );
+    }
 }
