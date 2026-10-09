@@ -428,6 +428,19 @@ def run(base, only, install, production=False, restart=None):
         record("home: loads", home.status == 200, f"{home.status}")
         record("home: composer", 'data-oa-composer' in home.text and 'name="csrf"' in home.text)
         record("home: four starter questions", len(questions) >= 4, "; ".join(questions[:4]))
+        # #11123: every new chat looks like a chat page: the composer docked
+        # at the bottom with the starter questions, cards in the middle.
+        dock = home.text.find('class="oa-main-composer"')
+        record("home: composer docked at the bottom like a chat",
+               'data-mode="app"' in home.text and dock >= 0
+               and 0 <= dock < home.text.find('id="chat-suggestions"')
+               < home.text.find('id="chat-form"'))
+        cards = re.findall(r'<a class="oa-link-card" href="([^"]+)"', home.text)
+        record("home: four learn-about cards", len(cards) == 4, ", ".join(cards))
+        for href in cards:
+            href = unescape(href)
+            r = site.get(href, cookies=False) if href.startswith("http") else site.follow(href)
+            record(f"home: card {href} is live", r.status == 200, f"{r.status}")
         corner = home.text.find('class="oa-sidebar-corner"')
         record("home: theme toggle in the sidebar corner",
                corner >= 0 and "data-oa-theme-toggle" in home.text[corner:corner + 1500])

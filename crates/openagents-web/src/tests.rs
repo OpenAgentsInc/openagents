@@ -483,9 +483,32 @@ async fn the_homepage_composer_is_the_design_language_component() {
     ] {
         assert!(!home.contains(legacy), "{legacy}");
     }
-    assert!(home.contains(
-        "<div class=\"oa-home-stage\"><section class=\"oa-composer\" aria-label=\"Start a chat\">"
-    ));
+    // Every new chat looks like a chat page: an app-mode page whose
+    // composer docks at the bottom, the starter questions over it, and the
+    // "learn about" cards in the middle, each one whole-card link.
+    assert!(home.contains("class=\"oa-layout\" data-mode=\"app\""));
+    let dock = home
+        .find("<div class=\"oa-main-composer\">")
+        .expect("docked composer");
+    let chips = home.find("id=\"chat-suggestions\"").unwrap();
+    let composer = home
+        .find("<section class=\"oa-composer\" aria-label=\"Start a chat\">")
+        .unwrap();
+    assert!(dock < chips && chips < composer);
+    let stage = home
+        .find("<div class=\"oa-thread-column oa-home-stage\"><div class=\"oa-link-cards-frame\"><ul class=\"oa-link-cards\" aria-label=\"Learn about OpenAgents\">")
+        .expect("link cards");
+    assert!(stage < home.find("</main>").unwrap() && stage < dock);
+    assert_eq!(home.matches("<a class=\"oa-link-card\" href=").count(), 4);
+    for (title, line, href, _) in crate::pages::home::LEARN {
+        assert!(home.contains(&format!("href=\"{href}\"")), "{href}");
+        assert!(home.contains(title) && home.contains(line), "{title}");
+        assert!(openagents_ui::content::safe_href(href).is_some(), "{href}");
+    }
+    for path in ["/docs/verse", "/docs/coder", "/docs/what-is-openagents"] {
+        let (status, _) = get(site.clone(), path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+    }
     assert!(home.contains(
         "<form id=\"chat-form\" class=\"oa-composer-root\" action=\"/chat\" method=\"post\""
     ));
@@ -531,14 +554,14 @@ async fn the_homepage_composer_is_the_design_language_component() {
         );
     }
     assert!(!home.contains("Voice input") && !home.contains("Model: Auto"));
-    // The legal links are quiet text centered along the bottom of the main
-    // area, after the composer, and only here.
+    // The legal links are quiet text centered under the docked composer,
+    // and only here.
     assert!(!home.contains("<footer") && !home.contains("class=\"oa-legal\""));
     let legal = home
         .find("<div class=\"oa-home-legal\">")
         .expect("legal links");
-    assert!(home.find("class=\"oa-home-stage\"").unwrap() < legal);
-    assert!(home.find("</main>").unwrap() > legal && home.find("</aside>").unwrap() < legal);
+    assert!(home.find("id=\"chat-form\"").unwrap() < legal);
+    assert!(home.find("</main>").unwrap() < legal && home.find("</aside>").unwrap() < legal);
     // Home has no breadcrumb; New chat carries its Ctrl+N shortcut.
     assert!(!home.contains("class=\"oa-breadcrumb\""));
     assert!(home.contains("aria-keyshortcuts=\"Control+N\""));

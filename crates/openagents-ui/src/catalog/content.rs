@@ -5,9 +5,10 @@ use maud::{Markup, html};
 use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
-    ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, List,
-    ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, PluginCard, PluginCards,
-    ResultCard, Source, SourceVariant, Step, Steps, StickyActionBar, Table, ToolCall, ToolGroup,
+    ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, LinkCard,
+    LinkCards, List, ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, PluginCard,
+    PluginCards, ResultCard, Source, SourceVariant, Step, Steps, StickyActionBar, Table, ToolCall,
+    ToolGroup,
 };
 use crate::icons::Icon;
 
@@ -159,6 +160,44 @@ pub(super) fn plugins(_pane: Pane) -> Markup {
             "OpenRouter",
             Icon::ApiKey,
             "Use OpenRouter models in Coder with your own API key.",
+        )))
+    }
+}
+
+/// Link cards as the new chat shows them: the whole card is the link.
+pub(super) fn link_cards(_pane: Pane) -> Markup {
+    let cards = LinkCards::new("Learn about OpenAgents").cards([
+        LinkCard::new(
+            "Explore the Verse",
+            "A shared world you walk around in.",
+            "/docs/verse",
+        )
+        .icon(Icon::EarthTravelWorld),
+        LinkCard::new(
+            "Meet Coder",
+            "An AI coding assistant in your terminal.",
+            "/docs/coder",
+        )
+        .icon(Icon::Terminal),
+        LinkCard::new(
+            "Tour the codebase",
+            "Everything we build, open on GitHub.",
+            "https://github.com/OpenAgentsInc/openagents",
+        )
+        .icon(Icon::Code),
+        LinkCard::new(
+            "Start with the basics",
+            "What OpenAgents is and how to get it.",
+            "/docs/what-is-openagents",
+        )
+        .icon(Icon::BookOpen),
+    ]);
+    html! {
+        (specimen("LinkCards LinkCard", "Learn about cards", cards))
+        (specimen("LinkCard", "A card without an icon", LinkCard::new(
+            "Read the docs",
+            "Guides for the website, apps, and Coder.",
+            "/docs",
         )))
     }
 }

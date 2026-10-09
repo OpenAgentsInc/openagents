@@ -10,7 +10,7 @@ pub(crate) mod content;
 pub(crate) mod download;
 mod efficiency;
 mod everglade;
-mod home;
+pub(crate) mod home;
 mod live;
 mod profile;
 mod stats;

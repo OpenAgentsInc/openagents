@@ -1,0 +1,101 @@
+/* Link cards (content/link_card.rs): rectangular "learn about" cards where
+   the whole card is one link. One column at phone width, two at tablet
+   width, three where the column allows; the frame is a size container so
+   the grid follows the space it is given. Colors come from the semantic
+   tokens, which resolve through light-dark(), so the cards follow Coder
+   Light and Coder Noir. */
+
+.oa-link-cards-frame {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.oa-link-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--spacing) * 3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@container (min-width: 28rem) {
+  .oa-link-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .oa-link-card {
+    min-height: calc(var(--spacing) * 28);
+  }
+}
+
+@container (min-width: 42rem) {
+  .oa-link-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.oa-link-cards__item {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.oa-link-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  text-decoration: none;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.oa-link-card:hover {
+  border-color: var(--color-border-primary-outline-hover);
+  background: var(--color-background-primary-ghost-hover);
+}
+
+.oa-link-card:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.oa-link-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 8);
+  height: calc(var(--spacing) * 8);
+  margin-bottom: auto;
+  border-radius: var(--radius-lg);
+  background: light-dark(var(--gray-100), var(--gray-200));
+  color: var(--color-text);
+}
+
+.oa-link-card__title {
+  padding-top: calc(var(--spacing) * 3);
+  color: var(--color-text);
+  font-size: var(--font-text-md-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.oa-link-card__description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-link-card {
+    transition: none;
+  }
+}

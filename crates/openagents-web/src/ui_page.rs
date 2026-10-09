@@ -390,8 +390,8 @@ impl UiPage {
     }
 }
 
-/// The quiet legal and project links the home page centers along the
-/// bottom of its main area (no other page shows them).
+/// The quiet legal and project links the home page centers under its
+/// docked composer (no other page shows them).
 pub fn legal_links() -> Markup {
     html! {
         div.oa-home-legal {

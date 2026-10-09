@@ -1,7 +1,10 @@
-//! The homepage: a composer that starts a chat at `/chat/{uuid}`, with the
-//! visitor's recent chats in the left panel. The header links `/download`;
-//! the legal links sit centered along the bottom of the main area (only
-//! here); the Grid's screenshot is on `/docs/the-grid`.
+//! The homepage, which is every new chat: it looks like a chat page, with
+//! the composer docked at the bottom (the four starter questions over it)
+//! and, where the thread would be, a grid of "learn about" cards
+//! ([`LEARN`]). Sending a message starts a chat at `/chat/{uuid}`, which
+//! has no cards. The visitor's recent chats are in the left panel. The
+//! header links `/download`; the legal links sit centered under the composer
+//! (only here); the Grid's screenshot is on `/docs/the-grid`.
 
 use axum::Router;
 use axum::extract::{Query, State};
@@ -9,6 +12,8 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
 use maud::html;
+use openagents_ui::content::{LinkCard, LinkCards};
+use openagents_ui::icons::Icon;
 use serde::Deserialize;
 
 use crate::App;
@@ -18,6 +23,44 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home))
 }
 
+/// The new chat's "learn about" cards: title, one line, where it goes, and
+/// its icon. Every target is a live public page.
+pub(crate) const LEARN: [(&str, &str, &str, Icon); 4] = [
+    (
+        "Explore the Verse",
+        "A shared world you can walk around in with other players.",
+        "/docs/verse",
+        Icon::EarthTravelWorld,
+    ),
+    (
+        "Meet Coder",
+        "An AI coding assistant in your terminal.",
+        "/docs/coder",
+        Icon::Terminal,
+    ),
+    (
+        "Tour the codebase",
+        "Everything we build is open source on GitHub.",
+        crate::layout::GITHUB,
+        Icon::Code,
+    ),
+    (
+        "Start with the basics",
+        "What OpenAgents is and how to get it.",
+        "/docs/what-is-openagents",
+        Icon::BookOpen,
+    ),
+];
+
+/// The [`LEARN`] cards as a grid.
+fn learn_cards() -> LinkCards {
+    LinkCards::new("Learn about OpenAgents").cards(
+        LEARN
+            .iter()
+            .map(|(title, line, href, icon)| LinkCard::new(*title, *line, *href).icon(*icon)),
+    )
+}
+
 #[derive(Default, Deserialize)]
 struct Home {
     /// A project to start the chat in (a project group's "New chat").
@@ -25,7 +68,8 @@ struct Home {
     project: Option<String>,
 }
 
-/// The composer sits centered in the content area; the left panel lists the
+/// The composer docks at the bottom as on a chat page, with the starter
+/// questions over it; the cards fill the middle; the left panel lists the
 /// visitor's recent chats. A signed-in person picks a project, a branch,
 /// and where the message runs above the composer.
 async fn home(
@@ -47,20 +91,27 @@ async fn home(
     // signed-in person (`crate::composer_row`).
     let row = crate::composer_row::home(&app, &headers, &owner, query.project.as_deref()).await;
     let content = html! {
-        div.oa-home-stage {
-            (super::chat::composer("/chat", "Start a chat", row, html! {}))
-            (crate::composer::state_field(&app, &owner, &selection, false))
-            input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
-            input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
-            (crate::suggestions::starters(&app, &owner, &used))
+        div.oa-thread-view {
+            div.oa-thread {
+                div.oa-thread-column.oa-home-stage { (learn_cards()) }
+            }
         }
+    };
+    let dock = html! {
+        (crate::suggestions::starters(&app, &owner, &used))
+        (super::chat::composer("/chat", "Start a chat", row, html! {}))
+        (crate::composer::state_field(&app, &owner, &selection, false))
+        input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
+        input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
         (crate::ui_page::legal_links())
     };
     let mut page = UiPage::new("OpenAgents")
         .section("/")
         .path("/")
+        .app()
         .head(crate::chat_html::head())
-        .content(content);
+        .content(content)
+        .composer(dock);
     // A visitor without the cookie has no chats yet.
     if fresh.is_none() {
         page = page.sidebar_section(super::chat::chat_list(&app, &owner, None, false, false).await);

@@ -95,6 +95,8 @@ pub const COMPONENTS: &[&str] = &[
     "FileChanges",
     "PluginCard",
     "PluginCards",
+    "LinkCard",
+    "LinkCards",
     // Overlays
     "Popover",
     "Menu",
@@ -185,6 +187,7 @@ pub const SECTIONS: &[Section] = &[
     section("Content", "sources", "Sources", content::sources),
     section("Content", "activity", "Agent activity", content::activity),
     section("Content", "plugins", "Plugin cards", content::plugins),
+    section("Content", "link-cards", "Link cards", content::link_cards),
     section("Overlays", "popover", "Popover", overlays::popover),
     section("Overlays", "menu", "Menu", overlays::menu),
     section("Overlays", "tooltip", "Tooltip", overlays::tooltip),

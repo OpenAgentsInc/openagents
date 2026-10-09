@@ -92,26 +92,40 @@
 
 /* The home page: the composer centered in the content area, and the legal
    links small and centered along the bottom of the main area. */
+/* The new chat: link cards centered where the thread would be, over the
+   docked composer and its starter questions. */
 .oa-home-stage {
   display: flex;
-  flex: 1;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 60vh;
-  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4);
+  min-height: 100%;
+}
+/* The same 16px gutters as the docked composer, phone width included. */
+.oa-thread-column.oa-home-stage {
+  padding-inline: calc(var(--spacing) * 4);
+}
+.oa-main-composer .oa-suggestions {
+  margin: 0 0 calc(var(--spacing) * 3);
+}
+/* At phone width the starter questions are one row that scrolls sideways,
+   so they don't push the cards off the screen. */
+@media (max-width: 40rem) {
+  .oa-main-composer .oa-suggestions {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .oa-main-composer .oa-suggestion-chip {
+    flex: none;
+  }
 }
 .oa-home-legal {
   flex: none;
-  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4) calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 2) 0 0;
 }
 .oa-home-legal .oa-sidebar-legal {
   padding: 0;
-}
-.oa-home-stage .oa-composer-panel {
-  max-height: max(7.5rem, calc(50vh - 11rem));
 }
 
 @media (max-width: 40rem) {

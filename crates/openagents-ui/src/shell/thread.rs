@@ -17,7 +17,8 @@
 //! - `oa-thread-notice`: a quiet line ("Showing messages 1-24 of 96").
 //! - `oa-thread-status`: the live status line under the last message.
 //! - `oa-thread-error`: a failure line.
-//! - `oa-home-stage`: the home page's centered composer.
+//! - `oa-home-stage`: the new chat's middle, where its link cards sit
+//!   until a conversation starts.
 //! - `oa-composer-feedback`: a status line under a docked composer.
 
 use maud::{Markup, Render, html};

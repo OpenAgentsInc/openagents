@@ -645,7 +645,7 @@ impl Render for ChatGroup {
 }
 
 /// Small, quiet legal and project links (Terms, Privacy, source, social,
-/// copyright). The home page centers them along the bottom of the main area
+/// copyright). The home page centers them under its docked composer
 /// (`oa-home-legal`); no other page shows them.
 #[derive(Clone, Debug, Default)]
 pub struct LegalLinks {
