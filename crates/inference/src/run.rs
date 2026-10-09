@@ -479,7 +479,13 @@ impl Gateway {
                         upstream: candidate.upstream.clone(),
                         class,
                         attempts: tried,
-                        events: committed(open.held, open.rest, info, row),
+                        events: committed(
+                            open.held,
+                            open.rest,
+                            info,
+                            row,
+                            request.reasoning.clone(),
+                        ),
                     });
                 }
                 Err(failure) => {
@@ -703,6 +709,7 @@ fn committed(
     rest: EventStream,
     info: ResponseInfo,
     row: Option<meter::RateRow>,
+    reasoning: Option<crate::request::ReasoningConfig>,
 ) -> Events {
     let mut pending: VecDeque<EventBody> = VecDeque::new();
     let mut routed = false;
@@ -732,6 +739,7 @@ fn committed(
         sequencer: Sequencer::new(),
         info,
         row,
+        reasoning,
         last,
         done: false,
     };
@@ -749,6 +757,10 @@ struct Pump {
     sequencer: Sequencer,
     info: ResponseInfo,
     row: Option<meter::RateRow>,
+    /// The reasoning settings the caller sent. Every response we send
+    /// carries these, not the upstream's own words for them (Vercel's GLM
+    /// lane answers `effort: "max"`, which the spec does not name).
+    reasoning: Option<crate::request::ReasoningConfig>,
     last: Option<Response>,
     done: bool,
 }
@@ -829,7 +841,10 @@ impl Pump {
 
     async fn next(&mut self) -> Option<Event> {
         loop {
-            if let Some(body) = self.pending.pop_front() {
+            if let Some(mut body) = self.pending.pop_front() {
+                if let Some(response) = lifecycle_response(&mut body) {
+                    response.reasoning.clone_from(&self.reasoning);
+                }
                 return Some(self.sequencer.stamp(body));
             }
             if self.done {

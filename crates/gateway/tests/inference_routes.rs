@@ -251,13 +251,36 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
     assert_eq!(body["openagents"]["attempts"][0]["outcome"], "fallback");
     assert_eq!(body["openagents"]["attempts"][1]["outcome"], "ok");
 
-    // Open Responses, streamed: route before output, cost before the end,
-    // then [DONE].
+    // Open Responses, streamed, without asking for our events: only the
+    // spec's events, numbered from zero with no gaps.
+    let plain = post(
+        &d,
+        "/v1/responses",
+        json!({"model": "openagents/chat", "input": "hi", "stream": true}),
+    )
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+    assert!(!plain.contains("openagents:"), "{plain}");
+    let numbers: Vec<u64> = plain
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+        .filter_map(|event| event["sequence_number"].as_u64())
+        .collect();
+    assert_eq!(numbers, (0..numbers.len() as u64).collect::<Vec<_>>());
+
+    // Asking for them: route before output, cost before the end, then
+    // [DONE].
     let streamed = post(
         &d,
         "/v1/responses",
         json!({"model": "openagents/chat", "input": "hi", "stream": true}),
     )
+    .header("x-openagents-events", "route,cost")
     .send()
     .await
     .unwrap();
@@ -301,7 +324,7 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
     assert!(text.contains("\"content\":\"hello\""), "{text}");
     assert!(text.trim_end().ends_with("data: [DONE]"), "{text}");
 
-    // Four requests, two attempts each, all in the meter.
+    // Five requests, two attempts each, all in the meter.
     let status: Value = reqwest::Client::new()
         .get(format!("{}/v1/admin/inference/status", d.address))
         .bearer_auth("admin-secret")
@@ -311,7 +334,7 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
         .json()
         .await
         .unwrap();
-    assert_eq!(status["records"]["kept"], 8, "{status}");
+    assert_eq!(status["records"]["kept"], 10, "{status}");
     let up_account = status["accounts"]
         .as_array()
         .unwrap()

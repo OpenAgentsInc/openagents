@@ -162,7 +162,7 @@ pub struct Response {
     pub output: Vec<Item>,
     #[serde(default)]
     pub error: Option<ResponseError>,
-    #[serde(default)]
+    #[serde(default, serialize_with = "tools_out")]
     pub tools: Vec<Tool>,
     #[serde(default)]
     pub tool_choice: ToolChoice,
@@ -321,5 +321,48 @@ impl Response {
             }
         }
         Ok(())
+    }
+}
+
+/// A response's tools as the spec's `ResponseResource` requires them: a
+/// function tool always carries `description`, `parameters`, and `strict`
+/// (`null` when the request left them out). A request's tools are sent
+/// upstream as the caller wrote them; only the response fills the gaps.
+fn tools_out<S: serde::Serializer>(tools: &[Tool], serializer: S) -> Result<S::Ok, S::Error> {
+    use serde::ser::{Error, SerializeSeq};
+    let mut seq = serializer.serialize_seq(Some(tools.len()))?;
+    for tool in tools {
+        let mut value = serde_json::to_value(tool).map_err(S::Error::custom)?;
+        if let (Tool::Function(_), Some(fields)) = (tool, value.as_object_mut()) {
+            for key in ["description", "parameters", "strict"] {
+                fields.entry(key).or_insert(Value::Null);
+            }
+        }
+        seq.serialize_element(&value)?;
+    }
+    seq.end()
+}
+
+#[cfg(test)]
+mod tools_tests {
+    use super::*;
+
+    #[test]
+    fn a_responses_function_tools_carry_every_required_field() {
+        let request: CreateResponse = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "tools": [{"type": "function", "name": "get_weather"}]
+        }))
+        .unwrap();
+        let response = Response::from_request("resp_1", 1, "m", &request);
+        let value = serde_json::to_value(&response).unwrap();
+        let tool = &value["tools"][0];
+        assert_eq!(tool["type"], "function");
+        for key in ["description", "parameters", "strict"] {
+            assert!(tool.get(key).is_some_and(Value::is_null), "{key}: {tool}");
+        }
+        // The request itself still goes upstream as written.
+        let sent = serde_json::to_value(&request).unwrap();
+        assert!(sent["tools"][0].get("strict").is_none());
     }
 }

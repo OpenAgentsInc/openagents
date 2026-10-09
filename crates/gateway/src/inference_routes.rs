@@ -204,6 +204,47 @@ pub(crate) fn request_id() -> String {
     )
 }
 
+/// The request header that asks for our stream events.
+pub const EVENTS_HEADER: &str = "x-openagents-events";
+
+/// Whether the caller asked for `openagents:route` and `openagents:cost`
+/// in the stream (`x-openagents-events: route,cost`, or any value but
+/// empty, `0`, or `false`).
+pub(crate) fn wants_events(headers: &HeaderMap) -> bool {
+    headers
+        .get(EVENTS_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .is_some_and(|value| {
+            !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+        })
+}
+
+/// A stream as a caller receives it. Our `openagents:` events are sent
+/// only to a caller that asked for them: the spec lets clients ignore
+/// prefixed events, but the Open Responses acceptance suite (and strict
+/// clients built like it) refuse any event type they don't know. The
+/// same facts ride in every answer's `openagents` object and headers.
+/// Sequence numbers stay consecutive.
+pub(crate) fn outgoing(events: inference::run::Events, ours: bool) -> inference::run::Events {
+    if ours {
+        return events;
+    }
+    let mut next = 0_u64;
+    Box::pin(events.filter_map(move |mut event| {
+        let kept = !matches!(
+            event.body,
+            inference::event::EventBody::Route(_) | inference::event::EventBody::Cost(_)
+        );
+        let out = kept.then(|| {
+            event.sequence_number = next;
+            next += 1;
+            event
+        });
+        async move { out }
+    }))
+}
+
 pub(crate) fn error(error: &ApiError, request_id: &str) -> Response {
     let status = StatusCode::from_u16(error.kind.status()).unwrap_or(StatusCode::BAD_GATEWAY);
     let mut response = (status, axum::Json(json!({"error": error}))).into_response();
@@ -374,8 +415,7 @@ async fn responses(
         Err(refusal) => return error(&refusal, &id),
     };
     if stream {
-        let frames = turn
-            .events
+        let frames = outgoing(turn.events, wants_events(&headers_in))
             .map(|event| encode_event(&event))
             .chain(futures_util::stream::once(async { DONE_FRAME.to_owned() }));
         let mut response = sse(frames);

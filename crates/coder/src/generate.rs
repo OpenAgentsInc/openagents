@@ -1164,6 +1164,8 @@ impl ResponsesDoor {
             .http
             .post(format!("{}/v1/responses", self.url))
             .bearer_auth(&self.key)
+            // The inference gateway sends `openagents:route` only on request.
+            .header("x-openagents-events", "route,cost")
             .json(&self.body(instructions, input))
             .send();
         let response = match tokio::time::timeout(self.patience.first_word, sent).await {

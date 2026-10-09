@@ -215,8 +215,8 @@ for any new item or event type.
 | `openagents` response object | response body | `model` and `upstream` that answered, `attempts` (each upstream tried, outcome, milliseconds), `cost` (`upstream_usd`, `margin_usd`, `price_usd` as decimal dollar strings converted from the meter's integer micros, so no amount passes through a float; `price_sats` beside them). |
 | `text.format` `json_object` | request body | Accepted on `/v1/responses` as an extension (the spec names `text` and `json_schema`), so a Chat Completions `response_format: json_object` keeps its meaning on both APIs. |
 | `stop`, `seed`, `user` | request body | Carried as extension fields of the same names (they are not in Open Responses), so Chat Completions callers keep them; an upstream that does not support one ignores it. |
-| `openagents:route` event | stream | Which model and upstream took the request, sent before the first output item. |
-| `openagents:cost` event | stream | The cost object, sent before the terminal event. |
+| `openagents:route` event | stream | Which model and upstream took the request, sent before the first output item. Only when the request carries `x-openagents-events: route,cost`: the Open Responses acceptance suite refuses event types it does not know ([run](2026-10-09-acceptance-run.md)). |
+| `openagents:cost` event | stream | The cost object, sent before the terminal event. Only on request, as `openagents:route`. |
 | Headers | every response | `x-request-id`, `x-openagents-model`, `x-openagents-upstream`, `x-openagents-cost-usd`. |
 
 Model ids are `publisher/model` (`google/gemini-3.8-flash`,

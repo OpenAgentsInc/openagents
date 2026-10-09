@@ -238,7 +238,8 @@ pub(crate) async fn socket(
         Err(refusal) => return error(&refusal, &caller.request_id),
     };
     let owner = owner(&state, &caller);
-    upgrade.on_upgrade(move |socket| converse(socket, sessions, caller, owner))
+    let ours = crate::inference_routes::wants_events(&headers);
+    upgrade.on_upgrade(move |socket| converse(socket, sessions, caller, owner, ours))
 }
 
 async fn send_error(socket: &mut WebSocket, refusal: &ApiError) -> bool {
@@ -249,7 +250,13 @@ async fn send_error(socket: &mut WebSocket, refusal: &ApiError) -> bool {
 }
 
 /// One connection: `response.create` messages in, one at a time.
-async fn converse(mut socket: WebSocket, sessions: Arc<Sessions>, caller: Caller, owner: Owner) {
+async fn converse(
+    mut socket: WebSocket,
+    sessions: Arc<Sessions>,
+    caller: Caller,
+    owner: Owner,
+    ours: bool,
+) {
     use futures_util::StreamExt;
     let local = Local::new();
     let opened = Instant::now();
@@ -292,7 +299,7 @@ async fn converse(mut socket: WebSocket, sessions: Arc<Sessions>, caller: Caller
             .await
         {
             Ok(turn) => {
-                let mut events = turn.events;
+                let mut events = crate::inference_routes::outgoing(turn.events, ours);
                 while let Some(event) = events.next().await {
                     let Ok(text) = serde_json::to_string(&event) else {
                         continue;
