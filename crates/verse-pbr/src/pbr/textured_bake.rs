@@ -1582,6 +1582,7 @@ mod tests {
                 scene: target.clone(),
                 bake_key: Some("target-recipe".into()),
             }],
+            derived: Vec::new(),
         };
         assert!(record.accepts(&layers, &target, Some("target-recipe")));
         assert!(!record.accepts(&layers, &target, Some("other-recipe")));

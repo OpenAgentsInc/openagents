@@ -61,6 +61,46 @@ pub fn pinned() -> PinnedFile {
     }
 }
 
+/// Exact content identity of the phone tier's kit pack, the pinned pack with
+/// its images at most [`compiled::PHONE_EDGE`] pixels (`everglade_kit --phone`),
+/// or empty while none is published.
+#[rustfmt::skip]
+pub const KIT_PHONE_SHA256: &str = "";
+/// Transfer size of the phone tier's kit pack; zero while none is published.
+pub const KIT_PHONE_BYTES: u64 = 0;
+/// The phone tier's kit transfer budget: the plan's 8 MiB.
+pub const KIT_PHONE_BUDGET: u64 = 8 * 1024 * 1024;
+// Retain previous reviewed digests here when changing KIT_PHONE_SHA256.
+const KIT_PHONE_HISTORY: &[&str] = &[KIT_PHONE_SHA256];
+
+/// Which published files a client fetches (#10908). Desktops and the web
+/// take the full kit and all light layers; phones take the phone tier when
+/// it is published and the full files otherwise.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Tier {
+    #[default]
+    Full,
+    Phone,
+}
+
+/// The kit pack a `tier` fetches: the phone pack when the tier is phone and
+/// it is published, the full pack otherwise.
+#[must_use]
+pub fn pinned_for(tier: Tier) -> PinnedFile {
+    if tier == Tier::Phone && KIT_PHONE_BYTES > 0 {
+        return PinnedFile {
+            label: "Everglade phone kit pack",
+            sha256: KIT_PHONE_SHA256,
+            bytes: KIT_PHONE_BYTES,
+            url: format!("{KIT_ORIGIN}/{KIT_PHONE_SHA256}.vtp"),
+            extension: "vtp",
+            temp_prefix: ".everglade-kit-phone-",
+            history: KIT_PHONE_HISTORY,
+        };
+    }
+    pinned()
+}
+
 /// How much of a kit image's fine detail [`grade`] keeps: the rest is its
 /// local average, which softens the kit's grit toward a painted surface.
 pub const GRADE_DETAIL: f32 = 0.6;
@@ -685,15 +725,33 @@ fn proxy(piece: &Piece, coat: u16, pane: u16, glow: u16) -> Model {
 /// Returns a message when no kit is published, the cache holds none and
 /// downloading is off, or the transfer or decoding fails.
 pub fn fetch(cache: &Path, download: bool, cancel: &AtomicBool) -> Result<ZonePack, String> {
-    let file = pinned();
+    fetch_tier(cache, download, cancel, Tier::Full)
+}
+
+/// [`fetch`] for a client `tier` ([`pinned_for`]).
+///
+/// # Errors
+///
+/// As [`fetch`].
+pub fn fetch_tier(
+    cache: &Path,
+    download: bool,
+    cancel: &AtomicBool,
+    tier: Tier,
+) -> Result<ZonePack, String> {
+    let file = pinned_for(tier);
     if file.bytes == 0 {
         return Err("No kit pack is published".into());
     }
+    let decode = |bytes: &[u8]| {
+        file.verify(bytes)?;
+        compiled::decode(bytes)
+    };
     if download {
-        return file.fetch(cache, cancel, &mut |_, _| (), decode_pinned);
+        return file.fetch(cache, cancel, &mut |_, _| (), decode);
     }
     let bytes = file.read_bounded(&cache.join(file.cache_name()))?;
-    decode_pinned(&bytes)
+    decode(&bytes)
 }
 
 /// Verifies the pinned digest, then decodes the bounded kit pack.
@@ -726,6 +784,36 @@ pub fn load_local(path: &Path) -> Result<ZonePack, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The measured tier budgets (#10908, the refactor plan's B4 entry).
+    #[test]
+    fn each_tier_pins_its_files_within_budget() {
+        use super::super::kit_bake;
+        // Desktops and the web: the 512 px kit and all four suns.
+        assert!(KIT_BYTES <= 24 * 1024 * 1024);
+        assert!(kit_bake::KIT_BAKE_BYTES <= 56 * 1024 * 1024);
+        assert_eq!(pinned_for(Tier::Full).sha256, KIT_SHA256);
+        assert_eq!(
+            kit_bake::pinned_for(Tier::Full).sha256,
+            kit_bake::KIT_BAKE_SHA256
+        );
+        // Phones: the 256 px kit and two suns, when published; the full
+        // files until then.
+        if KIT_PHONE_BYTES > 0 {
+            assert!(KIT_PHONE_BYTES <= KIT_PHONE_BUDGET);
+            assert_eq!(pinned_for(Tier::Phone).sha256, KIT_PHONE_SHA256);
+        } else {
+            assert_eq!(pinned_for(Tier::Phone).sha256, KIT_SHA256);
+        }
+        if kit_bake::KIT_BAKE_PHONE_BYTES > 0 {
+            assert!(kit_bake::KIT_BAKE_PHONE_BYTES < kit_bake::KIT_BAKE_BYTES);
+            assert!(kit_bake::KIT_BAKE_PHONE_BYTES <= kit_bake::KIT_BAKE_PHONE_BUDGET);
+            assert_eq!(
+                kit_bake::pinned_for(Tier::Phone).sha256,
+                kit_bake::KIT_BAKE_PHONE_SHA256
+            );
+        }
+    }
 
     fn bare() -> ZonePack {
         ZonePack {

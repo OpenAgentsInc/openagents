@@ -97,6 +97,17 @@ pub struct SceneCompatibility {
     pub baked_key: String,
     pub vertices: usize,
     pub targets: Vec<CompatibleScene>,
+    /// Smaller files derived from the artifact for a client tier, such as
+    /// fewer suns; the same scenes accept them.
+    #[serde(default)]
+    pub derived: Vec<DerivedArtifact>,
+}
+
+/// One derived layer file's exact identity.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct DerivedArtifact {
+    pub artifact_sha256: String,
+    pub artifact_bytes: u64,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -123,8 +134,12 @@ impl SceneCompatibility {
             return false;
         }
         let bytes = layers.encode();
-        bytes.len() as u64 == self.artifact_bytes
-            && hex(&sha2::Sha256::digest(&bytes)) == self.artifact_sha256
+        let digest = hex(&sha2::Sha256::digest(&bytes));
+        (bytes.len() as u64 == self.artifact_bytes && digest == self.artifact_sha256)
+            || self
+                .derived
+                .iter()
+                .any(|d| bytes.len() as u64 == d.artifact_bytes && digest == d.artifact_sha256)
     }
 }
 
@@ -462,6 +477,33 @@ impl Layers {
         })
     }
 
+    /// The same layers with only the suns at `keep`, in that order: a
+    /// smaller file for a client tier that blends fewer suns (#10908).
+    /// The scene, key, sky, lamps, and probes are unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when an index names no sun or repeats.
+    pub fn with_suns(&self, keep: &[usize]) -> Result<Self, String> {
+        let mut seen = std::collections::BTreeSet::new();
+        let suns = keep
+            .iter()
+            .map(|&k| {
+                if !seen.insert(k) {
+                    return Err(format!("light layers: sun {k} repeats"));
+                }
+                self.suns
+                    .get(k)
+                    .cloned()
+                    .ok_or_else(|| format!("light layers: no sun {k}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            suns,
+            ..self.clone()
+        })
+    }
+
     /// The baked sun direction nearest `dir`, or `None` without suns.
     #[must_use]
     pub fn nearest_sun(&self, dir: Vec3) -> Option<usize> {
@@ -736,6 +778,41 @@ mod tests {
             probe_cell: 2.0,
             probe_dims: [2, 2, 2],
         }
+    }
+
+    #[test]
+    fn with_suns_keeps_named_suns_and_compatibility_accepts_derived() {
+        let full = sample();
+        let one = full.with_suns(&[1]).unwrap();
+        assert_eq!(one.suns, vec![full.suns[1].clone()]);
+        assert_eq!(
+            (one.sky.clone(), one.lamps.clone()),
+            (full.sky.clone(), full.lamps.clone())
+        );
+        assert_eq!(Layers::decode(&one.encode()).unwrap(), one);
+        assert!(full.with_suns(&[2]).is_err());
+        assert!(full.with_suns(&[0, 0]).is_err());
+        let digest = |l: &Layers| hex(&Sha256::digest(l.encode()));
+        let mut record = SceneCompatibility {
+            artifact_sha256: digest(&full),
+            artifact_bytes: full.encode().len() as u64,
+            baked_scene: "scene".into(),
+            baked_key: "key".into(),
+            vertices: full.vertex_count(),
+            targets: vec![CompatibleScene {
+                scene: "scene".into(),
+                bake_key: None,
+            }],
+            derived: Vec::new(),
+        };
+        assert!(record.accepts(&full, "scene", None));
+        assert!(!record.accepts(&one, "scene", None));
+        record.derived.push(DerivedArtifact {
+            artifact_sha256: digest(&one),
+            artifact_bytes: one.encode().len() as u64,
+        });
+        assert!(record.accepts(&one, "scene", None));
+        assert!(!record.accepts(&one, "other", None));
     }
 
     #[test]
