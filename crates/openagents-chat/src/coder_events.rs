@@ -882,6 +882,9 @@ pub struct Mapper {
     /// What a whole coding agent's turn (Devin, OpenCode, Grok Build) says
     /// about how it stopped, from the adapter's summary.
     stopped: Option<String>,
+    /// The host's own fault that ended the turn, from the closing record
+    /// (#10993): what a `host_fault` ending names.
+    fault: Option<String>,
     started: Option<u64>,
     /// The last command this turn that ran past its deadline, and its
     /// seconds: what a `process_cleanup_unknown` ending names (#10281).
@@ -1057,6 +1060,10 @@ impl Mapper {
                 .values()
                 .filter(|agent| agent.get("engine").is_some())
                 .find_map(|agent| agent.get("stopped").and_then(Value::as_str))
+                .map(str::to_owned);
+            self.fault = extra
+                .get("host_fault")
+                .and_then(Value::as_str)
                 .map(str::to_owned);
             return events;
         }
@@ -1390,6 +1397,21 @@ impl Mapper {
                         "the coding agent stopped after the host refused a tool it asked to run.".to_owned()
                     })
                 ),
+            }),
+            // The host ended the turn for a fault of its own; nobody
+            // stopped the task (#10993).
+            "host_fault" => CoderEvent::Failure(Failure {
+                turn,
+                message: match &self.fault {
+                    Some(fault) => format!(
+                        "Coder stopped before finishing: {}. Nobody stopped the task.",
+                        bounded(fault.trim_end_matches('.'), 300).0
+                    ),
+                    None => "Coder stopped before finishing: something on its host failed. Nobody stopped the task.".to_owned(),
+                },
+                ending: Some(ending.into()),
+                resets_at: None,
+                issue: None,
             }),
             // A command's processes weren't confirmed gone, so the host
             // ended the turn; nobody stopped the task (#10281).

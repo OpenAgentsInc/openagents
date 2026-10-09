@@ -50,7 +50,20 @@ pub const DISK_FULL: &str = "disk_full";
 /// Coder doesn't run beside processes it can't account for, but as that
 /// fault, never as a stop the person asked for.
 pub const PROCESS_CLEANUP_UNKNOWN: &str = "process_cleanup_unknown";
+/// The ending of a run the host ended for a fault of its own, such as
+/// evidence it could not keep (#10993): the turn fails and says why, and
+/// never reads as a stop the person asked for.
+pub const HOST_FAULT: &str = "host_fault";
+/// The transcript's soft bound. Past it, bulky records are left out and
+/// the run goes on (#10993): a size bound on evidence is never a limit on
+/// how long a run works.
 const TRACE_LIMIT: usize = 48 * 1024 * 1024;
+/// Past [`TRACE_LIMIT`], a record this small is still kept, so effect
+/// intents, results, and notes keep their order.
+const SMALL_RECORD: usize = 64 * 1024;
+/// The transcript's hard bound, below the 64 MiB file with headroom for
+/// the closing record: past it, every record is left out.
+const TRACE_CEILING: usize = TRACE_LIMIT + 8 * 1024 * 1024;
 /// How long a command's process group, not yet empty when the supervisor
 /// ended it, is given to empty before its cleanup counts as unknown
 /// (#10281).
@@ -723,6 +736,8 @@ pub struct Host {
     stopped: Cell<bool>,
     group_clear: Cell<bool>,
     output_incomplete: Cell<bool>,
+    /// Records past the transcript's bounds were left out (#10993).
+    evidence_capped: Cell<bool>,
     fault: RefCell<Option<String>>,
     /// The disk filled past [`owner::STORAGE_FULL_WAIT`] while the run
     /// kept its evidence (#10237): its result says so.
@@ -1121,6 +1136,7 @@ impl Host {
             stopped: Cell::new(false),
             group_clear: Cell::new(true),
             output_incomplete: Cell::new(false),
+            evidence_capped: Cell::new(false),
             fault: RefCell::new(None),
             disk_full: Cell::new(false),
             cleanup_unknown: Cell::new(false),
@@ -1417,6 +1433,21 @@ impl Host {
         })
     }
 
+    /// The fault the host recorded, if any ([`Host::fail`]).
+    pub fn fault(&self) -> Option<String> {
+        self.fault.borrow().clone()
+    }
+
+    /// Whether a stop was asked for this run: the task left `Running` in
+    /// the store (the person, or the flow on their behalf, stopped it).
+    /// A fault of the host's own is never one (#10993).
+    pub fn stop_asked(&self) -> bool {
+        self.stopped.get()
+            || Store::open(&self.owner.dir)
+                .and_then(|store| store.show(&self.task.task_id))
+                .is_ok_and(|task| task.status == Status::CancelRequested)
+    }
+
     pub fn fail(&self, reason: impl Into<String>) {
         if self.fault.borrow().is_none() {
             *self.fault.borrow_mut() = Some(reason.into());
@@ -1481,10 +1512,30 @@ impl Host {
             .map_err(|_| Error::UnsupportedSchema)?
             .len()
             + 256;
-        if bytes > STEP_LIMIT || self.trace_bytes.get().saturating_add(bytes) > TRACE_LIMIT {
+        // A record past the transcript's bounds is left out and the run
+        // goes on: a long run's builds once filled the transcript, and the
+        // run was ended as if the person had stopped it (#10993).
+        let total = self.trace_bytes.get().saturating_add(bytes);
+        if bytes > STEP_LIMIT
+            || total > TRACE_CEILING
+            || (total > TRACE_LIMIT && bytes > SMALL_RECORD)
+        {
             self.output_incomplete.set(true);
-            self.fail("the adapter evidence limit was reached; the attempted record was omitted");
-            return Err(Error::LimitExceeded);
+            if !self.evidence_capped.replace(true) {
+                let note = Step::said(
+                    Source::System,
+                    "The transcript reached its size bound, so bulky records are left out from here; the run goes on.",
+                )
+                .noting(
+                    "evidence_capped",
+                    json!({"omitted_bytes": bytes, "trace_limit": TRACE_LIMIT}),
+                );
+                if let Err(error) = self.keep_evidence(|trace| trace.append(&note)) {
+                    self.evidence_lost(&error);
+                    return Err(error);
+                }
+            }
+            return Ok(());
         }
         if let Err(error) = self.keep_evidence(|trace| trace.append(step)) {
             self.evidence_lost(&error);
@@ -1510,6 +1561,13 @@ impl Host {
             }
             write(&mut self.trace.borrow_mut()).map_err(Error::Io)
         })
+    }
+
+    /// For tests: the transcript counts as at its soft size bound, as after
+    /// a long run's builds (#10993).
+    #[doc(hidden)]
+    pub fn fill_trace(&self) {
+        self.trace_bytes.set(TRACE_LIMIT);
     }
 
     /// For tests: the next `writes` trace writes fail as on a full disk,
@@ -1865,14 +1923,9 @@ impl Host {
         // gone, ends the run as a failure, never as a stop the person
         // asked for (#10237, #10281); a stop they did ask for still reads
         // as one.
-        let stopped = if self.disk_full.get() || self.cleanup_unknown.get() {
-            self.stopped.get()
-                || Store::open(&self.owner.dir)
-                    .and_then(|store| store.show(&self.task.task_id))
-                    .is_ok_and(|task| task.status == Status::CancelRequested)
-        } else {
-            self.cancelled()
-        };
+        // So does any other fault of the host's own: evidence it could not
+        // keep an hour in read as "Stopped, as you asked" (#10993).
+        let stopped = self.stop_asked();
         let summary = if serde_json::to_vec(&summary)
             .map_err(|_| Error::UnsupportedSchema)?
             .len()
@@ -1917,6 +1970,9 @@ impl Host {
             DISK_FULL
         } else if self.cleanup_unknown.get() && !stopped {
             PROCESS_CLEANUP_UNKNOWN
+        } else if !stopped && ending == "cancelled_or_host_refusal" && self.fault.borrow().is_some()
+        {
+            HOST_FAULT
         } else {
             ending
         };
