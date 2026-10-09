@@ -7,8 +7,9 @@
 //! animation runs on the frame clock: the host passes each frame's
 //! `Instant` to [`Slides::tick`], and nothing sleeps. Opening scales the
 //! viewer from 0.96 to 1 and fades it from 0 to 1 over [`OPEN`], eased
-//! out; closing runs the same curve backward. The look is dark only, in
-//! gradations of white. Under "Reduce motion" the viewer opens and
+//! out; closing runs the same curve backward. The chrome is gradations of
+//! white on black, or of black on white in Coder Light (#11028); the
+//! slides keep the deck's own look. Under "Reduce motion" the viewer opens and
 //! closes at once.
 //!
 //! The host shows [`Slides::node`] as the window's overlay, laid over the
@@ -970,8 +971,14 @@ impl Slides {
     }
 }
 
-/// A gray: the viewer's only colors are gradations of white on black.
+/// A gray: the viewer's chrome is gradations of white on black in the
+/// dark look, and the same steps of black on white in Coder Light (#11028).
+/// The slides themselves and the scrim stay as the deck paints them.
 fn tone(level: u8) -> Color {
+    let level = match openagents_chat_app::visual::scheme() {
+        openagents_chat_app::visual::Scheme::Dark => level,
+        openagents_chat_app::visual::Scheme::Light => 255 - level,
+    };
     Color::rgb(level, level, level)
 }
 

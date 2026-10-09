@@ -44,7 +44,7 @@ pub fn node() -> Node<Intent> {
     };
     line.style.text_size = Some(13);
     line.style.line_height = Some(18);
-    line.style.foreground = Some(openagents_chat_app::visual::TEXT);
+    line.style.foreground = Some(openagents_chat_app::visual::current().text);
     let mut button = Node {
         key: BUTTON.into(),
         style: Style::default(),
@@ -58,8 +58,11 @@ pub fn node() -> Node<Intent> {
             },
         },
     };
-    button.style.background = Some(openagents_chat_app::visual::TEXT);
-    button.style.foreground = Some(Color::rgb(20, 20, 20));
+    button.style.background = Some(openagents_chat_app::visual::current().text);
+    button.style.foreground = Some(openagents_chat_app::visual::pick(
+        Color::rgb(20, 20, 20),
+        openagents_chat_app::visual::current().on_text,
+    ));
     button.style.weight = Some(TextWeight::Normal);
     button.style.text_size = Some(13);
     button.style.line_height = Some(18);
@@ -75,9 +78,9 @@ pub fn node() -> Node<Intent> {
     };
     strip.style.gap = Some(Space::Sm);
     strip.style.radius = Some(16);
-    strip.style.border = Some(openagents_chat_app::visual::BORDER);
+    strip.style.border = Some(openagents_chat_app::visual::current().border);
     strip.style.padding_points = Some([4, 4, 4, 14]);
-    strip.style.background = Some(Color::rgb(32, 32, 32));
+    strip.style.background = Some(openagents_chat_app::visual::current().raised);
     strip
 }
 

@@ -40,7 +40,7 @@ use rust_native_desktop::text::{Fonts, font};
 use rust_native_desktop::{Frame, PxRect};
 use serde::Deserialize;
 
-use crate::route_future::{PAYMENT, REQUEST};
+use crate::route_future::{payment, request};
 use crate::route_map::{MapPage, Pulse};
 
 /// The public flow stream openagents.com proxies to the pay host.
@@ -318,13 +318,13 @@ pub fn legs(map: &Map, event: &FlowEvent) -> Vec<Leg> {
         seconds,
     };
     match event.kind {
-        EventKind::Call | EventKind::Run => vec![leg(out, REQUEST, false, TRIP)],
-        EventKind::Payment => vec![leg(back, PAYMENT, false, TRIP)],
-        EventKind::Share => vec![leg(to_author, PAYMENT, false, SHARE)],
-        EventKind::Bonus => vec![leg(to_author, PAYMENT, true, SHARE)],
+        EventKind::Call | EventKind::Run => vec![leg(out, request(), false, TRIP)],
+        EventKind::Payment => vec![leg(back, payment(), false, TRIP)],
+        EventKind::Share => vec![leg(to_author, payment(), false, SHARE)],
+        EventKind::Bonus => vec![leg(to_author, payment(), true, SHARE)],
         EventKind::Payout => vec![leg(
             vec![root, Stop::Past(leaf, WALLET)],
-            PAYMENT,
+            payment(),
             false,
             PAYOUT,
         )],
@@ -417,7 +417,7 @@ impl Schedule {
                 continue;
             }
             let t = if still { 1.0 } else { t };
-            let gold = flight.leg.color == PAYMENT;
+            let gold = crate::route_future::is_payment(flight.leg.color);
             out.push(Pulse {
                 at: along(map, layout, &flight.leg.stops, t),
                 color: flight.leg.color,
@@ -798,7 +798,7 @@ impl RouteLive {
                 1.0,
                 Color {
                     alpha: *alpha,
-                    ..visual::TEXT
+                    ..visual::current().text
                 },
             );
             y -= 4.0 * unit;
@@ -1015,18 +1015,18 @@ mod tests {
         };
         // A call: white, from the router out to the plugin.
         let call = at("call");
-        assert_eq!(call.color, REQUEST);
+        assert_eq!(call.color, request());
         assert_eq!(call.stops.first(), Some(&Stop::Node(front)));
         assert_eq!(call.stops.last(), Some(&Stop::Node(plugin)));
         assert!(call.stops.len() >= 4);
         // A payment: gold, the same way back.
-        let payment = at("payment");
-        assert_eq!(payment.color, PAYMENT);
+        let paid = at("payment");
+        assert_eq!(paid.color, payment());
         let back: Vec<Stop> = call.stops.iter().rev().copied().collect();
-        assert_eq!(payment.stops, back);
+        assert_eq!(paid.stops, back);
         // A share: gold, out past the plugin to its author.
         let share = at("share");
-        assert_eq!(share.color, PAYMENT);
+        assert_eq!(share.color, payment());
         assert!(!share.ring);
         assert_eq!(share.stops.last(), Some(&Stop::Past(plugin, AUTHOR)));
         // A bonus: the same, with a ring.
@@ -1035,7 +1035,7 @@ mod tests {
         assert_eq!(bonus.stops, share.stops);
         // A payout: gold, from the router straight to the wallet.
         let payout = at("payout");
-        assert_eq!(payout.color, PAYMENT);
+        assert_eq!(payout.color, payment());
         assert_eq!(
             payout.stops,
             vec![Stop::Node(front), Stop::Past(plugin, WALLET)]
@@ -1045,7 +1045,7 @@ mod tests {
             &map,
             &event(r#"{"type":"run","resource":"coder","node":"coder"}"#),
         );
-        assert_eq!(run[0].color, REQUEST);
+        assert_eq!(run[0].color, request());
         assert_eq!(
             run[0].stops.last(),
             Some(&Stop::Node(map.find("coder").unwrap()))
@@ -1089,10 +1089,10 @@ mod tests {
         let layout = Layout::of(&map);
         let pulses = schedule.pulses(&map, &layout, 10.8, false);
         assert_eq!(pulses.len(), 2);
-        assert!(pulses.iter().all(|p| p.color == REQUEST));
+        assert!(pulses.iter().all(|p| p.color == request()));
         // Then the gold one comes back.
         let later = schedule.pulses(&map, &layout, 10.0 + TRIP + 0.5, false);
-        assert!(later.iter().any(|p| p.color == PAYMENT));
+        assert!(later.iter().any(|p| p.color == payment()));
         // Landed flights go.
         schedule.land(100.0);
         assert!(schedule.flights.is_empty());

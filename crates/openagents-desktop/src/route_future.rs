@@ -55,10 +55,32 @@ const MONTH_NAMES: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/// A request on its way out.
+/// A request on its way out, on the dark canvas.
 pub const REQUEST: Color = Color::rgb(236, 240, 255);
-/// A payment on its way back.
+/// A payment on its way back, on the dark canvas.
 pub const PAYMENT: Color = Color::rgb(255, 206, 84);
+/// A request on the light canvas: Coder Light's accent.
+pub const REQUEST_LIGHT: Color = visual::Visual::LIGHT.accent;
+/// A payment on the light canvas: a deeper gold that reads on white.
+pub const PAYMENT_LIGHT: Color = Color::rgb(196, 130, 0);
+
+/// A request on its way out, in the scheme the app paints with.
+#[must_use]
+pub fn request() -> Color {
+    visual::pick(REQUEST, REQUEST_LIGHT)
+}
+
+/// A payment on its way back, in the scheme the app paints with.
+#[must_use]
+pub fn payment() -> Color {
+    visual::pick(PAYMENT, PAYMENT_LIGHT)
+}
+
+/// Whether `color` is a payment's, in either scheme.
+#[must_use]
+pub fn is_payment(color: Color) -> bool {
+    color == PAYMENT || color == PAYMENT_LIGHT
+}
 
 /// How a cluster around ours is drawn smaller than ours.
 const SATELLITE_SCALE: f32 = 0.42;
@@ -211,7 +233,7 @@ impl RouteFuture {
             1.0,
             Color {
                 alpha: 220,
-                ..visual::TEXT
+                ..visual::current().text
             },
         );
     }
@@ -302,14 +324,14 @@ impl RouteFuture {
             if p < 0.5 {
                 out.push(Pulse {
                     at: along(layout, &path, p / 0.5),
-                    color: REQUEST,
+                    color: request(),
                     radius: 2.2,
                     ring: false,
                 });
             } else if paid && p > 0.56 {
                 out.push(Pulse {
                     at: along(layout, &path, 1.0 - (p - 0.56) / 0.44),
-                    color: PAYMENT,
+                    color: payment(),
                     radius: 2.4,
                     ring: false,
                 });
@@ -1111,8 +1133,8 @@ mod tests {
             today.len(),
             later.len()
         );
-        assert!(later.iter().any(|p| p.color == PAYMENT));
-        assert!(later.iter().any(|p| p.color == REQUEST));
+        assert!(later.iter().any(|p| p.color == payment()));
+        assert!(later.iter().any(|p| p.color == request()));
         // Still flowing after the run ends.
         assert_ne!(count(END + 3.0), count(END + 4.0));
     }

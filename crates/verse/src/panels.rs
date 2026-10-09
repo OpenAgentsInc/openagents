@@ -178,6 +178,9 @@ pub struct Panel {
     draft: String,
     /// The diff line the person picked, by index in the diff document.
     selected: Option<usize>,
+    /// The desktop app's scheme the panel last painted in
+    /// ([`visual::scheme`]).
+    scheme: visual::Scheme,
 }
 
 impl Panel {
@@ -187,9 +190,9 @@ impl Panel {
         let mut transcript = Transcript::default();
         transcript.set_font_family(FontFamily::PaperMono);
         // The desktop app's own metrics are valid by construction.
-        let _ = transcript.set_metrics(visual::TRANSCRIPT);
-        transcript.set_palette(&visual::COLORS);
-        transcript.set_syntax_palette(visual::SYNTAX);
+        let _ = transcript.set_metrics(visual::current().transcript);
+        transcript.set_palette(&visual::current().colors);
+        transcript.set_syntax_palette(visual::current().syntax);
         let mut panel = Self {
             title: title.into(),
             tab: Tab::Transcript,
@@ -213,6 +216,7 @@ impl Panel {
             composer: None,
             draft: String::new(),
             selected: None,
+            scheme: visual::scheme(),
         };
         panel.rebuild();
         panel
@@ -546,6 +550,7 @@ impl Panel {
             self.window = points;
             self.relay_transcript();
         }
+        self.follow_scheme();
         self.transcript.poll_highlights();
         let key = Painted {
             window,
@@ -568,6 +573,27 @@ impl Panel {
         Ok(&self.image.as_ref().expect("painted above").1)
     }
 
+    /// Repaints in the scheme the desktop app paints with when it changed
+    /// (#11028): the transcript's palette and syntax colors, the diff's
+    /// highlighter, and the header. The Verse's own scenes keep their art.
+    fn follow_scheme(&mut self) {
+        let scheme = visual::scheme();
+        if scheme == self.scheme {
+            return;
+        }
+        self.scheme = scheme;
+        let look = visual::current();
+        // The desktop app's own metrics are valid by construction.
+        let _ = self.transcript.set_metrics(look.transcript);
+        self.transcript.set_palette(&look.colors);
+        self.transcript.set_syntax_palette(look.syntax);
+        self.highlighter = None;
+        if let Some(doc) = &mut self.diff {
+            doc.clear_spans();
+        }
+        self.rebuild();
+    }
+
     fn paint(&mut self, scale: f32) -> Result<OverlayImage, String> {
         let bounds = self.bounds();
         let (scene, body) = self.lay_out();
@@ -580,11 +606,11 @@ impl Panel {
             w: width as f32,
             h: height as f32,
         };
-        frame.fill(all, 12.0 * scale, visual::CANVAS);
+        frame.fill(all, 12.0 * scale, visual::current().canvas);
         let edge = if self.focused {
-            visual::ACCENT
+            visual::current().accent
         } else {
-            visual::COMPOSER_BORDER
+            visual::current().composer_border
         };
         frame.stroke(all, 12.0 * scale, scale.max(1.0).round(), edge);
         rust_native_desktop::paint::paint(
@@ -634,9 +660,9 @@ impl Panel {
             self.note(frame, rect, scale, "No changes yet");
             return;
         };
-        let highlighter = self
-            .highlighter
-            .get_or_insert_with(|| rust_native::syntax::Highlighter::with_palette(visual::SYNTAX));
+        let highlighter = self.highlighter.get_or_insert_with(|| {
+            rust_native::syntax::Highlighter::with_palette(visual::current().syntax)
+        });
         let Some(doc) = &mut self.diff else { return };
         doc.ensure_spans(first, count, highlighter);
         let previous = frame.clip_to(rect);
@@ -646,14 +672,23 @@ impl Panel {
         for (index, line) in doc.lines().iter().skip(first).take(count).enumerate() {
             let top = rect.y + index as f32 * line_px - offset;
             let (gutter, color) = match line.kind {
-                changes::Kind::Add => (Some(Color::rgb(28, 48, 34)), Color::rgb(163, 190, 140)),
-                changes::Kind::Remove => (Some(Color::rgb(58, 32, 36)), Color::rgb(191, 120, 120)),
-                changes::Kind::File | changes::Kind::Context => (None, visual::TEXT),
-                changes::Kind::Hunk | changes::Kind::Meta => (None, visual::MUTED),
+                changes::Kind::Add => (
+                    Some(visual::current().diff_add_bg),
+                    visual::current().diff_add,
+                ),
+                changes::Kind::Remove => (
+                    Some(visual::current().diff_remove_bg),
+                    visual::current().diff_remove,
+                ),
+                changes::Kind::File | changes::Kind::Context => (None, visual::current().text),
+                changes::Kind::Hunk | changes::Kind::Meta => (None, visual::current().muted),
             };
             // The line picked for a comment.
             let gutter = if self.selected == Some(first + index) {
-                Some(Color::rgb(44, 52, 72))
+                Some(visual::pick(
+                    Color::rgb(44, 52, 72),
+                    Color::rgb(229, 243, 255),
+                ))
             } else {
                 gutter
             };
@@ -699,7 +734,7 @@ impl Panel {
             rect.x + 4.0 * scale,
             rect.y + 20.0 * scale,
             scale,
-            visual::FAINT,
+            visual::current().faint,
             &[],
             0,
         );
@@ -794,7 +829,7 @@ impl Panel {
                     blue: 0,
                     alpha: 0,
                 });
-                node.style.foreground = Some(visual::MUTED);
+                node.style.foreground = Some(visual::current().muted);
             }
             node
         };
@@ -863,7 +898,7 @@ impl Panel {
         }
         if let Some(placeholder) = &self.composer {
             let (value, color) = if self.draft.is_empty() {
-                (placeholder.clone(), visual::MUTED)
+                (placeholder.clone(), visual::current().muted)
             } else {
                 // The draft's end, at most six lines, so a long draft keeps
                 // the header short.
@@ -876,7 +911,7 @@ impl Panel {
                 } else {
                     ""
                 };
-                (format!("› {more}{end}"), visual::TEXT)
+                (format!("› {more}{end}"), visual::current().text)
             };
             let mut composer = text("panel-composer", &value, TextRole::Body);
             composer.style.foreground = Some(color);
@@ -904,13 +939,13 @@ fn theme(width: f32) -> Theme {
     Theme {
         icons: rust_native_desktop::theme::IconSet::Solar,
         font_family: FontFamily::PaperMono,
-        background: visual::CANVAS,
-        text: visual::TEXT,
-        muted: visual::MUTED,
-        rule: visual::BORDER,
-        focus: visual::ACCENT,
-        button: visual::SELECTED,
-        button_text: visual::TEXT,
+        background: visual::current().canvas,
+        text: visual::current().text,
+        muted: visual::current().muted,
+        rule: visual::current().border,
+        focus: visual::current().accent,
+        button: visual::current().selected,
+        button_text: visual::current().text,
         button_radius: 7.0,
         body: 14.0,
         heading: 18.0,
@@ -957,8 +992,8 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     Node {
         key: key.into(),
         style: Style {
-            background: Some(visual::SELECTED),
-            foreground: Some(visual::TEXT),
+            background: Some(visual::current().selected),
+            foreground: Some(visual::current().text),
             weight: Some(TextWeight::Normal),
             ..Style::default()
         },
@@ -1008,7 +1043,7 @@ pub fn tool(key: &str, name: &str, detail: &str, output: &str, state: ToolState)
                 vec![Node {
                     key: format!("{key}-body"),
                     style: Style {
-                        foreground: Some(visual::MUTED),
+                        foreground: Some(visual::current().muted),
                         ..Style::default()
                     },
                     element: Element::Text {

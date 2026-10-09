@@ -18,7 +18,6 @@
 use crate::chrome::Update;
 use crate::model::{Intent, Model};
 use openagents_chat_app::preferences::{Change, Preferences, TextSize, ThemeChoice};
-use openagents_chat_app::visual::{MUTED, SELECTED, SIDEBAR, TEXT};
 use rust_native::style::{Space, Style, TextAlign, TextWeight};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
 use serde::Serialize;
@@ -351,7 +350,7 @@ fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
         },
     );
     if role == TextRole::Status {
-        node.style.foreground = Some(MUTED);
+        node.style.foreground = Some(openagents_chat_app::visual::current().muted);
     }
     node
 }
@@ -359,7 +358,7 @@ fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
 fn title(key: &str, value: &str) -> Node<Intent> {
     let mut node = text(key, value, TextRole::Body);
     node.style.weight = Some(TextWeight::Bold);
-    node.style.foreground = Some(TEXT);
+    node.style.foreground = Some(openagents_chat_app::visual::current().text);
     node
 }
 
@@ -386,8 +385,16 @@ fn button(
         },
     );
     node.style = Style {
-        background: Some(if selected { SELECTED } else { SIDEBAR }),
-        foreground: Some(if selected { TEXT } else { MUTED }),
+        background: Some(if selected {
+            openagents_chat_app::visual::current().selected
+        } else {
+            openagents_chat_app::visual::current().sidebar
+        }),
+        foreground: Some(if selected {
+            openagents_chat_app::visual::current().text
+        } else {
+            openagents_chat_app::visual::current().muted
+        }),
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
         radius: Some(8),
@@ -513,7 +520,7 @@ fn shortcuts() -> Vec<Node<Intent>> {
             TextRole::Body,
         );
         keys.style.align = Some(TextAlign::End);
-        keys.style.foreground = Some(TEXT);
+        keys.style.foreground = Some(openagents_chat_app::visual::current().text);
         rows.push(stack(
             &format!("settings-shortcut-{index}"),
             Axis::Horizontal,
@@ -807,7 +814,7 @@ fn background(settings: &Settings, now: u64) -> Vec<Node<Intent>> {
     for rule in &settings.background {
         let key = format!("settings-background-{}", rule.id);
         let mut name = text(&format!("{key}-name"), rule.name.clone(), TextRole::Body);
-        name.style.foreground = Some(TEXT);
+        name.style.foreground = Some(openagents_chat_app::visual::current().text);
         let mut head = vec![name];
         if rule.status != crate::background_pane::Status::Broken {
             let resume = rule.resumes();
@@ -848,7 +855,7 @@ fn archived(settings: &Settings) -> Vec<Node<Intent>> {
             chat.title.clone(),
             TextRole::Body,
         );
-        name.style.foreground = Some(TEXT);
+        name.style.foreground = Some(openagents_chat_app::visual::current().text);
         rows.push(stack(
             &format!("settings-archived-{index}"),
             Axis::Horizontal,
@@ -914,8 +921,8 @@ fn update_rows(update: Option<&Update>) -> Vec<Node<Intent>> {
                 },
             },
         );
-        button.style.background = Some(SELECTED);
-        button.style.foreground = Some(TEXT);
+        button.style.background = Some(openagents_chat_app::visual::current().selected);
+        button.style.foreground = Some(openagents_chat_app::visual::current().text);
         button.style.radius = Some(8);
         rows.push(button);
     }

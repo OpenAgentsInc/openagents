@@ -1313,8 +1313,15 @@ impl Panel {
             .chain(self.rename.as_mut().map(|(_, field)| field));
         for field in fields {
             field.set_colors(visual.text, visual.faint, visual.accent);
+            field.set_appearance(field_appearance());
         }
         self.changes_highlighter = None;
+        if let Some(doc) = self
+            .reviewer_mut()
+            .and_then(openagents_chat_app::changes::Reviewer::document_mut)
+        {
+            doc.clear_spans();
+        }
         self.set_text_size(size);
         self.rows_dirty = true;
     }
@@ -2967,7 +2974,7 @@ impl Panel {
             resource,
             command_panel::RULE | command_panel::RULE_HEADER | command_panel::RULE_FOOTER
         ) {
-            frame.fill(rect, 0.0, command_panel::RULE_COLOR);
+            frame.fill(rect, 0.0, command_panel::rule_color());
             return true;
         }
         if resource == command_panel::SHORTCUT_GLYPH {
@@ -2982,7 +2989,7 @@ impl Panel {
                     5.0,
                     command_panel::KEYCAP_LINE_HEIGHT,
                 ),
-                command_panel::KEYCAP_FILL,
+                command_panel::keycap_fill(),
                 openagents_chat_app::visual::current().muted,
             );
             return true;
@@ -4398,7 +4405,17 @@ fn chat_field(placeholder: &str) -> Field {
         openagents_chat_app::visual::current().faint,
         openagents_chat_app::visual::current().accent,
     );
+    field.set_appearance(field_appearance());
     field
+}
+
+/// The appearance a field paints its selection and frame in: the scheme
+/// the app paints with (#11028).
+fn field_appearance() -> rust_native_desktop::theme::Appearance {
+    match openagents_chat_app::visual::scheme() {
+        openagents_chat_app::visual::Scheme::Dark => rust_native_desktop::theme::Appearance::Dark,
+        openagents_chat_app::visual::Scheme::Light => rust_native_desktop::theme::Appearance::Light,
+    }
 }
 
 fn appearance() -> Appearance<'static> {
