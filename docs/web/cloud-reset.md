@@ -14,6 +14,9 @@ Every `/cloud/app/*` page and the code that only rendered pages:
 - hosts, computers, projects, agents, Studio, workbench, Verse and worlds,
   tasks, plugins, team, recovery, billing statements, retail purchases,
   sales, sales floor, partners
+- the host operation pages (computers, tasks, project jobs, the environment
+  panel, request review) and the chat composer's hand-off to them: chat no
+  longer offers a connected computer, and a chat that named one answers `410`
 - their page tests, `cloud.css`, `cloud-start.js`, and the Wasm privacy
   guard the pages loaded
 
@@ -54,11 +57,8 @@ Non-page code the new pages and `/environments` need, under
 - `custody.rs`: the credential vault
 - `byo.rs`: Claude credential storage and release to the customer's own runs
   (its page moves to `/settings/claude`)
-- `hosts.rs`, `effects.rs`: host bindings and the request journal
-- `controls.rs`, `operator.rs`, `environment.rs`: host and environment
-  operations, reached from the chat composer's run handoff; their routes
-  are unmounted and `/environments` replaces them
-- `composer.rs`: the chat composer's run handoff
+- `hosts.rs`, `effects.rs`: host bindings (the native operation client)
+  and the request journal, for `/environments` to run on
 - `account.rs` (crate root): who is signed in, for the account menu
 
 ## Order
@@ -67,5 +67,4 @@ Non-page code the new pages and `/environments` need, under
 2. Teardown and the moves above in one change; old URLs redirect.
 3. `/environments` lands (separate work) and fills the sidebar slot
    (`ui_page::Nav::Environments`).
-4. Once Claude Code runs live in `/environments`, delete the chat composer's
-   old run handoff and the unmounted host operations it still uses.
+4. Agents joins the sidebar only when a real flow exists.
