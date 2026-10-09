@@ -890,3 +890,68 @@ fn fulfillment_case(case: FulfillmentCase) {
     assert_eq!(view["live_payment_qualified"], false);
     assert_eq!(f.store.state.leads[&f.lead].service_sales.len(), 1);
 }
+
+#[test]
+fn partner_list_scopes_invitations_accepted_records_and_outsiders() {
+    let mut f = fixture();
+    let p = discovery(&mut f, "introduction");
+    apply(
+        &mut f,
+        "operator",
+        "propose",
+        Operation::ProposePartner {
+            proposal: p.clone(),
+        },
+    )
+    .unwrap();
+    let scope = |v: &View| serde_json::to_value(v).unwrap()["scope"].clone();
+    // The named recipient sees only the pending invitation; no terms.
+    let listed = f.store.partner_list(&f.partner, None, 8).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(scope(&listed[0]), "invitation");
+    assert!(!serde_json::to_string(&listed).unwrap().contains("brief"));
+    // An outsider sees nothing; the owner sees the full record.
+    assert!(
+        f.store
+            .partner_list(&f.outsider, None, 8)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        scope(&f.store.partner_list(&f.owner, None, 8).unwrap()[0]),
+        "accepted"
+    );
+    accept(&mut f, &p);
+    let listed = f.store.partner_list(&f.partner, None, 8).unwrap();
+    let View::Accepted {
+        assignment,
+        authority_granted,
+        live_payment_qualified,
+        ..
+    } = &listed[0]
+    else {
+        panic!("accepted view expected");
+    };
+    assert_eq!(assignment.status, Status::Accepted);
+    assert!(!authority_granted && !live_payment_qualified);
+    // The cursor is exclusive and the page is bounded.
+    let lead = f.lead.clone();
+    assert!(
+        f.store
+            .partner_list(&f.partner, Some((&lead, "introduction")), 8)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(f.store.partner_list(&f.partner, None, 0).is_err());
+    assert!(f.store.partner_list(&f.partner, None, 33).is_err());
+    assert!(
+        f.store
+            .partner_one(&f.outsider, &lead, "introduction")
+            .is_err()
+    );
+    assert!(
+        f.store
+            .partner_one(&f.partner, &lead, "introduction")
+            .is_ok()
+    );
+}

@@ -11,6 +11,7 @@ mod effects;
 mod environment;
 pub mod hosts;
 mod operator;
+mod partners;
 mod private;
 pub mod retail;
 pub mod sales;
@@ -116,6 +117,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(retail::routes())
         .merge(sales::routes())
         .merge(billing::routes())
+        .merge(partners::routes())
         .merge(byo::routes())
         .merge(team::routes())
         .layer(DefaultBodyLimit::max(8192));
@@ -128,6 +130,7 @@ pub(crate) fn routes() -> Router<App> {
                 | "workbench"
                 | "verse"
                 | "billing"
+                | "partners"
                 | "team"
                 | "sales"
         ) {
@@ -495,6 +498,8 @@ fn workspace_shell(
             nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
         } else if slug == "billing" && billing::available(viewer) {
             nav.push_str("<a href=\"/cloud/app/billing\">Billing</a>");
+        } else if slug == "partners" && partners::available(viewer) {
+            nav.push_str("<a href=\"/cloud/app/partners\">Partners</a>");
         } else if slug == "team" && team::available(app) {
             nav.push_str("<a href=\"/cloud/app/team\">Team</a>");
         } else if slug == "sales" && sales::available(app, viewer) {

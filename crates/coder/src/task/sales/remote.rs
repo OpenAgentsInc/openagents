@@ -177,6 +177,21 @@ pub enum Op {
     Claims,
     /// The owner's weekly review, rebuilt from current sources.
     Weekly,
+    /// Partner assignments scoped to the bound principal (WEB-16): full
+    /// accepted records only for their owner, accepted recipient, or accepted
+    /// support human; a pending invitation only for its named recipient.
+    Partners {
+        after: Option<PartnerCursor>,
+        limit: usize,
+    },
+    /// One scoped partner assignment, for a scoped export.
+    Partner { lead: String, assignment: String },
+    /// Arthur's partner brief or Vanna's attribution view, projected by the
+    /// owner from current records. The sales owner principal only.
+    Desk { desk: super::roles::Desk },
+    /// The owner's earned-sale ledger over original settlements and
+    /// reconciled delivery. Reading it rings no bell. Owner only.
+    Earned,
 }
 
 /// One record's commercial projection without contact, source text, or the
@@ -379,6 +394,14 @@ pub struct Weekly {
     pub cohorts: Vec<Value>,
     /// Journey rows, including failed and unknown history.
     pub journeys: Vec<Value>,
+}
+
+/// An exclusive (lead, assignment) position in a partner listing.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PartnerCursor {
+    pub lead: String,
+    pub assignment: String,
 }
 
 /// A record's pipeline position without contact or private text.
@@ -618,6 +641,53 @@ impl Service {
                 // Absent and refused records answer alike.
                 let lead = store.show(&access, &lead).map_err(|_| Code::AccessDenied)?;
                 serde_json::to_value(lead).map_err(|_| Code::Unavailable)
+            }
+            Op::Partners { after, limit } => {
+                if after
+                    .as_ref()
+                    .is_some_and(|c| !record_id(&c.lead) || !record_id(&c.assignment))
+                {
+                    return Err(Code::InvalidRequest);
+                }
+                let cursor = after
+                    .as_ref()
+                    .map(|c| (c.lead.as_str(), c.assignment.as_str()));
+                let views = store
+                    .partner_list(&access, cursor, limit)
+                    .map_err(|_| Code::InvalidRequest)?;
+                serde_json::to_value(views).map_err(|_| Code::Unavailable)
+            }
+            Op::Partner { lead, assignment } => {
+                if !record_id(&lead) || !record_id(&assignment) {
+                    return Err(Code::InvalidRequest);
+                }
+                // Absent and refused assignments answer alike.
+                let view = store
+                    .partner_one(&access, &lead, &assignment)
+                    .map_err(|_| Code::AccessDenied)?;
+                serde_json::to_value(view).map_err(|_| Code::Unavailable)
+            }
+            Op::Desk { desk } => {
+                if role != Role::Owner {
+                    return Err(Code::AccessDenied);
+                }
+                match desk {
+                    super::roles::Desk::Arthur => store
+                        .partner_brief(&access)
+                        .map_err(|_| Code::Refused)
+                        .and_then(|v| serde_json::to_value(v).map_err(|_| Code::Unavailable)),
+                    super::roles::Desk::Vanna => store
+                        .attribution_view(&access)
+                        .map_err(|_| Code::Refused)
+                        .and_then(|v| serde_json::to_value(v).map_err(|_| Code::Unavailable)),
+                }
+            }
+            Op::Earned => {
+                if role != Role::Owner {
+                    return Err(Code::AccessDenied);
+                }
+                let ledger = store.earned_ledger(&access).map_err(|_| Code::Refused)?;
+                serde_json::to_value(ledger).map_err(|_| Code::Unavailable)
             }
             Op::Apply { request, command } => {
                 let receipt =

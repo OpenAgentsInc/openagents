@@ -173,6 +173,63 @@ fn binding_reads_summaries_and_refuses_other_actors_bearers_and_unlisted_effects
 }
 
 #[test]
+fn partner_reads_are_scoped_and_desks_and_earnings_stay_with_the_owner() {
+    let owner = owner(&[Effect::Create]);
+    let service = Service::open_with_clock(&owner.config, clock).unwrap();
+    let created = apply(&service, "create-one", &create("create-one"));
+    assert_eq!(created.status, 200, "{}", created.body);
+    let lead = created.body["result"]["lead"].as_str().unwrap().to_owned();
+    // No assignment names this principal, so its page is empty.
+    let page = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"partners","after":null,"limit":8}),
+    );
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert_eq!(page.body["result"], json!([]));
+    // Absent and refused assignments answer alike; bad ids are refused.
+    let one = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"partner","lead":lead,"assignment":"introduction"}),
+    );
+    assert_eq!(error(&one), "access_denied");
+    let bad = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"partners","after":{"lead":"../x","assignment":"a"},"limit":8}),
+    );
+    assert_eq!(error(&bad), "invalid_request");
+    let unbounded = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"partners","after":null,"limit":500}),
+    );
+    assert_eq!(error(&unbounded), "invalid_request");
+    // Arthur's and Vanna's projections and the earned ledger are owner-only.
+    for op in [
+        json!({"kind":"desk","desk":"arthur"}),
+        json!({"kind":"desk","desk":"vanna"}),
+        json!({"kind":"earned"}),
+    ] {
+        assert_eq!(error(&call(&service, SITE, actor(), op)), "access_denied");
+    }
+    // Revocation refuses partner reads too.
+    owner.revoke();
+    let revoked = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"partners","after":null,"limit":8}),
+    );
+    assert_eq!(error(&revoked), "access_denied");
+}
+
+#[test]
 fn exact_retries_recover_changed_bytes_conflict_and_stale_revisions_refuse() {
     let owner = owner(&[Effect::Create, Effect::Update]);
     let service = Service::open_with_clock(&owner.config, clock).unwrap();

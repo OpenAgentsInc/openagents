@@ -9,6 +9,8 @@ use std::path::Path;
 
 pub const SCHEMA: &str = "openagents.sales.partner-assignment.v1";
 pub const MAX_ASSIGNMENTS: usize = 16;
+/// The most assignments one scoped page returns.
+pub const MAX_LISTED: usize = 32;
 const MAX_EVENTS: usize = 16;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -127,6 +129,35 @@ pub struct Assignment {
     pub handoff: Option<Handoff>,
     pub delivery_sale: Option<String>,
 }
+/// One assignment as one principal may see it. Neither shape grants
+/// outbound, execution, invoice, commission, or payment authority.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case", deny_unknown_fields)]
+pub enum View {
+    /// The accepted record, for its owner, accepted recipient, or accepted
+    /// support human.
+    Accepted {
+        lead: String,
+        assignment: Box<Assignment>,
+        canonical_fulfillment: Option<Fulfillment>,
+        authority_granted: bool,
+        commission_eligibility_verified: bool,
+        live_payment_qualified: bool,
+    },
+    /// A pending invitation only: no terms, brief, or lead body.
+    Invitation {
+        lead: String,
+        id: String,
+        kind: String,
+        recipient_human: String,
+        status: Status,
+        proposal_sha256: String,
+        expires_at: u64,
+        pipeline_revision: u64,
+        authority_granted: bool,
+    },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
@@ -774,6 +805,33 @@ impl Store {
             .partner_assignments
             .get(assignment)
             .ok_or("Partner assignment is unavailable.")?;
+        Ok(match self.partner_view(access, lead, assignment)? {
+            View::Accepted {
+                assignment,
+                canonical_fulfillment,
+                ..
+            } => json!({"assignment":assignment,"canonical_fulfillment":canonical_fulfillment,
+                "authority_granted":false,"commission_eligibility_verified":false,"live_payment_qualified":false}),
+            View::Invitation {
+                id,
+                kind,
+                recipient_human,
+                status,
+                proposal_sha256,
+                expires_at,
+                pipeline_revision,
+                ..
+            } => {
+                json!({"invitation":{"id":id,"kind":kind,"recipient_human":recipient_human,"status":status,
+                "proposal_sha256":proposal_sha256,"expires_at":expires_at,"pipeline_revision":pipeline_revision},
+                "authority_granted":false})
+            }
+        })
+    }
+    /// One assignment as `access` may see it: the full accepted record for
+    /// its owner, accepted recipient, or accepted support human; only the
+    /// pending invitation for its named recipient or proposed support target.
+    fn partner_view(&self, access: &Access, lead: &Lead, assignment: &Assignment) -> Result<View> {
         let actor = access.principal();
         if !Self::recipient(&lead.details, actor)
             || !assignment
@@ -810,19 +868,69 @@ impl Store {
                 .map(|sale| sale.effective_fulfillment())
                 .transpose()?
                 .flatten();
-            Ok(
-                json!({"assignment":assignment,"canonical_fulfillment":canonical_fulfillment,
-                    "authority_granted":false,"commission_eligibility_verified":false,"live_payment_qualified":false}),
-            )
+            Ok(View::Accepted {
+                lead: lead.id.clone(),
+                assignment: Box::new(assignment.clone()),
+                canonical_fulfillment,
+                authority_granted: false,
+                commission_eligibility_verified: false,
+                live_payment_qualified: false,
+            })
         } else if recipient || support {
-            Ok(
-                json!({"invitation":{"id":assignment.proposal.id,"kind":assignment.proposal.terms.kind(),
-                "recipient_human":actor,"status":assignment.status,"proposal_sha256":assignment.proposal_sha256,
-                "expires_at":assignment.proposal.expires_at,"pipeline_revision":lead.revision},"authority_granted":false}),
-            )
+            Ok(View::Invitation {
+                lead: lead.id.clone(),
+                id: assignment.proposal.id.clone(),
+                kind: assignment.proposal.terms.kind().into(),
+                recipient_human: actor.into(),
+                status: assignment.status,
+                proposal_sha256: assignment.proposal_sha256.clone(),
+                expires_at: assignment.proposal.expires_at,
+                pipeline_revision: lead.revision,
+                authority_granted: false,
+            })
         } else {
             Err("Partner record access refused.".into())
         }
+    }
+    /// One assignment exactly as [`Self::partner_list`] scopes it.
+    pub fn partner_one(&mut self, access: &Access, lead: &str, assignment: &str) -> Result<View> {
+        self.refresh()?;
+        self.check(access)?;
+        let lead = self.state.leads.get(lead).ok_or("Lead is unavailable.")?;
+        let found = lead
+            .partner_assignments
+            .get(assignment)
+            .ok_or("Partner assignment is unavailable.")?;
+        self.partner_view(access, lead, found)
+    }
+    /// Every assignment `access` may see, in (lead, assignment) order after
+    /// the exclusive cursor, each exactly as [`Self::partner_show`] scopes it.
+    pub fn partner_list(
+        &mut self,
+        access: &Access,
+        after: Option<(&str, &str)>,
+        limit: usize,
+    ) -> Result<Vec<View>> {
+        self.refresh()?;
+        self.check(access)?;
+        if limit == 0 || limit > MAX_LISTED {
+            return Err("partner page bound is 1 to 32".into());
+        }
+        let mut out = Vec::new();
+        for lead in self.state.leads.values() {
+            for (id, assignment) in &lead.partner_assignments {
+                if after.is_some_and(|(l, a)| (lead.id.as_str(), id.as_str()) <= (l, a)) {
+                    continue;
+                }
+                if let Ok(view) = self.partner_view(access, lead, assignment) {
+                    out.push(view);
+                    if out.len() == limit {
+                        return Ok(out);
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
     pub(super) fn partner_visible(&self, access: &Access, assignment: &Assignment) -> bool {
         assignment.owner_human == access.principal()

@@ -32,6 +32,8 @@ mod environment;
 mod operator_fixture;
 #[path = "operator_tests.rs"]
 mod operator_tests;
+#[path = "partners_tests.rs"]
+mod partners_web;
 #[path = "../../examples/support/project_fixture.rs"]
 mod project_fixture;
 #[path = "project_tests.rs"]
@@ -87,6 +89,8 @@ struct Native {
     receipt: Option<Value>,
     /// A native team book for alice-team (WEB-12); legacy fields apply without one.
     team: Option<team_web::Book>,
+    /// Original referral records for alice (WEB-16), by document name.
+    referral: BTreeMap<&'static str, Value>,
 }
 
 /// The fake gateway serves billing documents only to alice in alice-personal.
@@ -298,6 +302,7 @@ async fn fixture() -> Fixture {
             get(native_receipt),
         )
         .merge(team_web::native_routes())
+        .merge(partners_web::native_routes())
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());

@@ -449,6 +449,21 @@ impl Delegations {
         serde_json::from_value(value["result"].take()).map_err(|_| Failure::Unknown)
     }
 
+    /// One read-only owner call for another projection (partners, WEB-16).
+    /// Effects and reconciliation stay with this module's journal.
+    pub(crate) async fn read<T: serde::de::DeserializeOwned>(
+        &self,
+        viewer: &Viewer,
+        id: &str,
+        op: Op,
+    ) -> Result<T, Failure> {
+        if matches!(op, Op::Apply { .. } | Op::Reconcile { .. }) {
+            return Err(Failure::Session(SessionError::InvalidRequest));
+        }
+        let delegation = self.get(viewer, id)?.clone();
+        self.call(viewer, &delegation, op).await
+    }
+
     pub(crate) async fn standing(&self, viewer: &Viewer, id: &str) -> Result<Standing, Failure> {
         let delegation = self.get(viewer, id)?.clone();
         self.call(viewer, &delegation, Op::Standing).await
