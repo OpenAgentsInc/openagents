@@ -29,6 +29,7 @@
 //! system setting. [`shell::ThemeToggle`] renders the button the toggle
 //! script binds to ([`shell::THEME_TOGGLE_ATTR`]).
 
+pub mod actions;
 pub mod content;
 mod css_lower;
 pub mod forms;
