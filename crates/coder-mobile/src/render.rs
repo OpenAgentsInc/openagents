@@ -84,7 +84,7 @@ pub(crate) fn root(app: &App) -> Result<Node<Intent>, String> {
         nodes.push(text(
             "more-notices",
             format!(
-                "{} additional source notices; some history may be unavailable.",
+                "{} more notices; some earlier messages may be missing.",
                 app.notices.len() - 8
             ),
             TextRole::Status,
@@ -150,7 +150,7 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
                         format!(" · {updated}")
                     },
                     if chat.source_id.is_none() {
-                        " · source unavailable"
+                        " · unavailable"
                     } else {
                         ""
                     }
@@ -282,7 +282,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
         let page: TranscriptPage = app
             .cache
             .read(key)?
-            .ok_or("Cached page was evicted. Reload from the computer.")?;
+            .ok_or("This page needs to reload from the computer.")?;
         if app.details {
             nodes.push(text(
                 "page-position",
@@ -299,7 +299,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
         if page.chunks.first().is_some_and(|c| c.offset > 0) && index == 0 {
             nodes.push(text(
                 "cache-gap",
-                "Earlier messages are not cached. Open Details to reload.",
+                "Earlier messages aren't on this phone. Open Details to reload.",
                 TextRole::Status,
             ));
         }
@@ -310,7 +310,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
         {
             nodes.push(text(
                 "evicted-position",
-                "This page left the cache. Open Details to reload.",
+                "This page isn't on this phone anymore. Open Details to reload.",
                 TextRole::Status,
             ));
         }
@@ -325,7 +325,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
             }) {
                 nodes.push(text(
                     "cache-internal-gap",
-                    "Some earlier messages left the cache. Open Details to reload.",
+                    "Some earlier messages aren't on this phone anymore. Open Details to reload.",
                     TextRole::Status,
                 ));
             }
@@ -352,7 +352,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
                 if app.transcript.snapshot_bytes == 0 {
                     "No messages yet."
                 } else {
-                    "Messages left the cache. Open Details to reload."
+                    "Messages aren't on this phone anymore. Open Details to reload."
                 }
             } else {
                 "Loading messages…"
@@ -476,7 +476,7 @@ fn record(
             if readable.text_truncated {
                 children.push(text(
                     format!("{prefix}-cut"),
-                    "Preview shortened. Open Details for source bytes.",
+                    "Preview shortened. Open Details for the full message.",
                     TextRole::Status,
                 ));
             }
@@ -485,9 +485,9 @@ fn record(
             children.push(button(
                 format!("{prefix}-raw"),
                 if show_raw {
-                    "Show readable record"
+                    "Show readable text"
                 } else {
-                    "Show exact source bytes"
+                    "Show raw text"
                 },
                 Intent::Raw {
                     record: chunk.offset,
@@ -501,7 +501,7 @@ fn record(
             children.push(text(
                 format!("{prefix}-label"),
                 format!(
-                    "Native record {} · source bytes {}–{}{}",
+                    "Message {} · bytes {}–{}{}",
                     chunk.index,
                     chunk.offset,
                     last.end_offset,
@@ -517,7 +517,7 @@ fn record(
             let part_prefix = format!("{prefix}-source-{}", item.offset);
             children.push(text(
                 format!("{part_prefix}-range"),
-                format!("Source bytes {}–{}", item.offset, item.end_offset),
+                format!("Bytes {}–{}", item.offset, item.end_offset),
                 TextRole::Status,
             ));
             match std::str::from_utf8(&raw) {
@@ -714,7 +714,7 @@ mod tests {
         assert_eq!(
             values
                 .iter()
-                .filter(|(_, value)| *value == "Show exact source bytes")
+                .filter(|(_, value)| *value == "Show raw text")
                 .count(),
             1
         );
@@ -746,9 +746,10 @@ mod tests {
         let mut values = vec![];
         texts(&view, &mut values);
         assert!(
-            values.iter().any(
-                |(key, value)| *key == "cache-internal-gap" && value.contains("left the cache")
-            )
+            values
+                .iter()
+                .any(|(key, value)| *key == "cache-internal-gap"
+                    && value.contains("on this phone anymore"))
         );
     }
 
@@ -821,7 +822,7 @@ mod tests {
         texts(&view, &mut values);
         assert!(values.iter().any(|(key, value)| {
             *key == "empty-transcript"
-                && *value == "Messages left the cache. Open Details to reload."
+                && *value == "Messages aren't on this phone anymore. Open Details to reload."
         }));
     }
 }
@@ -855,7 +856,7 @@ mod presentation_tests {
         assert!(readable.contains("Native timeline"));
         assert!(!readable.contains("history-progress"));
         assert!(!readable.contains("page-position"));
-        assert!(!readable.contains("Show exact source bytes"));
+        assert!(!readable.contains("Show raw text"));
         let detailed = app
             .call(Request::Activate {
                 instance: opened["instance"].as_str().unwrap().into(),
@@ -868,6 +869,6 @@ mod presentation_tests {
         assert!(detailed.contains("Native timeline"));
         assert!(detailed.contains("history-progress"));
         assert!(detailed.contains("page-position"));
-        assert!(detailed.contains("Show exact source bytes"));
+        assert!(detailed.contains("Show raw text"));
     }
 }

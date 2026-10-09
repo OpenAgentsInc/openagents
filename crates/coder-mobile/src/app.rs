@@ -669,7 +669,7 @@ impl App {
                     Some(
                         keys.into_iter()
                             .find(|key| Some(key) == page.as_ref())
-                            .ok_or("The visible page is no longer cached.")?,
+                            .ok_or("This page needs to reload.")?,
                     )
                 };
                 Ok(())
@@ -848,7 +848,7 @@ impl App {
                 self.catalog.extend(page.entries);
             } else {
                 self.notices
-                    .push("Some cached chats were evicted. Refresh the list.".into());
+                    .push("Some chats need to reload. Refresh the list.".into());
             }
         }
         Ok(())
@@ -865,7 +865,7 @@ impl App {
         let outcome = outcome.unwrap_or_else(|_| {
             Err(coder_connect::Error::new(
                 ErrorCode::Transport,
-                "Computer refresh timed out. Cached history is still available.",
+                "The computer didn't answer in time. Saved chats are still here.",
             ))
         });
         match outcome {
@@ -884,16 +884,16 @@ impl App {
                 match error.code {
                     ErrorCode::Revoked | ErrorCode::Expired | ErrorCode::Forbidden => {
                         self.disconnect()?;
-                        Err("Access ended. Cached conversations were erased; pair again on the computer.".into())
+                        Err("This phone's access ended and its saved chats were removed. Pair again on the computer.".into())
                     }
                     ErrorCode::SourceChanged => {
-                        self.status = "Source changed · reload required".into();
+                        self.status = "Chats changed · reload".into();
                         Err("Chat files changed. Reload the chat or pair again.".into())
                     }
                     ErrorCode::Conflict => {
                         self.catalog_state.next = None;
                         self.catalog_state.refresh_next = None;
-                        self.status = "Chat list changed · refresh required".into();
+                        self.status = "Chat list changed · refresh".into();
                         Err("Chat list changed. Refresh to reload it.".into())
                     }
                     _ => {
@@ -999,7 +999,7 @@ impl App {
             self.notices = page
                 .notices
                 .iter()
-                .map(|n| format!("Source notice: {}", n.code))
+                .map(|n| format!("Notice: {}", n.code))
                 .collect();
             return self.cache.write("catalog_state", &self.catalog_state);
         }
@@ -1010,7 +1010,7 @@ impl App {
         }
         if self.catalog_state.pages >= 128 {
             return Err(
-                "Chat list reached 4,096 entries. Narrow the computer's source scope.".into(),
+                "This computer has more than 4,096 chats. Only the first 4,096 show.".into(),
             );
         }
         let key = format!("catalog_{}_{}", page.snapshot, self.catalog_state.pages);
@@ -1018,7 +1018,7 @@ impl App {
         self.notices = page
             .notices
             .iter()
-            .map(|n| format!("Source notice: {}", n.code))
+            .map(|n| format!("Notice: {}", n.code))
             .collect();
         self.catalog_state.pages += 1;
         self.catalog_state.next = page.next.clone();
@@ -1051,7 +1051,7 @@ impl App {
             || page.next.source_id != source
             || page.next.incarnation != page.incarnation
         {
-            return Err("transcript page identity differs".into());
+            return Err("This chat changed. Reload it.".into());
         }
         let start = self.transcript.cursor.as_ref().map_or(0, |c| c.offset);
         if self
@@ -1060,19 +1060,19 @@ impl App {
             .as_ref()
             .is_some_and(|c| c.incarnation != page.incarnation)
         {
-            return Err("transcript incarnation changed; reload required".into());
+            return Err("This chat changed. Reload it.".into());
         }
         let mut offset = start;
         use base64::Engine;
         for chunk in &page.chunks {
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(&chunk.raw_base64)
-                .map_err(|_| "invalid transcript bytes")?;
+                .map_err(|_| "Couldn't read this chat. Reload it.")?;
             if chunk.offset != offset
                 || chunk.end_offset <= offset
                 || chunk.end_offset - offset != bytes.len() as u64
             {
-                return Err("transcript bytes are discontinuous".into());
+                return Err("Couldn't read this chat. Reload it.".into());
             }
             offset = chunk.end_offset;
         }
@@ -1080,7 +1080,7 @@ impl App {
             || offset.saturating_sub(start) > u64::from(coder_history::MAX_PAGE_BYTES)
             || offset > page.snapshot_bytes
         {
-            return Err("transcript cursor is inconsistent".into());
+            return Err("Couldn't read this chat. Reload it.".into());
         }
         if !page.chunks.is_empty() {
             self.cache
@@ -1098,7 +1098,7 @@ impl App {
         self.notices = page
             .notices
             .iter()
-            .map(|n| format!("Source notice: {}", n.code))
+            .map(|n| format!("Notice: {}", n.code))
             .collect();
         Ok(())
     }
@@ -1198,7 +1198,7 @@ impl App {
         if self.code.is_some() {
             return Ok(());
         }
-        self.status = "Synthetic preview · no computer connected".into();
+        self.status = "Preview · no computer connected".into();
         self.apply_catalog(
             CatalogPage {
                 snapshot: "synthetic".into(),
@@ -1206,7 +1206,7 @@ impl App {
                     id: "synthetic-chat".into(),
                     harness: coder_history::Harness::Codex,
                     native_id: Some("synthetic".into()),
-                    title: "Read-only transcript preview".into(),
+                    title: "Read-only chat preview".into(),
                     title_truncated: false,
                     updated_at: None,
                     archived: false,

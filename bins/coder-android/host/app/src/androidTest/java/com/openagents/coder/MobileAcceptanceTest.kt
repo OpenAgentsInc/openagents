@@ -170,7 +170,7 @@ class MobileAcceptanceTest {
         }
         assertNotNull("Exact-source control", raw.get())
         click(raw.get())
-        waitFor { hasText("Show readable record") }
+        waitFor { hasText("Show readable text") }
         assertFalse("Reader must stay read-only", hasText("Send"))
         capture("reader-exact-record")
         click(raw.get())

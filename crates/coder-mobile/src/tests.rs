@@ -34,7 +34,7 @@ fn native_projection_opens_a_cached_chat_and_refuses_stale_actions() {
     let packet = app.call(Request::Snapshot);
     assert!(!packet.reading);
     let view = packet.view.unwrap();
-    let key = find_button(&view["root"], "Read-only transcript preview\nCodex");
+    let key = find_button(&view["root"], "Read-only chat preview\nCodex");
     assert!(!key.is_empty());
     let request = || Request::Activate {
         instance: view["instance"].as_str().unwrap().into(),

@@ -29,7 +29,7 @@ final class ReaderUITests: XCTestCase {
         reveal(source)
         XCTAssertTrue(source.exists)
         source.tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Show readable record'")).firstMatch
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Show readable text'")).firstMatch
             .waitForExistence(timeout: 10))
         XCTAssertFalse(app.textFields["Message"].exists)
         XCTAssertFalse(app.buttons["Send"].exists)

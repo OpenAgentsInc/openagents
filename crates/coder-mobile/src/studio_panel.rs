@@ -230,7 +230,7 @@ impl Transport for HostLink {
         if !outcome.answers(operation) {
             return Err(AccessError::new(
                 Code::Malformed,
-                "the computer answered another operation",
+                "the computer answered a different request",
             ));
         }
         outcome.validate()?;
@@ -245,7 +245,7 @@ fn refusal(error: coder_host::Error) -> AccessError {
     match error {
         coder_host::Error::Access(error) => error,
         coder_host::Error::Closed(Some(code)) if code == "revoked" || code == "stale" => {
-            AccessError::new(Code::Revoked, "the computer closed the channel as revoked")
+            AccessError::new(Code::Revoked, "the computer ended this phone's access")
         }
         coder_host::Error::Closed(_)
         | coder_host::Error::Transport(_)
@@ -599,7 +599,9 @@ fn status_row(answer: &Answer) -> Node<Intent> {
             (Verdict::RequestChanges, None) => {
                 "**Changes requested** · the seat takes them as its next turn".to_owned()
             }
-            (_, None) => "**Rejected** · the task's worktree stays until it is archived".to_owned(),
+            (_, None) => {
+                "**Rejected** · its files stay on the computer until it is archived".to_owned()
+            }
         },
         Ok(_) => format!("**Done** · `{operation}`"),
         Err(error) => {
@@ -610,8 +612,8 @@ fn status_row(answer: &Answer) -> Node<Intent> {
             );
             if error.code == Code::Stale && operation == "studio.merge.decide" {
                 line.push_str(
-                    " The change moved after you read it, so nothing landed. Read the \
-                     reloaded review before you decide.",
+                    " The change was updated after you read it, so nothing was merged. Read \
+                     the new version before you decide.",
                 );
             }
             line
@@ -728,8 +730,8 @@ fn console(view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
     } else {
         note(
             "console-help",
-            "This view observes. Messaging seats and the studio's other intents need a \
-             computer connection with the operate right.",
+            "This phone can only watch. Messaging seats needs a computer connection \
+             that lets this phone operate it.",
         )
     });
     rows
@@ -835,7 +837,7 @@ fn decision_rows(view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
             ),
             DecisionKind::InvalidPlan => (
                 decision::Flow::question(&open.text),
-                "**The plan failed validation**: answer with a corrected plan".to_owned(),
+                "**The plan has a problem**: answer with a corrected plan".to_owned(),
             ),
             DecisionKind::NoPlan => (
                 decision::Flow::question(&open.text),
@@ -897,7 +899,7 @@ fn decision_rows(view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
     } else if !operate {
         rows.push(note(
             "decisions-help",
-            "Answering needs a computer connection with the operate right.",
+            "Answering needs a computer connection that lets this phone operate it.",
         ));
     }
     rows
@@ -976,14 +978,14 @@ fn review_rows(
         }
         rows.push(note(
             "review-help",
-            "Merge lands the change on the checkout's branch on the computer and pushes \
-             nothing. Text you send from this panel requests changes with that note.",
+            "Merge adds the change to the project's current branch on the computer \
+             without pushing it. Text you send from this panel requests changes with that note.",
         ));
     } else {
         rows.push(note(
             "review-help",
-            "Merge, Request changes, and Reject need a computer connection with the review \
-             right.",
+            "Merge, Request changes, and Reject need a computer connection that lets this \
+             phone review changes.",
         ));
     }
     rows
@@ -1017,8 +1019,8 @@ pub fn rows(
     let Some(view) = view else {
         rows.push(note(
             "not-loaded",
-            "The studio has not loaded. It loads while you are in Everglade with a studio \
-             source.",
+            "The studio has not loaded. It loads while you are in Everglade with a computer \
+             connected.",
         ));
         return rows;
     };
@@ -1055,7 +1057,7 @@ pub fn rows(
         rows.truncate(fits.min(MAX_ROWS - 1));
         rows.push(note(
             "more",
-            "More rows are on the host than a phone panel shows.",
+            "There's more on the computer than this panel shows.",
         ));
     }
     rows
@@ -1621,7 +1623,7 @@ mod tests {
             assert_eq!(rows[0].key, "studio-status");
             let shown = values(&rows[..1]);
             assert!(shown.contains("`stale`"), "{shown}");
-            assert!(shown.contains("nothing landed"), "{shown}");
+            assert!(shown.contains("nothing was merged"), "{shown}");
         }
     }
 }

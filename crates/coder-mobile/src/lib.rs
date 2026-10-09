@@ -25,6 +25,9 @@ mod tests;
 mod connection_tests;
 
 #[cfg(test)]
+mod copy_guard_tests;
+
+#[cfg(test)]
 mod computers_live_tests;
 
 #[cfg(test)]

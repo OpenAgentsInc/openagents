@@ -898,7 +898,8 @@ impl ComputerHud {
                 && ch > '\u{7f}'
                 && terminal_gfx::draw::box_lines(ch).is_none()
             {
-                self.notice = Some("Some device fonts are unavailable. The native terminal screen retains the original text.".into());
+                self.notice =
+                    Some("Some characters may not display correctly on this device.".into());
             }
         }
         self.glyph_cursor = (self.glyph_cursor + budget) % count.max(1);

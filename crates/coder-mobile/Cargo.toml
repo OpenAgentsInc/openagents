@@ -47,6 +47,8 @@ libc = "0.2"
 ndk-sys = "0.6"
 
 [dev-dependencies]
+# The machine-talk guard over the copy in this crate's sources (#11031).
+oa-copy = { path = "../oa-copy" }
 tempfile = "3"
 coder-connect = { path = "../coder-connect", features = ["host"] }
 # The Computers acceptance run serves a real host on a local relay.

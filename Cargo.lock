@@ -3315,6 +3315,7 @@ dependencies = [
  "libc",
  "ndk-sys",
  "nostr",
+ "oa-copy",
  "openagents-chat-app",
  "push-gateway",
  "rust-native",

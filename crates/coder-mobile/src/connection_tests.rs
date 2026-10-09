@@ -268,7 +268,7 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
     host.revoke(&code.grant, None, coder_connect::unix_time().unwrap())
         .unwrap();
     let revoked = restored.call(Request::Foreground { active: true });
-    assert!(revoked.error.unwrap().contains("Access ended"));
+    assert!(revoked.error.unwrap().contains("access ended"));
     assert!(restored.code.is_none());
     assert!(restored.catalog.is_empty());
     assert!(restored.cache.keys("").unwrap().is_empty());
