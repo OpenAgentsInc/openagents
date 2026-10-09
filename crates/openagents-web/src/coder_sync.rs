@@ -250,6 +250,7 @@ pub(crate) async fn save(
                 environment: None,
                 tasks: Vec::new(),
                 opened_unix: None,
+                branch: None,
             };
             match store.create(&chat).await {
                 Ok(_) => {
@@ -584,6 +585,111 @@ pub(crate) async fn queue_reply(
         }
     }
     Err(Error::Conflict)
+}
+
+/// What became of a chat started on the website for Coder on a computer.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Started {
+    /// The chat (its id) waits for Coder, with the message as its first
+    /// reply; also when this request already started it.
+    Started(String),
+    /// Coder on the computer hasn't checked in lately.
+    Offline,
+    /// The account has [`MAX_CHATS`] chats.
+    Full,
+    /// The message looks like it holds a credential.
+    Secret,
+    /// [`MAX_WAITING_CHATS`] chats already wait for Coder.
+    Busy,
+}
+
+/// The Coder session a chat started on the website gets (`request` is the
+/// composer's request id, a UUID): Coder knows these by the prefix and
+/// opens a new conversation under the id when it takes the first message.
+pub(crate) fn web_session(request: &str) -> String {
+    format!("web-{request}")
+}
+
+/// Start a Coder chat from the website (the composer's "Coder on
+/// {computer}"): a Coder chat with no messages yet, whose first message
+/// waits for Coder on `computer` like a reply ([`queue_reply`]). Coder
+/// takes it at its next check-in, opens a new conversation for it, and
+/// answers; its upload fills the chat as usual. The same `request` starts
+/// it once.
+pub(crate) async fn start_from_web(
+    store: &Store,
+    owner: &str,
+    computer: &str,
+    request: &str,
+    text: &str,
+    project: Option<String>,
+) -> Result<Started, Error> {
+    if secret_screen::credential_in(text).is_some() {
+        return Ok(Started::Secret);
+    }
+    let session = web_session(request);
+    if !valid_session(&session) {
+        return Ok(Started::Offline);
+    }
+    let id = chat_id(owner, &session);
+    if store.load(owner, &id).await?.is_none() {
+        let computer = line(computer, 64);
+        if computer.is_empty() || !online(&store.computers(owner).await?, &computer) {
+            return Ok(Started::Offline);
+        }
+        if store.list_with_deleted(owner).await?.len() >= MAX_CHATS {
+            return Ok(Started::Full);
+        }
+        let chat = Conversation {
+            id: id.clone(),
+            owner: owner.to_owned(),
+            revision: 1,
+            title: text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(64)
+                .collect(),
+            messages: Vec::new(),
+            pending: None,
+            requests: Vec::new(),
+            selection: None,
+            updated_unix: now_unix(),
+            pinned_unix: None,
+            archived_unix: None,
+            project,
+            terminal: Some(Terminal {
+                computer,
+                session: session.clone(),
+                // Empty until Coder's first upload, so the website's title
+                // (the first message) stays.
+                title: String::new(),
+                digest: String::new(),
+                working_unix: None,
+                deleted_unix: None,
+                replies: Vec::new(),
+                reply_ids: Vec::new(),
+                continued: Vec::new(),
+                continued_taken: 0,
+            }),
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
+            branch: None,
+        };
+        match store.create(&chat).await {
+            Ok(_) | Err(Error::Conflict) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(match queue_reply(store, owner, &id, request, text).await? {
+        Queued::Queued => Started::Started(id),
+        Queued::Offline(_) => Started::Offline,
+        Queued::Full => Started::Busy,
+        Queued::Secret => Started::Secret,
+        Queued::Missing => Started::Offline,
+    })
 }
 
 /// What Coder took from a chat.

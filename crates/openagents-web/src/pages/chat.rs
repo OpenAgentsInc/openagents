@@ -67,9 +67,29 @@ struct Prompt {
     csrf: String,
     #[serde(default)]
     selection: String,
-    /// The project picked in the new-chat composer (`prj_…`), if any.
+    /// The project picked in the composer's selector row (`prj_…`), if
+    /// any ([`crate::composer_row`]).
+    /// Absent when the composer has no selector row.
     #[serde(default)]
-    project: String,
+    project: Option<String>,
+    /// The branch of that project picked there.
+    #[serde(default)]
+    branch: Option<String>,
+    /// Where the message runs there (empty: answered here).
+    #[serde(default)]
+    target: Option<String>,
+}
+
+impl Prompt {
+    fn wanted(&self) -> crate::composer_row::Wanted {
+        crate::composer_row::Wanted {
+            project: self.project.clone().unwrap_or_default(),
+            branch: self.branch.clone().unwrap_or_default(),
+            target: self.target.clone().unwrap_or_default(),
+            chat: None,
+            focus: None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -265,7 +285,21 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         } else {
             None
         };
-    let project = crate::projects::chosen(&app, &prompt.project).await;
+    let picked =
+        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), true).await {
+            Ok(picked) => picked,
+            Err(message) => return refusal(StatusCode::CONFLICT, message),
+        };
+    let project = picked.project.as_ref().map(|project| project.id.clone());
+    match &picked.target {
+        crate::composer_row::Target::Chat => {}
+        crate::composer_row::Target::Coder(computer) => {
+            return start_on_coder(&app, &owner, computer, &id, &text, project).await;
+        }
+        crate::composer_row::Target::Claude(_) => {
+            return start_claude(&app, &headers, &owner, &id, text, digest, &picked).await;
+        }
+    }
     let admitted_at = now();
     if cloud.is_none() {
         match app
@@ -335,6 +369,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: picked.branch.clone(),
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -350,6 +385,127 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         spawn_answer(app.clone(), loaded, admitted_at);
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// A new chat whose first message goes to Coder on `computer`
+/// ([`crate::coder_sync::start_from_web`]); on to its page.
+async fn start_on_coder(
+    app: &App,
+    owner: &str,
+    computer: &str,
+    request: &str,
+    text: &str,
+    project: Option<String>,
+) -> Response {
+    use crate::coder_sync::Started;
+    let store = &app.config.chat_store;
+    match crate::coder_sync::start_from_web(store, owner, computer, request, text, project).await {
+        Ok(Started::Started(id)) => {
+            crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+        }
+        Ok(Started::Offline) => refusal(
+            StatusCode::CONFLICT,
+            &format!("Coder on {computer} isn't online now. Pick where it runs again."),
+        ),
+        Ok(Started::Full) => refusal(
+            StatusCode::CONFLICT,
+            "Your account has no room for more chats. Delete some first.",
+        ),
+        Ok(Started::Busy) => refusal(
+            StatusCode::CONFLICT,
+            "Coder has too many messages waiting. Try again when it has answered them.",
+        ),
+        Ok(Started::Secret) => refusal(
+            StatusCode::BAD_REQUEST,
+            "This looks like it holds a password or key, so it wasn't sent.",
+        ),
+        Err(e) => unavailable(e),
+    }
+}
+
+/// A new chat whose first message starts Claude Code in the picked
+/// project's environment ([`work::begin`]); the run's answer joins the
+/// chat when it is done. On to its page.
+async fn start_claude(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    text: String,
+    digest: String,
+    picked: &crate::composer_row::Picked,
+) -> Response {
+    let Some(env) = claude_environment(app, headers, owner, picked, true).await else {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Claude Code can't run there now. Pick where it runs again.",
+        );
+    };
+    let (environment, task) =
+        match work::begin(app, headers, &env, picked.branch.as_deref(), &[], &text).await {
+            Ok(found) => found,
+            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+        };
+    let mut record = Conversation {
+        id: id.to_owned(),
+        owner: owner.to_owned(),
+        revision: 1,
+        title: text.chars().take(64).collect(),
+        messages: vec![Message {
+            role: Role::User,
+            text,
+            request_id: Some(id.to_owned()),
+        }],
+        pending: None,
+        requests: vec![Request {
+            id: id.to_owned(),
+            digest,
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
+        project: picked.project.as_ref().map(|project| project.id.clone()),
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: picked.branch.clone(),
+    };
+    work::record(&mut record, environment, task.clone());
+    match app.config.chat_store.create(&record).await {
+        Ok(_) => {}
+        Err(Error::Conflict) => {
+            work::abandon(app, &task);
+            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
+        }
+        Err(e) => {
+            work::abandon(app, &task);
+            return unavailable(e);
+        }
+    }
+    work::watch(app.clone(), owner.to_owned(), id.to_owned());
+    crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// The environment the picked Claude Code target runs in, checked again.
+async fn claude_environment(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    picked: &crate::composer_row::Picked,
+    new_chat: bool,
+) -> Option<crate::composer_row::Environment> {
+    let crate::composer_row::Target::Claude(id) = &picked.target else {
+        return None;
+    };
+    let choices = crate::composer_row::choices(app, headers, owner, new_chat).await?;
+    let env = choices.environment(picked.project.as_ref()?)?;
+    (env.id == *id).then(|| env.clone())
 }
 
 pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Response> {
@@ -445,10 +601,9 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     if let Some(terminal) = &chat.terminal {
         return show_terminal(&app, &headers, chat, &terminal.computer).await;
     }
-    let selection = chat.selection.clone().unwrap_or_default();
-    let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
+    let row = crate::composer_row::for_chat(&app, &headers, chat, false).await;
     let dock = html! {
-        (ticket(&app, chat, false, false))
+        (ticket(&app, chat, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
@@ -468,8 +623,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .composer(composer(
             &format!("/chat/{id}"),
             "Continue this chat",
-            chat.selection.as_ref(),
-            selectors,
+            Some(row),
             dock,
         ));
     crate::chat_html::protect(page.respond(&headers))
@@ -533,7 +687,7 @@ fn terminal_composer(app: &App, chat: &Conversation, computer: &str) -> Markup {
         .placeholder(format!("Reply to Coder on {computer}"))
         .autofocus(true)
         .after(html! {
-            (ticket(app, chat, false, false))
+            (ticket(app, chat, false))
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
         })
         .render()
@@ -582,7 +736,7 @@ async fn reply_to_coder(
     };
     if headers.get("HX-Request").is_some_and(|v| v == "true") {
         crate::chat_html::protect(
-            html! { (ticket(app, &chat, true, false)) (chat_list(app, owner, Some(id), false, true).await) }
+            html! { (ticket(app, &chat, true)) (chat_list(app, owner, Some(id), false, true).await) }
                 .into_response(),
         )
     } else {
@@ -611,16 +765,11 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         return response;
     }
     let chat = &record.conversation;
-    let selectors = crate::composer::selectors_shown(
-        &app,
-        &headers,
-        &chat.selection.clone().unwrap_or_default(),
-    )
-    .await;
+    let row = crate::composer_row::for_chat(&app, &headers, chat, true).await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers);
-    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true)) (row) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -805,6 +954,31 @@ async fn follow(
             "This chat is full. Start a new chat to keep going.",
         );
     }
+    let picked =
+        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), false).await {
+            Ok(picked) => picked,
+            Err(message) => return refusal(StatusCode::CONFLICT, message),
+        };
+    // The row's project and branch, recorded when the composer has the row.
+    let place = prompt.project.is_some().then(|| {
+        (
+            picked.project.as_ref().map(|project| project.id.clone()),
+            picked.branch.clone(),
+        )
+    });
+    if matches!(picked.target, crate::composer_row::Target::Claude(_)) {
+        return follow_claude(
+            &app,
+            &headers,
+            loaded,
+            &prompt.request_id,
+            text,
+            hash,
+            &picked,
+            place,
+        )
+        .await;
+    }
     let previous = loaded
         .conversation
         .requests
@@ -846,6 +1020,10 @@ async fn follow(
     let mut next = loaded.conversation.clone();
     next.revision += 1;
     next.updated_unix = now();
+    if let Some((project, branch)) = place {
+        next.project = project;
+        next.branch = branch;
+    }
     next.messages.push(Message {
         role: Role::User,
         text,
@@ -888,6 +1066,77 @@ async fn follow(
     accepted(&app, &headers, &loaded.conversation).await
 }
 
+/// A message on a web chat that starts Claude Code in the picked
+/// project's environment: it joins the chat with the run as a task after
+/// it, in one write ([`work::begin`]).
+#[allow(clippy::too_many_arguments)]
+async fn follow_claude(
+    app: &App,
+    headers: &HeaderMap,
+    loaded: Loaded,
+    request_id: &str,
+    text: String,
+    digest: String,
+    picked: &crate::composer_row::Picked,
+    place: Option<(Option<String>, Option<String>)>,
+) -> Response {
+    let chat = &loaded.conversation;
+    if work::running(chat) {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Claude Code is still working in this chat. Wait for it to finish.",
+        );
+    }
+    let Some(env) = claude_environment(app, headers, &chat.owner, picked, false).await else {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Claude Code can't run there now. Pick where it runs again.",
+        );
+    };
+    let (environment, task) = match work::begin(
+        app,
+        headers,
+        &env,
+        picked.branch.as_deref(),
+        &chat.messages,
+        &text,
+    )
+    .await
+    {
+        Ok(found) => found,
+        Err(message) => return refusal(StatusCode::CONFLICT, &message),
+    };
+    let mut next = chat.clone();
+    next.revision += 1;
+    if let Some((project, branch)) = place {
+        next.project = project;
+        next.branch = branch;
+    }
+    next.messages.push(Message {
+        role: Role::User,
+        text,
+        request_id: Some(request_id.to_owned()),
+    });
+    next.requests.push(Request {
+        id: request_id.to_owned(),
+        digest,
+        outcome: Outcome::Answered,
+        selection: chat.selection.clone(),
+        cloud: None,
+        reply: None,
+    });
+    work::record(&mut next, environment, task.clone());
+    let saved = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+        Ok(saved) => saved,
+        Err(e) => {
+            work::abandon(app, &task);
+            return unavailable(e);
+        }
+    };
+    work::watch(app.clone(), chat.owner.clone(), chat.id.clone());
+    accepted(app, headers, &saved.conversation).await
+}
+
 async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Response {
     if headers.get("HX-Request").is_some_and(|v| v == "true") {
         if chat.requests.last().is_some_and(|r| r.cloud.is_some()) {
@@ -898,14 +1147,9 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
             );
             return response;
         }
-        let selectors = crate::composer::selectors_shown(
-            app,
-            headers,
-            &chat.selection.clone().unwrap_or_default(),
-        )
-        .await;
+
         crate::chat_html::protect(
-            html! { (ticket(app,chat,true,selectors)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await) }
+            html! { (ticket(app,chat,true)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await) }
                 .into_response(),
         )
     } else {
@@ -1178,6 +1422,10 @@ fn line_two(chat: &Conversation, repository: bool) -> Option<String> {
         if !source.branch.is_empty() {
             parts.push(source.branch.clone());
         }
+    } else if let Some(branch) = &chat.branch {
+        // The branch picked in the composer's selector row; the project
+        // group names the repository.
+        parts.push(branch.clone());
     }
     parts.extend(work::detail(chat));
     (!parts.is_empty()).then(|| parts.join(" · "))
@@ -1216,16 +1464,15 @@ fn row_status(chat: &Conversation) -> Option<ChatStatus> {
 }
 
 /// The chat's hidden composer fields. With `oob` they replace the page's
-/// copies, and the selector row (`selectors`, when the composer shows it,
-/// see [`crate::composer::selectors_shown`]) is replaced too.
-pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool) -> Markup {
+/// copies.
+pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
     let selection = chat.selection.clone().unwrap_or_default();
     html! { div #chat-ticket hx-swap-oob=[oob.then_some("outerHTML")] {
         input type="hidden" id="chat-selected" name="chat" value=(chat.id) form="chat-form";
         input type="hidden" name="request_id" value=(new_id()) form="chat-form";
         input type="hidden" name="csrf" value=(csrf(app,&chat.owner)) form="chat-form";
 
-    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob && selectors { (crate::composer::controls(&selection, true)) } }
+    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) }
 }
 
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
@@ -1490,20 +1737,13 @@ fn unavailable(error: Error) -> Response {
 /// The homepage and chat share one composer: a stable text box
 /// (`#chat-input` in `#chat-card`, which the browser adapter binds; Enter
 /// sends, Shift+Enter adds a line, through the adapter or else the shell
-/// script), the source/runtime selectors when `selectors` (replaced out of
-/// band as `#composer-controls`; see [`crate::composer::selectors_shown`]),
+/// script), the selector row above it when there is one (`row`,
+/// [`crate::composer_row`], replaced out of band as `#composer-row`),
 /// the panel host they load into (`#composer-panel`), and `after` under the
 /// form. The chat posts with HTMX and keeps the draft until the server
 /// accepts it; the homepage posts a plain form and follows the redirect to
 /// the new chat, with or without JavaScript.
-pub(crate) fn composer(
-    action: &str,
-    label: &str,
-    selection: Option<&Selection>,
-    selectors: bool,
-    after: Markup,
-) -> Markup {
-    let selection = selection.cloned().unwrap_or_default();
+pub(crate) fn composer(action: &str, label: &str, row: Option<Markup>, after: Markup) -> Markup {
     let mut composer = Composer::new("chat-form", action)
         .label(label)
         .enhanced(action.starts_with("/chat/"))
@@ -1530,8 +1770,8 @@ pub(crate) fn composer(
         //         .hx(crate::composer::load("voice")),
         // )
         .after(html! { (composer_panel_host("composer-panel")) (after) });
-    if selectors {
-        composer = composer.selectors(crate::composer::controls(&selection, false));
+    if let Some(row) = row {
+        composer = composer.selectors(row);
     }
     composer.render()
 }

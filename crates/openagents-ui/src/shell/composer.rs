@@ -72,10 +72,12 @@ fn trigger(
     title: Option<&str>,
     hx: Option<&HxGet>,
     popover: Option<&str>,
+    autofocus: bool,
     inner: Markup,
 ) -> Markup {
     html! {
         button type="button" class=(class) aria-label=[aria_label] title=[title]
+            autofocus[autofocus]
             aria-haspopup=[(hx.is_some() || popover.is_some()).then_some("dialog")]
             popovertarget=[popover]
             hx-get=[hx.map(|hx| hx.url.as_str())]
@@ -98,6 +100,7 @@ pub struct ComposerDropdown {
     hx: Option<HxGet>,
     popover: Option<String>,
     show_label: bool,
+    autofocus: bool,
 }
 
 impl ComposerDropdown {
@@ -111,6 +114,7 @@ impl ComposerDropdown {
             hx: None,
             popover: None,
             show_label: false,
+            autofocus: false,
         }
     }
 
@@ -141,6 +145,14 @@ impl ComposerDropdown {
         self.popover = Some(id.into());
         self
     }
+
+    /// Takes focus when it appears (`autofocus`), as after a choice in its
+    /// panel replaced the row it is in, so the keyboard stays on it.
+    #[must_use]
+    pub fn autofocus(mut self, autofocus: bool) -> Self {
+        self.autofocus = autofocus;
+        self
+    }
 }
 
 impl Render for ComposerDropdown {
@@ -164,6 +176,7 @@ impl Render for ComposerDropdown {
             Some(&name),
             self.hx.as_ref(),
             self.popover.as_deref(),
+            self.autofocus,
             inner,
         )
     }
@@ -234,6 +247,7 @@ impl Render for ModelPickerTrigger {
             Some(&name),
             self.hx.as_ref(),
             self.popover.as_deref(),
+            false,
             inner,
         )
     }
@@ -619,6 +633,7 @@ impl Render for ComposerAction {
             self.title.as_deref(),
             self.hx.as_ref(),
             self.popover.as_deref(),
+            false,
             html! { span class="oa-composer-action-icon" aria-hidden="true" { (self.icon) } },
         )
     }

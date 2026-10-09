@@ -160,12 +160,22 @@ fn cut(text: &str, limit: usize) -> String {
 /// messages that fit `budget` bytes in all, oldest first; tool output
 /// left out), and the person's new message.
 pub(super) fn context(messages: &[Message], computer: &str, next: &str, budget: usize) -> String {
-    const LEFT_OUT: &str = "(Earlier messages are left out.)\n\n";
     let head = format!(
         "This continues a conversation from Coder on {computer}, which is offline now. \
          You are on a fresh computer with the repository. The conversation so far, \
          oldest first:\n\n"
     );
+    context_with(head, messages, next, budget)
+}
+
+/// [`context`] with its own opening paragraph.
+pub(super) fn context_with(
+    head: String,
+    messages: &[Message],
+    next: &str,
+    budget: usize,
+) -> String {
+    const LEFT_OUT: &str = "(Earlier messages are left out.)\n\n";
     let tail = format!("Now the person says:\n\n{}", next.trim());
     let room = budget.saturating_sub(head.len() + tail.len() + LEFT_OUT.len());
     let spoken: Vec<&Message> = messages
@@ -443,6 +453,7 @@ mod tests {
             environment: None,
             tasks: Vec::new(),
             opened_unix: None,
+            branch: None,
         }
     }
 
@@ -570,11 +581,16 @@ mod tests {
         let failed = work::observe(&chat, read(TaskState::Failed, Some("partial"))).unwrap();
         assert_eq!(failed.messages.len(), 4, "a failed run adds no answer");
 
-        // A web chat's Claude Code run keeps its answer on the run page.
+        // A web chat's Claude Code run (from the header or the composer's
+        // Where it runs) gets its answer in the chat too.
         let mut web = chat.clone();
         web.tasks[0].kind = TaskKind::Claude;
         let web = work::observe(&web, read(TaskState::Done, Some("answer"))).unwrap();
-        assert_eq!(web.messages.len(), 4);
+        assert_eq!(web.messages.len(), 5);
+        assert_eq!(
+            web.messages.last(),
+            Some(&message(Role::Assistant, "answer"))
+        );
     }
 
     fn read(state: TaskState, reply: Option<&'static str>) -> impl Fn(&str, &str) -> Option<Seen> {

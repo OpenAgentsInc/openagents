@@ -243,8 +243,31 @@ menu need no hover: the `…` is always visible on touch.
    write a change into the chat (`work::sync`), and the chat store's change
    announcement carries it to open pages. An environment that no longer
    exists is marked removed when the chat opens ("Environment removed";
-   the chat stays readable). Not built, for lack of a source: Coder tasks
-   on connected computers (nothing starts them from a chat), steps ("3 of
+   the chat stays readable). Runs also start from the composer's Where it
+   runs selector ("Composer selector row" below), and their answer joins
+   the chat. Not built, for lack of a source: steps ("3 of
    7"; runs report none), Waiting for you and Paused until (runs ask
    nothing and don't pause), and an environment's setup conversation as a chat
    (it lives in the environments studio, not the chat store).
+
+## Composer selector row
+
+`crate::composer_row` puts compact selectors above the home and chat
+composers. Each shows only when it can work for this person on this server;
+a signed-out visitor sees the plain composer.
+
+| Selector | Shown when | Choices | Sending with it |
+| --- | --- | --- | --- |
+| **Project** | signed in | the person's projects and No project; with none, one item: Connect a GitHub repository (`/projects`) | the chat records `project` |
+| **Branch** | a project is picked | that repository's branches, read from GitHub as the person and kept (`composer::branch_names`); default branch first and preselected | the chat records `branch` (line 2 shows it) |
+| **Where it runs** | more than Chat is possible | **Chat** (answers here); **Claude Code in {repository name} vN** when the project's repository has a saved environment, a Claude key is available, and the request came to the local address; **Coder on {computer}** for a new chat while Coder with sync on checked in from that computer lately | Chat: answered as before. Claude Code: the message starts a run in that environment (`chat_work::begin`; the branch is named in the prompt when it isn't the environment's, and the chat so far is carried in), recorded as the chat's environment and a task; the run's answer joins the chat when it is done. Coder: a new Coder chat (session `web-{request id}`) whose first message waits for Coder like a reply (`coder_sync::start_from_web`); Coder takes it at its next check-in, opens a new conversation under that id, answers, and syncs it back |
+
+The picks travel as three `#chat-form` fields (`project`, `branch`,
+`target`). Dropdowns load their choices into `#composer-panel`
+(`GET /composer/row/{kind}`); a choice reloads the row (`GET /composer/row`)
+with focus back on its dropdown, and the current choice takes focus when a
+panel opens. Sending checks every pick again and refuses one that no longer
+works (a project that isn't the person's, a branch the repository doesn't
+have, an environment or computer that isn't offered) instead of answering
+some other way. A chat's row starts from its project and branch, and from
+Claude Code when its newest message started a run there.

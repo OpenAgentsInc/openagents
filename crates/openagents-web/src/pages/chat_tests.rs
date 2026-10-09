@@ -95,6 +95,7 @@ impl Fixture {
                 environment: None,
                 tasks: Vec::new(),
                 opened_unix: None,
+                branch: None,
             })
             .await
             .unwrap()
@@ -243,7 +244,7 @@ async fn selection_changes_freeze_accepted_sources_and_reject_stale_followups() 
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body.matches("id=\"composer-state\"").count(), 1);
-    assert_eq!(body.matches("id=\"composer-controls\"").count(), 1);
+    assert_eq!(body.matches("id=\"composer-controls\"").count(), 0);
     assert!(body.contains("hx-swap-oob=\"outerHTML\""));
     assert!(!body.contains("<textarea") && !body.contains("id=\"chat-form\""));
     let retained = fixture.read().await;
@@ -439,21 +440,25 @@ async fn chat_and_information_panels_render_semantic_controls() {
     for id in [
         "chat-form",
         "chat-input",
-        "composer-controls",
+        "composer-row",
         "composer-state",
         "composer-panel",
     ] {
         assert_eq!(body.matches(&format!("id=\"{id}\"")).count(), 1, "{id}");
     }
-    // A chat that pins a source shows the source selectors; the context,
-    // model and voice buttons are commented out until they work.
-    for kind in ["repository", "branch", "environment"] {
-        assert!(
-            body.contains(&format!("hx-get=\"/composer/{kind}\"")),
-            "{kind}"
-        );
-    }
-    for kind in ["context", "model", "voice"] {
+    // The selector row is empty for a visitor who isn't signed in (it
+    // offers projects; `crate::composer_row`), and the old source
+    // selectors are gone; the context, model and voice buttons are
+    // commented out until they work.
+    assert!(body.contains(r#"<div class="oa-composer-selector-group" id="composer-row"></div>"#));
+    for kind in [
+        "repository",
+        "branch",
+        "environment",
+        "context",
+        "model",
+        "voice",
+    ] {
         assert!(
             !body.contains(&format!("hx-get=\"/composer/{kind}\"")),
             "{kind}"
@@ -506,6 +511,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: None,
     };
     assert_eq!(line_two(&chat, true), None);
     assert_eq!(row_status(&chat), None);
@@ -724,6 +730,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: None,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1095,6 +1102,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: None,
     };
     assert_eq!(line_two(&chat, true).as_deref(), Some("Terminal · Studio"));
     assert_eq!(row_status(&chat), None);
@@ -1329,6 +1337,7 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: None,
     };
     let html = messages(&chat, None, false).into_string();
     assert!(html.contains(r#"data-oa-reply="1""#), "{html}");

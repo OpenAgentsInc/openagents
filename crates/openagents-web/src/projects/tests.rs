@@ -36,9 +36,34 @@ pub(crate) struct World {
 }
 
 pub(crate) async fn world() -> World {
-    let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
+    world_on(4300).await
+}
+
+/// Requests name this host instead of [`HOST`] when set (a world served on
+/// another port for screenshots, `composer_row::serve_for_screenshots`).
+static HOST_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// The site's origin: [`ORIGIN`], or the overridden host's.
+fn origin() -> String {
+    HOST_OVERRIDE
+        .get()
+        .map_or_else(|| ORIGIN.to_owned(), |host| format!("http://{host}"))
+}
+
+/// GitHub's callback on [`origin`].
+fn redirect() -> String {
+    format!("{}/auth/github/callback", origin())
+}
+
+async fn world_on(port: u16) -> World {
+    let fake = Fake::new(
+        CLIENT,
+        SECRET,
+        &redirect(),
+        vec![fake::octo(), fake::quiet()],
+    );
     let github_origin = fake.spawn().await.unwrap();
-    let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
+    let credentials = fake::credentials(&github_origin, CLIENT, SECRET, &redirect()).unwrap();
     let app = credentials.app.clone();
     let root = tempfile::tempdir().unwrap();
     let stores = root.path().join("accounts");
@@ -59,11 +84,12 @@ pub(crate) async fn world() -> World {
     let path = private.join("cloud.json");
     std::fs::write(
         &path,
-        serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":ORIGIN,"account_service":account_service,"csrf_secret":secret})).unwrap(),
+        serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":origin(),"account_service":account_service,"csrf_secret":secret})).unwrap(),
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     let mut config = crate::Config::development(root.path().join("tasks"));
+    config.port = port;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();
     config.cloud = Some(Arc::new(
@@ -105,7 +131,10 @@ impl Browser {
         body: Body,
     ) -> Answer {
         let mut request = request
-            .header(header::HOST, HOST)
+            .header(
+                header::HOST,
+                HOST_OVERRIDE.get().map_or(HOST, String::as_str),
+            )
             .header(header::ACCEPT, "text/html");
         if !self.0.is_empty() {
             let cookies: Vec<String> = self.0.iter().map(|(k, v)| format!("{k}={v}")).collect();
@@ -153,7 +182,7 @@ impl Browser {
         self.send(
             world,
             Request::post(path)
-                .header(header::ORIGIN, ORIGIN)
+                .header(header::ORIGIN, origin())
                 .header("sec-fetch-site", "same-origin")
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -176,7 +205,8 @@ impl Browser {
             .to_str()
             .unwrap()
             .to_string();
-        self.get(world, back.strip_prefix(ORIGIN).unwrap()).await
+        self.get(world, back.strip_prefix(origin().as_str()).unwrap())
+            .await
     }
 
     pub(crate) async fn sign_in(&mut self, world: &World, login: &str) {
@@ -247,6 +277,7 @@ fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversati
         environment: None,
         tasks: Vec::new(),
         opened_unix: None,
+        branch: None,
     }
 }
 
@@ -334,14 +365,13 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     let home = browser.get(&world, &format!("/?project={id}")).await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(
-        home.body.contains(r#"name="project" form="chat-form""#),
+        home.body
+            .contains(&format!(r#"name="project" value="{id}" form="chat-form""#)),
         "{}",
         home.body
     );
     assert!(
-        home.body.contains(&format!(
-            r#"<option value="{id}" selected>storefront</option>"#
-        )),
+        home.body.contains(r#"aria-label="Project: storefront""#),
         "{}",
         home.body
     );
@@ -720,3 +750,4 @@ async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
 }
 
 mod app;
+mod composer_row;

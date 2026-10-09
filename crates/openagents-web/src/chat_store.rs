@@ -70,6 +70,11 @@ pub(crate) struct Conversation {
     /// opening the chat clears it. Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opened_unix: Option<u64>,
+    /// The branch of the chat's project picked in the composer's selector
+    /// row (`crate::composer_row`). Older records and chats without a
+    /// project have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
 }
 
 /// Where a synced Coder chat came from, and what Coder last said about it
@@ -2214,6 +2219,7 @@ mod tests {
             environment: None,
             tasks: Vec::new(),
             opened_unix: None,
+            branch: None,
         }
     }
 

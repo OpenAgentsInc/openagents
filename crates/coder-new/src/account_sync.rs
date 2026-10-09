@@ -32,6 +32,20 @@ pub const ANSWERING: &str = "Answering your reply from openagents.com.";
 /// The most earlier chats `/sync all` sends (the newest).
 const EARLIER: usize = 150;
 
+/// The session prefix of a chat started on openagents.com for Coder on
+/// this computer (the website's `coder_sync::web_session`): Coder takes
+/// its first message though the chat isn't here yet, and opens a new
+/// conversation under the id to answer it.
+pub const WEB_STARTED: &str = "web-";
+
+/// Whether this computer takes the waiting chat `session`: its own (sent
+/// from here, or open here), or one started on the website for it that
+/// isn't saved here yet. The website lists only chats waiting for this
+/// computer's name, and hands each message out once.
+fn takes(session: &str, sent_here: bool, open_here: bool, saved_here: bool) -> bool {
+    sent_here || open_here || (session.starts_with(WEB_STARTED) && !saved_here)
+}
+
 /// The terminal's sync state.
 pub(crate) struct SyncState {
     pub(crate) settings: Settings,
@@ -212,7 +226,15 @@ impl App {
             });
             return;
         }
-        if !open && !self.resume(Some(session.as_str())) {
+        // A chat started on the website for this computer opens as a new
+        // conversation under its id; any other is resumed.
+        let opened = open
+            || if session.starts_with(WEB_STARTED) && !self.saved_here(&session) {
+                self.open_new_session(&session)
+            } else {
+                self.resume(Some(session.as_str()))
+            };
+        if !opened {
             self.notice = Some(
                 "A reply from openagents.com couldn't be answered: its chat isn't on this computer."
                     .into(),
@@ -352,13 +374,23 @@ impl App {
         let dir = self.account_dir.clone();
         if let Event::Waiting { sessions } = &event {
             let free: Vec<bool> = sessions.iter().map(|s| self.free_for(s)).collect();
+            let saved: BTreeSet<String> = sessions
+                .iter()
+                .filter(|s| self.saved_here(s))
+                .cloned()
+                .collect();
             let Some(sync) = &mut self.sync else {
                 return;
             };
             for (session, free) in sessions.iter().zip(free) {
-                // Only this computer's own chats, one take at a time.
-                let ours = sync.settings.sent.contains_key(session)
-                    || open.as_deref() == Some(session.as_str());
+                // Only this computer's own chats, and chats started on the
+                // website for it, one take at a time.
+                let ours = takes(
+                    session,
+                    sync.settings.sent.contains_key(session),
+                    open.as_deref() == Some(session.as_str()),
+                    saved.contains(session),
+                );
                 if !free
                     || !ours
                     || sync.settings.kept_here.contains(session)
@@ -700,6 +732,43 @@ mod tests {
                 .as_deref()
                 .is_some_and(|notice| notice.contains("isn't on this computer"))
         );
+    }
+
+    #[test]
+    fn a_chat_started_on_the_website_opens_as_a_new_conversation_and_runs() {
+        // Taken: this computer's own chats, and website-started ones not
+        // saved here yet.
+        assert!(takes("web-1", false, false, false));
+        assert!(!takes("web-1", false, false, true));
+        assert!(!takes("someone-elses", false, false, false));
+        assert!(takes("mine", true, false, true) && takes("open", false, true, true));
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = sessions::Store::under(dir.path());
+        let mut app = App {
+            account_dir: Some(dir.path().to_path_buf()),
+            account: Some("Octo".into()),
+            ..App::default()
+        };
+        app.attach_session_store(sessions::Store::under(dir.path()));
+        app.start_sync();
+        let session = "web-12345678-1234-4234-8234-123456789abc";
+        assert!(!app.saved_here(session));
+        app.sync.as_mut().unwrap().inbox.push_back(Inbound {
+            session: session.into(),
+            added: Vec::new(),
+            replies: vec!["Fix the login".into()],
+        });
+        app.answer_web_reply();
+        assert_eq!(app.session_id(), Some(session), "{:?}", app.notice);
+        assert_eq!(texts(&app.live), ["you: Fix the login"]);
+        assert!(app.live.busy && app.request.is_some());
+        assert_eq!(app.notice.as_deref(), Some(ANSWERING));
+        // It saves under the website's id, so the answer syncs to that chat.
+        app.history.dirty = true;
+        assert!(app.persist_session(true));
+        assert!(app.saved_here(session));
+        assert_eq!(store.recent(10).unwrap()[0].id, session);
     }
 
     fn added(user: bool, text: &str) -> coder_sync::Added {

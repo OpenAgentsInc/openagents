@@ -473,3 +473,14 @@
     transition: none;
   }
 }
+
+/* A selector row with nothing to offer this person takes no room (the chat
+   page keeps the empty row so another chat opened in place can fill it). */
+.oa-composer-selectors:has(> .oa-composer-selector-group:empty) {
+  display: none;
+}
+.oa-composer-panel-body a.oa-composer-choice {
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  text-decoration: none;
+}

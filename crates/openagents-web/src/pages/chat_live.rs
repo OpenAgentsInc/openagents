@@ -406,6 +406,7 @@ mod tests {
             environment: None,
             tasks: Vec::new(),
             opened_unix: None,
+            branch: None,
             revision: 1,
             title: "A chat".into(),
             messages: vec![

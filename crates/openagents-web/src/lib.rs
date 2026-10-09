@@ -24,6 +24,7 @@ pub mod cloud;
 mod coder_sync;
 mod components;
 mod composer;
+mod composer_row;
 mod demo;
 mod device;
 mod environments;
@@ -226,6 +227,7 @@ pub fn router(config: Config) -> Router {
         .merge(components::routes())
         .merge(chat_html::routes())
         .merge(composer::routes())
+        .merge(composer_row::routes())
         .merge(demo::routes())
         .merge(environments::routes(&app))
         .merge(cloud::routes())

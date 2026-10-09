@@ -275,6 +275,7 @@ mod tests {
             environment: None,
             tasks: Vec::new(),
             opened_unix: None,
+            branch: None,
         }
     }
 

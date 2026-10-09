@@ -29,8 +29,11 @@
 //! open (`opened_unix`, written by [`mark_opened`] when the chat page or its
 //! stream loads it).
 //!
-//! Not wired, because nothing records them yet: Coder tasks on connected
-//! computers are not started from chats, runs report no steps ("3 of 7"),
+//! The composer's selector row starts runs too (Where it runs, Claude Code
+//! in the environment; [`begin`], `crate::composer_row`), and a run's
+//! answer joins the chat when it is done ([`observe`]).
+//!
+//! Not wired, because nothing records them yet: runs report no steps ("3 of 7"),
 //! and no run asks the person anything or pauses for a usage limit (runs
 //! here use the person's API key and are driven without the operator that
 //! records sign-in prompts and limit pauses), so no Waiting for you and no
@@ -319,9 +322,9 @@ pub(super) struct Seen {
 
 /// The chat with its unfinished tasks' states as `read` reports them, or
 /// `None` when nothing changed. A run `read` can't find keeps its last
-/// state. A Coder chat continued on a Cloud computer (#11050) gets the
-/// run's answer as its next message when the run is done, in the same
-/// write, so the answer lands once.
+/// state. The chat gets a run's answer as its next message when the run
+/// is done (a Claude Code run, and a Coder chat continued on a Cloud
+/// computer, #11050), in the same write, so the answer lands once.
 pub(super) fn observe(
     chat: &Conversation,
     read: impl Fn(&str, &str) -> Option<Seen>,
@@ -339,8 +342,7 @@ pub(super) fn observe(
                 task.finished_unix = Some(now());
             }
             changed = true;
-            if task.kind == TaskKind::Continue
-                && seen.state == TaskState::Done
+            if seen.state == TaskState::Done
                 && let Some(reply) = seen.reply.filter(|reply| !reply.trim().is_empty())
             {
                 answers.push(reply);
@@ -447,6 +449,89 @@ pub(super) fn record(chat: &mut Conversation, environment: ChatEnvironment, mut 
     let extra = chat.tasks.len().saturating_sub(MAX_TASKS);
     chat.tasks.drain(..extra);
     chat.updated_unix = now();
+}
+
+/// Starts Claude Code in the saved environment `env` for a message sent
+/// from the composer (`crate::composer_row`): what the chat records, the
+/// environment and the task (titled from `text`, what the person wrote).
+/// `prior` is the chat so far, carried into the prompt; `branch` is the
+/// branch the person picked, named in the prompt when it isn't the one the
+/// environment was set up on.
+pub(super) async fn begin(
+    app: &App,
+    headers: &HeaderMap,
+    env: &crate::composer_row::Environment,
+    branch: Option<&str>,
+    prior: &[Message],
+    text: &str,
+) -> Result<(ChatEnvironment, ChatTask), String> {
+    let studio = studio(app)
+        .cloned()
+        .ok_or_else(|| "Claude Code can't run on this server.".to_owned())?;
+    let prompt = composer_prompt(env, branch, prior, text);
+    let own = crate::cloud::byo::run_key(app, headers).await;
+    let run = studio.run_claude(&env.id, &prompt, own)?;
+    let version = studio
+        .claude_run(&env.id, &run)
+        .and_then(|run| run.version)
+        .or(Some(env.version));
+    Ok((
+        ChatEnvironment {
+            id: env.id.clone(),
+            repository: env.repository.clone(),
+            version,
+            removed: false,
+        },
+        ChatTask {
+            id: run,
+            kind: TaskKind::Claude,
+            environment: env.id.clone(),
+            title: title(text),
+            state: TaskState::Working,
+            started_unix: now(),
+            after_message: 0,
+            version,
+            finished_unix: None,
+        },
+    ))
+}
+
+/// Asks a run that was started but couldn't be recorded on its chat to
+/// stop, so nothing runs that no chat shows.
+pub(super) fn abandon(app: &App, task: &ChatTask) {
+    if let Some(studio) = studio(app) {
+        let _ = studio.stop_claude(&task.environment, &task.id);
+    }
+}
+
+/// Claude Code's prompt for a message from the composer: the branch to
+/// work on when it isn't the environment's, then the chat so far (when
+/// there is any) and the message.
+pub(super) fn composer_prompt(
+    env: &crate::composer_row::Environment,
+    branch: Option<&str>,
+    prior: &[Message],
+    text: &str,
+) -> String {
+    let mut head = String::new();
+    if let Some(branch) = branch.filter(|branch| *branch != env.branch) {
+        head.push_str(&format!(
+            "Work on the {branch} branch of {}: fetch it and check it out before you start.\n\n",
+            env.repository
+        ));
+    }
+    let spoken = prior
+        .iter()
+        .any(|message| message.role != Role::Tool && !message.text.trim().is_empty());
+    if !spoken {
+        head.push_str(text.trim());
+        return head;
+    }
+    head.push_str(
+        "This continues a chat on openagents.com. You are on a fresh computer with the \
+         repository. The chat so far, oldest first:\n\n",
+    );
+    super::continued::context_with(head, prior, text, MAX_PROMPT)
 }
 
 #[derive(Deserialize)]
@@ -638,6 +723,7 @@ mod tests {
             environment: None,
             tasks: Vec::new(),
             opened_unix: None,
+            branch: None,
         }
     }
 

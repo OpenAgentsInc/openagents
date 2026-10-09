@@ -278,6 +278,57 @@ impl App {
         true
     }
 
+    /// Whether the conversation `id` is saved on this computer.
+    pub(crate) fn saved_here(&self, id: &str) -> bool {
+        self.history
+            .store
+            .as_ref()
+            .and_then(|store| store.path(id).ok())
+            .is_some_and(|path| path.exists())
+    }
+
+    /// Open a new, empty conversation saved under `id` (a chat started on
+    /// openagents.com for this computer, `account_sync::WEB_STARTED`), as
+    /// `/resume` would open a saved one; the current one is saved first.
+    /// An `id` already saved here is resumed instead.
+    pub(crate) fn open_new_session(&mut self, id: &str) -> bool {
+        let Some(store) = self.history.store.clone() else {
+            return self.resume_error("Conversation storage is unavailable.".into());
+        };
+        let lease = match store.lease(id) {
+            Ok(lease) => lease,
+            Err(error) => return self.resume_error(error),
+        };
+        match lease.exists() {
+            Ok(false) => {}
+            Ok(true) => return self.resume(Some(id)),
+            Err(error) => return self.resume_error(error),
+        }
+        if !self.persist_session(true) {
+            return false;
+        }
+        let fresh = App::default();
+        self.set_mode(Mode::Live);
+        self.cancel_request();
+        self.select_agent(None);
+        self.live = fresh.live;
+        self.delegations = fresh.delegations;
+        self.draft = Draft::default();
+        self.main_draft = Draft::default();
+        self.scroll = u16::MAX;
+        self.main_scroll = u16::MAX;
+        self.resume_picker = None;
+        self.model_picker = None;
+        self.screen = Screen::Conversation;
+        self.slash_hidden = false;
+        self.slash_selected = 0;
+        self.history.active = Some(lease);
+        self.history.dirty = false;
+        self.history.last_attempt = None;
+        self.history.save_failed = false;
+        true
+    }
+
     /// Watch session `id`, which another process may hold, and take it
     /// over when the person presses a key and the holder lets go.
     pub fn follow(&mut self, id: &str) -> bool {

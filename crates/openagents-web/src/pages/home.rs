@@ -26,8 +26,8 @@ struct Home {
 }
 
 /// The composer sits centered in the content area; the left panel lists the
-/// visitor's recent chats. A signed-in person with projects picks one
-/// under the composer.
+/// visitor's recent chats. A signed-in person picks a project, a branch,
+/// and where the message runs above the composer.
 async fn home(
     State(app): State<App>,
     headers: HeaderMap,
@@ -36,7 +36,6 @@ async fn home(
     let query = query.map(|q| q.0).unwrap_or_default();
     let (owner, fresh) = super::chat::visitor(&app, &headers).await;
     let selection = Default::default();
-    let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
     // Starter questions under the composer, as on the phone's new chat
     // (`crate::suggestions`). A visitor without the cookie has used none.
     let used = if fresh.is_none() {
@@ -44,11 +43,12 @@ async fn home(
     } else {
         Vec::new()
     };
-    let picker = crate::projects::picker(&app, query.project.as_deref()).await;
+    // Project, Branch, and Where it runs above the composer, for a
+    // signed-in person (`crate::composer_row`).
+    let row = crate::composer_row::home(&app, &headers, &owner, query.project.as_deref()).await;
     let content = html! {
         div.oa-home-stage {
-            (super::chat::composer("/chat", "Start a chat", None, selectors, html! {}))
-            @if let Some(picker) = picker { (picker) }
+            (super::chat::composer("/chat", "Start a chat", row, html! {}))
             (crate::composer::state_field(&app, &owner, &selection, false))
             input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
             input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";

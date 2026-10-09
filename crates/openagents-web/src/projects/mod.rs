@@ -146,29 +146,6 @@ pub(crate) async fn chosen(app: &App, value: &str) -> Option<String> {
         .map(|project| project.id.clone())
 }
 
-/// The new-chat composer's project picker, for a signed-in person with
-/// projects; `preferred` (from `/?project=`) starts selected.
-pub(crate) async fn picker(app: &App, preferred: Option<&str>) -> Option<Markup> {
-    let sidebar = sidebar(app).await?;
-    if sidebar.status.projects.is_empty() {
-        return None;
-    }
-    let mut select = openagents_ui::forms::Select::new("project")
-        .id("chat-project")
-        .form("chat-form")
-        .aria_label("Project")
-        .block(false)
-        .size(openagents_ui::forms::ControlSize::Sm)
-        .option("", "No project");
-    for project in &sidebar.status.projects {
-        select = select.option(project.id.clone(), project.name.clone());
-    }
-    if let Some(project) = preferred.and_then(|id| sidebar.project(id)) {
-        select = select.selected(project.id.clone());
-    }
-    Some(html! { div.oa-composer-selector-group { (select) } })
-}
-
 fn has_session(headers: &HeaderMap) -> bool {
     cookies(headers).any(|(name, value)| name == "oa_cloud_session" && !value.is_empty())
 }
