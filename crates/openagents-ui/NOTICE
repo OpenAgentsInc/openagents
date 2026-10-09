@@ -26,3 +26,8 @@ SOFTWARE.
 
 Coder Noir, the dark theme, adapts Superlogical's "Static Noir" theme; see
 crates/coder-ui/NOTICE.
+
+static/vendor/alpine-csp-3.17.4.min.js is the Alpine.js CSP build
+(@alpinejs/csp 3.17.4, https://github.com/alpinejs/alpine), unmodified, used
+under the MIT License: Copyright Caleb Porzio and contributors.
+The MIT License text above applies with that copyright line.

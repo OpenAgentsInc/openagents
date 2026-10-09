@@ -1,0 +1,49 @@
+/* openagents-ui base layer: theme selection and opinionated globals.
+   Ported from Apps SDK UI src/styles/globals.css and base.css (MIT, see
+   crates/openagents-ui/NOTICE). No preflight: openagents-web keeps its own
+   resets until pages move over. */
+@layer base {
+  /* No data-theme: follow the system setting. data-theme pins a theme on
+     <html> or on any element (themes nest, e.g. a dark terminal panel). */
+  :root {
+    color-scheme: light dark;
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  html,
+  :host {
+    /* Apply default color */
+    color: var(--color-text);
+    /* Disallow browsers from synthesizing bold weights when missing */
+    font-synthesis-weight: none;
+    /* Smooth font rendering by default */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Apply default letter-spacing */
+    letter-spacing: var(--tracking-normal);
+  }
+
+  * {
+    /* Aesthetic scrollbar defaults */
+    scrollbar-color: var(--scrollbar-color) transparent;
+    scrollbar-width: thin;
+  }
+
+  /* Default placeholder text color */
+  ::placeholder {
+    color: var(--color-text-tertiary);
+  }
+
+  /* Use semibold weight as the defacto bold */
+  b,
+  strong {
+    font-weight: var(--font-weight-semibold);
+  }
+}
