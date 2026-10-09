@@ -260,11 +260,11 @@ followups = ["meta.memory", "meta.open_source"]
 
 [[answer]]
 id = "meta.data_retention"
-version = 2
+version = 3
 routes = ["meta"]
 when = "The user asks whether we store, keep, or log their chats, how long we keep their messages, whether they can delete their history from our servers, whether the website or the apps keep their chats, or whether we train on their conversations; not who can read their messages"
 examples = ["do you store my chats", "do you train on my conversations", "can I delete my chat history from your servers"]
-text = "In the web chat, we keep your chats on our servers so you can open them again in the same browser; you can't delete one yet. In the Mac app, Terminal, and phone app, your chats are saved on your device, and our chat worker doesn't store your message text. We don't use your chats to train models. To answer, we send your messages to {recipients}."
+text = "In the web chat, we keep your chats on our servers so you can open them again; you can delete one from its … menu in the sidebar. In the Mac app, Terminal, and phone app, your chats are saved on your device, and our chat worker doesn't store your message text. We may use your chats to train and improve our models. On a paid plan you can ask us to opt you out; we set that up with you. To answer, we send your messages to {recipients}."
 facts = { recipients = "worker.recipients" }
 chip = "Do you keep my chats?"
 sources = ["crates/coder/src/bin/coder-worker.rs", "crates/openagents-mobile/src/basic_chats.rs", "crates/openagents-web/src/chat_store.rs", "INVARIANTS.md"]

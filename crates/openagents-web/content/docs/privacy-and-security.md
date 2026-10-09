@@ -22,7 +22,8 @@
 - **Our chat service doesn't keep your message text.** It records each
   request's time, key, surface, route, model, token counts, and timings for
   usage statistics.
-- **Training.** We don't use your chats to train models.
+- **Training.** We may use your chats to train and improve our models. On a
+  paid plan you can ask us to opt you out; we set that up with you.
 - **Reports.** If you send a problem report and choose to share the chat,
   that chat goes to our team with it.
 
