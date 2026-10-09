@@ -11,12 +11,25 @@
 //! and thin debris, settle into their average coverage, and bloom and
 //! smoke stop flickering.
 //!
+//! Each pixel reprojects with the nearest depth of its 3 by 3 neighborhood,
+//! so a silhouette moves with what stands in front whichever side of the
+//! edge the jitter put the pixel's center; reprojecting with the sky one
+//! frame and the roof the next was most of the crawl that remained.
+//!
 //! It runs on the high tier, which draws the depth prepass it reprojects
 //! through ([`verse_engine::quality::Quality::screen_space`]), and
-//! `VERSE_TAA=0` turns it off. Moving objects reproject by the camera's
-//! motion only; the clamp holds what moved on its own to the current frame,
-//! and the history's weight falls with the pixel's motion, so fast debris
-//! trails at most about a frame. The ideas are Karis, "High Quality
+//! `VERSE_TAA=0` turns it off. The medium tier, the phones' and the web's,
+//! keeps 4x MSAA: it has no prepass, and one would draw every caster again
+//! and add two full-size histories to read and write each frame, the costs
+//! a tile-based GPU feels most.
+//!
+//! Moving objects reproject by the camera's motion only. The resolve also
+//! writes each pixel's depth (clip w) into a depth history, and where the
+//! history at a pixel's last place holds another surface than the one the
+//! pixel shows, a chunk that moved on its own or what it uncovered, it is
+//! not that pixel's past: the pixel trusts the current frame, held to a
+//! tight box. With the clamp and the history's weight falling with the
+//! pixel's motion, fast debris trails at most about a frame. The ideas are Karis, "High Quality
 //! Temporal Supersampling" (SIGGRAPH 2014), and Salvi's variance clipping
 //! (GDC 2016), with Unreal's documentation of its temporal upsampler as a
 //! reading of the same ideas; the code is our own
@@ -33,8 +46,17 @@ pub const STILL: f32 = 0.08;
 pub const MOVING: f32 = 0.5;
 pub const FAST: f32 = 24.0;
 /// How far the clamp box reaches from the neighborhood's mean, in its
-/// standard deviations.
+/// standard deviations, once the pixel moves a pixel a frame or more, and
+/// while it holds still: a still edge's neighborhood shifts with the
+/// jitter, and a tight box there pulls its history back and forth, which is
+/// the crawl.
 pub const CLIP: f32 = 1.5;
+pub const CLIP_STILL: f32 = 2.5;
+/// How far, as a fraction of its depth, the surface the history holds at a
+/// pixel's last place may lie from where this pixel's surface was before
+/// the history counts as another surface's: a moving chunk, or what it
+/// uncovered. Such a pixel trusts the current frame.
+pub const DEPTH_TOLERANCE: f32 = 0.04;
 /// The sharpening pass's strength.
 pub const SHARPEN: f32 = 0.2;
 
@@ -75,6 +97,7 @@ pub fn jittered(view_proj: Mat4, pixels: Vec2, size: [u32; 2]) -> Mat4 {
 pub struct TaaUniform {
     inv_view_proj: [[f32; 4]; 4],
     prev_view_proj: [[f32; 4]; 4],
+    view_proj: [[f32; 4]; 4],
     size: [f32; 4],
     blend: [f32; 4],
     sharpen: [f32; 4],
@@ -91,9 +114,10 @@ impl TaaUniform {
         Self {
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
             prev_view_proj: previous.to_cols_array_2d(),
+            view_proj: view_proj.to_cols_array_2d(),
             size: [w, h, 1.0 / w, 1.0 / h],
             blend: [STILL, MOVING, FAST, f32::from(u8::from(reset))],
-            sharpen: [SHARPEN, CLIP, 0.0, 0.0],
+            sharpen: [SHARPEN, CLIP, CLIP_STILL, DEPTH_TOLERANCE],
             jitter: [jitter.x, jitter.y, 0.0, 0.0],
         }
     }
@@ -124,9 +148,15 @@ pub struct Taa {
     previous: Option<(Mat4, [u32; 2])>,
 }
 
+/// The format of the depth history: each pixel's clip-space w, its
+/// distance along the view.
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
+
 /// The history textures for one size, and the bind groups that read them.
 pub struct TaaTargets {
     histories: [wgpu::TextureView; 2],
+    /// Each history pixel's depth, for telling a surface from another.
+    depths: [wgpu::TextureView; 2],
     /// For each history slot written this frame: the resolve's group (the
     /// scene and the other slot) and the sharpen's (this slot).
     resolve_groups: [wgpu::BindGroup; 2],
@@ -181,6 +211,7 @@ impl Taa {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                texture(5, wgpu::TextureSampleType::Float { filterable: false }),
             ],
         });
         let sharpen_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -191,7 +222,7 @@ impl Taa {
             label: Some("verse taa"),
             source: wgpu::ShaderSource::Wgsl(include_str!("taa.wgsl").into()),
         });
-        let pipeline = |layout: &wgpu::BindGroupLayout, label: &str, fs: &str| {
+        let pipeline = |layout: &wgpu::BindGroupLayout, label: &str, fs: &str, depth: bool| {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(label),
                 bind_group_layouts: &[Some(layout)],
@@ -213,18 +244,25 @@ impl Taa {
                     module: &module,
                     entry_point: Some(fs),
                     compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
+                    targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                        depth.then_some(wgpu::ColorTargetState {
+                            format: DEPTH_FORMAT,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                    ][..1 + usize::from(depth)],
                 }),
                 multiview_mask: None,
                 cache: None,
             })
         };
-        let resolve = pipeline(&resolve_layout, "verse taa resolve", "fs_resolve");
-        let sharpen = pipeline(&sharpen_layout, "verse taa sharpen", "fs_sharpen");
+        let resolve = pipeline(&resolve_layout, "verse taa resolve", "fs_resolve", true);
+        let sharpen = pipeline(&sharpen_layout, "verse taa sharpen", "fs_sharpen", false);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("verse taa history"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -254,7 +292,7 @@ impl Taa {
         depth: &wgpu::TextureView,
         size: [u32; 2],
     ) -> TaaTargets {
-        let history = || {
+        let history = |format| {
             device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some("verse taa history"),
@@ -273,7 +311,8 @@ impl Taa {
                 })
                 .create_view(&Default::default())
         };
-        let histories = [history(), history()];
+        let histories = [history(format), history(format)];
+        let depths = [history(DEPTH_FORMAT), history(DEPTH_FORMAT)];
         let view = |binding, view| wgpu::BindGroupEntry {
             binding,
             resource: wgpu::BindingResource::TextureView(view),
@@ -295,6 +334,7 @@ impl Taa {
                         binding: 4,
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
                     },
+                    view(5, &depths[1 - slot]),
                 ],
             })
         });
@@ -307,6 +347,7 @@ impl Taa {
         });
         TaaTargets {
             histories,
+            depths,
             resolve_groups,
             sharpen_groups,
             next: 0,
@@ -339,23 +380,24 @@ impl Taa {
         let uniform = TaaUniform::new(view_proj, previous, size, jitter(self.frame), reset);
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         let slot = targets.next;
-        for (label, view, pipeline, group) in [
+        for (label, view, depth, pipeline, group) in [
             (
                 "verse taa resolve",
                 &targets.histories[slot],
+                Some(&targets.depths[slot]),
                 &self.resolve,
                 &targets.resolve_groups[slot],
             ),
             (
                 "verse taa sharpen",
                 scene,
+                None,
                 &self.sharpen,
                 &targets.sharpen_groups[slot],
             ),
         ] {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(label),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            let attachment = |view| {
+                Some(wgpu::RenderPassColorAttachment {
                     view,
                     depth_slice: None,
                     resolve_target: None,
@@ -363,7 +405,12 @@ impl Taa {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
-                })],
+                })
+            };
+            let attachments = [attachment(view), depth.and_then(attachment)];
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(label),
+                color_attachments: &attachments[..1 + usize::from(depth.is_some())],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,

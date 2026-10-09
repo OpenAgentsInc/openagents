@@ -60,7 +60,8 @@
 //! recomputed.
 //!
 //! `--orbit` replaces the director's camera with a slow orbit round the
-//! standing houses, under a pixel a frame at their edges, for judging
+//! standing houses, under a pixel a frame at their edges (a live orbit
+//! casts nothing, so the houses stand throughout), for judging
 //! temporal anti-aliasing (`verse_pbr::pbr::taa`, off with `VERSE_TAA=0`):
 //! `capture.json` then records the frames' temporal flicker, the mean
 //! absolute second difference of each pixel's luminance from frame to
@@ -840,7 +841,7 @@ fn main() -> Result<(), String> {
             ..Default::default()
         };
         runtime.set_shot(Some(camera(t)));
-        if args.live && !cast && t >= cast_at {
+        if args.live && !args.orbit && !cast && t >= cast_at {
             // Key 1, the ring on the ground between the houses, a click.
             cast = true;
             runtime.zone_intent(zones::Intent::MeteorSwarm)?;

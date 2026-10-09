@@ -17,13 +17,17 @@ struct Taa {
     inv_view_proj: mat4x4<f32>,
     // The last frame's unjittered, reversed-depth world to clip transform.
     prev_view_proj: mat4x4<f32>,
+    // This frame's unjittered, reversed-depth world to clip transform.
+    view_proj: mat4x4<f32>,
     // Width, height, and their reciprocals.
     size: vec4<f32>,
     // x the current frame's weight; y the weight once motion is fast; z the
     // speed in pixels a frame at which it is; w 1 to drop the history.
     blend: vec4<f32>,
     // x sharpening strength; y the variance clip's width in standard
-    // deviations.
+    // deviations once the pixel moves a pixel a frame, z while it holds
+    // still; w how far, as a fraction of depth, the history's surface may
+    // lie from this pixel's before it counts as another surface.
     sharpen: vec4<f32>,
     // xy this frame's jitter, pixels: where the scene drew moved by it.
     jitter: vec4<f32>,
@@ -36,6 +40,13 @@ struct Taa {
 @group(0) @binding(2) var current: texture_2d<f32>;
 @group(0) @binding(3) var history: texture_2d<f32>;
 @group(0) @binding(4) var linear_clamp: sampler;
+// The last frame's depth history: each pixel's clip-space w.
+@group(0) @binding(5) var depth_history: texture_2d<f32>;
+
+struct Resolved {
+    @location(0) color: vec4<f32>,
+    @location(1) depth: f32,
+};
 
 @vertex
 fn vs_fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
@@ -60,20 +71,58 @@ fn load(t: texture_2d<f32>, p: vec2<i32>) -> vec3<f32> {
     return max(textureLoad(t, clamp(p, vec2<i32>(0), size - 1), 0).rgb, vec3<f32>(0.0));
 }
 
-// Where pixel `p`'s surface was on the last frame's screen, in pixels.
-fn reproject(p: vec2<i32>) -> vec2<f32> {
+// Where pixel `p`'s surface is: its clip-space w this frame, and where it
+// was on the last frame's screen, in pixels, with its w there.
+struct Surface {
+    w: f32,
+    was: vec2<f32>,
+    was_w: f32,
+};
+
+fn reproject(p: vec2<i32>) -> Surface {
     let size = vec2<i32>(textureDimensions(scene_depth));
-    var d = textureLoad(scene_depth, clamp(p, vec2<i32>(0), size - 1), 0);
+    // The nearest surface in the 3 by 3 neighborhood (reversed depth: the
+    // largest), so a pixel on a silhouette moves with what stands in front
+    // whichever side of the edge the jitter put its center: otherwise it
+    // reprojects with the roof one frame and the sky the next, and crawls.
+    var d = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let q = clamp(p + vec2<i32>(x, y), vec2<i32>(0), size - 1);
+            d = max(d, textureLoad(scene_depth, q, 0));
+        }
+    }
     // The sky has no depth: reproject it from very far away, by direction.
     d = max(d, 1e-7);
     let uv = (vec2<f32>(p) + 0.5) * taa.size.zw;
     let world = taa.inv_view_proj * vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0);
-    let c = taa.prev_view_proj * vec4<f32>(world.xyz / world.w, 1.0);
+    let at = vec4<f32>(world.xyz / world.w, 1.0);
+    let now = taa.view_proj * at;
+    let c = taa.prev_view_proj * at;
     if c.w <= 1e-6 {
-        return vec2<f32>(-1e4);
+        return Surface(now.w, vec2<f32>(-1e4), c.w);
     }
     let ndc = c.xy / c.w;
-    return vec2<f32>((ndc.x * 0.5 + 0.5) * taa.size.x, (0.5 - ndc.y * 0.5) * taa.size.y);
+    let was = vec2<f32>((ndc.x * 0.5 + 0.5) * taa.size.x, (0.5 - ndc.y * 0.5) * taa.size.y);
+    return Surface(now.w, was, c.w);
+}
+
+// How far, as a fraction of `w`, the nearest of the depth history's four
+// pixels round `p` lies from depth `w`: zero where the history holds the
+// same surface, large where it holds another (a chunk that moved, or what
+// one uncovered).
+fn depth_mismatch(p: vec2<f32>, w: f32) -> f32 {
+    let size = vec2<i32>(textureDimensions(depth_history));
+    let base = vec2<i32>(floor(p - 0.5));
+    var best = 1e9;
+    for (var y = 0; y <= 1; y++) {
+        for (var x = 0; x <= 1; x++) {
+            let q = clamp(base + vec2<i32>(x, y), vec2<i32>(0), size - 1);
+            let h = textureLoad(depth_history, q, 0).r;
+            best = min(best, abs(h - w));
+        }
+    }
+    return best / max(w, 1e-4);
 }
 
 // The history at `p` pixels through a Catmull-Rom filter, from five
@@ -114,7 +163,7 @@ fn luma(c: vec3<f32>) -> f32 {
 }
 
 @fragment
-fn fs_resolve(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+fn fs_resolve(@builtin(position) frag: vec4<f32>) -> Resolved {
     let p = vec2<i32>(frag.xy);
     // The neighborhood's box, mean, and spread in YCoCg, and the current
     // frame at this pixel's center: each neighbor's sample was drawn a
@@ -142,26 +191,37 @@ fn fs_resolve(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
     here /= max(weights, 1e-6);
+    let surface = reproject(p);
+    let was = surface.was;
+    let moved = length(was - (vec2<f32>(p) + 0.5));
+    // A still pixel's box reaches wider, so the jitter's shifting
+    // neighborhood does not pull its history back and forth.
+    let gamma = mix(taa.sharpen.z, taa.sharpen.y, clamp(moved, 0.0, 1.0));
     let mean = sum / 9.0;
     let spread = sqrt(max(sum2 / 9.0 - mean * mean, vec3<f32>(0.0)));
-    let gamma = taa.sharpen.y;
     lo = max(lo, mean - spread * gamma);
     hi = min(hi, mean + spread * gamma);
-    let was = reproject(p);
-    let moved = length(was - (vec2<f32>(p) + 0.5));
     let off = any(was < vec2<f32>(0.0)) || any(was >= taa.size.xy);
     if taa.blend.w > 0.5 || off {
-        return vec4<f32>(here, 1.0);
+        return Resolved(vec4<f32>(here, 1.0), surface.w);
     }
     let old = max(history_at(was), vec3<f32>(0.0));
-    let clipped = ycocg_to_rgb(clamp(rgb_to_ycocg(old), lo, hi));
+    var clipped = ycocg_to_rgb(clamp(rgb_to_ycocg(old), lo, hi));
     // Fast motion trusts the current frame more, so fast debris never
     // trails more than about a frame.
-    let alpha = mix(taa.blend.x, taa.blend.y, clamp(moved / taa.blend.z, 0.0, 1.0));
+    var alpha = mix(taa.blend.x, taa.blend.y, clamp(moved / taa.blend.z, 0.0, 1.0));
+    // Where the history holds another surface, a chunk that moved on its
+    // own or what it uncovered, it is not this pixel's past: trust the
+    // current frame, held to its tightest box.
+    if depth_mismatch(was, surface.was_w) > taa.sharpen.w {
+        let tight = ycocg_to_rgb(clamp(rgb_to_ycocg(old), max(lo, mean - spread * 0.75), min(hi, mean + spread * 0.75)));
+        clipped = tight;
+        alpha = max(alpha, taa.blend.y);
+    }
     let w_here = alpha / (1.0 + luma(here));
     let w_old = (1.0 - alpha) / (1.0 + luma(clipped));
     let out = (here * w_here + clipped * w_old) / max(w_here + w_old, 1e-6);
-    return vec4<f32>(out, 1.0);
+    return Resolved(vec4<f32>(out, 1.0), surface.w);
 }
 
 @fragment

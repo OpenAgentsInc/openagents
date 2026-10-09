@@ -122,6 +122,52 @@ committed proxies, off left) shows the foliage and frame edges steady with
 it on. Left: the medium tier, which has no depth prepass to reproject
 through, and per-object motion vectors for chunks.
 
+### Silhouettes, rejection, and the medium tier (October 9)
+
+Most of the crawl that remained was on silhouettes: the roof's edge
+against the sky, window frames, and tree outlines. A pixel there
+reprojected with the roof's depth one frame and the sky's the next, as
+the jitter moved its center across the edge. Each pixel now reprojects
+with the nearest depth of its 3 by 3 neighborhood, so an edge moves with
+what stands in front. The resolve also writes a depth history (clip w,
+R32F). Where the history at a pixel's last place holds another surface,
+such as a chunk that moved on its own or what it uncovered, the pixel
+trusts the current frame in a tight box. This stands in for per-object
+motion vectors for the debris. A still pixel's clamp box reaches 2.5
+standard deviations instead of 1.5, so the jitter's shifting
+neighborhood does not pull its history back and forth.
+
+`meteor_showcase_capture --orbit --live` now casts nothing, so the
+houses stand for the whole orbit. Earlier runs counted the swarm after
+the third second. These are 8 s orbits, High, licensed kit, edge crawl
+mean / p99 (the runs repeat to the digit):
+
+| Orbit | Off | Shipped TAA | Now |
+| --- | --- | --- | --- |
+| 0.03 rad/s | 2.28 / 39.6 | 1.17 / 15.4 | 0.85 / 6.8 |
+| 0.1 rad/s | 6.01 / 69.3 | 3.04 / 45.1 | 2.07 / 22.9 |
+
+Sharpness (mean gradient of the middle of the frame) is unchanged: 3.21
+shipped and 3.23 now at 0.03 rad/s. With TAA off it is 3.79, aliasing
+included. Turning the sharpen off would cut the crawl further (0.74 /
+5.1) but softens the image (3.03), so it stays at 0.2. The GPU wait
+alternates between two clocks (4.66 and 6.16 ms) whatever the setting.
+At the lower clock it was 4.68 ms with TAA against 4.66 off, under
+0.1 ms for the extra depth taps. Maps of the crawl, with off, shipped,
+and now from left to right:
+[taa-crawl-maps.jpg](captures/meteor-showcase/taa-crawl-maps.jpg).
+Impact frames show no new smear on debris:
+[taa-rejection-impact-zoom.jpg](captures/meteor-showcase/taa-rejection-impact-zoom.jpg)
+(shipped left). Both are from the committed proxies.
+
+The medium tier keeps 4x MSAA and gets no TAA. It is the tier for phones
+and the web and has no depth prepass. Adding one would draw every caster
+a second time (about 1,500 draws here) and read and write two
+full-size histories each frame. Those are the costs a tile-based GPU
+feels most. On this Mac, medium's crawl matches High's with TAA off
+(2.34 / 39.5 at 0.03 rad/s). Revisit this with a phone measurement if
+crawl on medium becomes the complaint.
+
 ## Instanced chunks, merged rubble, and cheaper contacts (#10937)
 
 - Broken chunks draw as GPU instances (`Town::set_instanced`, on in the
