@@ -252,3 +252,14 @@ resident host and a local relay: approval, denial, five wrong codes, an
 approver without `access_admin`, and an expired request. Its
 [verification record](../../docs/coder/verification/2026-09-27-host-generation-and-headless.md)
 also covers the shared generation counter.
+
+### Optional Verse assets
+
+Private Verse placement requests require the explicit `verse-assets` feature.
+The default host build has no Verse dependencies and returns `Unsupported` for
+these requests. Build with `--features verse-assets` when this integration is needed.
+
+`scripts/coderdev` builds only `coder-new` and `microcoder`, not the Verse-bearing
+OpenAgents CLI companion. CLI tools can still use an independently installed
+`openagents` executable; coderdev does not rebuild it. Run
+`scripts/test-coderdev-no-verse.sh` to verify the development dependency graph.

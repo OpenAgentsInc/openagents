@@ -32,14 +32,29 @@ chmod +x "$work/bin/cargo"
 cat >"$work/bin/openagents" <<'EOF'
 #!/usr/bin/env bash
 set -eu
-test "$1" = lease
-if test "$2" = list; then exit 0; fi
 printf '%s\n' "$*" >>"$STUB_LEASE_LOG"
-while test "$1" != --; do shift; done
-shift
-exec "$@"
+echo "unexpected lease invocation" >&2
+exit 99
 EOF
 chmod +x "$work/bin/openagents"
+# Permit only the launcher's read-only Git queries. Any automatic sync,
+# stash (including autostash), or index/worktree mutation fails the test.
+export CODERDEV_TEST_REAL_GIT="$(command -v git)"
+export CODERDEV_TEST_GIT_MUTATIONS="$work/git-mutations.log"
+cat >"$work/bin/git" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+args=("$@")
+if [[ "${1:-}" == -C ]]; then shift 2; fi
+case "${1:-}" in
+  rev-parse|status) exec "$CODERDEV_TEST_REAL_GIT" "${args[@]}" ;;
+  *) printf '%s\n' "${args[*]}" >>"$CODERDEV_TEST_GIT_MUTATIONS"
+     echo "unexpected Git mutation from coderdev" >&2
+     exit 99 ;;
+esac
+EOF
+chmod +x "$work/bin/git"
+export PATH="$work/bin:$PATH"
 export CODERDEV_LEASE_BIN="$work/bin/openagents" STUB_LEASE_LOG="$work/lease.log"
 export STUB_LOG="$work/build.log" CODERDEV_CARGO="$work/bin/cargo"
 export CARGO_TARGET_DIR="$work/target"
@@ -56,11 +71,13 @@ grep -qxF 'arg=[]' <<<"$out" || fail "empty argument not forwarded"
 grep -qxF 'env=unset' <<<"$out" || fail "env leaked without env file"
 grep -q '^coderdev: coder [0-9a-f]\{7,\} (clean\|dirty) ' "$work/stderr" \
   || fail "no build identity line: $(cat "$work/stderr")"
+grep -q '^coderdev: building ' "$work/stderr" || fail "no immediate build banner"
+if grep -q -- '--quiet' "$STUB_LOG"; then fail "Cargo progress suppressed"; fi
 grep -q -- "--bin coder-new" "$STUB_LOG" || fail "current terminal binary not selected"
 grep -q -- "-p coder-new " "$STUB_LOG" || fail "current terminal package not selected"
-grep -q -- "-p openagents-cli --bin openagents" "$STUB_LOG" || fail "companion CLI not built"
+if grep -q -- "openagents-cli" "$STUB_LOG"; then fail "Verse-bearing CLI was built"; fi
 grep -q -- "-p microcoder --bin microcoder" "$STUB_LOG" || fail "companion engine not built"
-grep -qxF 'lease build --keep-target-dir --priority owner -- '"$CODERDEV_CARGO"' build --quiet -p coder-new --bin coder-new -p openagents-cli --bin openagents -p microcoder --bin microcoder' "$STUB_LEASE_LOG" || fail "build lease not used"
+test ! -e "$STUB_LEASE_LOG" || fail "launcher contacted the lease broker"
 grep -q "^build $PWD " "$STUB_LOG" || fail "build did not run in the source tree"
 
 # Every launch asks Cargo; Cargo decides freshness. Two launches, two calls.
@@ -84,5 +101,9 @@ test -z "${CODERDEV_TEST_SECRET:-}" || fail "env leaked into the parent shell"
 out="$(cd "$work/elsewhere" && CARGO_TARGET_DIR=rel "$launcher" 2>"$work/stderr")"
 test -x "$work/elsewhere/rel/debug/coder-new" || fail "relative target dir not honored"
 grep -q "$work/elsewhere/rel/debug/coder-new" "$work/stderr" || fail "identity line lacks executable path"
+
+test ! -e "$STUB_LEASE_LOG" || fail "launcher contacted the lease broker"
+
+test ! -e "$CODERDEV_TEST_GIT_MUTATIONS" || fail "launcher tried to modify Git state"
 
 echo "test-coderdev: ok"

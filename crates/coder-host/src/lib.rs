@@ -62,7 +62,7 @@ pub mod telemetry;
 pub mod terminal_sessions;
 #[cfg(feature = "host")]
 mod tls;
-#[cfg(feature = "host")]
+#[cfg(feature = "verse-assets")]
 pub mod verse_private;
 #[cfg(feature = "host")]
 pub mod wallet_link;

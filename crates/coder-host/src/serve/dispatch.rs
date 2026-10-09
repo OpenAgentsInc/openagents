@@ -408,6 +408,7 @@ impl Dispatch for Dispatcher {
 
     /// The owner's private Verse placements, from Verse's home on this
     /// computer, for a paired phone that named its Verse world key.
+    #[cfg(feature = "verse-assets")]
     fn verse_private(
         &mut self,
         device: &str,

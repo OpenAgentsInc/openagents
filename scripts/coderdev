@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build the current Coder terminal from this checkout, then run it from the caller's
 # directory with the caller's arguments.
+# Never pull, rebase, stash, or otherwise modify the checkout or index.
+# Concurrent agents' edits must stay in place and are built as-is.
 #
 # The build uses the toolchain that rust-toolchain.toml pins and Cargo's own
 # freshness check, so unchanged source reuses the executable and dirty edits
@@ -15,11 +17,9 @@
 #                      nothing reaches the parent shell, and nothing is printed.
 #   CODERDEV_CARGO     Cargo command to run; default cargo. Tests point this at
 #                      a stub.
-#   CODERDEV_LEASE_BIN OpenAgents command that supplies the build lease.
 #
-# Diagnostics go to standard error as one line: the source revision, whether
-# the tree is dirty, and the executable path. A timestamp is not provenance;
-# the revision line is.
+# Build progress and launch identity go to standard error. Cargo reports
+# compilation progress and waits for build locks instead of silently waiting.
 set -euo pipefail
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,20 +41,15 @@ fi
 export CODER_BUILD_DIRTY=0
 if test "$dirty" = dirty; then export CODER_BUILD_DIRTY=1; fi
 
-lease="${CODERDEV_LEASE_BIN:-${target_dir}/debug/openagents}"
-if ! "$lease" lease list >/dev/null 2>&1; then
-  lease="$(command -v openagents || true)"
-  if test -z "$lease" || ! "$lease" lease list >/dev/null 2>&1; then
-    # Bootstrap the broker once when the installed release has no lease command.
-    (cd "$source_dir" && "$cargo" build --quiet -p openagents-cli --bin openagents)
-    lease="${target_dir}/debug/openagents"
-  fi
-fi
+echo "coderdev: building ${revision} (${dirty}) in ${target_dir}; Cargo progress follows" >&2
 
-# Build from the source tree; the subshell keeps the launch directory intact.
-(cd "$source_dir" && "$lease" lease build --keep-target-dir --priority owner -- \
-  "$cargo" build --quiet -p coder-new --bin coder-new \
-  -p openagents-cli --bin openagents -p microcoder --bin microcoder) || {
+# Do not build the companion OpenAgents CLI here: its Verse dependency graph
+# is not part of the Coder development launch. An installed CLI remains usable.
+# Build immediately without acquiring an OpenAgents lease. Cargo still checks freshness.
+# The subshell keeps the launch directory intact.
+(cd "$source_dir" && \
+  "$cargo" build -p coder-new --bin coder-new \
+  -p microcoder --bin microcoder) || {
   echo "coderdev: build failed; not running the previous executable" >&2
   exit 1
 }
