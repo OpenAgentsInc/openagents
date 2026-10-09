@@ -538,6 +538,7 @@ mod tests {
     fn a_saved_key_wins_over_the_built_in_service() {
         let settings = crate::plugin_tools::ExecutionSettings {
             prompt_inbox: None,
+            fleet: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),
@@ -811,6 +812,7 @@ mod tests {
             );
             let settings = crate::plugin_tools::ExecutionSettings {
                 prompt_inbox: None,
+                fleet: None,
                 boat: Default::default(),
                 gce: crate::cloud_settings::Configuration::gce(),
                 cloud_root: "fixture-state".into(),

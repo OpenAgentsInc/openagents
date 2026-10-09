@@ -25,7 +25,6 @@ use serde_json::{Value, json};
 const TEXT_MAX: usize = 64 * 1024;
 const ARGUMENT_MAX: usize = 128;
 const ARGUMENT_BYTES: usize = 64 * 1024;
-const RUN_SECONDS: u64 = 600;
 const POLL: Duration = Duration::from_millis(50);
 
 /// Codex starts with full access. Explicitly gated chats keep Codex
@@ -519,6 +518,31 @@ fn scrub_credentials(command: &mut std::process::Command) {
             command.env_remove(name);
         }
     }
+    apply_child_env(command);
+}
+
+thread_local! {
+    /// Variables every engine and command started on this thread gets: a
+    /// background agent's thread sets its shared build folder here
+    /// ([`crate::fleet`]). Empty everywhere else.
+    static CHILD_ENV: RefCell<Vec<(std::ffi::OsString, std::ffi::OsString)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Sets the variables children started on this thread get.
+pub(crate) fn set_child_env(vars: Vec<(std::ffi::OsString, std::ffi::OsString)>) {
+    CHILD_ENV.with(|env| *env.borrow_mut() = vars);
+}
+
+/// The variables children started on this thread get.
+pub(crate) fn child_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    CHILD_ENV.with(|env| env.borrow().clone())
+}
+
+pub(crate) fn apply_child_env(command: &mut std::process::Command) {
+    for (name, value) in child_env() {
+        command.env(name, value);
+    }
 }
 
 fn prepare_cli_child(command: &mut std::process::Command) {
@@ -556,9 +580,8 @@ pub async fn acp(
         return Err("This ACP agent is turned off.".into());
     }
     validate_task(task)?;
-    let started = Instant::now();
-    let canceled =
-        || cancel.load(Ordering::Relaxed) || started.elapsed() >= Duration::from_secs(RUN_SECONDS);
+    // No time limit (owner rule): the task runs until it ends or is stopped.
+    let canceled = || cancel.load(Ordering::Relaxed);
     if canceled() {
         return Err("The ACP task was canceled before it started.".into());
     }
@@ -584,7 +607,7 @@ pub async fn acp(
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
-    let environment: Vec<(String, String)> = std::env::vars()
+    let mut environment: Vec<(String, String)> = std::env::vars()
         .filter(|(name, _)| {
             admitted.split(',').any(|allowed| allowed == name)
                 || (cursor && acp_client::cursor::CREDENTIAL_VARS.contains(&name.as_str()))
@@ -593,6 +616,11 @@ pub async fn acp(
                     || name.ends_with("_SECRET"))
         })
         .collect();
+    for (name, value) in child_env() {
+        let name = name.to_string_lossy().into_owned();
+        environment.retain(|(existing, _)| existing != &name);
+        environment.push((name, value.to_string_lossy().into_owned()));
+    }
     // Devin's session mode and sandbox come from the chat's gate, the same
     // access a `devin:` route's grant names: an ungated chat is full access,
     // so Devin runs `bypass`; a gated chat is the boundary, so it runs

@@ -216,6 +216,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-fleet"
+version = "0.1.0"
+dependencies = [
+ "coder-lease",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3374,6 +3384,7 @@ name = "coder-new"
 version = "1.0.0"
 dependencies = [
  "acp-client",
+ "agent-fleet",
  "atif",
  "background",
  "base64 0.22.1",
@@ -3385,6 +3396,7 @@ dependencies = [
  "coder-delegate",
  "coder-demo-ui",
  "coder-engine-status",
+ "coder-lease",
  "coder-sync",
  "coder-terminal",
  "coder-ui",

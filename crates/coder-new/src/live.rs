@@ -66,6 +66,9 @@ pub struct Delegation {
     pub(crate) draft: crate::Draft,
     pub(crate) composer: crate::composer_state::ComposerState,
     pub(crate) scroll: u16,
+    /// A background agent (#11163): messages typed here go to it through
+    /// the agent list instead of starting a foreground run.
+    pub background: bool,
 }
 
 impl Chat {
@@ -362,6 +365,7 @@ impl Background {
             self.active = None;
         }
         app.poll_disclosure();
+        app.poll_fleet();
         app.process_prompt_queue();
     }
 

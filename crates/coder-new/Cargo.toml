@@ -15,6 +15,8 @@ brainstorm-client = { path = "../brainstorm-client" }
 getrandom = "0.3"
 nostr = { path = "../nostr" }
 coder = { path = "../coder" }
+agent-fleet = { path = "../agent-fleet" }
+coder-lease = { path = "../coder-lease" }
 coder-delegate = { path = "../coder-delegate" }
 coder-engine-status = { path = "../coder-engine-status" }
 secret-screen = { path = "../secret-screen" }

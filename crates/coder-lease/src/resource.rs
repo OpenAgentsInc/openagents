@@ -40,6 +40,9 @@ pub enum Resource {
     Artifact(String),
     /// A GitHub issue claim (`issue/<n>`).
     Issue(u64),
+    /// A background agent's git worktree (`worktree/<name>`), held while
+    /// the agent runs so nothing removes the checkout under it.
+    Worktree(String),
 }
 
 impl Resource {
@@ -67,6 +70,13 @@ impl Resource {
                         ));
                     }
                     Resource::Artifact(artifact.to_owned())
+                } else if let Some(name) = other.strip_prefix("worktree/") {
+                    if !valid_name(name) {
+                        return Err(format!(
+                            "`{other}` is not a worktree name; use letters, digits, `.`, `_`, and `-`"
+                        ));
+                    }
+                    Resource::Worktree(name.to_owned())
                 } else if let Some(digits) = other.strip_prefix("issue/") {
                     match digits.parse::<u64>() {
                         Ok(number) if number > 0 && number.to_string() == digits => {
@@ -76,7 +86,7 @@ impl Resource {
                     }
                 } else {
                     return Err(format!(
-                        "`{other}` is not a resource; the resources are {}, artifact/NAME, and issue/N",
+                        "`{other}` is not a resource; the resources are {}, artifact/NAME, issue/N, and worktree/NAME",
                         NAMED.join(", ")
                     ));
                 }
@@ -136,6 +146,7 @@ impl fmt::Display for Resource {
             Resource::Pylon => f.write_str("pylon"),
             Resource::Artifact(name) => write!(f, "artifact/{name}"),
             Resource::Issue(number) => write!(f, "issue/{number}"),
+            Resource::Worktree(name) => write!(f, "worktree/{name}"),
         }
     }
 }

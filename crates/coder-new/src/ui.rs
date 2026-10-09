@@ -1,5 +1,6 @@
 //! The same render function draws the terminal and exported previews.
 
+pub(crate) mod agents;
 mod appearance;
 mod models;
 mod plugins;
@@ -102,6 +103,10 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
     if app.resume_picker.is_some() {
         resume::render(frame, area, app);
+        return;
+    }
+    if app.agents_panel.is_some() {
+        agents::render(frame, area, app);
         return;
     }
     if matches!(app.screen, Screen::Plugins | Screen::PluginSettings) {
@@ -207,7 +212,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             .map(|agent| {
                 (
                     agent.name,
-                    agent.task,
+                    std::borrow::Cow::Borrowed(agent.task),
                     agent.tokens.to_owned(),
                     agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
                 )
@@ -217,9 +222,29 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
         app.delegations
             .iter()
             .map(|agent| {
+                if agent.background
+                    && let Some(row) = app.fleet.get(&agent.id)
+                {
+                    let mut task = format!("{} · ", row.status.word());
+                    if let Some(cost) = row.cost_usd {
+                        task.push_str(&agent_fleet::dollars(cost));
+                        task.push_str(" · ");
+                    }
+                    task.push_str(&agent.task);
+                    return (
+                        agent.name.as_str(),
+                        std::borrow::Cow::Owned(task),
+                        if row.tokens == 0 {
+                            "—".into()
+                        } else {
+                            token_count(row.tokens)
+                        },
+                        row.elapsed_seconds(agent_fleet::now_ms()),
+                    );
+                }
                 (
                     agent.name.as_str(),
-                    agent.task.as_str(),
+                    std::borrow::Cow::Borrowed(agent.task.as_str()),
                     if agent.chat.tokens == 0 {
                         "—".into()
                     } else {
@@ -344,7 +369,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 ..activity
             };
             frame.render_widget(
-                Paragraph::new(span(truncate(agent.1, task_width), t::GRAY)),
+                Paragraph::new(span(truncate(&agent.1, task_width), t::GRAY)),
                 task,
             );
         }

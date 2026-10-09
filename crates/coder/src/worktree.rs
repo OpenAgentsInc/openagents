@@ -166,7 +166,7 @@ impl Drop for Worktree {
 
 /// Removes one checkout under the metadata lock, then the checkout parents
 /// when it was the last one.
-fn remove(repository: &Path, path: &Path) -> Result<(), String> {
+pub(crate) fn remove(repository: &Path, path: &Path) -> Result<(), String> {
     locked(repository, |repository| {
         let result = mutate(repository, path, false);
         prune_parents(repository);
@@ -176,7 +176,7 @@ fn remove(repository: &Path, path: &Path) -> Result<(), String> {
 
 /// Removes `.coder/worktrees` and then `.coder` when each is empty. A
 /// parent another checkout still uses is not empty, and stays.
-fn prune_parents(repository: &Path) {
+pub(crate) fn prune_parents(repository: &Path) {
     let mut parent = repository.join(crate::delegate::WORKTREE_DIR);
     while parent != repository {
         if std::fs::remove_dir(&parent).is_err() {
@@ -190,7 +190,7 @@ fn prune_parents(repository: &Path) {
 /// Runs one metadata transaction while holding the repository's lock. The
 /// lock is taken off the caller's async runtime, so cancellation cannot
 /// release it while a Git subprocess is still being terminated.
-fn locked<T>(
+pub(crate) fn locked<T>(
     repository: &Path,
     transaction: impl FnOnce(&Path) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -310,7 +310,7 @@ fn seed_scratch(checkout: &Path) -> Result<(), String> {
     })
 }
 
-fn git(repository: &Path) -> Job {
+pub(crate) fn git(repository: &Path) -> Job {
     Job::new("git")
         .arg("-C")
         .arg(repository)

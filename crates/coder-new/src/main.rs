@@ -300,6 +300,15 @@ fn run() -> io::Result<()> {
     app.persist_session(true);
     let extra_restore = restore_extras();
     ratatui::restore();
+    // Background agents end with the terminal; their worktrees and
+    // transcripts stay (#11163).
+    if app.fleet.running() > 0 {
+        eprintln!(
+            "Stopping {} background agent(s); their worktrees and transcripts are kept.",
+            app.fleet.running()
+        );
+        app.stop_agents(Duration::from_secs(10));
+    }
     // A version downloaded and verified this session installs now (#11128).
     if let Some(context) = &update
         && context.config.mode == coder_new::update::Mode::Auto

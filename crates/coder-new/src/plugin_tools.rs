@@ -45,6 +45,9 @@ pub struct ExecutionSettings {
     /// Project instructions and saved memory for this working directory
     /// (#11176); `None` turns both off.
     pub memory: Option<crate::memory::Memory>,
+    /// Background agents (#11163): the `agent` tools are offered when the
+    /// host gives a chat its agent list.
+    pub fleet: Option<crate::fleet::Host>,
 }
 
 #[derive(Clone)]
@@ -203,6 +206,9 @@ impl ExecutionSettings {
                 }
             }
         }
+        if self.fleet.is_some() {
+            definitions.extend(crate::fleet::tool_definitions(self));
+        }
         definitions
     }
 
@@ -232,6 +238,9 @@ impl ExecutionSettings {
             } else {
                 guidance.push_str("No local subagent is enabled for this request. If the user requested a named agent, explain that it is unavailable or turned off; do not substitute another agent or Microcoder.\n");
             }
+        }
+        if self.fleet.is_some() && !crate::fleet::engines(self).is_empty() {
+            guidance.push_str(crate::fleet::INSTRUCTIONS);
         }
         if self.boat.enabled || self.gce.enabled {
             guidance.push_str("Cloud plugins use exact IDs such as codex@boat and microcoder@gce. Delegate only user-requested cloud work. Never substitute another agent or backend. Boat modes are integrated or coder; GCE is coder. Credential values are never arguments: only variables allowed in plugin settings may be selected. Use workspace paths to include the task's repository files and explicit include for untracked files. Use the backend's job tool to reconnect or cancel; applying a result patch requires the caller's explicit remote apply command.\n");
@@ -370,6 +379,15 @@ impl ExecutionSettings {
                     &mut emit,
                 )
                 .await
+            }
+            "agent" | "agent_list" | "agent_message" | "agent_stop"
+                if self
+                    .fleet
+                    .as_ref()
+                    .is_some_and(|_| !crate::fleet::engines(self).is_empty()) =>
+            {
+                let host = self.fleet.as_ref().ok_or("Background agents are off.")?;
+                crate::fleet::execute(host, self, name, arguments, provider)
             }
             "openagents_cli" if self.registered(ToolBinding::OpenAgentsCli) => {
                 let args: CliArguments = serde_json::from_value(arguments).map_err(
@@ -720,6 +738,7 @@ mod tests {
     fn settings() -> ExecutionSettings {
         ExecutionSettings {
             prompt_inbox: None,
+            fleet: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),

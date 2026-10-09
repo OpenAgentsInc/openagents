@@ -308,6 +308,19 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
                     result["extra"]["agent"] = json!(child.name);
                     result["extra"]["task"] = json!(child.task);
                     result["final_metrics"]["extra"]["wall_seconds"] = json!(child.elapsed_seconds);
+                    if child.background {
+                        result["extra"]["background"] = json!(true);
+                        if let Some(row) = app.fleet.get(&child.id) {
+                            result["extra"]["engine"] = json!(row.engine);
+                            result["extra"]["status"] = json!(row.status.word());
+                            result["extra"]["branch"] = json!(row.branch);
+                            result["final_metrics"]["extra"]["reported_total_tokens"] =
+                                json!(row.tokens);
+                            if let Some(cost) = row.cost_usd {
+                                result["final_metrics"]["total_cost_usd"] = json!(cost);
+                            }
+                        }
+                    }
                     result
                 })
                 .collect::<Vec<_>>()
@@ -560,6 +573,7 @@ pub fn restore_app(app: &mut App, value: &Value) -> Result<(), String> {
             draft: crate::Draft::default(),
             composer: Default::default(),
             scroll: 0,
+            background: false,
         });
     }
     app.live = main;
@@ -703,6 +717,7 @@ mod tests {
             draft: crate::Draft::default(),
             composer: Default::default(),
             scroll: 0,
+            background: false,
         });
         let document = app_document(&app, Path::new("/workspace"));
         let mut restored = App {

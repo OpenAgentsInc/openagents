@@ -1154,6 +1154,7 @@ mod tests {
     fn jev_settings(endpoint: String, key: Option<model_access::ApiKey>) -> ExecutionSettings {
         ExecutionSettings {
             prompt_inbox: None,
+            fleet: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),

@@ -202,6 +202,7 @@ fn add_child(app: &mut App) {
         draft: Default::default(),
         composer: Default::default(),
         scroll: 0,
+        background: false,
     });
 }
 

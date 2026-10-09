@@ -8,6 +8,9 @@ pub(crate) struct Prompt {
     pub text: String,
     pub composer: crate::composer_state::ComposerState,
     pub editable: bool,
+    /// A background agent's notice (#11163): never edited back into the
+    /// composer, but it starts the next turn like a typed prompt.
+    pub notice: bool,
     slot: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     session: Option<String>,
     pub agent: Option<String>,
@@ -32,6 +35,7 @@ impl App {
         self.queued_prompts.push(Prompt {
             slot,
             editable: true,
+            notice: false,
             composer: std::mem::take(&mut self.composer),
             text: std::mem::take(&mut self.draft.text),
             session: self.session_id().map(str::to_owned),
@@ -46,6 +50,25 @@ impl App {
             self.notice = Some("Press up to edit queued messages".into());
             self.queue_hint_count += 1;
         }
+    }
+
+    /// Queues a background agent's notice for the main chat: a turn in
+    /// progress reads it after its current tool batch; otherwise it starts
+    /// the next turn.
+    pub(crate) fn queue_notice(&mut self, text: String) {
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(text.clone())));
+        if self.live.busy && self.active_delegation.is_none() {
+            self.prompt_inbox.lock().unwrap().push(slot.clone());
+        }
+        self.queued_prompts.push(Prompt {
+            slot,
+            editable: false,
+            notice: true,
+            composer: Default::default(),
+            text,
+            session: self.session_id().map(str::to_owned),
+            agent: None,
+        });
     }
 
     pub(crate) fn restore_queued_prompts(&mut self) -> bool {
@@ -140,7 +163,7 @@ impl App {
         let Some(first) = self
             .queued_prompts
             .iter()
-            .position(|p| p.editable && p.session == session)
+            .position(|p| (p.editable || p.notice) && p.session == session)
         else {
             return;
         };
@@ -164,7 +187,7 @@ impl App {
             let take = if single {
                 position == first
             } else {
-                p.editable
+                (p.editable || p.notice)
                     && p.session == session
                     && p.agent == agent
                     && p.composer.mode == crate::composer_state::InputMode::Prompt

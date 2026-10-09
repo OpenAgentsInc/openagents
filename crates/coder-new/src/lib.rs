@@ -21,6 +21,8 @@ mod copy_guard_tests;
 pub mod credentials;
 mod delegation_events;
 mod demo;
+pub mod fleet;
+mod fleet_app;
 pub mod jev_plugin;
 pub mod live;
 pub mod login_choice;
@@ -116,6 +118,10 @@ pub struct App {
     pub request_id: u64,
     pub(crate) prompt_inbox: prompt_queue::Inbox,
     pub(crate) queued_prompts: Vec<prompt_queue::Prompt>,
+    /// Background agents started from this terminal (#11163).
+    pub fleet: fleet::Fleet,
+    /// The `/agents` panel, while it is open.
+    pub(crate) agents_panel: Option<fleet_app::Panel>,
     pub checking_key: bool,
     pub checking_jev: bool,
     pub(crate) brainstorm_job: Option<brainstorm::Job>,
@@ -256,6 +262,7 @@ impl App {
                     draft: Draft::default(),
                     composer: Default::default(),
                     scroll: u16::MAX,
+                    background: false,
                 });
                 self.delegations.len() - 1
             });
@@ -402,6 +409,8 @@ impl App {
             .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
             // Saving chats to the account needs a sign-in (#11046).
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
+            // Background agents run in live mode only (#11163).
+            .filter(|command| *command != slash::Command::Agents || self.mode == Mode::Live)
             // Offer only the sign-in step that applies (#11045).
             .filter(|command| *command != slash::Command::Login || self.account.is_none())
             .filter(|command| *command != slash::Command::Logout || self.account.is_some())
@@ -752,6 +761,7 @@ impl App {
             slash::Command::Logout => self.logout(),
             slash::Command::Sync => self.sync_command(""),
             slash::Command::Memory => self.memory_command(""),
+            slash::Command::Agents => self.open_agents_panel(),
         }
     }
 
@@ -1007,7 +1017,15 @@ impl App {
             return;
         }
         if let Some(index) = self.selected_agent {
-            self.submit_delegation(index);
+            if self
+                .delegations
+                .get(index)
+                .is_some_and(|child| child.background)
+            {
+                self.message_agent(index);
+            } else {
+                self.submit_delegation(index);
+            }
             return;
         }
         let key = self
@@ -1041,6 +1059,7 @@ impl App {
             }));
         execution.instructions = self.live.instructions.clone();
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
+        execution.fleet = Some(self.fleet_host());
         if key.is_some()
             && (execution.brainstorm.is_some() || execution.cli)
             && execution.disclosure_desk.is_none()
@@ -1464,6 +1483,10 @@ impl App {
                     self.open_plugins();
                     return true;
                 }
+                if self.agents_panel.is_some() {
+                    self.agents_panel_key(key);
+                    return true;
+                }
                 if let Some(picker) = &mut self.resume_picker {
                     match picker.handle(key) {
                         resume::Action::Continue => {}
@@ -1753,6 +1776,14 @@ impl App {
                             self.submit_bash();
                             return true;
                         }
+                        if let Some(index) = self.selected_agent.filter(|index| {
+                            self.mode == Mode::Live
+                                && self.delegations.get(*index).is_some_and(|c| c.background)
+                                && !self.draft.text.trim().starts_with('/')
+                        }) {
+                            self.message_agent(index);
+                            return true;
+                        }
                         if self.mode == Mode::Live
                             && self.live.busy
                             && (!self.draft.text.trim().is_empty()
@@ -1780,6 +1811,16 @@ impl App {
                                 self.composer = Default::default();
                                 self.composer_history.reset();
                             }
+                        } else if let Some(argument) = self
+                            .draft
+                            .text
+                            .trim()
+                            .strip_prefix("/agent ")
+                            .map(str::to_owned)
+                        {
+                            self.agent_command(&argument);
+                        } else if self.draft.text.trim() == "/agent" {
+                            self.agent_command("");
                         } else if let Some(argument) = self
                             .draft
                             .text

@@ -107,6 +107,7 @@ pub mod verification;
 pub mod waves;
 pub mod workflow_template;
 mod worktree;
+pub mod branch_checkout;
 
 pub use crate::capability::{Found, Manifest, Presence};
 pub use about::About;

@@ -429,6 +429,7 @@ impl Plugins {
         let memory = crate::memory::Memory::discover(&cwd);
         crate::plugin_tools::ExecutionSettings {
             prompt_inbox: None,
+            fleet: None,
             boat: crate::cloud_settings::Configuration {
                 enabled: self.live && self.bundled.boat.enabled,
                 ..self.bundled.boat.clone()

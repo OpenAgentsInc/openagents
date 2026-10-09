@@ -111,11 +111,34 @@ impl App {
     }
 
     /// Background agents (#11163) to list for the phone, beside the open
-    /// chat and the delegated agents. None until that registry lands; it
-    /// adds an [`Item`] per agent (kind `agent`, its id, engine, status,
-    /// cost) here, and handles their commands in [`Self::apply_command`].
+    /// chat and the delegated agents: one [`Item`] per agent with its
+    /// engine, status, tokens and cost. Their commands are handled in
+    /// [`Self::apply_command`].
     pub(crate) fn background_agents(&self) -> Vec<Item> {
-        Vec::new()
+        self.fleet
+            .list()
+            .into_iter()
+            .map(|row| Item {
+                id: row.id.clone(),
+                kind: "agent".into(),
+                title: short(&row.name, TITLE_CHARS),
+                engine: Some(row.engine.clone()),
+                status: match row.status {
+                    agent_fleet::Status::Running => "working",
+                    agent_fleet::Status::Done => "done",
+                    agent_fleet::Status::Failed => "failed",
+                    agent_fleet::Status::Stopped => "stopped",
+                }
+                .into(),
+                started_unix: row.started_ms / 1000,
+                finished_unix: row.ended_ms.map(|ended| ended / 1000),
+                cost_usd: row.cost_usd,
+                tokens: (row.tokens > 0).then_some(row.tokens),
+                session: row.parent_session.clone(),
+                question: None,
+                line: Some(short(&row.task, 200)).filter(|t| !t.is_empty()),
+            })
+            .collect()
     }
 
     /// What runs here now, for the phone: the open chat's reply, delegated
@@ -143,6 +166,7 @@ impl App {
         let agents: Vec<Item> = self
             .delegations
             .iter()
+            .filter(|agent| !agent.background)
             .map(|agent| {
                 let started = *board
                     .agent_started
@@ -228,12 +252,31 @@ impl App {
 
     /// Carry out one command from the phone.
     pub(crate) fn apply_command(&mut self, command: &Command) {
+        // A background agent is stopped or messaged through its list.
+        if self.fleet.get(&command.item).is_some() {
+            match command.action.as_str() {
+                "stop" => {
+                    if let Err(error) = self.fleet.stop(&command.item) {
+                        self.notice = Some(error);
+                    }
+                }
+                "message" => {
+                    let text = command.text.as_deref().unwrap_or_default().trim();
+                    if !text.is_empty() {
+                        let id = command.item.clone();
+                        self.deliver_agent_message(&id, text);
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         let open = self.session_id().map(str::to_owned);
         let is_open_chat = open.as_deref() == Some(command.item.as_str());
         let agent_running = self
             .delegations
             .iter()
-            .any(|agent| agent.id == command.item && agent.running);
+            .any(|agent| agent.id == command.item && agent.running && !agent.background);
         match command.action.as_str() {
             "stop" if (is_open_chat && self.live.busy) || agent_running => {
                 self.cancel_request();
@@ -341,6 +384,31 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].status, "done");
         assert!(items[0].finished_unix.is_some());
+    }
+
+    #[test]
+    fn background_agents_are_listed_with_cost_and_stopped_from_the_phone() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = signed_in_app(dir.path());
+        let control = app
+            .fleet
+            .start(agent_fleet::Spec {
+                engine: "codex".into(),
+                task: "fix the login".into(),
+                ..agent_fleet::Spec::default()
+            })
+            .unwrap();
+        control.add_usage(1200, Some(0.42));
+        control.event(crate::bundled_runtime::RuntimeEvent::Text("working".into()));
+        app.poll_fleet();
+        let items = app.activity_items();
+        let agents: Vec<_> = items.iter().filter(|item| item.kind == "agent").collect();
+        assert_eq!(agents.len(), 1, "listed once, from the agent list");
+        assert_eq!(agents[0].engine.as_deref(), Some("codex"));
+        assert_eq!(agents[0].status, "working");
+        assert_eq!(agents[0].cost_usd, Some(0.42));
+        app.apply_command(&command(control.id(), "stop"));
+        assert!(control.stopped());
     }
 
     #[test]

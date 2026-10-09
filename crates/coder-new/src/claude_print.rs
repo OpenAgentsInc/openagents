@@ -109,6 +109,7 @@ pub(super) async fn run(
         }
     }
     command.env_remove(secret_screen::CLAUDE_CODE_OAUTH_TOKEN);
+    crate::bundled_runtime::apply_child_env(&mut command);
     let started = Instant::now();
     let mut live = supervise::Job::from_command(command)
         .bounded(supervise::Limits::until_stopped().keeping(TEXT_MAX))
@@ -227,6 +228,7 @@ pub(super) fn answer(report: &Report, now: u64) -> Result<Value, String> {
         "stop_reason": "end_turn",
         "usage": summary.usage,
         "tokens": tokens,
+        "cost_usd": summary.total_cost_usd,
         "transport": "claude-cli",
         "engine": engine,
     }))
