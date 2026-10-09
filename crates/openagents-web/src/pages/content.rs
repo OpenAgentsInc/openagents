@@ -259,6 +259,12 @@ plugins, and the Gym.</p>",
 
 /// `/docs/{slug}`: one guide, with the previous and next ones under it.
 async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
+    // `/docs/{slug}.md`: the guide's Markdown twin.
+    if let Some(name) = slug.strip_suffix(".md")
+        && let Some((name, source)) = DOCS.iter().find(|(slug, _)| *slug == name)
+    {
+        return crate::agent_ready::guide_md(name, source);
+    }
     let Some(index) = DOCS.iter().position(|(name, _)| *name == slug) else {
         return problem(
             &headers,
@@ -294,6 +300,7 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
         .breadcrumb(doc_breadcrumb(&slug, &title))
         .section("/docs")
         .path(format!("/docs/{slug}"))
+        .description(crate::agent_ready::summary(source))
         .scriptless()
         .content(content)
         .respond(&headers)

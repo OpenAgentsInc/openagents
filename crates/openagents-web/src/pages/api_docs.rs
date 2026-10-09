@@ -218,7 +218,7 @@ pub(crate) fn model_table() -> String {
 }
 
 /// A guide's Markdown with the models page's tables drawn in.
-async fn source(app: &App, text: &str) -> String {
+pub(crate) async fn source(app: &App, text: &str) -> String {
     if !text.contains(RATE_CARD) {
         return text.to_owned();
     }
@@ -328,6 +328,7 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
         )
         .section("/docs")
         .path(format!("/docs/api/{name}"))
+        .description(crate::agent_ready::summary(stored))
         .scriptless()
         .content(content)
         .respond(&headers)

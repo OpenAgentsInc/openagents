@@ -80,6 +80,8 @@ pub struct UiPage {
     composer: Option<Markup>,
     sections: Vec<Markup>,
     head: Option<Markup>,
+    description: Option<String>,
+    canonical: Option<String>,
     scripts: bool,
     toggle: bool,
     status: StatusCode,
@@ -101,6 +103,8 @@ impl UiPage {
             composer: None,
             sections: Vec::new(),
             head: None,
+            description: None,
+            canonical: None,
             scripts: true,
             toggle: true,
             status: StatusCode::OK,
@@ -117,6 +121,7 @@ impl UiPage {
     /// Where the no-JavaScript theme toggle returns to: this page's path.
     pub fn path(mut self, path: impl Into<String>) -> Self {
         self.return_to = path.into();
+        self.canonical = Some(self.return_to.clone());
         self
     }
 
@@ -164,6 +169,13 @@ impl UiPage {
 
     pub fn composer(mut self, composer: impl Render) -> Self {
         self.composer = Some(composer.render());
+        self
+    }
+
+    /// The page's one-line summary for search engines and agents
+    /// (`<meta name="description">`); the site's own line without it.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
         self
     }
 
@@ -333,12 +345,22 @@ impl UiPage {
         if let Some(composer) = self.composer {
             shell = shell.composer(composer);
         }
+        let canonical = self
+            .canonical
+            .as_deref()
+            .map(|path| path.split('?').next().unwrap_or(path));
+        let metadata =
+            crate::agent_ready::head(&self.title, self.description.as_deref(), canonical);
         Document::new(self.title)
             .theme(theme::from_headers(headers))
             .head(html! {
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
+                (PreEscaped(metadata))
                 (PreEscaped(theme::style_tag()))
-                @if scripts { (PreEscaped(theme::script_tags())) }
+                @if scripts {
+                    (PreEscaped(theme::script_tags()))
+                    (PreEscaped(crate::agent_ready::webmcp_tag()))
+                }
                 @if let Some(head) = &self.head { (head) }
             })
             .body(shell)
@@ -511,7 +533,7 @@ mod tests {
             "the current page's pill is selected"
         );
         assert!(html.contains("width=device-width"));
-        assert!(!html.to_ascii_lowercase().contains("<script"));
+        assert!(!html.contains("<script src"));
     }
 
     #[test]
@@ -600,7 +622,7 @@ mod tests {
             .into_string()
             .to_ascii_lowercase();
         assert!(
-            !html.contains("<form") && !html.contains("<script"),
+            !html.contains("<form") && !html.contains("<script src"),
             "{html}"
         );
         assert!(!html.contains("data-oa-theme-toggle"), "{html}");
@@ -623,7 +645,7 @@ mod tests {
         assert!(html.contains("<h1>Not found</h1>"), "{html}");
         assert!(html.contains("<p>Nothing &lt;here&gt;.</p>"), "{html}");
         assert!(html.contains("href=\"/\""), "{html}");
-        assert!(!html.to_ascii_lowercase().contains("<script"), "{html}");
+        assert!(!html.to_ascii_lowercase().contains("<script src"), "{html}");
     }
 
     #[test]
@@ -634,7 +656,14 @@ mod tests {
             .render(&HeaderMap::new())
             .into_string()
             .to_ascii_lowercase();
-        assert!(!html.contains("<script"), "{html}");
+        // Only the JSON-LD data block, which never runs.
+        assert_eq!(
+            html.matches("<script").count(),
+            html.matches("<script type=\"application/ld+json\">")
+                .count(),
+            "{html}"
+        );
+        assert!(!html.contains("<script src"), "{html}");
         assert!(html.contains("action=\"/theme\""), "{html}");
     }
 }

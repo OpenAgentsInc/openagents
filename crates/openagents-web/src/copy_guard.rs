@@ -104,6 +104,8 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
     ("purchases.rs", &["digest"]),
     // `?cursor=` is the query of the next-steps link, not words.
     ("tasks.rs", &["cursor"]),
+    // `rel="canonical"` is a link relation for crawlers, not words.
+    ("agent_ready.rs", &["canonical"]),
 ];
 
 /// #11031: no string in this site's sources that reads like words, and no

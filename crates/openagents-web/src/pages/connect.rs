@@ -164,7 +164,14 @@ mod tests {
         let (status, headers, body) = read(connect(HeaderMap::new()).await).await;
         assert_eq!(status, StatusCode::OK);
         let lower = body.to_ascii_lowercase();
-        assert!(!lower.contains("<script"), "{body}");
+        // The JSON-LD data block is the only script tag, and it never runs.
+        assert_eq!(
+            lower.matches("<script").count(),
+            lower
+                .matches("<script type=\"application/ld+json\">")
+                .count(),
+            "{body}"
+        );
         assert!(!lower.contains("javascript:"), "{body}");
         // No inline event handler such as `onload=`.
         for (at, _) in lower.match_indices(" on") {

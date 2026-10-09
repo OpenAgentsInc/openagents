@@ -35,7 +35,7 @@ async fn agent_card(State(app): State<App>) -> impl IntoResponse {
 }
 
 async fn skills_index(State(app): State<App>) -> impl IntoResponse {
-    Json(discovery::site::skills_index(&origin(&app)))
+    Json(crate::agent_ready::skills_index(&origin(&app)))
 }
 
 async fn skill() -> impl IntoResponse {

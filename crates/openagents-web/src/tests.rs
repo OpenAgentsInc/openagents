@@ -59,6 +59,15 @@ async fn get_bytes(router: Router, uri: &str) -> (StatusCode, axum::http::Header
     (status, headers, body.to_vec())
 }
 
+/// The scripts a page runs: every `<script` but the JSON-LD data block,
+/// which a browser never runs.
+fn scripts(lower: &str) -> usize {
+    lower.matches("<script").count()
+        - lower
+            .matches("<script type=\"application/ld+json\">")
+            .count()
+}
+
 async fn get(router: Router, uri: &str) -> (StatusCode, String) {
     let (status, _, body) = get_with(router, uri, LOCAL).await;
     (status, body)
@@ -215,8 +224,8 @@ async fn every_public_page_answers_in_development() {
         // its own single script.
         let script = uri == "/" || uri == "/live";
         assert_eq!(
-            lower.matches("<script").count(),
-            if uri == "/" { 5 } else { usize::from(script) },
+            scripts(&lower),
+            if uri == "/" { 6 } else { usize::from(script) },
             "{uri} runs a script"
         );
         if uri == "/" {
@@ -342,7 +351,7 @@ async fn the_blue_rush_studio_page_serves_its_own_brand() {
     assert!(!policy.contains("'unsafe-eval'"), "{policy}");
     let lower = html.to_ascii_lowercase();
     assert!(!lower.contains("<style"));
-    assert_eq!(lower.matches("<script").count(), 1);
+    assert_eq!(scripts(&lower), 1);
     for tag in lower.split('<').skip(1) {
         let tag = tag.split('>').next().unwrap_or_default();
         assert!(!tag.contains(" style="), "styles an element: {tag}");
@@ -813,7 +822,7 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
     assert!(!html.contains("site-footer"));
     assert!(html.contains("id=\"everglade-status\""));
     let lower = html.to_ascii_lowercase();
-    assert_eq!(lower.matches("<script").count(), 1, "one script");
+    assert_eq!(scripts(&lower), 1, "one script");
     assert!(html.contains("<script type=\"module\" src=\"/static/everglade.js\"></script>"));
     assert_eq!(
         headers[header::CONTENT_SECURITY_POLICY],
@@ -1076,7 +1085,7 @@ async fn the_everglade_page_says_it_is_unavailable_without_the_build() {
             html.contains("Everglade is unavailable on this server"),
             "{html}"
         );
-        assert!(!html.to_ascii_lowercase().contains("<script"));
+        assert!(scripts(&html.to_ascii_lowercase()) == 0);
         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
         assert!(!policy.contains("script-src"), "{policy}");
         let (status, _, _) =
@@ -1133,7 +1142,7 @@ async fn the_bunny_page_serves_the_game_build() {
     assert!(html.contains("user-scalable=no"));
     assert!(html.contains("id=\"bunny-status\""));
     let lower = html.to_ascii_lowercase();
-    assert_eq!(lower.matches("<script").count(), 1, "one script");
+    assert_eq!(scripts(&lower), 1, "one script");
     assert!(html.contains(&format!(
         "<script type=\"module\" src=\"/games/grow-little-bunny/{}\"></script>",
         pages::BUNNY_START
@@ -1211,7 +1220,7 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
         assert_eq!(status, StatusCode::OK);
         let text = oa_copy::visible_text(main_of(&html));
         assert!(text.contains("be played here right now"), "{text}");
-        assert!(!html.to_ascii_lowercase().contains("<script"));
+        assert!(scripts(&html.to_ascii_lowercase()) == 0);
         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
         assert!(!policy.contains("script-src"), "{policy}");
         assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
@@ -1935,7 +1944,6 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/u/someone/avatar",
         "/ws",
         "/.well-known/oauth-protected-resource",
-        "/robots.txt",
         "/static/coder.css",
         "/static/webtui.css",
         "/static/favicon.png",
@@ -2475,7 +2483,7 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     assert!(!policy.contains("script-src"), "{policy}");
-    assert!(!html.to_ascii_lowercase().contains("<script"));
+    assert!(scripts(&html.to_ascii_lowercase()) == 0);
     assert!(html.contains("href=\"/live\""));
     // Totals, exact and grouped.
     assert!(

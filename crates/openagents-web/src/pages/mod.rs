@@ -1,12 +1,12 @@
 //! The public pages, one module per section.
 
-mod api_docs;
+pub(crate) mod api_docs;
 mod blue_rush;
 mod bunny;
 pub(crate) mod chat;
 mod cloud;
 mod connect;
-mod content;
+pub(crate) mod content;
 mod download;
 mod efficiency;
 mod everglade;

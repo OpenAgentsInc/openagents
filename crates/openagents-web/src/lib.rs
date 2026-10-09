@@ -13,6 +13,7 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+mod agent_ready;
 mod api_keys;
 pub mod ask;
 mod auth;
@@ -27,6 +28,7 @@ mod composer;
 mod composer_row;
 mod demo;
 mod device;
+mod docs_mcp;
 mod environments;
 mod layout;
 mod markdown;
@@ -205,7 +207,8 @@ pub fn router(config: Config) -> Router {
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
     };
-    Router::new()
+    let site_hosts = hosts.clone();
+    let site = Router::new()
         .route("/api/v1/{*path}", axum::routing::any(api_proxy))
         .route("/api/flow/{*path}", get(pay_proxy))
         .route("/api/stats", get(pay_proxy))
@@ -241,6 +244,8 @@ pub fn router(config: Config) -> Router {
         .merge(ask::routes())
         .merge(tasks::routes())
         .merge(wellknown::routes())
+        .merge(agent_ready::routes())
+        .merge(docs_mcp::routes())
         .fallback(not_found)
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
@@ -248,7 +253,19 @@ pub fn router(config: Config) -> Router {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }
         }))
-        .with_state(app)
+        .with_state(app);
+    // Before routing, so a request for Markdown reaches the page's twin.
+    Router::new()
+        .fallback_service(site)
+        .layer(middleware::from_fn(move |request: Request, next: Next| {
+            let host = request
+                .headers()
+                .get(header::HOST)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            let ours = site_hosts.local(host) || site_hosts.public.iter().any(|p| p == host);
+            agent_ready::negotiate(ours, request, next)
+        }))
 }
 
 /// Set on a request that came to the local address (see [`guard`]); a
@@ -511,6 +528,8 @@ async fn not_found() -> Response {
     )
 }
 
+#[cfg(test)]
+mod agent_ready_tests;
 #[cfg(test)]
 mod copy_guard;
 #[cfg(test)]
