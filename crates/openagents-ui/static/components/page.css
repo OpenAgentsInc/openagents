@@ -216,3 +216,21 @@
     aspect-ratio: 1 / 1;
   }
 }
+
+/* The log in and sign up card: a narrow centered stack. */
+.oa-sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+  max-width: 24rem;
+  margin: calc(var(--spacing) * 16) auto 0;
+  text-align: center;
+}
+
+.oa-sign-in h1 {
+  margin: 0;
+}
+
+.oa-sign-in .oa-page-meta {
+  margin: 0;
+}

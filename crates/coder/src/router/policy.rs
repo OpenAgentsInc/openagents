@@ -1386,7 +1386,7 @@ fn answered(routing: &Routing) -> Tier {
 /// (an [`RouteFamily::Answers`] route) and the reply needs none of the
 /// user's particulars, the message is clear enough that the entry answers
 /// it: "what is this?" on the website reads as asking who we are.
-fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+fn clarify_or_answer(routing: &Routing, _bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
     if let Some((entry, p)) = &routing.answer
         && {
             let (name, at) = answer_confidence(routing);
