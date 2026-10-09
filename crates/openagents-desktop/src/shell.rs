@@ -79,6 +79,9 @@ pub struct DesktopApp {
     providers_job: Option<settings_shell::ProviderJob>,
     /// Wakes the window when such an answer comes back.
     waker: Option<Waker>,
+    /// The system's light or dark appearance, as the window last said
+    /// (`None` before it opens, or when the platform does not say).
+    system_scheme: Option<openagents_chat_app::visual::Scheme>,
 }
 
 pub fn unix_now() -> u64 {
@@ -259,6 +262,7 @@ impl DesktopApp {
             verse_entered: false,
             providers_job: None,
             waker: None,
+            system_scheme: None,
         };
         app.present();
         app
@@ -928,16 +932,27 @@ impl App for DesktopApp {
             return Theme::default();
         };
         let size = state.settings.preferences.text_size;
+        // The theme seam (#11028): every color here and in the chat's views
+        // comes from the scheme `apply_theme` set.
+        let visual = openagents_chat_app::visual::current();
         Theme {
+            appearance: match visual.scheme {
+                openagents_chat_app::visual::Scheme::Light => {
+                    rust_native_desktop::theme::Appearance::Light
+                }
+                openagents_chat_app::visual::Scheme::Dark => {
+                    rust_native_desktop::theme::Appearance::Dark
+                }
+            },
             icons: rust_native_desktop::theme::IconSet::Solar,
             font_family: rust_native::layout::display::FontFamily::PaperMono,
-            background: openagents_chat_app::visual::SIDEBAR,
-            text: openagents_chat_app::visual::TEXT,
-            muted: openagents_chat_app::visual::MUTED,
-            rule: openagents_chat_app::visual::BORDER,
-            focus: openagents_chat_app::visual::ACCENT,
-            button: openagents_chat_app::visual::SELECTED,
-            button_text: openagents_chat_app::visual::TEXT,
+            background: visual.sidebar,
+            text: visual.text,
+            muted: visual.muted,
+            rule: visual.border,
+            focus: visual.accent,
+            button: visual.selected,
+            button_text: visual.text,
             button_radius: 7.0,
             icon_size: 28.0,
             body: size.scale(14.0),
@@ -946,6 +961,18 @@ impl App for DesktopApp {
             column: 768.0,
             ..Theme::openagents()
         }
+    }
+
+    fn system_appearance(&mut self, appearance: Option<rust_native_desktop::theme::Appearance>) {
+        self.system_scheme = appearance.map(|appearance| match appearance {
+            rust_native_desktop::theme::Appearance::Light => {
+                openagents_chat_app::visual::Scheme::Light
+            }
+            rust_native_desktop::theme::Appearance::Dark => {
+                openagents_chat_app::visual::Scheme::Dark
+            }
+        });
+        self.apply_theme();
     }
 
     fn window_layout(&self) -> WindowLayout {

@@ -19,6 +19,7 @@ coder-history = { path = "../coder-history", default-features = false }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 rust-native = { path = "../rust-native" }
+oa-tokens = { path = "../oa-tokens", features = ["serde"] }
 xp-ledger = { path = "../xp-ledger" }
 # Portable event codes; the phone adapter owns playtest logging and reports.
 playtest = { path = "../playtest" }

@@ -1,7 +1,9 @@
-//! Main chat values reimplemented from Zeron's public dark theme and components.
+//! Main chat values reimplemented from Zeron's public dark theme and components,
+//! and their Coder Light counterparts ([`Visual`]).
 //! Reference: zeronsh/zeron 50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4 (MIT).
 use rust_native::layout::{InlineCodeMetrics, MarkdownMetrics, Metrics, display::ColorRole};
 use rust_native::style::Color;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const CANVAS: Color = Color::rgb(6, 6, 6);
 pub const SIDEBAR: Color = Color::rgb(13, 13, 13);
@@ -109,6 +111,218 @@ pub const TRANSCRIPT: Metrics = Metrics {
     }),
 };
 
+/// The chat surface's colors in one scheme: the seam a view reads its
+/// colors from ([`current`]) instead of naming the dark constants above.
+///
+/// [`Visual::DARK`] is the dark chat look above, unchanged. [`Visual::LIGHT`]
+/// is Coder Light, from the shared token table (`oa-tokens`), the same
+/// values the web paints under `data-theme="light"` (#11028). The constants
+/// above stay as the dark values for surfaces not yet moved to the seam.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Visual {
+    pub scheme: Scheme,
+    pub canvas: Color,
+    pub sidebar: Color,
+    pub composer: Color,
+    pub text: Color,
+    pub muted: Color,
+    pub faint: Color,
+    pub selected: Color,
+    pub border: Color,
+    pub composer_border: Color,
+    pub accent: Color,
+    /// A floating control above the conversation (the scroll pill).
+    pub raised: Color,
+    /// A dialog's card.
+    pub panel: Color,
+    /// The base of translucent washes and hairlines drawn over a surface.
+    pub ink: Color,
+    /// A label on a `text`-filled button.
+    pub on_text: Color,
+    /// A `text`-filled button under the pointer.
+    pub text_hover: Color,
+    /// A warning note.
+    pub warning: Color,
+    /// Added and removed lines in a change, and their washes.
+    pub diff_add: Color,
+    pub diff_remove: Color,
+    pub diff_add_bg: Color,
+    pub diff_remove_bg: Color,
+    pub colors: [(ColorRole, Color); 9],
+    pub syntax: rust_native::syntax::Palette,
+    pub transcript: Metrics,
+}
+
+pub use oa_tokens::{Scheme, ThemeChoice};
+
+const fn token(value: oa_tokens::Rgba8) -> Color {
+    rgba(value.r, value.g, value.b, value.a)
+}
+
+const fn token_bytes(value: oa_tokens::Rgba8) -> [u8; 4] {
+    [value.r, value.g, value.b, value.a]
+}
+
+const LIGHT_TOKENS: oa_tokens::Palette = oa_tokens::Palette::LIGHT;
+
+/// Coder Light's syntax colors: the light intent text roles, each WCAG AA
+/// on the light canvas.
+const LIGHT_SYNTAX: rust_native::syntax::Palette = {
+    use rust_native::syntax::Kind;
+    let info = token_bytes(LIGHT_TOKENS.info);
+    let discovery = token_bytes(LIGHT_TOKENS.discovery);
+    let success = token_bytes(LIGHT_TOKENS.success);
+    let warning = token_bytes(LIGHT_TOKENS.warning);
+    rust_native::syntax::Palette::plain(token_bytes(LIGHT_TOKENS.content))
+        .with(Kind::Keyword, info)
+        .with(Kind::Function, info)
+        .with(Kind::MarkupHeading, info)
+        .with(Kind::MarkupStrong, info)
+        .with(Kind::StringSpecial, discovery)
+        .with(Kind::Escape, discovery)
+        .with(Kind::FunctionBuiltin, discovery)
+        .with(Kind::Macro, discovery)
+        .with(Kind::VariableSpecial, discovery)
+        .with(Kind::Tag, discovery)
+        .with(Kind::MarkupLink, discovery)
+        .with(Kind::MarkupEmphasis, discovery)
+        .with(Kind::String, success)
+        .with(Kind::TypeBuiltin, success)
+        .with(Kind::Constant, success)
+        .with(Kind::MarkupRaw, success)
+        .with(Kind::Number, warning)
+        .with(Kind::Boolean, warning)
+        .with(Kind::Type, warning)
+        .with(Kind::Constructor, warning)
+        .with(Kind::Property, warning)
+        .with(Kind::Attribute, warning)
+        .with(Kind::Label, warning)
+        .with(Kind::MarkupReference, warning)
+        .with(Kind::Invalid, token_bytes(LIGHT_TOKENS.danger))
+        .with(Kind::Comment, token_bytes(LIGHT_TOKENS.content_secondary))
+};
+
+/// The dark transcript metrics with the inline-code ink in `color`.
+const fn transcript_inked(color: Color) -> Metrics {
+    let mut metrics = TRANSCRIPT;
+    if let Some(mut markdown) = metrics.markdown {
+        if let Some(mut code) = markdown.inline_code {
+            code.color = [color.red, color.green, color.blue, color.alpha];
+            markdown.inline_code = Some(code);
+        }
+        metrics.markdown = Some(markdown);
+    }
+    metrics
+}
+
+impl Visual {
+    /// The dark chat look.
+    pub const DARK: Visual = Visual {
+        scheme: Scheme::Dark,
+        canvas: CANVAS,
+        sidebar: SIDEBAR,
+        composer: COMPOSER,
+        text: TEXT,
+        muted: MUTED,
+        faint: FAINT,
+        selected: SELECTED,
+        border: BORDER,
+        composer_border: COMPOSER_BORDER,
+        accent: ACCENT,
+        raised: Color::rgb(32, 32, 32),
+        panel: Color::rgb(16, 16, 16),
+        ink: Color::rgb(255, 255, 255),
+        on_text: Color::rgb(14, 14, 14),
+        text_hover: Color::rgb(206, 206, 206),
+        warning: Color::rgb(229, 192, 123),
+        diff_add: Color::rgb(163, 190, 140),
+        diff_remove: Color::rgb(191, 120, 120),
+        diff_add_bg: Color::rgb(28, 48, 34),
+        diff_remove_bg: Color::rgb(58, 32, 36),
+        colors: COLORS,
+        syntax: SYNTAX,
+        transcript: TRANSCRIPT,
+    };
+
+    /// Coder Light.
+    pub const LIGHT: Visual = Visual {
+        scheme: Scheme::Light,
+        canvas: token(LIGHT_TOKENS.canvas),
+        sidebar: token(LIGHT_TOKENS.surface_subtle),
+        composer: token(LIGHT_TOKENS.surface_raised),
+        text: token(LIGHT_TOKENS.content),
+        muted: token(LIGHT_TOKENS.content_secondary),
+        faint: token(LIGHT_TOKENS.content_tertiary),
+        selected: token(LIGHT_TOKENS.surface),
+        border: token(LIGHT_TOKENS.stroke_subtle),
+        composer_border: token(LIGHT_TOKENS.stroke),
+        accent: token(LIGHT_TOKENS.accent),
+        raised: token(LIGHT_TOKENS.surface_raised),
+        panel: token(LIGHT_TOKENS.surface_raised),
+        ink: token(LIGHT_TOKENS.content),
+        on_text: token(LIGHT_TOKENS.accent_on_solid),
+        text_hover: token(LIGHT_TOKENS.content_secondary),
+        warning: token(LIGHT_TOKENS.warning),
+        diff_add: token(LIGHT_TOKENS.success),
+        diff_remove: token(LIGHT_TOKENS.danger),
+        diff_add_bg: token(LIGHT_TOKENS.success_container),
+        diff_remove_bg: token(LIGHT_TOKENS.danger_container),
+        colors: [
+            (ColorRole::Primary, token(LIGHT_TOKENS.content)),
+            (ColorRole::Secondary, token(LIGHT_TOKENS.content_secondary)),
+            (ColorRole::Tertiary, token(LIGHT_TOKENS.content_tertiary)),
+            (ColorRole::Link, token(LIGHT_TOKENS.content)),
+            (ColorRole::Bubble, token(LIGHT_TOKENS.surface)),
+            (ColorRole::Surface, token(LIGHT_TOKENS.surface_subtle)),
+            (ColorRole::Raised, token(LIGHT_TOKENS.surface)),
+            (ColorRole::Border, token(LIGHT_TOKENS.stroke_subtle)),
+            (
+                ColorRole::InlineCode,
+                token(LIGHT_TOKENS.accent.with_alpha(31)),
+            ),
+        ],
+        syntax: LIGHT_SYNTAX,
+        transcript: transcript_inked(token(LIGHT_TOKENS.accent)),
+    };
+
+    /// The look for `scheme`.
+    #[must_use]
+    pub const fn of(scheme: Scheme) -> &'static Visual {
+        match scheme {
+            Scheme::Light => &Visual::LIGHT,
+            Scheme::Dark => &Visual::DARK,
+        }
+    }
+}
+
+/// The scheme the app paints with, set once at the app's theme seam
+/// ([`set_scheme`]): dark until an app says otherwise, so a surface that
+/// never sets it (the phones, today) keeps the dark look.
+static LIGHT_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Sets the scheme every view reading [`current`] paints with. The app
+/// resolves it from the person's [`ThemeChoice`] and the system appearance,
+/// then rebuilds its views.
+pub fn set_scheme(scheme: Scheme) {
+    LIGHT_ACTIVE.store(scheme == Scheme::Light, Ordering::Relaxed);
+}
+
+/// The scheme set by [`set_scheme`].
+#[must_use]
+pub fn scheme() -> Scheme {
+    if LIGHT_ACTIVE.load(Ordering::Relaxed) {
+        Scheme::Light
+    } else {
+        Scheme::Dark
+    }
+}
+
+/// The look for the scheme the app paints with.
+#[must_use]
+pub fn current() -> &'static Visual {
+    Visual::of(scheme())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +333,46 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    /// The dark look is the chat's established dark values; the light look
+    /// is Coder Light from the shared token table, at the same geometry.
+    #[test]
+    fn the_light_look_is_coder_light_and_the_dark_look_is_unchanged() {
+        assert_eq!(Visual::DARK.canvas, CANVAS);
+        assert_eq!(Visual::DARK.text, TEXT);
+        assert_eq!(Visual::DARK.colors, COLORS);
+        assert_eq!(Visual::DARK.syntax, SYNTAX);
+        assert_eq!(Visual::DARK.transcript, TRANSCRIPT);
+        assert_eq!(Visual::of(Scheme::Dark), &Visual::DARK);
+        assert_eq!(Visual::of(Scheme::Light), &Visual::LIGHT);
+
+        let tokens = oa_tokens::Palette::LIGHT;
+        assert_eq!(Visual::LIGHT.canvas, token(tokens.canvas));
+        assert_eq!(Visual::LIGHT.sidebar, token(tokens.surface_subtle));
+        assert_eq!(Visual::LIGHT.text, token(tokens.content));
+        assert_eq!(Visual::LIGHT.muted, token(tokens.content_secondary));
+        assert_eq!(Visual::LIGHT.border, token(tokens.stroke_subtle));
+        assert_eq!(Visual::LIGHT.accent, token(tokens.accent));
+        let light = Visual::LIGHT.transcript;
+        assert_eq!(
+            light.markdown.and_then(|m| m.inline_code).map(|c| c.color),
+            Some(token_bytes(tokens.accent))
+        );
+        assert_eq!(
+            Metrics {
+                markdown: TRANSCRIPT.markdown,
+                ..light
+            },
+            TRANSCRIPT,
+            "only the inline-code ink differs"
+        );
+        // Light text on the light field, dark on dark.
+        let luma = |c: Color| {
+            (u32::from(c.red) * 2126 + u32::from(c.green) * 7152 + u32::from(c.blue) * 722) / 10_000
+        };
+        assert!(luma(Visual::LIGHT.canvas) > 200 && luma(Visual::LIGHT.text) < 32);
+        assert!(luma(Visual::DARK.canvas) < 32 && luma(Visual::DARK.text) > 200);
+    }
 
     #[test]
     fn reference_inline_code_keeps_text_ranges_and_scales_its_inset_wash() {

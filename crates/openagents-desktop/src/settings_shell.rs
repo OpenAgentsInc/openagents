@@ -290,6 +290,7 @@ impl DesktopApp {
             state.settings.file = Some(file);
         }
         self.apply_text_size();
+        self.apply_theme();
         self.present();
     }
 
@@ -302,6 +303,29 @@ impl DesktopApp {
 
     /// Sizes the chat's text as the preferences say. The theme's sizes are
     /// read with each layout ([`rust_native_desktop::App::theme`]).
+    /// Paints with the scheme the person's theme choice resolves to against
+    /// the system's appearance (#11028): sets it at the theme seam
+    /// ([`openagents_chat_app::visual::set_scheme`]), repaints the chat in
+    /// it, and rebuilds the views. The window asks for the matching
+    /// appearance from [`rust_native_desktop::App::theme`]. A capture with
+    /// no Settings keeps the dark look.
+    pub(super) fn apply_theme(&mut self) {
+        use openagents_chat_app::visual;
+        let Some(state) = &self.navigation else {
+            return;
+        };
+        let scheme = state.settings.preferences.theme.resolve(self.system_scheme);
+        if scheme == visual::scheme() {
+            return;
+        }
+        visual::set_scheme(scheme);
+        let size = state.settings.preferences.text_size;
+        if let Some(chat) = &mut self.chat {
+            chat.apply_visual(size);
+        }
+        self.present();
+    }
+
     fn apply_text_size(&mut self) {
         if let (Some(state), Some(chat)) = (&self.navigation, &mut self.chat) {
             chat.set_text_size(state.settings.preferences.text_size);
@@ -423,6 +447,9 @@ impl DesktopApp {
             });
             if matches!(change, Change::TextSize(_)) {
                 self.apply_text_size();
+            }
+            if matches!(change, Change::Theme(_)) {
+                self.apply_theme();
             }
         }
         match action {

@@ -21,10 +21,20 @@ pub const SIDEBAR_DEFAULT: f32 = 256.0;
 /// (Cmd/Ctrl+K) still searches them.
 pub const SEARCH_MIN_CHATS: usize = 5;
 const SAMPLE_LIMIT: usize = 40;
-const SIDEBAR: Color = openagents_chat_app::visual::SIDEBAR;
-const SELECTED: Color = openagents_chat_app::visual::SELECTED;
-const TEXT: Color = openagents_chat_app::visual::TEXT;
-const MUTED: Color = openagents_chat_app::visual::MUTED;
+// The chrome's colors come from the theme seam
+// (`openagents_chat_app::visual::current`), Coder Light or the dark look.
+fn sidebar_color() -> Color {
+    openagents_chat_app::visual::current().sidebar
+}
+fn selected_color() -> Color {
+    openagents_chat_app::visual::current().selected
+}
+fn text_color() -> Color {
+    openagents_chat_app::visual::current().text
+}
+fn muted_color() -> Color {
+    openagents_chat_app::visual::current().muted
+}
 const CLEAR: Color = Color {
     red: 0,
     green: 0,
@@ -455,8 +465,16 @@ fn action(
         },
     );
     node.style = Style {
-        background: Some(if selected { SELECTED } else { SIDEBAR }),
-        foreground: Some(if selected { TEXT } else { MUTED }),
+        background: Some(if selected {
+            selected_color()
+        } else {
+            sidebar_color()
+        }),
+        foreground: Some(if selected {
+            text_color()
+        } else {
+            muted_color()
+        }),
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
         radius: Some(8),
@@ -465,7 +483,7 @@ fn action(
         button_detail: multiline.then_some(rust_native::style::ButtonDetail {
             text_size: 11,
             line_height: 16,
-            color: MUTED,
+            color: muted_color(),
             leading: true,
         }),
         button_padding: Some([8, 6]),
@@ -491,7 +509,7 @@ fn icon_button(key: &str, label: &str, action: Action, glyph: Glyph) -> Node<Int
         },
     );
     node.style.background = Some(CLEAR);
-    node.style.foreground = Some(MUTED);
+    node.style.foreground = Some(muted_color());
     node
 }
 
@@ -511,9 +529,12 @@ fn cluster_button(
     node.style.min_height = Some(24);
     node.style.radius = Some(6);
     node.style.glyph_size = Some(16);
-    node.style.hover_background = Some(SELECTED);
+    node.style.hover_background = Some(selected_color());
     if !enabled {
-        node.style.glyph_color = Some(Color { alpha: 89, ..MUTED });
+        node.style.glyph_color = Some(Color {
+            alpha: 89,
+            ..muted_color()
+        });
     }
     node
 }
@@ -638,17 +659,20 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
     profile.style.weight = Some(TextWeight::Medium);
     profile.style.button_padding = Some([8, 0]);
     profile.style.foreground = Some(if state.profile_open {
-        TEXT
+        text_color()
     } else {
-        Color { alpha: 204, ..TEXT }
+        Color {
+            alpha: 204,
+            ..text_color()
+        }
     });
-    profile.style.hover_foreground = Some(TEXT);
+    profile.style.hover_foreground = Some(text_color());
     profile.style.hover_background = Some(if state.profile_open {
-        SELECTED
+        selected_color()
     } else {
         Color {
             alpha: 22,
-            ..SELECTED
+            ..selected_color()
         }
     });
     profile.style.button_avatar = Some(rust_native::style::ButtonAvatar {
@@ -656,8 +680,8 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         size: 16,
         text_size: 10,
         weight: TextWeight::Semibold,
-        background: TEXT,
-        foreground: openagents_chat_app::visual::SIDEBAR,
+        background: text_color(),
+        foreground: sidebar_color(),
     });
     let mut settings = icon_button(
         "sidebar-settings",
@@ -667,31 +691,31 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
     );
     settings.style.radius = Some(8);
     settings.style.glyph_size = Some(15);
-    settings.style.hover_background = Some(SELECTED);
-    settings.style.hover_foreground = Some(TEXT);
+    settings.style.hover_background = Some(selected_color());
+    settings.style.hover_foreground = Some(text_color());
     if state.page == Page::Settings {
-        settings.style.background = Some(SELECTED);
-        settings.style.foreground = Some(TEXT);
+        settings.style.background = Some(selected_color());
+        settings.style.foreground = Some(text_color());
     }
     // The Verse page (#10071): the Grid lives there and nowhere else.
     let mut verse = icon_button("sidebar-verse", "Verse", Action::Grid, Glyph::Cloud);
     verse.style.radius = Some(8);
     verse.style.glyph_size = Some(15);
-    verse.style.hover_background = Some(SELECTED);
-    verse.style.hover_foreground = Some(TEXT);
+    verse.style.hover_background = Some(selected_color());
+    verse.style.hover_foreground = Some(text_color());
     if state.page == Page::Grid {
-        verse.style.background = Some(SELECTED);
-        verse.style.foreground = Some(TEXT);
+        verse.style.background = Some(selected_color());
+        verse.style.foreground = Some(text_color());
     }
     // The Map page (#10085), beside Verse.
     let mut map = icon_button("sidebar-map", "Map", Action::Map, Glyph::Map);
     map.style.radius = Some(8);
     map.style.glyph_size = Some(15);
-    map.style.hover_background = Some(SELECTED);
-    map.style.hover_foreground = Some(TEXT);
+    map.style.hover_background = Some(selected_color());
+    map.style.hover_foreground = Some(text_color());
     if state.page == Page::Map {
-        map.style.background = Some(SELECTED);
-        map.style.foreground = Some(TEXT);
+        map.style.background = Some(selected_color());
+        map.style.foreground = Some(text_color());
     }
     let mut spacer = stack(
         "sidebar-footer-spacer",
@@ -717,7 +741,7 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
         // quiet line, shown from the host's first answer at every start.
         let mut line = text("sidebar-watchers", line, TextRole::Status);
         line.style.text_size = Some(11);
-        line.style.foreground = Some(MUTED);
+        line.style.foreground = Some(muted_color());
         line.style.padding_points = Some([0, 8, 0, 8]);
         bottom.push(line);
     }
@@ -742,7 +766,7 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
             vec![header, body, bottom]
         },
     );
-    pane.style.background = Some(SIDEBAR);
+    pane.style.background = Some(sidebar_color());
     pane
 }
 
@@ -799,7 +823,7 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
     if let Some(note) = &model.engine_note {
         let mut line = text("sidebar-engine-note", note.clone(), TextRole::Status);
         line.style.text_size = Some(11);
-        line.style.foreground = Some(MUTED);
+        line.style.foreground = Some(muted_color());
         line.style.padding_points = Some([0, 8, 0, 8]);
         rows.push(line);
     }
@@ -874,10 +898,10 @@ fn engine_row(
         },
     );
     row.style = Style {
-        background: Some(SIDEBAR),
-        foreground: Some(MUTED),
-        hover_background: Some(SELECTED),
-        hover_foreground: Some(TEXT),
+        background: Some(sidebar_color()),
+        foreground: Some(muted_color()),
+        hover_background: Some(selected_color()),
+        hover_foreground: Some(text_color()),
         align: Some(TextAlign::Start),
         weight: Some(TextWeight::Normal),
         radius: Some(8),
@@ -907,7 +931,7 @@ fn engine_row(
             TextRole::Status,
         );
         share.style.text_size = Some(11);
-        share.style.foreground = Some(MUTED);
+        share.style.foreground = Some(muted_color());
         share.style.intrinsic_width = Some(true);
         share.style.padding_points = Some([5, 8, 0, 0]);
         children.push(share);
@@ -1106,7 +1130,10 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     heading.style.text_size = Some(12);
     heading.style.line_height = Some(18);
     heading.style.weight = Some(TextWeight::Medium);
-    heading.style.foreground = Some(Color { alpha: 217, ..TEXT });
+    heading.style.foreground = Some(Color {
+        alpha: 217,
+        ..text_color()
+    });
     let mut identity = vec![heading];
     if session
         && let Some(project) = state
@@ -1119,7 +1146,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         target.style.weight = Some(TextWeight::Normal);
         target.style.foreground = Some(Color {
             alpha: 128,
-            ..MUTED
+            ..muted_color()
         });
         identity.push(target);
     }
@@ -1136,7 +1163,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     header.style.gap_points = Some(0);
     header.style.min_height = Some(38);
     header.style.padding_points = Some([4, 6, 0, cluster_start]);
-    header.style.background = Some(SIDEBAR);
+    header.style.background = Some(sidebar_color());
     if state.live
         && session
         && let Element::Stack { children, .. } = &mut header.element
@@ -1152,7 +1179,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         menu.style.min_height = Some(28);
         menu.style.radius = Some(6);
         menu.style.glyph_size = Some(16);
-        menu.style.hover_background = Some(SELECTED);
+        menu.style.hover_background = Some(selected_color());
         children.push(menu);
     }
     // The engines sit in the sidebar (#10072); the conversation starts at
@@ -1222,10 +1249,10 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     content.style.background = Some(if matches!(state.page, Page::Grid) {
         Color {
             alpha: 0,
-            ..openagents_chat_app::visual::CANVAS
+            ..openagents_chat_app::visual::current().canvas
         }
     } else {
-        openagents_chat_app::visual::CANVAS
+        openagents_chat_app::visual::current().canvas
     });
     content.style.radius = Some(10);
     stack(
@@ -1454,7 +1481,7 @@ mod tests {
         state.activate(Action::Grid);
         let view = root(&state, &model, 0);
         let verse = find(&view, "sidebar-verse").unwrap();
-        assert_eq!(verse.style.background, Some(SELECTED));
+        assert_eq!(verse.style.background, Some(selected_color()));
         let Some(Node {
             element: Element::Text { value, .. },
             ..
@@ -1466,7 +1493,7 @@ mod tests {
         state.activate(Action::Map);
         let view = root(&state, &model, 0);
         let map = find(&view, "sidebar-map").unwrap();
-        assert_eq!(map.style.background, Some(SELECTED));
+        assert_eq!(map.style.background, Some(selected_color()));
         let Some(Node {
             element: Element::Text { value, .. },
             ..

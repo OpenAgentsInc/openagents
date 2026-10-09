@@ -9633,6 +9633,9 @@ dependencies = [
 [[package]]
 name = "oa-tokens"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "oak"
@@ -10187,6 +10190,7 @@ dependencies = [
  "image",
  "nostr",
  "nostr-transport",
+ "oa-tokens",
  "openagents-chat",
  "openagents-connect",
  "playtest",

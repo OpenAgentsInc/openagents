@@ -1297,6 +1297,28 @@ impl Panel {
             before: None,
         }))
     }
+    /// Repaints the chat in the scheme the app now paints with
+    /// ([`openagents_chat_app::visual::current`], #11028): the transcript's
+    /// palette and syntax colors, the open fields' ink, the change pane's
+    /// highlighter, and the metrics at `size` (they carry the inline-code
+    /// ink). The views read the scheme when they are next built.
+    pub fn apply_visual(&mut self, size: openagents_chat_app::preferences::TextSize) {
+        let visual = openagents_chat_app::visual::current();
+        self.transcript.set_palette(&visual.colors);
+        self.transcript.set_syntax_palette(visual.syntax);
+        let fields = self
+            .fields
+            .values_mut()
+            .chain([&mut self.search, &mut self.command_query])
+            .chain(self.rename.as_mut().map(|(_, field)| field));
+        for field in fields {
+            field.set_colors(visual.text, visual.faint, visual.accent);
+        }
+        self.changes_highlighter = None;
+        self.set_text_size(size);
+        self.rows_dirty = true;
+    }
+
     /// Draws the transcript's text at `size` (Settings, #10021), laying
     /// the rows out again at once.
     pub fn set_text_size(&mut self, size: openagents_chat_app::preferences::TextSize) {
@@ -2961,7 +2983,7 @@ impl Panel {
                     command_panel::KEYCAP_LINE_HEIGHT,
                 ),
                 command_panel::KEYCAP_FILL,
-                openagents_chat_app::visual::MUTED,
+                openagents_chat_app::visual::current().muted,
             );
             return true;
         }
@@ -2971,7 +2993,7 @@ impl Panel {
                 rect,
                 Glyph::Search,
                 rust_native_desktop::theme::IconSet::Solar,
-                openagents_chat_app::visual::MUTED,
+                openagents_chat_app::visual::current().muted,
             );
             return true;
         }
@@ -3139,12 +3161,12 @@ impl Panel {
                 pill: false,
             });
         }
-        button.style.background = Some(Color::rgb(32, 32, 32));
-        button.style.foreground = Some(openagents_chat_app::visual::TEXT);
+        button.style.background = Some(openagents_chat_app::visual::current().raised);
+        button.style.foreground = Some(openagents_chat_app::visual::current().text);
         button.style.weight = Some(TextWeight::Normal);
         button.style.glyph_size = Some(13);
         button.style.glyph_gap = Some(6);
-        button.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
+        button.style.glyph_color = Some(openagents_chat_app::visual::current().muted);
         button.style.text_size = Some(13);
         button.style.line_height = Some(18);
         button.style.button_padding = Some([10, 5]);
@@ -3152,9 +3174,9 @@ impl Panel {
         let mut pill = stack("chat-latest-pill", Axis::Vertical, vec![button]);
         pill.style.gap = Some(Space::None);
         pill.style.radius = Some(15);
-        pill.style.border = Some(openagents_chat_app::visual::BORDER);
+        pill.style.border = Some(openagents_chat_app::visual::current().border);
         pill.style.padding_points = Some([0, 2, 0, 0]);
-        pill.style.background = Some(Color::rgb(32, 32, 32));
+        pill.style.background = Some(openagents_chat_app::visual::current().raised);
         Some(pill)
     }
     /// Opens **Give feedback** on the selection the context menu offered:
@@ -3270,7 +3292,7 @@ impl Panel {
             .map(|dialog| (dialog.sent, dialog.status.as_deref()))
     }
     fn feedback_panel(&self) -> Node<Intent> {
-        use openagents_chat_app::visual::{MUTED, TEXT};
+        let visual = openagents_chat_app::visual::current();
         let (_, field) = self.rename.as_ref().expect("an open feedback dialog");
         let dialog = self.feedback.as_ref().expect("an open feedback dialog");
         let input = Node {
@@ -3305,12 +3327,12 @@ impl Panel {
         let mut quote = text("chat-feedback-quote", shown, TextRole::Body);
         quote.style.text_size = Some(13);
         quote.style.line_height = Some(20);
-        quote.style.foreground = Some(MUTED);
+        quote.style.foreground = Some(visual.muted);
         let mut quote_frame = stack("chat-feedback-quote-frame", Axis::Vertical, vec![quote]);
         quote_frame.style.padding_points = Some([4, 0, 4, 12]);
         quote_frame.style.border = Some(Color {
             alpha: 20,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         let mut quote_margin = stack(
             "chat-feedback-quote-margin",
@@ -3323,11 +3345,11 @@ impl Panel {
         field_frame.style.radius = Some(8);
         field_frame.style.background = Some(Color {
             alpha: 10,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         field_frame.style.border = Some(Color {
             alpha: 20,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         let mut field_margin = stack(
             "chat-rename-field-margin",
@@ -3355,23 +3377,26 @@ impl Panel {
             button.style.radius = Some(8);
             button.style.intrinsic_width = Some(true);
         }
-        cancel.style.background = Some(Color { alpha: 0, ..TEXT });
-        cancel.style.foreground = Some(MUTED);
+        cancel.style.background = Some(Color {
+            alpha: 0,
+            ..visual.text
+        });
+        cancel.style.foreground = Some(visual.muted);
         cancel.style.hover_background = Some(Color {
             alpha: 15,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
-        cancel.style.hover_foreground = Some(TEXT);
-        send.style.background = Some(TEXT);
-        send.style.foreground = Some(Color::rgb(14, 14, 14));
+        cancel.style.hover_foreground = Some(visual.text);
+        send.style.background = Some(visual.text);
+        send.style.foreground = Some(visual.on_text);
         send.style.weight = Some(TextWeight::Medium);
-        send.style.hover_background = Some(Color::rgb(206, 206, 206));
+        send.style.hover_background = Some(visual.text_hover);
         let mut status = text(
             "chat-rename-space",
             dialog.status.clone().unwrap_or_default(),
             TextRole::Status,
         );
-        status.style.foreground = Some(MUTED);
+        status.style.foreground = Some(visual.muted);
         let mut buttons = stack(
             "chat-rename-buttons",
             Axis::Horizontal,
@@ -3384,10 +3409,10 @@ impl Panel {
             Axis::Vertical,
             vec![title, quote_margin, field_margin, buttons],
         );
-        panel.style.background = Some(Color::rgb(16, 16, 16));
+        panel.style.background = Some(visual.panel);
         panel.style.border = Some(Color {
             alpha: 26,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         panel.style.radius = Some(16);
         panel.style.padding_points = Some([20; 4]);
@@ -3395,7 +3420,7 @@ impl Panel {
         panel
     }
     fn rename_panel(&self) -> Node<Intent> {
-        use openagents_chat_app::visual::{MUTED, TEXT};
+        let visual = openagents_chat_app::visual::current();
         let (title, field) = self.rename.as_ref().expect("an open rename dialog");
         let input = Node {
             key: "chat-rename".into(),
@@ -3425,11 +3450,11 @@ impl Panel {
         field_frame.style.radius = Some(8);
         field_frame.style.background = Some(Color {
             alpha: 10,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         field_frame.style.border = Some(Color {
             alpha: 20,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         let mut field_margin = stack(
             "chat-rename-field-margin",
@@ -3452,17 +3477,20 @@ impl Panel {
             button.style.radius = Some(8);
             button.style.intrinsic_width = Some(true);
         }
-        cancel.style.background = Some(Color { alpha: 0, ..TEXT });
-        cancel.style.foreground = Some(MUTED);
+        cancel.style.background = Some(Color {
+            alpha: 0,
+            ..visual.text
+        });
+        cancel.style.foreground = Some(visual.muted);
         cancel.style.hover_background = Some(Color {
             alpha: 15,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
-        cancel.style.hover_foreground = Some(TEXT);
-        save.style.background = Some(TEXT);
-        save.style.foreground = Some(Color::rgb(14, 14, 14));
+        cancel.style.hover_foreground = Some(visual.text);
+        save.style.background = Some(visual.text);
+        save.style.foreground = Some(visual.on_text);
         save.style.weight = Some(TextWeight::Medium);
-        save.style.hover_background = Some(Color::rgb(206, 206, 206));
+        save.style.hover_background = Some(visual.text_hover);
         let mut buttons = stack(
             "chat-rename-buttons",
             Axis::Horizontal,
@@ -3481,10 +3509,10 @@ impl Panel {
             Axis::Vertical,
             vec![title, field_margin, buttons],
         );
-        panel.style.background = Some(Color::rgb(16, 16, 16));
+        panel.style.background = Some(visual.panel);
         panel.style.border = Some(Color {
             alpha: 26,
-            ..Color::rgb(255, 255, 255)
+            ..visual.ink
         });
         panel.style.radius = Some(16);
         panel.style.padding_points = Some([20; 4]);
@@ -4018,9 +4046,9 @@ impl Panel {
                 vec![composer, toolbar],
             )
         };
-        card.style.background = Some(openagents_chat_app::visual::COMPOSER);
+        card.style.background = Some(openagents_chat_app::visual::current().composer);
         card.style.radius = Some(26);
-        card.style.border = Some(openagents_chat_app::visual::COMPOSER_BORDER);
+        card.style.border = Some(openagents_chat_app::visual::current().composer_border);
         card.style.gap = Some(if compact { Space::Xs } else { Space::None });
         content.push(card);
         let mut footer = stack("chat-footer", Axis::Vertical, content);
@@ -4114,7 +4142,7 @@ impl Panel {
                 TextRole::Status,
             );
             if note.tone == openagents_chat_app::changes::Tone::Warning {
-                line.style.foreground = Some(Color::rgb(229, 192, 123));
+                line.style.foreground = Some(openagents_chat_app::visual::current().warning);
             }
             lines.push(line);
         }
@@ -4164,7 +4192,7 @@ impl Panel {
             Axis::Vertical,
             self.changes_lines("changes"),
         );
-        card.style.background = Some(openagents_chat_app::visual::SELECTED);
+        card.style.background = Some(openagents_chat_app::visual::current().selected);
         card.style.padding_top = Some(Space::Sm);
         card.style.padding_bottom = Some(Space::Sm);
         card.style.padding_start = Some(Space::Sm);
@@ -4195,7 +4223,7 @@ impl Panel {
             },
         });
         let mut pane = stack("changes-pane", Axis::Vertical, children);
-        pane.style.background = Some(openagents_chat_app::visual::CANVAS);
+        pane.style.background = Some(openagents_chat_app::visual::current().canvas);
         pane.style.fill_height = Some(true);
         pane.style.min_height = Some(200);
         pane
@@ -4214,7 +4242,7 @@ impl Panel {
         }
         if self.changes_highlighter.is_none() {
             self.changes_highlighter = Some(rust_native::syntax::Highlighter::with_palette(
-                openagents_chat_app::visual::SYNTAX,
+                openagents_chat_app::visual::current().syntax,
             ));
         }
         let highlighter = self.changes_highlighter.take().expect("highlighter");
@@ -4251,11 +4279,12 @@ impl Panel {
             mono: true,
         };
         let line_px = CHANGES_LINE * scale;
+        let visual = openagents_chat_app::visual::current();
         for (index, (kind, text, spans)) in visible.iter().enumerate() {
             let top = rect.y + index as f32 * line_px;
             let gutter = match kind {
-                openagents_chat_app::changes::Kind::Add => Some(Color::rgb(28, 48, 34)),
-                openagents_chat_app::changes::Kind::Remove => Some(Color::rgb(58, 32, 36)),
+                openagents_chat_app::changes::Kind::Add => Some(visual.diff_add_bg),
+                openagents_chat_app::changes::Kind::Remove => Some(visual.diff_remove_bg),
                 _ => None,
             };
             if let Some(color) = gutter {
@@ -4271,12 +4300,12 @@ impl Panel {
                 );
             }
             let color = match kind {
-                openagents_chat_app::changes::Kind::Add => Color::rgb(163, 190, 140),
-                openagents_chat_app::changes::Kind::Remove => Color::rgb(191, 120, 120),
-                openagents_chat_app::changes::Kind::File => openagents_chat_app::visual::TEXT,
+                openagents_chat_app::changes::Kind::Add => visual.diff_add,
+                openagents_chat_app::changes::Kind::Remove => visual.diff_remove,
+                openagents_chat_app::changes::Kind::File => visual.text,
                 openagents_chat_app::changes::Kind::Hunk
-                | openagents_chat_app::changes::Kind::Meta => openagents_chat_app::visual::MUTED,
-                openagents_chat_app::changes::Kind::Context => openagents_chat_app::visual::TEXT,
+                | openagents_chat_app::changes::Kind::Meta => visual.muted,
+                openagents_chat_app::changes::Kind::Context => visual.text,
             };
             self.fonts.draw_highlighted_run(
                 frame,
@@ -4322,10 +4351,10 @@ fn chat_transcript() -> Transcript {
     let mut transcript = Transcript::default();
     transcript.set_font_family(rust_native::layout::display::FontFamily::PaperMono);
     transcript
-        .set_metrics(openagents_chat_app::visual::TRANSCRIPT)
+        .set_metrics(openagents_chat_app::visual::current().transcript)
         .expect("valid chat metrics");
-    transcript.set_palette(&openagents_chat_app::visual::COLORS);
-    transcript.set_syntax_palette(openagents_chat_app::visual::SYNTAX);
+    transcript.set_palette(&openagents_chat_app::visual::current().colors);
+    transcript.set_syntax_palette(openagents_chat_app::visual::current().syntax);
     transcript
 }
 
@@ -4365,9 +4394,9 @@ fn chat_field(placeholder: &str) -> Field {
         .set_metrics(composer_metrics(true))
         .expect("valid composer metrics");
     field.set_colors(
-        openagents_chat_app::visual::TEXT,
-        openagents_chat_app::visual::FAINT,
-        openagents_chat_app::visual::ACCENT,
+        openagents_chat_app::visual::current().text,
+        openagents_chat_app::visual::current().faint,
+        openagents_chat_app::visual::current().accent,
     );
     field
 }
@@ -4409,8 +4438,8 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
     Node {
         key: key.into(),
         style: Style {
-            background: Some(openagents_chat_app::visual::SELECTED),
-            foreground: Some(openagents_chat_app::visual::TEXT),
+            background: Some(openagents_chat_app::visual::current().selected),
+            foreground: Some(openagents_chat_app::visual::current().text),
             weight: Some(TextWeight::Normal),
             ..Style::default()
         },
@@ -4426,9 +4455,9 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
 /// A follow-up suggestion: a pill as wide as its words, which sends them.
 fn followup_chip(key: &str, label: &str, enabled: bool) -> Node<Intent> {
     let mut node = button(key, label, Action::Card { key: key.into() }, enabled);
-    node.style.background = Some(openagents_chat_app::visual::SELECTED);
-    node.style.foreground = Some(openagents_chat_app::visual::TEXT);
-    node.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
+    node.style.background = Some(openagents_chat_app::visual::current().selected);
+    node.style.foreground = Some(openagents_chat_app::visual::current().text);
+    node.style.glyph_color = Some(openagents_chat_app::visual::current().muted);
     node.style.text_size = Some(13);
     node.style.button_padding = Some([12, 6]);
     node.style.glyph_size = Some(13);
@@ -4457,7 +4486,7 @@ fn icon_button(
         _ => 14,
     });
     node.style.background = Some(if primary {
-        openagents_chat_app::visual::TEXT
+        openagents_chat_app::visual::current().text
     } else {
         Color {
             alpha: 0,
@@ -4465,9 +4494,9 @@ fn icon_button(
         }
     });
     node.style.foreground = Some(if primary {
-        openagents_chat_app::visual::SIDEBAR
+        openagents_chat_app::visual::current().sidebar
     } else {
-        openagents_chat_app::visual::MUTED
+        openagents_chat_app::visual::current().muted
     });
     if let Element::Button { icon, .. } = &mut node.element {
         *icon = Some(Icon {

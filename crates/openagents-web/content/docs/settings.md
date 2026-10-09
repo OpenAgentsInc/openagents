@@ -60,7 +60,7 @@ reply only offers Coder until you fix or remove it.
 
 | Page | What's there |
 | --- | --- |
-| Appearance | **Reduce motion**, which keeps the Verse's camera still. The app is dark only. |
+| Appearance | **Theme**: System (as the Mac is set), Light, or Dark, which is the default. **Reduce motion**, which keeps the Verse's camera still. |
 | Text size | Smaller, default, larger, or largest (90, 100, 115, or 130 percent). |
 | Keyboard shortcuts | Every shortcut. They can't be changed yet. |
 | Notifications | **Notify me about Coder**: when Coder asks you something, finishes, or fails while OpenAgents isn't in front. |

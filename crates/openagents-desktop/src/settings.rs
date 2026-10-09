@@ -17,7 +17,7 @@
 
 use crate::chrome::Update;
 use crate::model::{Intent, Model};
-use openagents_chat_app::preferences::{Change, Preferences, TextSize};
+use openagents_chat_app::preferences::{Change, Preferences, TextSize, ThemeChoice};
 use openagents_chat_app::visual::{MUTED, SELECTED, SIDEBAR, TEXT};
 use rust_native::style::{Space, Style, TextAlign, TextWeight};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
@@ -112,6 +112,10 @@ pub enum Action {
     TextSize {
         size: TextSize,
     },
+    /// Coder Light, Coder Noir, or the system's appearance (#11028).
+    Theme {
+        choice: ThemeChoice,
+    },
     ReduceMotion {
         on: bool,
     },
@@ -169,6 +173,7 @@ impl Action {
     pub fn change(&self) -> Option<Change> {
         match self {
             Action::TextSize { size } => Some(Change::TextSize(*size)),
+            Action::Theme { choice } => Some(Change::Theme(*choice)),
             Action::ReduceMotion { on } => Some(Change::ReduceMotion(*on)),
             Action::Notifications { on } => Some(Change::Notifications(*on)),
             Action::Sounds { on } => Some(Change::Sounds(*on)),
@@ -413,11 +418,30 @@ fn toggle(key: &str, label: &str, on: bool, action: Action) -> Node<Intent> {
 
 fn appearance(settings: &Settings) -> Vec<Node<Intent>> {
     let on = settings.preferences.reduce_motion;
+    let current = settings.preferences.theme;
+    let themes = ThemeChoice::ALL
+        .into_iter()
+        .map(|choice| {
+            chip(button(
+                &format!("settings-theme-{}", choice.as_str()),
+                choice.label(),
+                Action::Theme { choice },
+                (choice == current).then_some(Glyph::Check),
+                choice == current,
+                true,
+            ))
+        })
+        .collect();
     vec![
         title("settings-theme-title", "Theme"),
+        stack("settings-theme-choices", Axis::Wrap, Space::Sm, themes),
         text(
             "settings-theme-line",
-            "Dark. OpenAgents always uses its dark theme, whatever this computer is set to.",
+            match current {
+                ThemeChoice::System => "Light or dark, as this computer is set.",
+                ThemeChoice::Light => "Coder Light, whatever this computer is set to.",
+                ThemeChoice::Dark => "Dark, whatever this computer is set to.",
+            },
             TextRole::Status,
         ),
         title("settings-motion-title", "Motion"),

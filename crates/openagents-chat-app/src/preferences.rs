@@ -1,5 +1,6 @@
 //! The reading preferences a person sets in an OpenAgents app's Settings:
-//! text size, reduced motion, notifications (#10021), and sounds (#10474). Shared by the
+//! text size, reduced motion, notifications (#10021), sounds (#10474), and the
+//! theme (#11028). Shared by the
 //! desktop and the phones, so a size means the same drawn text on both.
 //!
 //! They live in the one settings file `openagents settings` and Coder read
@@ -9,15 +10,17 @@
 //! ```json
 //! {
 //!   "schema": "openagents.settings.v1",
-//!   "app": { "text_size": "larger", "reduce_motion": true, "notifications": false, "sounds": true }
+//!   "app": { "text_size": "larger", "reduce_motion": true, "notifications": false, "sounds": true, "theme": "system" }
 //! }
 //! ```
 //!
 //! A missing file, section, or field means the default. A section that does
 //! not parse (an unknown size, say) is read as the defaults: these are
-//! presentation choices, and none of them opens anything up. There is no
-//! light theme: the apps are dark only.
+//! presentation choices, and none of them opens anything up. The theme is
+//! Coder Light or Coder Noir from the shared token table (`oa-tokens`);
+//! `system` follows the computer's or phone's appearance.
 
+pub use oa_tokens::ThemeChoice;
 use rust_native::layout::{MarkdownMetrics, Metrics};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -77,12 +80,14 @@ impl TextSize {
         ((u32::from(value) * u32::from(self.percent()) + 50) / 100) as u16
     }
 
-    /// The chat transcript's metrics ([`crate::visual::TRANSCRIPT`]) at this
-    /// size: text, line heights, and the gaps and padding around text grow
-    /// together; the reading width and corner radii stay.
+    /// The chat transcript's metrics (the current scheme's
+    /// [`crate::visual::Visual::transcript`], [`crate::visual::TRANSCRIPT`]
+    /// in the dark scheme) at this size: text, line heights, and the gaps
+    /// and padding around text grow together; the reading width and corner
+    /// radii stay.
     #[must_use]
     pub fn transcript(self) -> Metrics {
-        let base = crate::visual::TRANSCRIPT;
+        let base = crate::visual::current().transcript;
         let s = |value| self.scale_u16(value);
         Metrics {
             body_size: s(base.body_size),
@@ -117,6 +122,8 @@ pub struct Preferences {
     /// Play a short sound ([`crate::cues`]) when Coder finishes, asks for
     /// the person, or fails. Off mutes every cue.
     pub sounds: bool,
+    /// Coder Light, Coder Noir, or whichever the system's appearance is.
+    pub theme: ThemeChoice,
 }
 
 impl Default for Preferences {
@@ -126,6 +133,10 @@ impl Default for Preferences {
             reduce_motion: false,
             notifications: true,
             sounds: true,
+            // Dark until every desktop and phone surface paints from the
+            // theme seam (`visual::current`); then `ThemeChoice::System`
+            // (#11028).
+            theme: ThemeChoice::Dark,
         }
     }
 }
@@ -137,6 +148,7 @@ pub enum Change {
     ReduceMotion(bool),
     Notifications(bool),
     Sounds(bool),
+    Theme(ThemeChoice),
 }
 
 impl Preferences {
@@ -148,6 +160,7 @@ impl Preferences {
             Change::ReduceMotion(on) => self.reduce_motion = on,
             Change::Notifications(on) => self.notifications = on,
             Change::Sounds(on) => self.sounds = on,
+            Change::Theme(choice) => self.theme = choice,
         }
         *self != before
     }
@@ -216,6 +229,8 @@ mod tests {
         assert!(!preferences.apply(Change::ReduceMotion(true)));
         assert!(preferences.apply(Change::Sounds(false)));
         assert!(!preferences.apply(Change::Sounds(false)));
+        assert!(preferences.apply(Change::Theme(ThemeChoice::System)));
+        assert!(!preferences.apply(Change::Theme(ThemeChoice::System)));
         let settings =
             json!({ "schema": "openagents.settings.v1", SECTION: preferences.section() });
         assert_eq!(Preferences::from_settings(&settings), preferences);
@@ -225,7 +240,8 @@ mod tests {
                 "text_size": "largest",
                 "reduce_motion": true,
                 "notifications": false,
-                "sounds": false
+                "sounds": false,
+                "theme": "system"
             })
         );
     }

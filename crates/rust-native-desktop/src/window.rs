@@ -29,6 +29,7 @@ use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
 use crate::input::{NativeInput, SurfaceInput, TextInput};
 use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_overlay};
 use crate::text::Fonts;
+use crate::theme::Appearance;
 use crate::timing::{FrameTiming, Phase, Timings};
 use crate::{App, Waker, paint};
 use rust_native::Activation;
@@ -250,6 +251,8 @@ fn run_shell<A: App>(
         drops: None,
         #[cfg(target_os = "linux")]
         wake_proxy: None,
+        system_appearance: None,
+        window_appearance: None,
     };
     event_loop
         .run_app(&mut shell)
@@ -488,6 +491,10 @@ struct Shell<A: App> {
     /// Wakes the event loop from another thread.
     #[cfg(target_os = "linux")]
     wake_proxy: Option<EventLoopProxy<()>>,
+    /// The system's appearance as last handed to the app.
+    system_appearance: Option<Appearance>,
+    /// The appearance the window last asked the system for.
+    window_appearance: Option<Appearance>,
 }
 
 impl<A: App> Shell<A> {
@@ -522,6 +529,34 @@ impl<A: App> Shell<A> {
                 gpu.config.height as f32 / scale,
             )
         })
+    }
+
+    /// Hands the system's appearance to the app when it changed, lays the
+    /// views out again, and asks the window for the appearance the app's
+    /// theme now has.
+    fn follow_system_appearance(&mut self, event_loop: &ActiveEventLoop) {
+        let system = event_loop.system_theme().map(|theme| match theme {
+            winit::window::Theme::Light => Appearance::Light,
+            winit::window::Theme::Dark => Appearance::Dark,
+        });
+        if system != self.system_appearance || self.window.is_none() {
+            self.system_appearance = system;
+            self.app.system_appearance(system);
+            self.scene = None;
+        }
+        self.match_window_appearance();
+    }
+
+    /// Asks the window for the app theme's appearance when it changed.
+    fn match_window_appearance(&mut self) {
+        let wanted = self.app.theme().appearance;
+        if self.window_appearance != Some(wanted)
+            && let Some(window) = &self.window
+        {
+            window.set_theme(Some(winit_theme(wanted)));
+            self.window_appearance = Some(wanted);
+            self.scene = None;
+        }
     }
 
     /// Paints the views again on the next frame.
@@ -669,6 +704,9 @@ impl<A: App> Shell<A> {
         });
         if self.scene.is_none() || self.laid_out.as_ref() != Some(&key) || resized_surface {
             let started = Instant::now();
+            // A person's theme choice changes the theme without a system
+            // event: keep the title bar and controls in step.
+            self.match_window_appearance();
             let theme = self.app.theme();
             let app = &self.app;
             let mut scene = lay_out_with_overlay(
@@ -1294,10 +1332,13 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 backdrop.start(waker);
             }
         }
+        // The app resolves its scheme from the system's appearance first,
+        // and the window asks for the one it chose.
+        self.follow_system_appearance(event_loop);
+        self.window_appearance = Some(self.app.theme().appearance);
         let mut attributes = Window::default_attributes()
             .with_title(self.app.title())
-            // Dark only, whatever the system's appearance (`theme::APPEARANCE`).
-            .with_theme(Some(winit::window::Theme::Dark))
+            .with_theme(Some(winit_theme(self.app.theme().appearance)))
             .with_inner_size(LogicalSize::new(self.options.size.0, self.options.size.1))
             // Shown once the accessibility adapter is attached.
             .with_visible(false)
@@ -1513,7 +1554,18 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.set_visible(!occluded);
                 self.redraw();
             }
-            WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true) => self.redraw(),
+            WindowEvent::ThemeChanged(_) => {
+                self.follow_system_appearance(event_loop);
+                self.redraw();
+            }
+            WindowEvent::Focused(true) => {
+                // A system appearance change while another app was in front:
+                // on a Mac, a window with its own appearance hears no
+                // `ThemeChanged`, so coming to the front reads it again.
+                self.follow_system_appearance(event_loop);
+                self.redraw();
+            }
+            WindowEvent::ScaleFactorChanged { .. } => self.redraw(),
             WindowEvent::Focused(false) => {
                 self.app.text_input(TextInput::FocusLost, Instant::now());
                 self.resizing = false;
@@ -1800,6 +1852,14 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.request_frame();
             }
         }
+    }
+}
+
+/// The window appearance winit asks the system for.
+fn winit_theme(appearance: Appearance) -> winit::window::Theme {
+    match appearance {
+        Appearance::Light => winit::window::Theme::Light,
+        Appearance::Dark => winit::window::Theme::Dark,
     }
 }
 

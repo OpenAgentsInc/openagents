@@ -4,11 +4,13 @@
 //! Rust Native's core has no palette; the application supplies one. A
 //! node's own `style.foreground` and `style.background` override these.
 //!
-//! **Dark only.** There is one theme and it is dark. Nothing here, and
-//! nothing that paints with it, reads the system's light or dark
-//! appearance: a Mac or a Linux desktop set to light shows the same app,
-//! and the native window asks for the dark appearance for its title bar
-//! and controls ([`APPEARANCE`]). Light mode is deferred with no issue.
+//! **Light or dark, chosen by the app.** The defaults are dark
+//! ([`APPEARANCE`]). An app may paint Coder Light instead (#11028): the
+//! window reads the system's appearance in one place and hands it to
+//! [`crate::App::system_appearance`], the app resolves its scheme there
+//! (the person's choice, or the system's), and the window asks for the
+//! returned [`Theme::appearance`] for its title bar and controls. Nothing
+//! that lays out or paints reads the system's appearance itself.
 //!
 //! The [`Theme`] is the single source for the token groups:
 //!
@@ -45,16 +47,17 @@ pub mod ladder {
     pub const RAISED: Color = Color::rgb(26, 26, 26);
 }
 
-/// The app's appearance. There is one.
+/// The app's appearance: the scheme it paints and the one its window asks
+/// the system for (title bar, traffic lights, scroll bars).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Appearance {
     #[default]
     Dark,
+    Light,
 }
 
-/// The appearance the native window asks the system for, whatever the
-/// system's own setting: its title bar, traffic lights, and scroll bars
-/// stay dark on a light desktop.
+/// The default appearance: a theme that does not choose is dark, whatever
+/// the system's own setting.
 pub const APPEARANCE: Appearance = Appearance::Dark;
 
 /// The bundled vector control artwork.
@@ -364,7 +367,8 @@ pub mod motion {
 /// The colors and sizes a view is painted with, in points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
-    /// Always [`Appearance::Dark`].
+    /// The scheme the colors below are, and the one the window asks the
+    /// system for. [`APPEARANCE`] (dark) unless the app chooses light.
     pub appearance: Appearance,
     pub icons: IconSet,
     /// The bundled font pair used by semantic controls.
@@ -613,10 +617,11 @@ mod tests {
         assert_eq!(hex(ladder::RAISED), (0x1a, 0x1a, 0x1a));
     }
 
-    /// Dark only: every theme is dark, the window asks for dark, and no
-    /// source that paints or opens a window reads the system's appearance.
+    /// The defaults are dark; the window asks for the app's appearance and
+    /// reads the system's in one place only, for the app's seam; nothing
+    /// that lays out or paints reads it.
     #[test]
-    fn the_theme_is_dark_whatever_the_system_says() {
+    fn the_default_theme_is_dark_and_only_the_window_reads_the_system() {
         assert_eq!(APPEARANCE, Appearance::Dark);
         assert_eq!(Theme::default().appearance, Appearance::Dark);
         assert_eq!(Theme::openagents().appearance, Appearance::Dark);
@@ -629,11 +634,14 @@ mod tests {
         }
         let window = include_str!("window.rs");
         assert!(
-            window.contains(".with_theme(Some(winit::window::Theme::Dark))"),
-            "the window asks for the dark appearance"
+            window.contains(".with_theme(Some(winit_theme(self.app.theme().appearance)))"),
+            "the window asks for the app's appearance"
+        );
+        assert!(
+            window.contains("event_loop.system_theme()"),
+            "the window reads the system's appearance for the app"
         );
         let sources = [
-            window,
             include_str!("wayland.rs"),
             include_str!("layout.rs"),
             include_str!("paint.rs"),

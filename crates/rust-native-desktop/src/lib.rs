@@ -120,6 +120,13 @@ pub trait App {
         Theme::default()
     }
 
+    /// The system's light or dark appearance, when the window opens and
+    /// whenever it changes (`None` when the platform does not say). An app
+    /// whose theme follows the system resolves its scheme here and rebuilds
+    /// its view; the window then asks for the [`Theme::appearance`] it
+    /// returns. The default ignores it and stays dark.
+    fn system_appearance(&mut self, _appearance: Option<theme::Appearance>) {}
+
     /// Layout of the window's semantic root. The default is a centered column.
     fn window_layout(&self) -> WindowLayout {
         WindowLayout::Column
