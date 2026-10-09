@@ -3388,6 +3388,7 @@ dependencies = [
  "microcoder-loop",
  "model-access",
  "nostr",
+ "openagents-login",
  "openrouter",
  "ratatui",
  "reqwest 0.12.28",
