@@ -282,7 +282,7 @@ pub async fn run_command(
         events: Some(&sink),
     };
     let ran = checkout.run(script, Duration::from_secs(120)).await;
-    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out}))
+    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out,"seconds":ran.seconds}))
 }
 
 /// `word` as a shell word, quoted only when it needs quoting.
@@ -432,10 +432,19 @@ async fn wait_job(
 ) -> Result<supervise::Stopped, String> {
     let live = job.start(supervise::Input::Null)?;
     let mut captured = Vec::new();
+    let started = Instant::now();
+    let mut last_output = started;
+    let mut last_tick = None;
     while !live.finished() {
         if let Some((sink, script)) = progress {
             let delivery = live.take();
-            if !delivery.is_empty() {
+            let changed = !delivery.is_empty();
+            if changed {
+                last_output = Instant::now();
+            }
+            let tick = started.elapsed().as_secs();
+            if changed || last_tick != Some(tick) {
+                last_tick = Some(tick);
                 captured.extend_from_slice(
                     &delivery.bytes[..delivery
                         .bytes
@@ -445,7 +454,7 @@ async fn wait_job(
                 sink.emit(RuntimeEvent::Tool {
                     name: "Run".into(),
                     input: json!({"command":script}),
-                    output: json!({"output":redact_stream(&captured, keys)}),
+                    output: json!({"output":redact_stream(&captured, keys),"elapsed_seconds":tick,"silent_seconds":last_output.elapsed().as_secs(),"activity":script.lines().next().unwrap_or("Executing command").trim_start_matches("# ")}),
                     running: true,
                 });
             }
@@ -1651,6 +1660,39 @@ fn bounded(text: &str, bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn silent_run_reports_elapsed_and_silence() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut updates = Vec::new();
+        let result = run_command(
+            "# Waiting for fixture\nsleep 1.2",
+            dir.path(),
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| {
+                if let RuntimeEvent::Tool {
+                    output,
+                    running: true,
+                    ..
+                } = event
+                {
+                    updates.push(output);
+                }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            updates
+                .iter()
+                .any(|output| output["elapsed_seconds"] == 1 && output["silent_seconds"] == 1)
+        );
+        assert_eq!(updates[0]["activity"], "Waiting for fixture");
+        assert!(result["seconds"].as_f64().unwrap() >= 1.0);
+        assert_eq!(result["exit"], 0);
+    }
 
     #[tokio::test]
     #[cfg(unix)]
