@@ -42,6 +42,7 @@ pub struct MarkdownRoot {
     content: Markup,
     size: MarkdownSize,
     label: Option<String>,
+    streaming: bool,
 }
 
 impl MarkdownRoot {
@@ -52,6 +53,7 @@ impl MarkdownRoot {
             content: content.render(),
             size: MarkdownSize::default(),
             label: None,
+            streaming: false,
         }
     }
 
@@ -68,12 +70,22 @@ impl MarkdownRoot {
         self.label = Some(label.into());
         self
     }
+
+    /// Content still streaming in (`data-oa-streaming`): when a newer
+    /// render replaces it, its height grows smoothly instead of jumping
+    /// (`static/components/markdown-stream.js`).
+    #[must_use]
+    pub fn streaming(mut self, streaming: bool) -> Self {
+        self.streaming = streaming;
+        self
+    }
 }
 
 impl Render for MarkdownRoot {
     fn render(&self) -> Markup {
         html! {
-            div.oa-markdown data-size=[self.size.attr()] aria-label=[self.label.as_deref()] {
+            div.oa-markdown data-size=[self.size.attr()] aria-label=[self.label.as_deref()]
+                data-oa-streaming=[self.streaming.then_some("")] {
                 (self.content)
             }
         }

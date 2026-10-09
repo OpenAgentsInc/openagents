@@ -856,7 +856,9 @@ impl TranscriptCache {
         } else {
             let entry = crate::live::Entry::Assistant {
                 elapsed_ms: None,
-                text: chat.partial.clone(),
+                // Only the part that renders cleanly so far: no half-written
+                // fence, table row, link, or emphasis shows raw (#11112).
+                text: markdown_stream::renderable(&chat.partial).into_owned(),
                 model: chat.partial_model.clone(),
             };
             if self
@@ -923,7 +925,7 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     if !app.live.partial.is_empty() {
         reply_lines(
             &mut lines,
-            &app.live.partial,
+            &markdown_stream::renderable(&app.live.partial),
             app.live.partial_model.as_deref(),
             None,
             width,
@@ -1147,5 +1149,52 @@ mod export_notice_tests {
         assert_eq!(buffer[(9, 2)].fg, t::GRAY);
         assert_eq!(buffer[(39, 2)].symbol(), "↓");
         assert_eq!(buffer[(39, 2)].fg, t::ACCENT_MODEL);
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::TranscriptCache;
+
+    fn shown(partial: &str) -> String {
+        let mut chat = crate::live::Chat::default();
+        chat.partial = partial.into();
+        let mut cache = TranscriptCache::default();
+        cache.refresh(&chat, 60, 0);
+        cache
+            .blocks()
+            .flat_map(|cached| cached.lines.iter())
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// A reply still streaming shows no half-written Markdown: each case
+    /// from #11112 is held back until it completes, and plain text and the
+    /// code so far show.
+    #[test]
+    fn a_streaming_reply_never_shows_half_written_markdown() {
+        for (partial, hidden) in [
+            ("Intro\n\n| a | b |\n|--", "|"),
+            ("Intro\n\n| a | b |\n|---|---|\n| 1 |", "| 1"),
+            ("Intro and [the docs](https://openagents", "]("),
+            ("Intro\n\n1. One\n2.", "2."),
+            ("Intro **bold te", "**"),
+            ("Intro\n\n##", "##"),
+            ("Intro\n\n```rust\nfn main", "```"),
+        ] {
+            let text = shown(partial);
+            assert!(text.contains("Intro"), "{partial:?}: {text}");
+            assert!(
+                !text.contains(hidden),
+                "{partial:?} shows {hidden:?}: {text}"
+            );
+        }
+        assert!(shown("Intro\n\n```rust\nfn main").contains("fn main"));
     }
 }

@@ -10,6 +10,7 @@ default-run = "openagents-web"
 [dependencies]
 openagents-ui = { path = "../openagents-ui" }
 atif = { path = "../atif" }
+markdown-stream = { path = "../markdown-stream" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }

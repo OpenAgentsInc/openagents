@@ -1497,11 +1497,14 @@ fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: boo
 /// names how it was served (`reply`: its tier, route, and prepared
 /// answer, once answered), so the chat goldens can read a reply from the
 /// page exactly as a person gets it (docs/web/chat-goldens.md).
+/// A reply still `streaming` shows only the part that renders cleanly so
+/// far, and grows smoothly to each new render (#11112).
 fn turn(
     message: &Message,
     index: usize,
     plugins: &[String],
     reply: Option<&openagents_chat::router::Meta>,
+    streaming: bool,
 ) -> ThreadMessage {
     match message.role {
         Role::User => ThreadMessage::user(&message.text),
@@ -1510,7 +1513,11 @@ fn turn(
                 data-oa-tier=[reply.and_then(|r| r.tier.as_deref())]
                 data-oa-route=[reply.and_then(|r| r.route.as_deref())]
                 data-oa-answer=[reply.and_then(|r| r.answer.as_deref())] {}
-            (MarkdownRoot::new(PreEscaped(crate::markdown::render_reply(&message.text))))
+            @if streaming {
+                (MarkdownRoot::new(PreEscaped(crate::markdown::render_streaming(&message.text))).streaming(true))
+            } @else {
+                (MarkdownRoot::new(PreEscaped(crate::markdown::render_reply(&message.text))))
+            }
             (crate::suggestions::plugin_cards(plugins))
             span hidden data-oa-reply-end {}
         })
@@ -1518,6 +1525,16 @@ fn turn(
         Role::Tool => ThreadMessage::status(&message.text),
     }
     .id(format!("chat-message-{index}"))
+}
+
+/// Whether `message` is the reply still being written for the pending
+/// request.
+fn streaming(chat: &Conversation, message: &Message) -> bool {
+    message.role == Role::Assistant
+        && chat
+            .pending
+            .as_ref()
+            .is_some_and(|p| message.request_id.as_deref() == Some(p.request_id.as_str()))
 }
 
 /// The messages in the window, each followed by the tasks started after it
@@ -1543,6 +1560,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 index + start,
                 crate::suggestions::message_plugins(chat, message),
                 crate::suggestions::message_reply(chat, message),
+                streaming(chat, message),
             ))
             (work::rows(chat, index + start + 1, links))
         }

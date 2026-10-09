@@ -1,0 +1,16 @@
+[package]
+name = "markdown-stream"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The part of a streaming Markdown reply that renders cleanly mid-stream, shared by the web, terminal, and native chat renderers (#11112)."
+
+[dependencies]
+pulldown-cmark = { version = "0.13.4", default-features = false }
+
+[dev-dependencies]
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+
+[lints]
+workspace = true

@@ -30,6 +30,16 @@ pub fn render_reply(source: &str) -> String {
     rendered(source, false, true)
 }
 
+/// Renders a reply still streaming in: [`render_reply`] of the part that
+/// renders cleanly so far ([`markdown_stream::renderable`]), so half-written
+/// syntax never shows and a table or list never flashes raw. A finished
+/// reply renders with [`render_reply`], so its last render is the one-shot
+/// one.
+#[must_use]
+pub fn render_streaming(partial: &str) -> String {
+    render_reply(&markdown_stream::renderable(partial))
+}
+
 /// Renders a document this site ships: as [`render`], but an image whose
 /// source is one of the site's own files under `/static/` draws.
 #[must_use]

@@ -3391,6 +3391,7 @@ dependencies = [
  "getrandom 0.3.4",
  "jev",
  "jev-hosted",
+ "markdown-stream",
  "microcoder-loop",
  "model-access",
  "nostr",
@@ -8658,6 +8659,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown-stream"
+version = "0.1.0"
+dependencies = [
+ "pulldown-cmark",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10619,6 +10627,7 @@ dependencies = [
  "inference",
  "jev",
  "libc",
+ "markdown-stream",
  "maud",
  "nostr",
  "oa-auth",
@@ -12882,6 +12891,7 @@ name = "rust-native"
 version = "0.1.0"
 dependencies = [
  "code-highlight",
+ "markdown-stream",
  "paper-mono",
  "pulldown-cmark",
  "serde",

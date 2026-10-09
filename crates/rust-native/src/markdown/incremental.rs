@@ -158,12 +158,26 @@ impl IncrementalMarkdown {
         self.mend();
     }
 
-    /// Mend the last block for display.
+    /// Mend the last block for display, then hold back what still can't
+    /// render cleanly: a half table row, a table header without its
+    /// delimiter row, a bare list or heading marker
+    /// ([`markdown_stream::renderable`], the cut every chat surface shares;
+    /// #11112). An open code block is already drawn as code.
     fn mend(&mut self) {
         self.display = self.starts.last().and_then(|last| {
+            let source = &self.source[last.offset..];
             let code = matches!(self.blocks.last(), Some(Block::Code { .. }));
-            let mended = mend::tail(&self.source[last.offset..], code)?;
-            let tail = parse(&mended);
+            let mended = mend::tail(source, code);
+            let shown = mended.as_deref().unwrap_or(source);
+            let cut = if code {
+                Cow::Borrowed(shown)
+            } else {
+                markdown_stream::renderable(shown)
+            };
+            if mended.is_none() && cut.len() == source.len() {
+                return None;
+            }
+            let tail = parse(&cut);
             (tail[..] != self.blocks[last.before..]).then_some((last.before, tail))
         });
     }
@@ -541,6 +555,30 @@ trailing
                 spans: vec![styled("quoted ", |_| {}), styled("co", |s| s.code = true)]
             }]
         );
+    }
+
+    /// What mending can't close is held back for display: a half table
+    /// row, a header without its delimiter row, a bare list or heading
+    /// marker (#11112).
+    #[test]
+    fn a_half_table_or_bare_marker_is_held_back_for_display() {
+        for (source, shown) in [
+            ("Intro\n\n| a | b |\n", "Intro\n\n"),
+            (
+                "| a | b |\n|---|---|\n| 1 | 2 |\n| 3",
+                "| a | b |\n|---|---|\n| 1 | 2 |\n",
+            ),
+            ("- a\n- ", "- a\n"),
+            ("Intro\n\n##", "Intro\n\n"),
+        ] {
+            let markdown = IncrementalMarkdown::new(source);
+            assert_eq!(
+                markdown.display_blocks()[..],
+                parse(shown)[..],
+                "{source:?}"
+            );
+            assert_eq!(markdown.blocks(), parse(source), "{source:?}");
+        }
     }
 
     #[test]

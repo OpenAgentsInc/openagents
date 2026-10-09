@@ -1355,3 +1355,87 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
     assert!(streaming.contains(r#"data-oa-reply="1""#));
     assert!(!streaming.contains("data-oa-tier"), "{streaming}");
 }
+
+/// A reply still streaming shows only what renders cleanly so far: no
+/// half-written fence, table row, link, list marker, emphasis, or heading
+/// shows as raw syntax, and it is marked to grow smoothly. Once answered
+/// it renders exactly as the whole text renders in one go (#11112).
+#[test]
+fn a_streaming_reply_never_shows_half_written_markdown() {
+    let full = "## Steps\n\n1. Run **cargo build**.\n2. See [the docs](https://openagents.com/docs).\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```sh\ncargo test\n```\n";
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 2,
+        title: "Steps".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "how do i build".into(),
+                request_id: Some(CHAT.into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: String::new(),
+                request_id: Some(CHAT.into()),
+            },
+        ],
+        pending: Some(Pending {
+            request_id: CHAT.into(),
+            started_unix: 1,
+            job_id: None,
+        }),
+        requests: vec![Request {
+            id: CHAT.into(),
+            digest: String::new(),
+            outcome: Outcome::Pending,
+            selection: None,
+            cloud: None,
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+    };
+    for (cut, hidden) in [
+        ("## Steps\n\n1. Run **cargo bu", "**"),
+        (
+            "## Steps\n\n1. Run **cargo build**.\n2. See [the docs](https",
+            "](",
+        ),
+        ("## Steps\n\n1. Run **cargo build**.\n2.", "2."),
+        ("## Steps\n\n| a | b |\n|---|---|\n| 1 |", "| 1"),
+        ("## Steps\n\n| a | b |\n", "| a"),
+        ("## Steps\n\n```sh\ncargo te", "```"),
+        ("## Steps\n\n##", "##"),
+    ] {
+        chat.messages[1].text = cut.into();
+        let html = messages(&chat, None, false).into_string();
+        assert!(html.contains("data-oa-streaming"), "{html}");
+        let visible = oa_copy::visible_text(&html);
+        assert!(
+            !visible.contains(hidden),
+            "{cut:?} shows {hidden:?}: {visible}"
+        );
+    }
+    // The open fence shows the code so far, as code.
+    chat.messages[1].text = "Run:\n\n```sh\ncargo te".into();
+    let html = messages(&chat, None, false).into_string();
+    assert!(html.contains("cargo te"), "{html}");
+    assert!(html.contains("<pre"), "{html}");
+    assert!(!oa_copy::visible_text(&html).contains("```"), "{html}");
+
+    chat.messages[1].text = full.into();
+    chat.pending = None;
+    chat.requests[0].outcome = Outcome::Answered;
+    let html = messages(&chat, None, false).into_string();
+    assert!(!html.contains("data-oa-streaming"), "{html}");
+    assert!(html.contains(&crate::markdown::render_reply(full)), "{html}");
+}

@@ -47,6 +47,19 @@
   --markdown-line-height: 1.6;
 }
 
+/* A reply still streaming grows from its last render's height to the new
+ * one instead of jumping (markdown-stream.js sets the heights). */
+.oa-markdown[data-oa-growing] {
+  overflow: hidden;
+  transition: height var(--transition-duration-basic) var(--transition-ease-basic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-markdown[data-oa-growing] {
+    transition: none;
+  }
+}
+
 /* Avoid margin collapse surprises: the first and last child sit flush. */
 .oa-markdown > :first-child {
   margin-top: 0;
