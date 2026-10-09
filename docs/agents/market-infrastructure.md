@@ -77,7 +77,7 @@ in the current `nostr-relay` binary.
 | CAP and EXT contracts; local capability and package readers | Discover interfaces and identify exact implementations. | Provider offerings must also describe commercial terms, capacity, expiry, and supported market profiles. |
 | CJ jobs, host boundaries, and subprocess supervision | Reuse the working conversation/delegate path and execution admission records. | The free runtime resolves its admitted graph and binds one accepted order to one local task execution. Independent provider deployment, broader execution profiles, and reconciliation across separately operated relays remain. |
 | Gym, EVAL, OPT, ATIF traces, and KB sharing | Retain outcomes, compare implementations, and publish attributable evidence. | Bind evidence to the agreed deliverable and independent evaluator; report provider reliability by task family and version. |
-| Gateway quota, money, and [billing](../decision-models/service/billing.md) | Account for service usage and recover local ledger mutations. Billing currently accepts only its sandbox provider. | Bitcoin payouts, external settlement adapters, negotiated prices, disputes, and counterparty risk. The existing gateway ledger is not a cross-provider payment network. |
+| Gateway quota, money, and [billing](../decision-models/service/billing.md) | Account for service usage and recover local ledger mutations. Billing accepts its sandbox provider and Stripe subscriptions. | Bitcoin payouts, external settlement adapters, negotiated prices, disputes, and counterparty risk. The existing gateway ledger is not a cross-provider payment network. |
 
 The coding side already has [tracker intake](../coder/guides/tracker-intake.md),
 [project supervision](../coder/guides/project-supervision.md),

@@ -345,6 +345,9 @@ pub struct Subscription {
     /// A failed payment's deadline — past it the subscription expires.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grace_ends: Option<u64>,
+    /// The provider's customer reference, when the provider keeps one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer: Option<String>,
     /// The transition journal, bounded.
     #[serde(default)]
     pub history: Vec<Transition>,
@@ -444,6 +447,15 @@ pub struct Event {
     /// The provider-side reference the event carries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_ref: Option<String>,
+    /// The provider's own subscription reference, when a completed
+    /// checkout starts one (`sub_…` at Stripe). The new subscription
+    /// carries it so the provider's later invoices find it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_subscription: Option<String>,
+    /// The provider's customer reference, when the event names one
+    /// (`cus_…` at Stripe) — what the billing portal opens for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer: Option<String>,
     /// When the webhook accepted it — the server writes this; a
     /// provider body does not carry it.
     #[serde(default)]
@@ -756,6 +768,38 @@ impl BillingBook {
         Ok(checkout)
     }
 
+    /// Record the provider's session reference on a pending checkout —
+    /// a provider that mints its own id (Stripe) answers after the
+    /// checkout is opened here.
+    pub fn bind_checkout(&mut self, id: &str, provider_ref: &str) -> Result<Checkout, Refusal> {
+        let checkout = self
+            .checkouts
+            .get_mut(id)
+            .filter(|checkout| checkout.state == CheckoutState::Pending)
+            .ok_or(Refusal::Unavailable)?;
+        checkout.provider_ref = provider_ref.to_string();
+        Ok(checkout.clone())
+    }
+
+    /// Close a pending checkout the provider never opened, so the
+    /// workspace can try again at once.
+    pub fn abandon_checkout(&mut self, id: &str, now: u64) {
+        if let Some(checkout) = self.checkouts.get_mut(id)
+            && checkout.state == CheckoutState::Pending
+        {
+            checkout.state = CheckoutState::Expired;
+            checkout.resolved = Some(now);
+        }
+    }
+
+    /// The subscription the provider's own reference names.
+    #[must_use]
+    pub fn subscription_by_ref(&self, provider_ref: &str) -> Option<&Subscription> {
+        self.subscriptions
+            .values()
+            .find(|sub| sub.provider_ref.as_deref() == Some(provider_ref))
+    }
+
     /// Subscribe a workspace to a free plan directly — no checkout, no
     /// payment, the same record shape a completed checkout produces.
     pub fn subscribe(
@@ -792,6 +836,7 @@ impl BillingBook {
             cancel_at: None,
             provider_ref: None,
             grace_ends: None,
+            customer: None,
             history: Vec::new(),
         };
         subscription.history.push(Transition {
@@ -1015,8 +1060,12 @@ impl BillingBook {
                     period_ends: now.saturating_add(plan.price.period_secs),
                     pending_plan: None,
                     cancel_at: None,
-                    provider_ref: event.provider_ref.clone(),
+                    provider_ref: event
+                        .provider_subscription
+                        .clone()
+                        .or_else(|| event.provider_ref.clone()),
                     grace_ends: None,
+                    customer: event.customer.clone(),
                     history: Vec::new(),
                 };
                 subscription.history.push(Transition {
@@ -2104,6 +2153,8 @@ mod tests {
             currency: None,
             at_period_end: true,
             provider_ref: None,
+            provider_subscription: None,
+            customer: None,
             received: 0,
             applied: false,
             outcome: String::new(),

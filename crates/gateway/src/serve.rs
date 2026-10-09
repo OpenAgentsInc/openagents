@@ -415,6 +415,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     crate::funding::resume(&state);
     crate::card_funding::controller::resume(&state);
     crate::inference_status::resume(&state);
+    crate::subscriptions::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn(purchase_route))

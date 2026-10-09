@@ -134,6 +134,8 @@ fn main() -> ExitCode {
         currency: None,
         at_period_end: true,
         provider_ref: None,
+        provider_subscription: None,
+        customer: None,
         received: 0,
         applied: false,
         outcome: String::new(),

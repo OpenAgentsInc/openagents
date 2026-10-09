@@ -167,8 +167,47 @@ The website's **Settings → Plan** (`crates/openagents-web/src/plan.rs`) shows
 the plan, the hours used this month and when they reset, saved storage and
 versions, and the extra-hours switch with its monthly cap. It reads and writes
 the meter given by `--plan-meter`. Without a meter it says the server doesn't
-track hours yet; without `--plan-subscribe` it says subscribing isn't open
-instead of showing a button. The served docs page is `/docs/pricing`.
+track hours yet; without `--plan-checkout PLAN` (or without a meter) it says
+subscribing isn't open instead of showing a button. The served docs page is
+`/docs/pricing`.
+
+With `--plan-checkout pro`, **Subscribe** asks the account service (the
+gateway) to open a Stripe Checkout Session for that plan on the person's own
+workspace and sends the browser there. Coming back shows "Stripe is confirming
+your payment" until Stripe's signed event lands; then Settings shows Pro. A
+subscriber gets **Manage subscription**, Stripe's billing page, to change the
+card or cancel.
+
+## Billing (Stripe, #11072)
+
+The gateway sells the plan with `billing.provider: "stripe"` and a
+`billing.stripe` section (`crates/gateway/src/subscriptions.rs`): the Stripe
+price per plan, the names of the environment variables holding the secret key
+and webhook signing secrets (never the secrets), the return pages, and the
+`environment_meter` (the same journal the website reads with `--plan-meter`
+and the retail service keeps). `live: false` is Stripe test mode and refuses
+live keys and live events. Stripe's webhook points at `POST /v1/billing/webhook`.
+
+| Stripe event | What happens |
+| --- | --- |
+| `checkout.session.completed` | The subscription starts in the billing book, with Stripe's subscription and customer. |
+| `invoice.paid` | The paid month (the invoice line's period) is recorded with `record_period`, and the workspace that pays extra hours is named. A renewal starts a new month, so hours reset. An invoice that arrives before its checkout is recorded and answered 409, so Stripe sends it again. |
+| `invoice.payment_failed` | Past due. No new month is recorded: the paid month runs to its end, then setups refuse ("Saved environments come with the Pro plan.") until Stripe collects, when `invoice.paid` records that month. |
+| `customer.subscription.deleted` | The subscription ends; a month cut short ends then (`end_period`). Saved images stay 30 days, then retire. |
+
+Cancelling happens on Stripe's billing page; the gateway's own cancel route
+answers `cancel_in_portal` under Stripe so a cancel can never leave Stripe
+charging. Extra-hour charges leave the meter's outbox through
+`subscriptions::post_debits` (on every webhook and once a minute): one reserve
+and settle on the paying workspace's money ledger, keyed `env:<purchase>`, so
+a charge lands once and never past the person's cap. A charge the credits
+can't cover yet stays waiting and is offered again.
+
+The checks are `crates/gateway/tests/billing_stripe.rs` (a loopback stand-in
+for Stripe's API, test mode only), the ledger test in
+`crates/gateway/src/subscriptions.rs`, and
+`subscribe_opens_stripe_checkout_and_settings_shows_pro_after_the_event` in
+`crates/openagents-web/src/cloud/tests.rs`.
 
 ## Availability
 
@@ -184,10 +223,9 @@ the published plan and its gate. The gate opens only when all of these hold:
 Without `environments`, every environment operation answers "not available".
 The checked-in plan is `proposed`, so it can never open the gate.
 
-Still to wire before launch: billing's paid months must reach
-`record_period`, and a `Credits` adapter over the customer credits ledger
-must post the extra-hours outbox. The gateway's subscription checkout is the
-sandbox provider today; selling Pro needs the Stripe product and price.
+Selling Pro needs the owner's Stripe product and price, the key and webhook
+secret in the deployment's environment, and the website started with
+`--plan-meter` and `--plan-checkout pro` (see [Billing](#billing-stripe-11072)).
 
 ## Not in v1 or v2
 

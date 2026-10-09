@@ -5,8 +5,15 @@
 //! The numbers come from the environment meter
 //! ([`retail_cloud::environment`]) kept at `--plan-meter`. Without it this
 //! server can't show hours or take the extra-hours choice, and Settings
-//! says so. Without `--plan-subscribe`, there is no button to subscribe,
-//! and Settings says that too.
+//! says so.
+//!
+//! With `--plan-checkout PLAN` (and the meter), Subscribe opens the
+//! account service's Stripe Checkout for that plan on the person's own
+//! workspace, and Manage subscription opens Stripe's billing page (card,
+//! cancel). Stripe's signed event, not the browser coming back, starts the
+//! month: the gateway writes it into the same meter, so Settings shows Pro
+//! once it lands (#11072). Without `--plan-checkout`, Settings says
+//! subscribing isn't open instead of showing a button.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -19,10 +26,11 @@ use retail_cloud::environment::{
 };
 use retail_cloud::journal::Journal;
 
-use crate::ui_page::action_link;
-
 pub(crate) const EXTRA: &str = "/settings/plan/extra";
 pub(crate) const CSRF_SCOPE: &str = "plan-extra-hours";
+pub(crate) const SUBSCRIBE: &str = "/settings/plan/subscribe";
+pub(crate) const MANAGE: &str = "/settings/plan/manage";
+pub(crate) const CHECKOUT_SCOPE: &str = "plan-checkout";
 /// The highest monthly cap the form takes, in dollars.
 const CAP_DOLLARS_MAX: u64 = 10_000;
 
@@ -30,17 +38,18 @@ const CAP_DOLLARS_MAX: u64 = 10_000;
 pub struct Plans {
     pub(crate) terms: EnvironmentPlan,
     meter: Option<Mutex<Journal>>,
-    subscribe: Option<String>,
+    /// The billing plan Subscribe buys, when checkout is set up here.
+    checkout: Option<String>,
 }
 
 impl Plans {
     /// The checked-in plan, the meter journal at `meter` if given, and the
-    /// subscribe link if checkout is set up here.
+    /// billing plan id Subscribe buys if checkout is set up here.
     ///
     /// # Errors
     ///
     /// The meter cannot be opened.
-    pub fn open(meter: Option<&Path>, subscribe: Option<String>) -> Result<Self, String> {
+    pub fn open(meter: Option<&Path>, checkout: Option<String>) -> Result<Self, String> {
         let meter = meter
             .map(|path| Journal::open(path).map(Mutex::new))
             .transpose()
@@ -48,17 +57,17 @@ impl Plans {
         Ok(Self {
             terms: environment::plan(),
             meter,
-            subscribe,
+            checkout,
         })
     }
 
     /// A plan over an existing journal, for tests and fixtures.
     #[must_use]
-    pub fn with_meter(meter: Option<Journal>, subscribe: Option<String>) -> Self {
+    pub fn with_meter(meter: Option<Journal>, checkout: Option<String>) -> Self {
         Self {
             terms: environment::plan(),
             meter: meter.map(Mutex::new),
-            subscribe,
+            checkout,
         }
     }
 
@@ -66,8 +75,15 @@ impl Plans {
         self.meter.is_some()
     }
 
-    /// What Settings shows for `account` now.
-    pub(crate) fn view(&self, account: &str, now: i64) -> View {
+    /// The plan Subscribe buys: only with a meter, so a paid month always
+    /// has somewhere to show up.
+    pub(crate) fn checkout(&self) -> Option<&str> {
+        self.checkout.as_deref().filter(|_| self.has_meter())
+    }
+
+    /// What Settings shows for `account` now. `returned`: the browser just
+    /// came back from checkout.
+    pub(crate) fn view(&self, account: &str, now: i64, returned: bool) -> View {
         let summary = self.meter.as_ref().map(|meter| {
             meter
                 .lock()
@@ -77,7 +93,8 @@ impl Plans {
         View {
             terms: self.terms.clone(),
             summary,
-            subscribe: self.subscribe.clone(),
+            checkout: self.checkout().is_some(),
+            returned,
         }
     }
 
@@ -94,7 +111,10 @@ pub(crate) struct View {
     pub terms: EnvironmentPlan,
     /// `None`: no meter here. `Some(None)`: the meter can't be read.
     pub summary: Option<Option<Summary>>,
-    pub subscribe: Option<String>,
+    /// Subscribe and Manage subscription work here.
+    pub checkout: bool,
+    /// Back from checkout, before Stripe's event has landed.
+    pub returned: bool,
 }
 
 /// `12.5`, `100`.
@@ -153,8 +173,24 @@ fn cap_text(micros: u64) -> String {
     usd(micros).trim_start_matches('$').to_owned()
 }
 
-/// The Plan section. `csrf` is the extra-hours form's ticket and request.
-pub(crate) fn section(view: &View, csrf: Option<(&str, &str)>) -> Markup {
+/// One button that posts a ticketed form.
+fn post_button(action: &str, label: &str, ticket: (&str, &str)) -> Markup {
+    html! {
+        form method="post" action=(action) {
+            input type="hidden" name="csrf" value=(ticket.0);
+            input type="hidden" name="request" value=(ticket.1);
+            (Button::new(label).kind(ButtonType::Submit))
+        }
+    }
+}
+
+/// The Plan section. `csrf` is the extra-hours form's ticket and request;
+/// `checkout` is the Subscribe / Manage subscription forms' ticket.
+pub(crate) fn section(
+    view: &View,
+    csrf: Option<(&str, &str)>,
+    checkout: Option<(&str, &str)>,
+) -> Markup {
     let t = &view.terms;
     let active = match &view.summary {
         Some(Some(s)) => match &s.standing {
@@ -172,16 +208,24 @@ pub(crate) fn section(view: &View, csrf: Option<(&str, &str)>) -> Markup {
                     span class="oa-settings-hint" { (includes(t)) }
                     span class="oa-settings-hint" {
                         @if let Some((_, renews)) = active {
-                            "You're on " (t.name) ". It renews " (day_label(renews)) "."
-                        } @else if view.subscribe.is_some() {
+                            "You're on " (t.name) ". It renews " (day_label(renews)) " unless you cancel."
+                        } @else if view.checkout && view.returned {
+                            "Thanks. Stripe is confirming your payment. Reload this page in a minute to see " (t.name) "."
+                        } @else if view.checkout {
                             "You're not subscribed."
                         } @else {
                             "Subscribing isn't open on this server yet."
                         }
                     }
                 }
-                @if let (None, Some(link)) = (active, &view.subscribe) {
-                    div class="oa-settings-control" { (action_link("Subscribe", link)) }
+                @if let (true, Some(ticket)) = (view.checkout, checkout) {
+                    div class="oa-settings-control" {
+                        @if active.is_some() {
+                            (post_button(MANAGE, "Manage subscription", ticket))
+                        } @else {
+                            (post_button(SUBSCRIBE, "Subscribe", ticket))
+                        }
+                    }
                 }
             }
             @match (&view.summary, active) {
@@ -313,7 +357,7 @@ mod tests {
     #[test]
     fn no_checkout_says_so_instead_of_a_button() {
         let plans = Plans::with_meter(None, None);
-        let html = section(&plans.view("acct", NOW), None).into_string();
+        let html = section(&plans.view("acct", NOW, false), None, None).into_string();
         let t = text(&html);
         assert!(
             t.contains("Subscribing isn't open on this server yet."),
@@ -326,17 +370,57 @@ mod tests {
         );
         assert!(!html.contains(">Subscribe<"));
         assert!(!html.contains("<form"));
-        let plans = Plans::with_meter(None, Some("https://pay.example/pro".into()));
-        let html = section(&plans.view("acct", NOW), None).into_string();
-        assert!(html.contains("href=\"https://pay.example/pro\""), "{html}");
+        // Checkout without a meter would charge with nowhere to show the
+        // month: still no button.
+        let plans = Plans::with_meter(None, Some("pro".into()));
+        let html = section(&plans.view("acct", NOW, false), None, Some(("t", "r"))).into_string();
+        assert!(!html.contains("<form"), "{html}");
+    }
+
+    #[test]
+    fn subscribe_opens_checkout_and_a_subscriber_can_manage_it() {
+        let plans = Plans::with_meter(Some(Journal::in_memory().unwrap()), Some("pro".into()));
+        let html = section(&plans.view("acct", NOW, false), None, Some(("t", "r"))).into_string();
+        let t = text(&html);
+        assert!(t.contains("You're not subscribed."), "{t}");
+        assert!(
+            html.contains("action=\"/settings/plan/subscribe\""),
+            "{html}"
+        );
+        assert!(html.contains(">Subscribe<"), "{html}");
+        // Back from Stripe before its event: say what's happening.
+        let html = section(&plans.view("acct", NOW, true), None, Some(("t", "r"))).into_string();
+        let t = text(&html);
+        assert!(
+            t.contains("Thanks. Stripe is confirming your payment. Reload this page in a minute to see Pro."),
+            "{t}"
+        );
+        // After the event: Pro, and the billing page instead of Subscribe.
+        let plans = Plans::with_meter(Some(subscribed()), Some("pro".into()));
+        let html = section(
+            &plans.view("acct", NOW, true),
+            Some(("t", "r")),
+            Some(("t", "r")),
+        )
+        .into_string();
+        let t = text(&html);
+        assert!(
+            t.contains("You're on Pro. It renews November 8 unless you cancel."),
+            "{t}"
+        );
+        assert!(html.contains("action=\"/settings/plan/manage\""), "{html}");
+        assert!(!html.contains(">Subscribe<"), "{html}");
     }
 
     #[test]
     fn a_subscriber_sees_hours_storage_and_the_extra_hours_choice() {
         let plans = Plans::with_meter(Some(subscribed()), None);
-        let html = section(&plans.view("acct", NOW), Some(("t", "r"))).into_string();
+        let html = section(&plans.view("acct", NOW, false), Some(("t", "r")), None).into_string();
         let t = text(&html);
-        assert!(t.contains("You're on Pro. It renews November 8."), "{t}");
+        assert!(
+            t.contains("You're on Pro. It renews November 8 unless you cancel."),
+            "{t}"
+        );
         assert!(t.contains("0 of 100 hours used. Resets November 8."), "{t}");
         assert!(t.contains("0 of 20 GB, 0 of 10 saved versions."), "{t}");
         assert!(t.contains("Off. When this month's hours run out"), "{t}");
@@ -350,7 +434,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let html = section(&plans.view("acct", NOW), Some(("t", "r"))).into_string();
+        let html = section(&plans.view("acct", NOW, false), Some(("t", "r")), None).into_string();
         let t = text(&html);
         assert!(
             t.contains("On: $0.18 an hour from your credits after this month's 100 hours, up to $10 a month. $0 used this month."),

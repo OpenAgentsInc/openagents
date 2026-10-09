@@ -5921,6 +5921,7 @@ dependencies = [
  "pay-ledger",
  "receipts",
  "reqwest 0.12.28",
+ "retail-cloud",
  "ring",
  "secp256k1 0.31.1",
  "serde",

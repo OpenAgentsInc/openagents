@@ -416,6 +416,7 @@ const PERIOD: &str = "period";
 const SETTINGS: &str = "settings";
 const MONTH: &str = "month";
 const DEBIT: &str = "debit";
+const CREDITS: &str = "credits";
 
 fn get<T: for<'de> Deserialize<'de>>(
     journal: &Journal,
@@ -484,6 +485,48 @@ pub fn record_period(journal: &mut Journal, period: &Period) -> Result<()> {
     }
     let key = format!("{}:{}", period.account, period.start);
     put(journal, PERIOD, &key, &period.account, period)
+}
+
+/// Cut the account's month that holds `at` short at `at`: the
+/// subscription ended before the month did (cancelled now, not at the
+/// month's end). Returns whether a month was shortened. Seconds already
+/// counted stay counted.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn end_period(journal: &mut Journal, account: &str, at: i64) -> Result<bool> {
+    let periods: Vec<Period> = all(journal, PERIOD, Some(account))?;
+    let Some(mut p) = periods.into_iter().find(|p| p.start <= at && at < p.end) else {
+        return Ok(false);
+    };
+    let key = format!("{}:{}", p.account, p.start);
+    p.end = at.max(p.start + 1);
+    put(journal, PERIOD, &key, account, &p)?;
+    Ok(true)
+}
+
+/// Name the credits account (the billing workspace) that pays this
+/// account's extra hours. Billing records it with each paid month.
+///
+/// # Errors
+///
+/// An empty name, or a journal failure.
+pub fn set_credits_account(journal: &mut Journal, account: &str, credits: &str) -> Result<()> {
+    if account.is_empty() || credits.is_empty() {
+        return Err(Error::Invalid("an account and its credits account"));
+    }
+    put(journal, CREDITS, account, account, &credits)
+}
+
+/// The credits account that pays this account's extra hours, if billing
+/// named one.
+///
+/// # Errors
+///
+/// A journal failure.
+pub fn credits_account(journal: &Journal, account: &str) -> Result<Option<String>> {
+    get(journal, CREDITS, account)
 }
 
 /// Where an account's subscription stands.
@@ -590,24 +633,21 @@ pub struct Debit {
     pub key: String,
     pub account: String,
     pub usd_micros: u64,
+    /// The machine-seconds past the included hours this charge pays for.
+    #[serde(default)]
+    pub extra_seconds: u64,
     pub at: i64,
     #[serde(default)]
     pub posted_at: Option<i64>,
 }
 
-/// The account's credits. `debit` must be idempotent on `key`: the same key
-/// twice is one charge.
+/// The account's credits. `debit` must be idempotent on `debit.key`: the
+/// same key twice is one charge.
 pub trait Credits {
     /// # Errors
     ///
     /// The ledger could not take the debit now; it is offered again later.
-    fn debit(
-        &mut self,
-        account: &str,
-        key: &str,
-        usd_micros: u64,
-        at: i64,
-    ) -> std::result::Result<(), String>;
+    fn debit(&mut self, debit: &Debit) -> std::result::Result<(), String>;
 }
 
 /// Hand every waiting debit to `credits` once. A failed debit stays waiting.
@@ -625,10 +665,7 @@ pub fn post_debits(
         if d.posted_at.is_some() {
             continue;
         }
-        if credits
-            .debit(&d.account, &d.key, d.usd_micros, d.at)
-            .is_ok()
-        {
+        if credits.debit(&d).is_ok() {
             d.posted_at = Some(now);
             put(journal, DEBIT, &d.key.clone(), &d.account.clone(), &d)?;
             posted.push(d.key);
@@ -1241,6 +1278,7 @@ pub fn settle(journal: &mut Journal, id: &str, now: i64) -> Result<Receipt> {
                     key: key.clone(),
                     account: p.account.clone(),
                     usd_micros: extra_usd_micros,
+                    extra_seconds: past,
                     at: now,
                     posted_at: None,
                 },

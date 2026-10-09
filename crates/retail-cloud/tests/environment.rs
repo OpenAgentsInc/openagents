@@ -102,11 +102,12 @@ struct FakeCredits {
     down: bool,
 }
 impl Credits for FakeCredits {
-    fn debit(&mut self, _: &str, key: &str, usd: u64, _: i64) -> Result<(), String> {
+    fn debit(&mut self, d: &environment::Debit) -> Result<(), String> {
         if self.down {
             return Err("unreachable".into());
         }
-        self.charged.entry(key.into()).or_insert(usd);
+        assert!(d.extra_seconds > 0);
+        self.charged.entry(d.key.clone()).or_insert(d.usd_micros);
         Ok(())
     }
 }
@@ -377,4 +378,32 @@ fn unknown_endings_wait_and_a_restart_finishes_each_step_once() {
             .phase,
         Phase::Settled { .. }
     ));
+}
+
+#[test]
+fn a_subscription_cancelled_now_ends_its_month_now_and_names_who_pays() {
+    let mut j = Journal::in_memory().unwrap();
+    subscribed(&mut j, "acct");
+    assert!(matches!(
+        environment::standing(&j, "acct", NOW).unwrap(),
+        environment::Standing::Active { .. }
+    ));
+    // Nothing to cut outside a month.
+    assert!(!environment::end_period(&mut j, "acct", END + DAY).unwrap());
+    assert!(environment::end_period(&mut j, "acct", NOW).unwrap());
+    assert_eq!(
+        environment::standing(&j, "acct", NOW).unwrap(),
+        environment::Standing::Ended { at: NOW }
+    );
+    let p = plan();
+    let e = environment::budget(&j, &p, "acct", NOW).unwrap_err();
+    assert_eq!(refusal(e), Refusal::NoPlan);
+    assert_eq!(environment::credits_account(&j, "acct").unwrap(), None);
+    environment::set_credits_account(&mut j, "acct", "ws_1").unwrap();
+    environment::set_credits_account(&mut j, "acct", "ws_1").unwrap();
+    assert_eq!(
+        environment::credits_account(&j, "acct").unwrap().as_deref(),
+        Some("ws_1")
+    );
+    assert!(environment::set_credits_account(&mut j, "acct", "").is_err());
 }

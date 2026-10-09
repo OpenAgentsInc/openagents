@@ -70,6 +70,7 @@ fn billing_config() -> config::Billing {
         webhook_secret_env: SECRET_ENV.to_string(),
         checkout_ttl_secs: 86_400,
         webhook_skew_secs: 300,
+        stripe: None,
     }
 }
 

@@ -391,6 +391,11 @@ pub struct Billing {
     /// is refused.
     #[serde(default = "default_webhook_skew")]
     pub webhook_skew_secs: u64,
+    /// Stripe subscriptions (`provider: "stripe"` with plans): the
+    /// Checkout prices, key and webhook secret names, return pages, and
+    /// the environment meter (#11072).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stripe: Option<crate::subscriptions::Config>,
 }
 
 fn default_provider() -> String {
@@ -785,11 +790,37 @@ impl Config {
                         "Native prepaid cards require explicitly priced USD resources.".into(),
                     );
                 }
+            } else if billing.provider == "stripe" {
+                let Some(stripe) = &billing.stripe else {
+                    return Err(format!(
+                        "{}: billing provider `stripe` sells plans only with a `stripe` section",
+                        name.display()
+                    ));
+                };
+                stripe
+                    .check(&billing.plans)
+                    .map_err(|problem| format!("{}: {problem}", name.display()))?;
+                // Stripe sessions live 30 minutes to 24 hours; the book's
+                // checkout outlives its session by a minute.
+                if !(1860..=86_400).contains(&billing.checkout_ttl_secs) {
+                    return Err(format!(
+                        "{}: with Stripe, checkout_ttl_secs is between 1860 and 86400",
+                        name.display()
+                    ));
+                }
             } else if billing.provider != "sandbox" {
                 return Err(format!(
-                    "{}: billing provider `{}` is not one this build knows (`sandbox`)",
+                    "{}: billing provider `{}` is not one this build knows (`sandbox` or `stripe`)",
                     name.display(),
                     billing.provider
+                ));
+            }
+            if billing.stripe.is_some()
+                && (billing.provider != "stripe" || billing.prepaid.is_some())
+            {
+                return Err(format!(
+                    "{}: a `stripe` subscription section needs `provider: \"stripe\"` and no prepaid cards",
+                    name.display()
                 ));
             }
             if billing.prepaid.is_none() && billing.plans.is_empty() {

@@ -69,8 +69,10 @@ published catalog means.
 - `provider` names whose events the webhook accepts. `sandbox` is the
   built-in provider: an operator-driven journal of provider-side
   events in `billing-provider.jsonl` beside the registry, emitted by
-  the `billing-sandbox` binary. The separate native prepaid profile uses
-  `stripe` with a `prepaid` document; other providers are refused at load.
+  the `billing-sandbox` binary. `stripe` with a `stripe` document sells the
+  plan catalog as Stripe subscriptions (see "Stripe subscriptions" below).
+  The separate native prepaid profile uses `stripe` with a `prepaid`
+  document; other providers are refused at load.
 - `webhook_secret_env` names the environment variable holding the
   webhook HMAC secret — a name, never the secret itself. The secret
   never enters the repository, a log line, or a response.
@@ -82,6 +84,38 @@ published catalog means.
 A `billing` document without `accounts` or `money` refuses at load:
 billing cannot bind a subscription without workspaces, and it cannot
 grant an allowance without the ledger.
+
+## Stripe subscriptions
+
+Set `billing.provider` to `stripe` and supply `billing.stripe` (with plans,
+without `prepaid`) to sell the catalog through Stripe Checkout in
+subscription mode (#11072, `crates/gateway/src/subscriptions.rs`):
+
+```json
+"stripe": {
+  "live": false,
+  "secret_key_env": "OPENAGENTS_STRIPE_SECRET_KEY",
+  "webhook_secret_envs": ["OPENAGENTS_STRIPE_WEBHOOK_SECRET"],
+  "prices": {"pro": "price_..."},
+  "success_url": "https://openagents.com/settings?plan=started#settings-plan",
+  "return_url": "https://openagents.com/settings#settings-plan",
+  "environment_meter": "/private/retail/journal.sqlite"
+}
+```
+
+Every paid plan needs its `price_…`. Keys are named, never inlined; test
+mode takes only `sk_test_`/`rk_test_` keys and test events. With Stripe,
+`checkout_ttl_secs` is 1860 to 86400 and the Stripe session closes a minute
+before the book's checkout. `checkout` answers the hosted Checkout URL;
+`portal` answers Stripe's billing page for the workspace's customer;
+`cancel` answers `cancel_in_portal` (cancelling is Stripe's billing page, so
+Stripe never keeps charging); top-ups through plan checkout are refused. The
+webhook takes the `Stripe-Signature` header: `checkout.session.completed`
+starts the subscription, `invoice.paid` renews it, `invoice.payment_failed`
+makes it past due, `customer.subscription.deleted` ends it; other event types
+are acknowledged and ignored. Paid months and extra-hour charges for plans
+with `environments` go through `environment_meter`
+([environment contract](../../cloud/retail-environment-contract.md#billing-stripe-11072)).
 
 ## Native prepaid profile
 
@@ -311,12 +345,11 @@ standing.
 
 ## Limits
 
-- `sandbox` is the only provider. It exists to prove the checkout,
-  renewal, failure, cancellation, refund, dispute, and recovery paths
-  end to end; it moves no real money and carries no commercial
-  meaning. Wiring a live provider is a new adapter against the same
-  event contract, plus the commercial decisions tracked in
-  [#9498](https://github.com/OpenAgentsInc/openagents/issues/9498).
+- `sandbox` proves the checkout, renewal, failure, cancellation, refund,
+  dispute, and recovery paths end to end; it moves no real money. `stripe`
+  subscriptions map Stripe's events onto the same book; Stripe refunds and
+  disputes on subscription charges are not mapped yet and are handled in
+  Stripe's dashboard.
 - Plans are operator configuration. Editing the catalog changes what
   new checkouts sell; a subscription pins the version it bought, so
   an in-flight customer is never repriced mid-period.

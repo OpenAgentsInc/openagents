@@ -102,6 +102,7 @@ fn billing_config() -> config::Billing {
         webhook_secret_env: SECRET_ENV.to_string(),
         checkout_ttl_secs: 86_400,
         webhook_skew_secs: 300,
+        stripe: None,
     }
 }
 
@@ -315,6 +316,8 @@ fn event(kind: &str, fields: &[(&str, Value)]) -> Event {
         currency: None,
         at_period_end: true,
         provider_ref: None,
+        provider_subscription: None,
+        customer: None,
         received: 0,
         applied: false,
         outcome: String::new(),

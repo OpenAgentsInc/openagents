@@ -48,6 +48,8 @@ struct Native {
     signins: usize,
     signouts: usize,
     expiry: u64,
+    /// Plan checkouts and billing pages opened: (workspace, what).
+    billing: Vec<(String, String)>,
 }
 
 fn acting(headers: &HeaderMap, state: &Native) -> Option<&'static str> {
@@ -152,6 +154,40 @@ async fn native_sign_out(State(state): State<Arc<Mutex<Native>>>, headers: Heade
     Json(json!({"session":{"state":"revoked"}})).into_response()
 }
 
+/// The gateway's plan checkout and billing page, answering hosted Stripe
+/// addresses for the owner's own workspace.
+async fn native_billing(
+    State(state): State<Arc<Mutex<Native>>>,
+    Path((id, action)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let mut state = state.lock().unwrap();
+    let Some(account) = acting(&headers, &state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    if id != format!("{account}-personal") {
+        return native_refusal(StatusCode::FORBIDDEN);
+    }
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    match action.as_str() {
+        "checkout" => {
+            state.billing.push((
+                id,
+                format!("checkout {}", body["plan"].as_str().unwrap_or("")),
+            ));
+            Json(json!({"v":"openagents.billing.v1","url":"https://checkout.stripe.com/c/pay/cs_test_web"}))
+                .into_response()
+        }
+        "portal" => {
+            state.billing.push((id, "portal".into()));
+            Json(json!({"v":"openagents.billing.v1","url":"https://billing.stripe.com/p/session/test_web"}))
+                .into_response()
+        }
+        _ => native_refusal(StatusCode::NOT_FOUND),
+    }
+}
+
 struct Fixture {
     _root: tempfile::TempDir,
     site: Router,
@@ -168,6 +204,10 @@ impl Drop for Fixture {
 }
 
 async fn fixture() -> Fixture {
+    fixture_with(|_| {}).await
+}
+
+async fn fixture_with(configure: impl FnOnce(&mut crate::Config)) -> Fixture {
     let state = Arc::new(Mutex::new(Native {
         epoch: 3,
         expiry: now() + 3600,
@@ -178,6 +218,7 @@ async fn fixture() -> Fixture {
         .route("/v1/session", get(native_session).delete(native_sign_out))
         .route("/v1/account", get(native_details))
         .route("/v1/workspaces/{id}", get(native_workspace))
+        .route("/v1/workspaces/{id}/billing/{action}", post(native_billing))
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
@@ -203,6 +244,7 @@ async fn fixture() -> Fixture {
     config.cloud_byo = Some(Arc::new(
         super::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0).unwrap(),
     ));
+    configure(&mut config);
     Fixture {
         _root: root,
         site: crate::router(config),
@@ -846,4 +888,132 @@ async fn valid_logout_clears_browser_after_native_or_configuration_standing_chan
         }
         assert!(!fixture.local_store.exists());
     }
+}
+
+#[tokio::test]
+async fn subscribe_opens_stripe_checkout_and_settings_shows_pro_after_the_event() {
+    use retail_cloud::environment;
+    let meter = tempfile::tempdir().unwrap();
+    let meter_path = meter.path().join("meter.sqlite");
+    let journal = retail_cloud::journal::Journal::open(&meter_path).unwrap();
+    let fixture = fixture_with(|config| {
+        config.plan = Some(Arc::new(crate::plan::Plans::with_meter(
+            Some(journal),
+            Some("pro".into()),
+        )));
+    })
+    .await;
+    let cookies = login(&fixture, "alice").await;
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    plain(&page);
+    assert!(page.body.contains("You're not subscribed."));
+    let subscribe = form_at(&page.body, "/settings/plan/subscribe");
+    let fields = form(&[
+        ("csrf", &field(subscribe, "csrf")),
+        ("request", &field(subscribe, "request")),
+    ]);
+    // A forged ticket opens nothing.
+    let forged = form(&[
+        ("csrf", "forged"),
+        ("request", &field(subscribe, "request")),
+    ]);
+    let refused = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/plan/subscribe",
+        &cookies,
+        Some(&forged),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_ne!(refused.status, StatusCode::SEE_OTHER);
+    assert!(fixture.state.lock().unwrap().billing.is_empty());
+    let answer = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/plan/subscribe",
+        &cookies,
+        Some(&fields),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::SEE_OTHER, "{}", answer.body);
+    assert_eq!(
+        answer.headers[header::LOCATION],
+        "https://checkout.stripe.com/c/pay/cs_test_web"
+    );
+    assert_eq!(
+        fixture.state.lock().unwrap().billing,
+        vec![("alice-personal".to_string(), "checkout pro".to_string())]
+    );
+    // Back from Stripe, before its event: say so.
+    let back = request(
+        &fixture.site,
+        Method::GET,
+        "/settings?plan=started",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    plain(&back);
+    assert!(
+        back.body.contains("Stripe is confirming your payment"),
+        "{}",
+        back.body
+    );
+    // The gateway writes the paid month into the meter: Pro shows.
+    let start = now() as i64 - 60;
+    let mut writer = retail_cloud::journal::Journal::open(&meter_path).unwrap();
+    environment::record_period(
+        &mut writer,
+        &environment::Period {
+            account: "alice".into(),
+            plan: environment::plan().version,
+            start,
+            end: start + 30 * 86_400,
+        },
+    )
+    .unwrap();
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings?plan=started",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    plain(&page);
+    assert!(page.body.contains("You're on Pro."), "{}", page.body);
+    assert!(page.body.contains("0 of 100 hours used."), "{}", page.body);
+    assert!(!page.body.contains("action=\"/settings/plan/subscribe\""));
+    let manage = form_at(&page.body, "/settings/plan/manage");
+    let fields = form(&[
+        ("csrf", &field(manage, "csrf")),
+        ("request", &field(manage, "request")),
+    ]);
+    let answer = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/plan/manage",
+        &cookies,
+        Some(&fields),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::SEE_OTHER, "{}", answer.body);
+    assert_eq!(
+        answer.headers[header::LOCATION],
+        "https://billing.stripe.com/p/session/test_web"
+    );
 }

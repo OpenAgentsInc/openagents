@@ -128,7 +128,7 @@ pub struct Config {
     /// Environments pages unavailable and out of the left panel.
     pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
     /// The Pro plan and its environment meter (`--plan-meter`,
-    /// `--plan-subscribe`). Absent, Settings shows the plan and says hours
+    /// `--plan-checkout`). Absent, Settings shows the plan and says hours
     /// and subscribing aren't set up on this server.
     pub plan: Option<Arc<plan::Plans>>,
 }

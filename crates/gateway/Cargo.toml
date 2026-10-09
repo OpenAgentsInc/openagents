@@ -25,6 +25,7 @@ oa-auth = { path = "../oa-auth" }
 inference = { path = "../inference" }
 pay-ledger = { path = "../pay-ledger" }
 receipts = { path = "../receipts" }
+retail-cloud = { path = "../retail-cloud" }
 ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31", features = ["rand"] }

@@ -5,7 +5,7 @@
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, State};
+use axum::extract::{Form, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -36,6 +36,8 @@ pub(crate) fn routes() -> Router<App> {
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
         .route(crate::plan::EXTRA, post(extra_hours))
+        .route(crate::plan::SUBSCRIBE, post(subscribe))
+        .route(crate::plan::MANAGE, post(manage))
 }
 
 /// The signed-in viewer, or the answer to give instead (sign in first).
@@ -130,7 +132,12 @@ impl Standing {
     }
 }
 
-async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn settings(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    let returned = query.is_some_and(|q| q.split('&').any(|p| p == "plan=started"));
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -146,7 +153,7 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
     )
     .await;
     let computers = crate::device::computers_section(service, &headers, &viewer).await;
-    let plan = plan_section(&app, service, &headers, &viewer);
+    let plan = plan_section(&app, service, &headers, &viewer, returned);
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
         (computers)
@@ -156,7 +163,13 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
 
 /// The plan section for the viewer: the server's plan (or the checked-in
 /// one when none is set up here) and, with a meter, their month.
-fn plan_section(app: &App, service: &CloudSession, headers: &HeaderMap, viewer: &Viewer) -> Markup {
+fn plan_section(
+    app: &App,
+    service: &CloudSession,
+    headers: &HeaderMap,
+    viewer: &Viewer,
+    returned: bool,
+) -> Markup {
     let fallback;
     let plans = match app.config.plan.as_deref() {
         Some(plans) => plans,
@@ -165,7 +178,7 @@ fn plan_section(app: &App, service: &CloudSession, headers: &HeaderMap, viewer: 
             &fallback
         }
     };
-    let view = plans.view(&viewer.account_id, now() as i64);
+    let view = plans.view(&viewer.account_id, now() as i64, returned);
     let request = byo::fresh_request();
     let ticket = plans
         .has_meter()
@@ -180,7 +193,133 @@ fn plan_section(app: &App, service: &CloudSession, headers: &HeaderMap, viewer: 
                 .ok()
         })
         .flatten();
-    crate::plan::section(&view, ticket.as_deref().map(|t| (t, request.as_str())))
+    let checkout = plans.checkout().and_then(|_| {
+        service
+            .csrf(
+                headers,
+                viewer,
+                crate::plan::CHECKOUT_SCOPE,
+                &plan_target(viewer, &request),
+            )
+            .ok()
+    });
+    crate::plan::section(
+        &view,
+        ticket.as_deref().map(|t| (t, request.as_str())),
+        checkout.as_deref().map(|t| (t, request.as_str())),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckoutForm {
+    csrf: String,
+    request: String,
+}
+
+fn billing_problem(status: StatusCode, text: &str) -> Response {
+    protect(crate::layout::problem(
+        status,
+        "Subscription",
+        text,
+        (PAGE, "Settings"),
+    ))
+}
+
+/// The sentence for a refused checkout or billing page.
+fn billing_refusal(error: &jev::Error) -> &'static str {
+    let code = match error {
+        jev::Error::Api(api) => api
+            .body
+            .as_ref()
+            .and_then(|b| b.as_json())
+            .and_then(|v| v["error"]["code"].as_str().map(str::to_owned)),
+        _ => None,
+    };
+    match code.as_deref() {
+        Some("already_subscribed") => {
+            "You're already subscribed. Reload Settings to see your plan."
+        }
+        Some("checkout_pending") => {
+            "You already started a checkout. Finish it in the tab where it opened, or try again in an hour."
+        }
+        Some("no_subscription") => "There's no subscription to manage yet.",
+        Some("forbidden") => "Only the owner of your workspace can change its plan.",
+        _ => "Stripe couldn't be reached right now. Try again in a minute.",
+    }
+}
+
+/// The checked ticket, plans with checkout, and the workspace to bill: the
+/// person's own (the first they own).
+async fn checkout_request(
+    app: &App,
+    headers: &HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Result<(Viewer, String, String), Response> {
+    let Ok(Form(form)) = form else {
+        return Err(refused(SessionError::InvalidRequest));
+    };
+    let (service, viewer) = viewer(app, headers, PAGE).await?;
+    service
+        .verify_csrf(
+            headers,
+            Some(&viewer),
+            crate::plan::CHECKOUT_SCOPE,
+            &plan_target(&viewer, &form.request),
+            &form.csrf,
+        )
+        .map_err(refused)?;
+    let Some(plan) = app.config.plan.as_deref().and_then(|p| p.checkout()) else {
+        return Err(billing_problem(
+            StatusCode::NOT_FOUND,
+            "Subscribing isn't open on this server yet.",
+        ));
+    };
+    let Some(workspace) = viewer.workspaces.iter().find(|w| w.role == "owner") else {
+        return Err(billing_problem(
+            StatusCode::CONFLICT,
+            "Your account has no workspace of its own to bill yet.",
+        ));
+    };
+    let workspace = workspace.id.clone();
+    Ok((viewer, plan.to_owned(), workspace))
+}
+
+/// Subscribe: open Stripe Checkout for the plan and send the browser there.
+async fn subscribe(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Response {
+    let (viewer, plan, workspace) = match checkout_request(&app, &headers, form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match viewer
+        .client()
+        .account()
+        .plan_checkout(&workspace, &plan)
+        .await
+    {
+        Ok(url) => protect(Redirect::to(&url).into_response()),
+        Err(error) => billing_problem(StatusCode::BAD_GATEWAY, billing_refusal(&error)),
+    }
+}
+
+/// Manage subscription: Stripe's billing page, to change the card or cancel.
+async fn manage(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Response {
+    let (viewer, _, workspace) = match checkout_request(&app, &headers, form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match viewer.client().account().billing_portal(&workspace).await {
+        Ok(url) => protect(Redirect::to(&url).into_response()),
+        Err(error) => billing_problem(StatusCode::BAD_GATEWAY, billing_refusal(&error)),
+    }
 }
 
 fn plan_target(viewer: &Viewer, request: &str) -> String {
