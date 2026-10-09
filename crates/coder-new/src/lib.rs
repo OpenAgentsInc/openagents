@@ -117,7 +117,7 @@ pub struct App {
     return_screen: Screen,
     appearance_return_screen: Screen,
     appearance_error: Option<String>,
-    saved_chats: [Chat; 5],
+    saved_chats: [Chat; 6],
 }
 
 #[derive(Default)]
