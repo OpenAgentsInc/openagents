@@ -195,7 +195,7 @@ impl super::Upstream for ResponsesUpstream {
             for (name, value) in &self.config.headers {
                 call = call.header(name, value);
             }
-            let frames = match super::http::open_stream(call, &[]).await {
+            let frames = match super::http::open_stream(call, &[key.expose()]).await {
                 Ok(frames) => frames,
                 Err(error) => {
                     meter.fail(&error);

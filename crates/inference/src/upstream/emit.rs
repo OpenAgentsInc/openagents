@@ -388,6 +388,15 @@ impl Emitter {
         out
     }
 
+    /// Closes the current output at a native content-block boundary.
+    pub fn end_block(&mut self) -> Vec<Event> {
+        let mut out = Vec::new();
+        self.close_reasoning(&mut out);
+        self.close_message(&mut out);
+        self.close_calls(&mut out, ItemStatus::Completed);
+        out
+    }
+
     /// The usage the terminal event will carry.
     pub fn usage(&mut self, usage: Usage) {
         self.response.usage = Some(usage);
@@ -591,9 +600,6 @@ impl Emitter {
                 self.response.incomplete_details = Some(IncompleteDetails::new(reason));
             }
             Finish::Failed(error) => self.response.error = Some(error),
-        }
-        if self.response.usage.is_none() {
-            self.response.usage = Some(Usage::default());
         }
         let snapshot = self.response.clone();
         out.push(self.event(EventBody::lifecycle(lifecycle, snapshot)));

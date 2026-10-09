@@ -42,12 +42,15 @@ use crate::meter::RateRow;
 use crate::openagents::Privacy;
 use crate::request::{CreateResponse, TextFormat, Tool, ToolChoice, ToolChoiceMode};
 
+pub mod anthropic;
 pub mod chat;
 pub mod emit;
 pub mod gate;
+pub mod gemini;
 pub mod google;
 pub mod http;
 pub mod measure;
+pub mod openai;
 pub mod openrouter;
 pub mod pro;
 pub mod psionic;

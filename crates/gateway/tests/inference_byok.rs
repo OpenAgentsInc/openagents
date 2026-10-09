@@ -312,6 +312,20 @@ async fn pay_mine_goes_only_to_the_callers_sealed_key() {
         std::fs::read_to_string(d.dir.path().join(gateway::inference_byok::STORE)).unwrap();
     assert!(!stored.contains("sk-or-v1-theirs"));
 
+    // Direct providers use the same owner-only, sealed-key routes.
+    for provider in ["anthropic", "openai", "google"] {
+        let direct = format!("/v1/workspaces/{workspace}/provider-keys/{provider}");
+        let input = json!({"key": "stub-credential"});
+        let (status, _) = send(&d, reqwest::Method::PUT, &direct, &key, Some(input.clone())).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, body) = send(&d, reqwest::Method::PUT, &direct, &session, Some(input)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["provider"], provider);
+        assert!(!body.to_string().contains("stub-credential"));
+        let (status, _) = send(&d, reqwest::Method::DELETE, &direct, &session, None).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
     // pay: mine now goes to their OpenRouter with their key, never ours.
     let answer = reqwest::Client::new()
         .post(format!("{}/v1/responses", d.address))

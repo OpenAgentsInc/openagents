@@ -317,7 +317,10 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
         &[("404", "No such key.")],
     );
     key_revoke["parameters"] = json!([workspace, key]);
-    let provider = param("provider", "`openrouter` or `vercel`.");
+    let provider = param(
+        "provider",
+        "`openrouter`, `vercel`, `anthropic`, `openai`, or `google`.",
+    );
     let mut own_list = keyed(
         "listProviderKeys",
         "The workspace's own provider keys: provider and fingerprint, never the key. Requests with `openagents.pay: \"mine\"` run on them.",

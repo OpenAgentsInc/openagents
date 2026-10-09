@@ -791,13 +791,13 @@ P1 public API as built (#11065), local only until deployed:
 P1 bring your own key as built (#11067):
 
 - `inference.byok.keyring` names an `oa-seal` keyring (a private file
-  outside the registry). A workspace's own OpenRouter and Vercel AI
-  Gateway keys are sealed with it (AES-256-GCM, bound to the tenant and
+  outside the registry). A workspace's own OpenRouter, Vercel AI Gateway, Anthropic, OpenAI,
+  and Google keys are sealed with it (AES-256-GCM, bound to the tenant and
   provider) in `inference-provider-keys.json` beside the registry
   (`crates/gateway/src/inference_byok.rs`). Routes, for a signed-in owner
   or admin and never an API key: `GET /v1/workspaces/{ws}/provider-keys`,
   `PUT` (`{"key": "..."}`) and `DELETE
-  /v1/workspaces/{ws}/provider-keys/{openrouter|vercel}`. Answers carry
+  /v1/workspaces/{ws}/provider-keys/{openrouter|vercel|anthropic|openai|google}`. Answers carry
   the provider and `model_access::fingerprint` only; the key is never
   logged or answered back.
 - Every caller's `run::Caller::own` holds adapters on its tenant's keys,
@@ -810,9 +810,12 @@ P1 bring your own key as built (#11067):
   debited), and `GET /v1/usage/{id}` says `payer: "mine"`.
 - Web Settings, API keys: add, replace, or remove your own OpenRouter and
   Vercel AI Gateway keys (shown when the account service keeps them).
-- Not yet: Anthropic, OpenAI, and Google keys, which need their own
-  adapters (#11111); the desktop's locally stored keys are separate and
-  stay on the person's computer.
+- Direct keys (#11111): `anthropic` uses Messages, `openai` uses native
+  Responses, and `google` uses Gemini's `streamGenerateContent`. Each
+  uses only the workspace's sealed key. Direct keys require
+  `openagents.privacy: "standard"`; a key does not establish a verified
+  zero-retention agreement. The desktop's locally stored keys are separate
+  and stay on the person's computer.
 
 Issues, in build order:
 

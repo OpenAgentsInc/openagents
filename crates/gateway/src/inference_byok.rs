@@ -1,7 +1,7 @@
 //! Bring your own key on the inference API (`docs/inference/gateway.md`,
 //! sections 4 and 9; #11067).
 //!
-//! A workspace keeps its own OpenRouter and Vercel AI Gateway keys here,
+//! A workspace keeps its own provider keys here,
 //! sealed with [`oa_seal`] (AES-256-GCM under a keyring read from
 //! `inference.byok.keyring`, a private file outside the registry, so a copy
 //! of the registry holds only ciphertext). Each sealed key is bound to its
@@ -19,7 +19,7 @@
 //! Routes, for a signed-in workspace owner or admin (never an API key):
 //! `GET /v1/workspaces/{ws}/provider-keys`, and `PUT` (`{"key": "..."}`)
 //! or `DELETE /v1/workspaces/{ws}/provider-keys/{provider}`, where
-//! `provider` is `openrouter` or `vercel`.
+//! `provider` is `openrouter`, `vercel`, `anthropic`, `openai`, or `google`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -32,7 +32,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, get, put};
 use inference::upstream::secret::Secret;
 use inference::upstream::{Account, CostBasis, Upstream};
-use model_access::Provider;
 use oa_seal::{Keyring, Sealed};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -40,6 +39,37 @@ use zeroize::Zeroizing;
 
 use crate::accounts::{accounts_store, member, member_account, principal, refused};
 use crate::serve::ServeState;
+
+/// Providers supported by the API key store, separate from desktop keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    OpenRouter,
+    Vercel,
+    Anthropic,
+    OpenAi,
+    Google,
+}
+
+impl Provider {
+    fn word(self) -> &'static str {
+        match self {
+            Self::OpenRouter => "openrouter",
+            Self::Vercel => "vercel",
+            Self::Anthropic => "anthropic",
+            Self::OpenAi => "openai",
+            Self::Google => "google",
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::OpenRouter => "OpenRouter",
+            Self::Vercel => "Vercel AI Gateway",
+            Self::Anthropic => "Anthropic",
+            Self::OpenAi => "OpenAI",
+            Self::Google => "Google",
+        }
+    }
+}
 
 pub const KEYS: &str = "/v1/workspaces/{workspace}/provider-keys";
 pub const KEY: &str = "/v1/workspaces/{workspace}/provider-keys/{provider}";
@@ -97,9 +127,13 @@ impl std::fmt::Debug for Keys {
 /// The providers whose keys the gateway can route to: those with an
 /// adapter here.
 fn provider(word: &str) -> Option<Provider> {
-    match Provider::parse(word).ok()? {
-        provider @ (Provider::OpenRouter | Provider::Vercel) => Some(provider),
-        Provider::TypeSafe => None,
+    match word.trim().to_ascii_lowercase().as_str() {
+        "openrouter" | "open-router" => Some(Provider::OpenRouter),
+        "vercel" | "ai-gateway" | "gateway" => Some(Provider::Vercel),
+        "anthropic" => Some(Provider::Anthropic),
+        "openai" => Some(Provider::OpenAi),
+        "google" => Some(Provider::Google),
+        _ => None,
     }
 }
 
@@ -267,10 +301,16 @@ impl Keys {
 
 /// An adapter on the caller's key, billed to no account of ours.
 fn adapter(provider: Provider, key: Secret) -> Arc<dyn Upstream> {
-    use inference::upstream::{openrouter, responses::ResponsesUpstream, vercel};
+    use inference::upstream::{
+        anthropic::Anthropic, gemini::Gemini, openai, openrouter, responses::ResponsesUpstream,
+        vercel,
+    };
     let mut config = match provider {
         Provider::Vercel => vercel::config(Some(key)),
-        _ => openrouter::config(Some(key)),
+        Provider::OpenRouter => openrouter::config(Some(key)),
+        Provider::OpenAi => openai::config(Some(key)),
+        Provider::Anthropic => return Arc::new(Anthropic::new(key)),
+        Provider::Google => return Arc::new(Gemini::new(key)),
     };
     config.account = Account {
         id: inference::run::CALLER_KEY.to_owned(),
@@ -359,7 +399,9 @@ fn unknown_provider(word: &str) -> Response {
     refused(
         StatusCode::NOT_FOUND,
         "unknown_provider",
-        format!("`{shown}` isn't a provider whose key the API can use. Use openrouter or vercel."),
+        format!(
+            "`{shown}` isn't a provider whose key the API can use. Use openrouter, vercel, anthropic, openai, or google."
+        ),
     )
 }
 
@@ -474,6 +516,35 @@ async fn remove(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direct_provider_keys_are_sealed_and_bound_to_the_tenant() {
+        let dir = tempfile::tempdir().unwrap();
+        let (keyring, _) = Keyring::scratch("direct").unwrap();
+        let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
+        for word in ["anthropic", "openai", "google"] {
+            let provider = provider(word).unwrap();
+            keys.put("acme", provider, "stub-credential").unwrap();
+        }
+        let adapters = keys.upstreams("acme");
+        assert_eq!(adapters.len(), 3);
+        assert!(keys.upstreams("other").is_empty());
+        for adapter in adapters {
+            assert_eq!(adapter.account().id, inference::run::CALLER_KEY);
+            assert!(adapter.configured());
+            assert!(!adapter.models().is_empty());
+            assert!(
+                !adapter
+                    .privacy()
+                    .allows(&inference::openagents::Privacy::Strict)
+            );
+        }
+        assert!(
+            !std::fs::read_to_string(dir.path().join(STORE))
+                .unwrap()
+                .contains("stub-credential")
+        );
+    }
 
     #[test]
     fn keys_are_sealed_per_tenant_and_never_kept_in_the_clear() {

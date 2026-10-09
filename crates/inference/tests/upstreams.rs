@@ -1136,3 +1136,215 @@ fn reported_costs_parse_without_floats() {
     assert_eq!(usd_micros(&json!(1.2e-5)), Some(12));
     assert_eq!(usd_micros(&json!("n/a")), None);
 }
+
+#[tokio::test]
+async fn direct_gemini_uses_the_callers_header_and_native_codec() {
+    let server = stub(vec![Reply::stream(&fixture("vertex-gemini-3.8-flash.sse"))]).await;
+    let mut upstream =
+        inference::upstream::gemini::Gemini::new(Secret::new("stub-credential").unwrap());
+    upstream.base_url = server.url.clone();
+    let sent = upstream
+        .send(&count_request("standard"), "google/gemini-3.8-flash")
+        .await
+        .unwrap();
+    let (events, error) = drain(sent).await;
+    assert!(error.is_none());
+    check(&events);
+    assert!(folded(&events).usage.is_some());
+    let seen = server.seen();
+    assert_eq!(seen[0].headers["x-goog-api-key"], "stub-credential");
+    assert!(!seen[0].headers.contains_key("authorization"));
+    assert_eq!(
+        seen[0].path,
+        "/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse"
+    );
+    assert!(!seen[0].json().to_string().contains("stub-credential"));
+    assert_eq!(
+        upstream
+            .send(&count_request("strict"), "google/gemini-3.8-flash")
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::PrivacyRefused
+    );
+    assert_eq!(server.seen().len(), 1);
+}
+
+fn anthropic_stream(chunks: &[Value]) -> String {
+    chunks
+        .iter()
+        .map(|chunk| {
+            format!(
+                "event: {}\ndata: {chunk}\n\n",
+                chunk["type"].as_str().unwrap()
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn anthropic_streams_signed_thinking_tools_and_cumulative_usage() {
+    let body = anthropic_stream(&[
+        json!({"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":4,"cache_creation_input_tokens":2,"output_tokens":1}}}),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Think"}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed"}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_1","name":"weather","input":{}}}),
+        json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Paris\"}"}}),
+        json!({"type":"content_block_stop","index":1}),
+        json!({"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}),
+        json!({"type":"message_stop"}),
+    ]);
+    let server = stub(vec![Reply::stream(&body)]).await;
+    let mut upstream =
+        inference::upstream::anthropic::Anthropic::new(Secret::new("stub-credential").unwrap());
+    upstream.url = format!("{}/v1/messages", server.url);
+    let req = request(
+        json!({"input":"Weather?","instructions":"Be brief.","max_output_tokens":64,"tools":[{"type":"function","name":"weather","parameters":{"type":"object"}}],"openagents":{"privacy":"standard"}}),
+    );
+    let sent = upstream
+        .send(&req, "anthropic/claude-sonnet-5-5")
+        .await
+        .unwrap();
+    let (events, error) = drain(sent).await;
+    assert!(error.is_none());
+    check(&events);
+    let response = folded(&events);
+    assert_eq!(response.usage.as_ref().unwrap().input_tokens, 16);
+    assert_eq!(response.usage.as_ref().unwrap().output_tokens, 9);
+    assert_eq!(
+        response
+            .usage
+            .as_ref()
+            .unwrap()
+            .input_tokens_details
+            .cached_tokens,
+        4
+    );
+    assert!(
+        matches!(&response.output[0], Item::Reasoning(item) if item.encrypted_content.as_deref() == Some("signed"))
+    );
+    assert!(
+        matches!(&response.output[1], Item::FunctionCall(item) if item.arguments == "{\"city\":\"Paris\"}")
+    );
+    let seen = server.seen();
+    assert_eq!(seen[0].headers["x-api-key"], "stub-credential");
+    assert_eq!(seen[0].headers["anthropic-version"], "2023-06-01");
+    assert_eq!(seen[0].json()["model"], "claude-sonnet-5-5");
+    assert_eq!(seen[0].json()["max_tokens"], 64);
+    assert!(seen[0].json().get("openagents").is_none());
+}
+
+#[tokio::test]
+async fn anthropic_broken_streams_fail_before_and_after_output() {
+    for output in [false, true] {
+        let mut chunks =
+            vec![json!({"type":"message_start","message":{"usage":{"input_tokens":1}}})];
+        if output {
+            chunks.push(json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}));
+        }
+        chunks.push(
+            json!({"type":"error","error":{"type":"overloaded_error","message":"stub-credential"}}),
+        );
+        let server = stub(vec![Reply::stream(&anthropic_stream(&chunks))]).await;
+        let mut upstream =
+            inference::upstream::anthropic::Anthropic::new(Secret::new("stub-credential").unwrap());
+        upstream.url = server.url;
+        let (events, error) = drain(
+            upstream
+                .send(&count_request("standard"), "anthropic/claude-sonnet-5-5")
+                .await
+                .unwrap(),
+        )
+        .await;
+        if output {
+            assert_eq!(folded(&events).status, ResponseStatus::Failed);
+            check(&events);
+        } else {
+            assert_eq!(error.unwrap().class, ErrorClass::Upstream);
+        }
+        assert!(!format!("{events:?}").contains("stub-credential"));
+    }
+}
+
+#[tokio::test]
+async fn direct_openai_streams_responses_without_gateway_fields() {
+    let req = count_request("standard");
+    let mut emitter = inference::upstream::emit::Emitter::new("gpt-5.6-luna", &req);
+    let mut events = emitter.text("Hello");
+    emitter.usage(inference::Usage::new(3, 0, 1, 0));
+    events.extend(emitter.finish(inference::upstream::emit::Finish::Completed));
+    let body: String = events
+        .iter()
+        .map(|event| inference::sse::encode_event(event))
+        .collect();
+    let server = stub(vec![Reply::stream(&body)]).await;
+    let mut config = inference::upstream::openai::config(Secret::new("stub-credential"));
+    config.url = format!("{}/v1/responses", server.url);
+    let upstream = ResponsesUpstream::new(config);
+    let (events, error) = drain(upstream.send(&req, "openai/gpt-5.6-luna").await.unwrap()).await;
+    assert!(error.is_none());
+    check(&events);
+    assert_eq!(folded(&events).model, "openai/gpt-5.6-luna");
+    let seen = server.seen();
+    assert_eq!(seen[0].headers["authorization"], "Bearer stub-credential");
+    assert_eq!(seen[0].json()["model"], "gpt-5.6-luna");
+    assert_eq!(seen[0].json()["store"], false);
+    assert_eq!(seen[0].json()["stream"], true);
+    assert!(seen[0].json().get("openagents").is_none());
+}
+
+#[test]
+fn anthropic_preserves_tool_history_and_refuses_unsigned_thinking() {
+    let upstream =
+        inference::upstream::anthropic::Anthropic::new(Secret::new("stub-credential").unwrap());
+    let row = &upstream.models()[0];
+    let req = request(json!({"input":[
+        {"role":"developer","content":"Be brief."},
+        {"role":"user","content":"Weather?"},
+        {"type":"reasoning","summary":[{"type":"summary_text","text":"Think"}],"encrypted_content":"signed"},
+        {"type":"function_call","call_id":"c1","name":"weather","arguments":"{}"},
+        {"type":"function_call_output","call_id":"c1","output":"Sunny"}
+    ]}));
+    let body = inference::upstream::anthropic::body(&req, row).unwrap();
+    assert_eq!(body["system"], "Be brief.");
+    assert_eq!(body["messages"][1]["role"], "assistant");
+    assert_eq!(body["messages"][1]["content"][0]["signature"], "signed");
+    assert_eq!(body["messages"][1]["content"][1]["type"], "tool_use");
+    assert_eq!(body["messages"][2]["content"][0]["tool_use_id"], "c1");
+    let unsigned = request(json!({"input":[{"type":"reasoning","summary":[]}]}));
+    assert_eq!(
+        inference::upstream::anthropic::body(&unsigned, row)
+            .unwrap_err()
+            .class,
+        ErrorClass::Unsupported
+    );
+}
+
+#[tokio::test]
+async fn anthropic_empty_tool_arguments_and_missing_usage_are_honest() {
+    let chunks = [
+        json!({"type":"message_start","message":{}}),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_empty","name":"ping","input":{}}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"message_delta","delta":{"stop_reason":"tool_use"}}),
+        json!({"type":"message_stop"}),
+    ];
+    let server = stub(vec![Reply::stream(&anthropic_stream(&chunks))]).await;
+    let mut upstream =
+        inference::upstream::anthropic::Anthropic::new(Secret::new("stub-credential").unwrap());
+    upstream.url = server.url;
+    let (events, error) = drain(
+        upstream
+            .send(&count_request("standard"), "anthropic/claude-sonnet-5-5")
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(error.is_none());
+    check(&events);
+    let response = folded(&events);
+    assert!(response.usage.is_none());
+    assert!(matches!(&response.output[0], Item::FunctionCall(call) if call.arguments == "{}"));
+}
