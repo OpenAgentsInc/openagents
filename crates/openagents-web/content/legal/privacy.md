@@ -1,5 +1,5 @@
 # Privacy Policy
-Last updated: 2026-09-03
+Last updated: 2026-10-09
 
 This Privacy Policy describes how OpenAgents, Inc. (“we,” “us,” or “our”) handles personal information that we collect through our website [https://openagents.com](https://openagents.com) , our APIs and inference gateway, Coder and Coder Terminal, the Forum, Pylon, and any other service that links to this Privacy Policy (collectively, the “Services”).
 
@@ -57,7 +57,7 @@ We use technical, organizational, and physical safeguards designed to protect pe
 - You may opt out of marketing communications by following the unsubscribe instructions in those messages.
 - You may access, update, or request deletion of your account information by contacting us, subject to legal and contractual retention requirements.
 - Depending on your location, you may have additional rights under applicable privacy laws; contact us to exercise them.
-- You may ask us not to use the content you submit to improve our products or to train or evaluate models. Write to us and we will honor it going forward for the account you name. We still process that content to answer the request you made, to secure the Services, and to meet our legal obligations.
+- On a paid plan, you may ask us not to use the content you submit to improve our products or to train or evaluate models. Opt-outs are set up by agreement with us; once agreed, we honor it going forward for the account you name. We still process that content to answer the request you made, to secure the Services, and to meet our legal obligations.
 
 ## 8. Links to Other Sites
 
