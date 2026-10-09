@@ -264,3 +264,20 @@ fn stylesheets_use_oa_classes_and_apps_sdk_tokens() {
     assert!(input.contains("var(--input-outline-border-color)"));
     assert!(input.contains("var(--control-size-md)"));
 }
+
+#[test]
+fn secret_fields_turn_off_autocomplete_and_spellcheck() {
+    let area = html(Textarea::new("key").autocomplete("off").spellcheck(false));
+    assert!(
+        area.contains(r#"autocomplete="off" spellcheck="false""#),
+        "{area}"
+    );
+    let input = html(Input::new("key").autocomplete("off").spellcheck(false));
+    assert!(
+        input.contains(r#"autocomplete="off" spellcheck="false""#),
+        "{input}"
+    );
+    let plain = html(Textarea::new("notes"));
+    assert!(!plain.contains("spellcheck"), "{plain}");
+    assert!(!plain.contains("autocomplete"), "{plain}");
+}

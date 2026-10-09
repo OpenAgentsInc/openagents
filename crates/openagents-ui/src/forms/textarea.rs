@@ -21,6 +21,8 @@ pub struct Textarea {
     min_rows: Option<u32>,
     max_rows: Option<u32>,
     maxlength: Option<u32>,
+    autocomplete: Option<String>,
+    spellcheck: Option<bool>,
     aria: FieldAria,
     aria_label: Option<String>,
     variant: Variant,
@@ -40,6 +42,8 @@ impl Textarea {
             min_rows: None,
             max_rows: None,
             maxlength: None,
+            autocomplete: None,
+            spellcheck: None,
             aria: FieldAria::default(),
             aria_label: None,
             variant: Variant::Outline,
@@ -78,6 +82,19 @@ impl Textarea {
 
     pub fn maxlength(mut self, maxlength: u32) -> Self {
         self.maxlength = Some(maxlength);
+        self
+    }
+
+    /// The native `autocomplete` hint, such as `"off"` for a secret.
+    pub fn autocomplete(mut self, autocomplete: impl Into<String>) -> Self {
+        self.autocomplete = Some(autocomplete.into());
+        self
+    }
+
+    /// The native `spellcheck` setting; `false` keeps a secret away from
+    /// the browser spellchecker.
+    pub fn spellcheck(mut self, spellcheck: bool) -> Self {
+        self.spellcheck = Some(spellcheck);
         self
     }
 
@@ -158,6 +175,8 @@ impl Render for Textarea {
                     rows=(min_rows)
                     placeholder=[self.placeholder.as_deref()]
                     maxlength=[self.maxlength]
+                    autocomplete=[self.autocomplete.as_deref()]
+                    spellcheck=[self.spellcheck.map(|on| if on { "true" } else { "false" })]
                     aria-label=[self.aria_label.as_deref()]
                     aria-describedby=[self.aria.described_by.as_deref()]
                     aria-invalid=[self.aria.invalid_attr()]

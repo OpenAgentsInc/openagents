@@ -37,6 +37,7 @@ pub struct Input {
     value: Option<String>,
     placeholder: Option<String>,
     autocomplete: Option<String>,
+    spellcheck: Option<bool>,
     inputmode: Option<String>,
     pattern: Option<String>,
     min: Option<String>,
@@ -64,6 +65,7 @@ impl Input {
             value: None,
             placeholder: None,
             autocomplete: None,
+            spellcheck: None,
             inputmode: None,
             pattern: None,
             min: None,
@@ -101,6 +103,13 @@ impl Input {
 
     pub fn autocomplete(mut self, autocomplete: impl Into<String>) -> Self {
         self.autocomplete = Some(autocomplete.into());
+        self
+    }
+
+    /// The native `spellcheck` setting; `false` keeps a secret away from
+    /// the browser spellchecker.
+    pub fn spellcheck(mut self, spellcheck: bool) -> Self {
+        self.spellcheck = Some(spellcheck);
         self
     }
 
@@ -233,6 +242,7 @@ impl Render for Input {
                     value=[self.value.as_deref()]
                     placeholder=[self.placeholder.as_deref()]
                     autocomplete=[self.autocomplete.as_deref()]
+                    spellcheck=[self.spellcheck.map(|on| if on { "true" } else { "false" })]
                     inputmode=[self.inputmode.as_deref()]
                     pattern=[self.pattern.as_deref()]
                     min=[self.min.as_deref()]
