@@ -27,10 +27,43 @@ use crate::account::Account;
 use crate::layout::{COPYRIGHT, DOCS, DOWNLOAD, GITHUB, X};
 use crate::theme;
 
-/// Where the account menu's entries go (the signed-in Cloud pages).
-const SETTINGS: &str = "/cloud/app/settings";
-const BILLING: &str = "/cloud/app/billing";
-const SIGN_OUT: &str = "/cloud/sign-out";
+/// Where the account menu's entries go. Billing joins them once a real
+/// payment flow exists (docs/web/cloud-reset.md).
+const SETTINGS: &str = crate::settings::PAGE;
+const SIGN_OUT: &str = crate::cloud::SIGN_OUT;
+
+/// A top-level destination in the left panel, under "New chat".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Nav {
+    /// `/environments`: set up a repository and run Claude Code in it.
+    Environments,
+}
+
+impl Nav {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Environments => "Environments",
+        }
+    }
+
+    #[must_use]
+    pub const fn href(self) -> &'static str {
+        match self {
+            Self::Environments => "/environments",
+        }
+    }
+
+    fn icon(self) -> Icon {
+        match self {
+            Self::Environments => Icon::Cube,
+        }
+    }
+}
+
+/// The destinations the left panel shows, in order. A destination is added
+/// here when its page exists (`Nav::Environments` with `/environments`).
+pub const NAV: &[Nav] = &[];
 
 /// One page: title, current section, content, and optional shell slots.
 #[must_use]
@@ -182,6 +215,13 @@ impl UiPage {
                     .current(current == Some("/"))
                     .shortcut("Control+N", "⌃N"),
             );
+        for nav in NAV {
+            sidebar = sidebar.nav(
+                NavItem::new(nav.label(), nav.href())
+                    .icon(nav.icon().size(IconSize::Md))
+                    .current(current == Some(nav.href())),
+            );
+        }
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
@@ -200,7 +240,6 @@ impl UiPage {
             Account::SignedIn { name, sign_out } => {
                 let mut menu = AccountMenu::new(name)
                     .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
-                    .item(MenuItem::link("Billing", BILLING).icon(Icon::CreditCard))
                     .item(MenuItem::separator())
                     .item(MenuItem::link("Docs", DOCS).icon(Icon::Book))
                     .item(MenuItem::link("Download", DOWNLOAD).icon(Icon::Download));
@@ -480,7 +519,7 @@ mod tests {
                 .into_string()
         };
         // Signed in: an account menu above the button with settings,
-        // billing, docs, download and a sign-out form.
+        // docs, download and a sign-out form; no billing yet.
         let html = page(Account::SignedIn {
             name: "Ada <Lovelace>".into(),
             sign_out: Some("token".into()),
@@ -490,15 +529,16 @@ mod tests {
         assert!(footer < account && account < html.find("</aside>").unwrap());
         assert!(html.contains("<span class=\"oa-account-name\">Ada &lt;Lovelace&gt;</span>"));
         assert!(html.contains("data-side=\"top\""));
-        for href in [SETTINGS, BILLING, DOCS, DOWNLOAD] {
+        assert!(!html.contains(">Billing<"));
+        for href in [SETTINGS, DOCS, DOWNLOAD] {
             assert!(
                 html[account..].contains(&format!("href=\"{href}\"")),
                 "{href}"
             );
         }
-        assert!(html.contains(
-            "<form id=\"oa-sign-out\" method=\"post\" action=\"/cloud/sign-out\" hidden>"
-        ));
+        assert!(
+            html.contains("<form id=\"oa-sign-out\" method=\"post\" action=\"/sign-out\" hidden>")
+        );
         assert!(html.contains("form=\"oa-sign-out\""));
         assert!(html.contains("name=\"csrf\" value=\"token\""));
         assert!(!html.contains(">Sign in<"));

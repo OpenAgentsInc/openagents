@@ -5,7 +5,8 @@
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
 //! Interactive pages include the homepage composer, flow map, Verse demos,
-//! Rust component catalog, and separately configured Cloud workspace. Pages that need
+//! Rust component catalog, and, with an account service configured, sign-in
+//! and Settings. Pages that need
 //! the production account store read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
@@ -28,6 +29,7 @@ pub mod palette;
 pub mod pilot;
 mod purchases;
 pub mod sales_remote;
+mod settings;
 mod tasks;
 pub mod theme;
 pub mod ui_page;
@@ -97,7 +99,7 @@ pub struct Config {
     pub bunny: Option<PathBuf>,
     /// The independently built Rust/Wasm component catalog assets.
     pub components_build: Option<PathBuf>,
-    /// Explicit native account adapter; absence leaves the Cloud workspace unavailable.
+    /// Explicit native account adapter; absence leaves sign-in and Settings unavailable.
     pub cloud: Option<Arc<cloud::session::CloudSession>>,
     /// GitHub sign-in (`--github-oauth`): the OAuth App's client id and
     /// callback URL. With `cloud`, the header offers Log in and Sign up and
@@ -105,19 +107,12 @@ pub struct Config {
     pub github: Option<Arc<oa_auth::GithubApp>>,
     /// Explicit account/workspace bindings to separately granted resident hosts.
     pub cloud_hosts: Option<Arc<cloud::hosts::Hosts>>,
-    /// Rust/Wasm private-view lifecycle assets.
+    /// Unused since the Cloud pages left (docs/web/cloud-reset.md); the
+    /// `--cloud-build` flag is still accepted so deployments keep starting.
     pub cloud_build: Option<PathBuf>,
-    /// Explicit account/workspace delegations to the retail service.
-    pub cloud_retail: Option<Arc<cloud::retail::Delegations>>,
-    /// Explicit account/workspace delegations to the separate sales-owner
-    /// remote adapter; absence leaves Sales unavailable.
-    pub cloud_sales: Option<Arc<cloud::sales::Delegations>>,
     /// Private custody of users' own Claude credentials for their own
-    /// computers (BYO-04); absence leaves the page unavailable.
+    /// computers (BYO-04); absence hides the Claude credential settings.
     pub cloud_byo: Option<Arc<cloud::byo::Computers>>,
-    /// The owner's explicit browser qualification for team controls
-    /// (WEB-12); absence leaves the Team page unavailable.
-    pub cloud_team: Option<Arc<cloud::team::Qualification>>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -147,10 +142,7 @@ impl Config {
             github: None,
             cloud_hosts: None,
             cloud_build: None,
-            cloud_retail: None,
-            cloud_sales: None,
             cloud_byo: None,
-            cloud_team: None,
             pilot: None,
         }
     }
@@ -203,6 +195,7 @@ pub fn router(config: Config) -> Router {
         .merge(demo::routes())
         .merge(cloud::routes())
         .merge(auth::routes())
+        .merge(settings::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
@@ -252,7 +245,9 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
         || path.starts_with("/cloud/")
         || path == "/login"
         || path == "/signup"
-        || path.starts_with("/auth/");
+        || path.starts_with("/auth/")
+        || matches!(path, "/sign-in" | "/sign-out" | "/settings")
+        || path.starts_with("/settings/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
         || path == "/ask"

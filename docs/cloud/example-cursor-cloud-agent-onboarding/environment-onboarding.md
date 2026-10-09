@@ -626,7 +626,9 @@ job the operator policy already admits, in Boat Coder mode; other profiles
 are refused while a version is selected. A selection is not customer
 availability.
 
-ENV-07 is the project environment panel in `openagents-web`
+ENV-07 was the project environment panel in `openagents-web`, removed with
+the old Cloud pages on 2026-10-08 ([the Cloud reset](../../web/cloud-reset.md));
+`/environments` replaces it. It lived
 ([`cloud/environment.rs`](../../../crates/openagents-web/src/cloud/environment.rs))
 at `/cloud/app/hosts/{binding}/cloud/{project}/environment`, linked from
 the project's operator jobs page. Its native contract is

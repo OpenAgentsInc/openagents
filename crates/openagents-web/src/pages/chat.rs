@@ -217,24 +217,14 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Ok(None) => {}
         Err(e) => return unavailable(e),
     }
-    let cloud = if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
-        match crate::cloud::composer::stage(
-            &app,
-            &headers,
-            &owner,
-            &id,
-            selection.as_ref().unwrap(),
-            &text,
-            None,
-        )
-        .await
-        {
-            Ok(v) => Some(v),
-            Err(r) => return r,
-        }
-    } else {
-        None
-    };
+    // Running a chat on a connected computer left with the Cloud pages
+    // (docs/web/cloud-reset.md); Environments replaces it.
+    let cloud: Option<crate::chat_store::CloudRequest> =
+        if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
+            return refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE);
+        } else {
+            None
+        };
     let admitted_at = now();
     if cloud.is_none() {
         match app
@@ -378,7 +368,7 @@ pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loa
             runtime.project.clone(),
         );
         if checked.insert(scope) {
-            crate::cloud::composer::authorize(app, headers, &runtime).await?;
+            return Err(refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE));
         }
     }
     Ok(loaded)
@@ -389,15 +379,6 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Ok(v) => v,
         Err(r) => return r,
     };
-    if let Some(cloud) = record
-        .conversation
-        .requests
-        .iter()
-        .rev()
-        .find_map(|r| r.cloud.as_ref())
-    {
-        return crate::cloud::composer::view(&app, &headers, cloud).await;
-    }
     let chat = &record.conversation;
     let selection = chat.selection.clone().unwrap_or_default();
     let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
@@ -522,24 +503,14 @@ async fn follow(
             "Continue this work from its job page in Cloud.",
         );
     }
-    let cloud = if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
-        match crate::cloud::composer::stage(
-            &app,
-            &headers,
-            &owner,
-            &prompt.request_id,
-            selection.as_ref().unwrap(),
-            &text,
-            previous,
-        )
-        .await
-        {
-            Ok(v) => Some(v),
-            Err(r) => return r,
-        }
-    } else {
-        None
-    };
+    // Running a chat on a connected computer left with the Cloud pages
+    // (docs/web/cloud-reset.md); Environments replaces it.
+    let cloud: Option<crate::chat_store::CloudRequest> =
+        if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
+            return refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE);
+        } else {
+            None
+        };
     let admitted_at = now();
     if cloud.is_none() {
         match app

@@ -280,41 +280,20 @@ fn native_token(app: &App, owner: &str, choice: &RuntimeChoice) -> String {
     )
 }
 
-async fn choices(app: &App, headers: &HeaderMap) -> Result<Vec<RuntimeChoice>, Response> {
-    match crate::cloud::composer::choices(app, headers).await {
-        Ok(choices) => {
-            if choices.iter().any(|choice| {
-                choice.runtime.validate().is_err()
-                    || choice.repository.as_ref().is_some_and(|repository| {
-                        coder_access::cloud::repository(repository).is_err()
-                    })
-                    || choice
-                        .branch
-                        .as_ref()
-                        .is_some_and(|branch| coder_access::cloud::branch(branch).is_err())
-                    || choice.template.as_ref().is_some_and(|template| {
-                        template.len() > 256 || template.chars().any(char::is_control)
-                    })
-                    || choice.size.len() > 128
-                    || choice.size.chars().any(char::is_control)
-            }) {
-                return Err(refused(
-                    StatusCode::BAD_GATEWAY,
-                    "Something went wrong. Open your workspace again.",
-                ));
-            }
-            Ok(choices)
-        }
-        Err(response)
-            if matches!(
-                response.status(),
-                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN | StatusCode::SERVICE_UNAVAILABLE
-            ) =>
-        {
-            Ok(Vec::new())
-        }
-        Err(response) => Err(response),
-    }
+/// What a chat says when it reaches for a connected computer.
+pub(crate) const RUNTIME_GONE: &str =
+    "Running code on a connected computer isn't available from chat anymore.";
+
+/// Connected-computer runtimes left with the Cloud pages
+/// (docs/web/cloud-reset.md); Environments replaces them, so none are offered.
+#[allow(clippy::unused_async)]
+async fn choices(_app: &App, _headers: &HeaderMap) -> Result<Vec<RuntimeChoice>, Response> {
+    Ok(Vec::new())
+}
+
+/// A sealed selection that still names a runtime is refused.
+fn runtime_gone(_runtime: &RuntimeSelection) -> Result<(), Response> {
+    Err(refused(StatusCode::GONE, RUNTIME_GONE))
 }
 
 async fn show(
@@ -343,7 +322,7 @@ async fn show(
         Err(response) => return response,
     };
     if let Some(runtime) = &selection.runtime
-        && let Err(response) = crate::cloud::composer::authorize(&app, &headers, runtime).await
+        && let Err(response) = runtime_gone(runtime)
     {
         return response;
     }
@@ -430,7 +409,7 @@ fn repository_panel(
     panel(
         "Repository",
         html! {
-            p { "Pick a public GitHub repository, or one from your connected computer." }
+            p { "Pick a public GitHub repository." }
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 label for="composer-repository" { "Public GitHub repository" }
@@ -453,10 +432,6 @@ fn repository_panel(
                         }
                     }
                 }
-            }
-            @if choices.is_empty() {
-                p class="oa-composer-note" { "To use a repository on your computer, connect it in Cloud." }
-                a href="/cloud/app" { "Open Cloud" }
             }
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat)) button type="submit" name="value" value="none" class="oa-composer-choice" { "No repository" }
@@ -538,7 +513,6 @@ async fn branch_panel(
             html! {
                 p { "That repository isn't available anymore. Pick another one." }
                 (picker_link("repository", "Choose repository"))
-                a href="/cloud/app" { "Open Cloud" }
             },
         );
     }
@@ -603,8 +577,7 @@ fn environment_panel(
                     }
                 }
             }
-            @if choices.is_empty() { p { "No environments yet. Connect a computer in Cloud to add one." } }
-            a href="/cloud/app" { "Open Cloud" }
+            @if choices.is_empty() { p { "No environments yet." } }
         },
     )
 }
@@ -626,9 +599,7 @@ async fn selected_choice(
         .find(|choice| **choice == original)
         .cloned()
         .ok_or("This list is out of date. Open it again.")?;
-    crate::cloud::composer::validate(app, headers, &choice.runtime)
-        .await
-        .map_err(|_| "Your access changed. Open your workspace again.")?;
+    runtime_gone(&choice.runtime).map_err(|_| RUNTIME_GONE)?;
     Ok(choice)
 }
 
@@ -650,7 +621,7 @@ async fn select(
         Err(response) => return response,
     };
     if let Some(runtime) = &previous.runtime
-        && let Err(response) = crate::cloud::composer::authorize(&app, &headers, runtime).await
+        && let Err(response) = runtime_gone(runtime)
     {
         return response;
     }

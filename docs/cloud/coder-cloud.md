@@ -85,6 +85,8 @@ The following new routes are proposed interface locations. They are not existing
 API contracts. Keep public information readable without an account; authenticate
 private work, records, and controls.
 
+> **Removed 2026-10-08.** The `/cloud/app` pages this describes were deleted; see [the Cloud reset](../web/cloud-reset.md).
+
 | Location | Purpose |
 | --- | --- |
 | `/` | OpenAgents introduction, Download, Docs, and the qualified pilot offer. The anonymous Ask OpenAgents terminal keeps its knowledge-only scope. Cloud, components, and demo remain direct-link pages, with no public header or homepage promotion until the owner authorizes it. |

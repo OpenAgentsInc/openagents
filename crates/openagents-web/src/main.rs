@@ -4,7 +4,7 @@ use std::path::PathBuf;
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-sales PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--cloud-team PRIVATE_JSON] [--pilot-config PRIVATE_JSON] \
+[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON] \
 [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
 
 #[tokio::main]
@@ -51,24 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     openagents_web::cloud::hosts::Hosts::load(std::path::Path::new(&value))?,
                 ));
             }
-            "--cloud-retail" => {
-                config.cloud_retail = Some(std::sync::Arc::new(
-                    openagents_web::cloud::retail::Delegations::load(std::path::Path::new(&value))?,
-                ));
-            }
-            "--cloud-sales" => {
-                config.cloud_sales = Some(std::sync::Arc::new(
-                    openagents_web::cloud::sales::Delegations::load(std::path::Path::new(&value))?,
-                ));
-            }
             "--cloud-byo" => {
                 config.cloud_byo = Some(std::sync::Arc::new(
                     openagents_web::cloud::byo::Computers::open(std::path::Path::new(&value))?,
-                ));
-            }
-            "--cloud-team" => {
-                config.cloud_team = Some(std::sync::Arc::new(
-                    openagents_web::cloud::team::Qualification::load(std::path::Path::new(&value))?,
                 ));
             }
             // The OAuth App's private file ({client_id, client_secret,

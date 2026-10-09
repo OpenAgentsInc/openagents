@@ -334,7 +334,7 @@ async fn unconfigured_native_selection_cannot_stage_or_dispatch_work() {
             ],
         )
         .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(status, StatusCode::GONE, "{body}");
     assert!(
         fixture
             .app
@@ -359,7 +359,7 @@ async fn unconfigured_native_selection_cannot_stage_or_dispatch_work() {
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("No environments yet."));
-    assert!(body.contains("href=\"/cloud/app\""));
+    assert!(!body.contains("/cloud/app"));
     fixture.no_worker();
 }
 
@@ -377,7 +377,7 @@ async fn retained_native_source_requires_fresh_authority_without_a_cloud_request
         format!("/composer/context?{}", form(&[("selection", &token)])),
     ] {
         let (status, body) = fixture.request(Method::GET, &uri, OWNER, &[]).await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert_eq!(status, StatusCode::GONE, "{body}");
         assert!(!body.contains("fixture-owner/private-fixture"), "{body}");
     }
     let (status, body) = fixture
@@ -393,7 +393,7 @@ async fn retained_native_source_requires_fresh_authority_without_a_cloud_request
             ],
         )
         .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(status, StatusCode::GONE, "{body}");
     assert!(!body.contains("fixture-owner/private-fixture"), "{body}");
     assert_eq!(fixture.read().await.generation, retained.generation);
     fixture.no_worker();

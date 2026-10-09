@@ -86,12 +86,12 @@ impl SessionError {
 impl fmt::Display for SessionError {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         out.write_str(match self {
-            Self::Unauthenticated => "Sign in with your current account credential.",
-            Self::Forbidden => "Your current account cannot access this workspace.",
-            Self::Unavailable => "The configured account service is unavailable. Try again later.",
-            Self::InvalidRequest => "This Cloud request is invalid.",
-            Self::Csrf => "Reload this page and review the exact action before submitting it.",
-            Self::Conflict => "Your native account or workspace changed. Reload and review it.",
+            Self::Unauthenticated => "Sign in to continue.",
+            Self::Forbidden => "Your account can't open this.",
+            Self::Unavailable => "Sign-in isn't working right now. Try again later.",
+            Self::InvalidRequest => "That didn't work. Check what you entered and try again.",
+            Self::Csrf => "This page expired. Reload it and try again.",
+            Self::Conflict => "Your account changed. Reload the page.",
         })
     }
 }
@@ -130,7 +130,7 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    pub(crate) fn client(&self) -> &jev::Client {
+    pub fn client(&self) -> &jev::Client {
         &self.client
     }
 }
@@ -718,110 +718,6 @@ impl CloudSession {
         Ok(())
     }
 
-    /// A short path capability for one account's credential-free world
-    /// content reads. Browser world fetches omit cookies, so the ticket binds
-    /// the session, account scope, and exact binding identity instead.
-    pub(crate) fn world_ticket(
-        &self,
-        viewer: &Viewer,
-        binding: &str,
-        limit: u64,
-    ) -> Result<String> {
-        let Some(workspace) = &viewer.workspace else {
-            return Err(SessionError::Forbidden);
-        };
-        let observed = now();
-        let expires = (observed + WORLD_TICKET_SECONDS)
-            .min(viewer.expires_at)
-            .min(limit);
-        if expires <= observed {
-            return Err(SessionError::Forbidden);
-        }
-        let session = hex(&Sha256::digest(viewer.session_id.as_bytes())[..16]);
-        let mac = self.world_mac(
-            &session,
-            &viewer.account_id,
-            &workspace.id,
-            workspace.members_epoch,
-            binding,
-            expires,
-        );
-        Ok(format!(
-            "{expires}.{session}.{}",
-            URL_SAFE_NO_PAD.encode(mac)
-        ))
-    }
-
-    /// Verify a world ticket against the binding's own account scope.
-    pub(crate) fn verify_world_ticket(
-        &self,
-        ticket: &str,
-        account: &str,
-        workspace: &str,
-        members_epoch: u64,
-        binding: &str,
-    ) -> Result<()> {
-        if ticket.len() > 128 {
-            return Err(SessionError::Forbidden);
-        }
-        let mut parts = ticket.split('.');
-        let (Some(expires), Some(session), Some(signature), None) =
-            (parts.next(), parts.next(), parts.next(), parts.next())
-        else {
-            return Err(SessionError::Forbidden);
-        };
-        let expires: u64 = expires.parse().map_err(|_| SessionError::Forbidden)?;
-        let observed = now();
-        if expires <= observed
-            || expires > observed + WORLD_TICKET_SECONDS
-            || session.len() != 32
-            || !session
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        {
-            return Err(SessionError::Forbidden);
-        }
-        let signature = URL_SAFE_NO_PAD
-            .decode(signature)
-            .map_err(|_| SessionError::Forbidden)?;
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(&self.csrf_key).expect("HMAC accepts this key");
-        world_input(
-            &mut mac,
-            session,
-            account,
-            workspace,
-            members_epoch,
-            binding,
-            expires,
-        );
-        mac.verify_slice(&signature)
-            .map_err(|_| SessionError::Forbidden)
-    }
-
-    fn world_mac(
-        &self,
-        session: &str,
-        account: &str,
-        workspace: &str,
-        members_epoch: u64,
-        binding: &str,
-        expires: u64,
-    ) -> Vec<u8> {
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(&self.csrf_key).expect("HMAC accepts this key");
-        world_input(
-            &mut mac,
-            session,
-            account,
-            workspace,
-            members_epoch,
-            binding,
-            expires,
-        );
-        mac.finalize().into_bytes().to_vec()
-    }
-
     fn checked_ticket(
         &self,
         headers: &HeaderMap,
@@ -1108,32 +1004,6 @@ fn action(scope: &str, target: &str) -> Result<()> {
     }
     Ok(())
 }
-/// World tickets live only long enough to load and refresh one visit.
-const WORLD_TICKET_SECONDS: u64 = 600;
-
-fn world_input(
-    mac: &mut Hmac<Sha256>,
-    session: &str,
-    account: &str,
-    workspace: &str,
-    members_epoch: u64,
-    binding: &str,
-    expires: u64,
-) {
-    mac.update(b"openagents.cloud.world-ticket.v1\0");
-    for part in [
-        session,
-        account,
-        workspace,
-        &members_epoch.to_string(),
-        binding,
-        &expires.to_string(),
-    ] {
-        mac.update(part.as_bytes());
-        mac.update(b"\0");
-    }
-}
-
 pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1141,6 +1011,15 @@ pub(crate) fn now() -> u64 {
 }
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The account standing a page or host operation pins: session, account,
+/// selected workspace and its member list version, and a digest of the
+/// account's workspace list.
+pub(crate) fn standing_value(viewer: &Viewer) -> serde_json::Value {
+    let projection = serde_json::json!({"account":viewer.account_id,"label":viewer.account_label,"workspaces":viewer.workspaces,"selected":viewer.workspace});
+    let digest = hex(&Sha256::digest(projection.to_string().as_bytes()));
+    serde_json::json!({"active":true,"session_id":viewer.session_id,"account":viewer.account_id,"workspace":viewer.workspace.as_ref().map(|v|&v.id),"members_epoch":viewer.workspace.as_ref().map(|v|v.members_epoch),"projection_digest":format!("sha256:{digest}"),"expires_at":viewer.expires_at})
 }
 
 #[cfg(test)]

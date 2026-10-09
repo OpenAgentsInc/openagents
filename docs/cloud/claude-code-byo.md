@@ -133,7 +133,7 @@ October 8, 2026. Recheck both before each availability decision.
   each boot or automated turn (never into a checkpoint, image, export, or
   evidence); removal erases the entry, so running computers lose it at their
   next start or turn and future computers never see it. The page is
-  `/cloud/app/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
+  `/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
   states that usage bills to the user's own Anthropic or cloud account.
 
 ## Implemented (BYO-03, #11010)

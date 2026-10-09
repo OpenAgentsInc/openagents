@@ -1,5 +1,5 @@
-//! `/cloud`: the former public Cloud page now redirects home. The signed-in
-//! Cloud app (`/cloud/app` and below, [`crate::cloud`]) is unchanged.
+//! `/cloud`: the former public Cloud page now redirects home. The old Cloud
+//! app addresses (`/cloud/app` and below) redirect from [`crate::cloud`].
 
 use axum::Router;
 use axum::response::{IntoResponse, Redirect};

@@ -1456,12 +1456,9 @@ async fn the_legacy_styles_are_removed() {
     ] {
         assert!(!css.contains(gone), "{gone}");
     }
-    let (_, cloud) = get(site, "/cloud/assets/cloud.css").await;
-    assert!(
-        !cloud.contains("--noir-"),
-        "the Cloud area styles from openagents-ui tokens"
-    );
-    assert!(!cloud.contains(":not([class])"), "no bare-control rules");
+    // The Cloud pages' stylesheet left with them (docs/web/cloud-reset.md).
+    let (status, _) = get(site, "/cloud/assets/cloud.css").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1833,6 +1830,10 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/cloud",
         "/cloud/app",
         "/cloud/app/tasks/x",
+        "/sign-in",
+        "/sign-out",
+        "/settings",
+        "/settings/claude",
         "/forum",
         "/forum/x",
         "/gym",
@@ -1860,7 +1861,6 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/u/someone",
         "/u/someone/avatar",
         "/ws",
-        "/settings",
         "/.well-known/oauth-protected-resource",
         "/robots.txt",
         "/static/coder.css",

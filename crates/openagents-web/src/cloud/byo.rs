@@ -19,22 +19,11 @@
 use super::custody::{self, CustodyError, Key, Material, Scope, Status, Vault};
 use super::hosts::Binding;
 use super::session::{SessionError, Viewer, now};
-use super::ui;
-use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
-use axum::Router;
-use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
 use coder_access::cloud;
 use coder_access::protocol::{Operation, Outcome};
 use coder_cloud::claude::{self, OwnCredential, SignIn};
 use coder_cloud::runtime::Credentials;
-use maud::{Markup, html};
-use openagents_ui::forms::{Checkbox, Field, Select, Textarea};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -49,7 +38,6 @@ const MATERIALS: [Material; 4] = [
     Material::FoundryCredential,
 ];
 pub const TERMS: &str = "OpenAgents keeps your own Anthropic API key or Bedrock, Vertex, or Foundry credential in private server custody for your account and workspace. It is applied only to your own computers, fresh at each start and automated Claude turn, and is never put in a checkpoint, saved environment image, export, log, or evidence. Usage bills to your own Anthropic or cloud account; OpenAgents never meters, pays for, or resells it. Remove it at any time: running computers stop using it at their next start or turn, and future computers never see it.";
-const PAGE: &str = "/cloud/app/settings/claude";
 
 /// The account, workspace, and membership epoch that own the computers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,7 +48,7 @@ pub struct Owner {
 }
 
 impl Owner {
-    fn from_viewer(viewer: &Viewer) -> Result<Self, SessionError> {
+    pub fn from_viewer(viewer: &Viewer) -> Result<Self, SessionError> {
         let workspace = viewer.workspace.as_ref().ok_or(SessionError::Forbidden)?;
         if viewer.expires_at <= now() {
             return Err(SessionError::Forbidden);
@@ -232,7 +220,7 @@ fn turn_of(request: &str, action: &Operation) -> Option<(cloud::Admission, Strin
 /// nothing is released and the turn runs on the plan login inside the
 /// computer, which the resident admits one turn at a time. The released
 /// value is never staged, retained, or shown.
-pub(super) async fn release_turn(
+pub async fn release_turn(
     app: &App,
     binding: &Binding,
     viewer: &Viewer,
@@ -325,249 +313,18 @@ fn terms_digest() -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn fresh_request() -> String {
+pub(crate) fn fresh_request() -> String {
     secp256k1::rand::random::<[u8; 16]>()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
 }
 
-fn target(owner: &Owner, request: &str) -> String {
+pub(crate) fn target(owner: &Owner, request: &str) -> String {
     format!(
         "{}:{}:{}:{request}",
         owner.account, owner.workspace, owner.members_epoch
     )
-}
-
-// ---- Page -----------------------------------------------------------------
-
-pub(super) fn routes() -> Router<App> {
-    Router::new()
-        .route(PAGE, get(index))
-        .route("/cloud/app/settings/claude/credential", post(add))
-        .route("/cloud/app/settings/claude/credential/remove", post(remove))
-}
-
-pub(crate) fn available(app: &App) -> bool {
-    app.config.cloud_byo.is_some()
-}
-
-/// The page body: masked standing, billing statement, and the two forms.
-fn content(
-    status: Option<&Status>,
-    add: Option<(&str, &str)>,
-    remove: Option<(&str, &str)>,
-) -> Markup {
-    let material = Field::new("claude-credential-material", "Provider");
-    let value = Field::new("claude-credential-value", "Credential").required(true);
-    html! {
-        h2 { "Claude credential" }
-        p { (claude::BILLING) }
-        p { "Without a credential here, your computers run Claude Code on the Claude plan you sign in to inside each computer. A plan runs one automated turn at a time and cannot start parallel tasks. Parallel Claude Code tasks need your own Anthropic API key or Bedrock, Vertex, or Foundry credential." }
-        @match status {
-            Some(status) => {
-                p {
-                    "Current: " (status.material.label()) " · " (status.masked())
-                    " · expires at " (status.expires_at)
-                }
-            }
-            None => {
-                p { "No credential is stored. Claude.ai logins and setup tokens are never accepted here." }
-            }
-        }
-        @if let (Some(_), Some((csrf, request))) = (status, remove) {
-            (ui::BoundForm::new(format!("{PAGE}/credential/remove"))
-                .csrf(csrf)
-                .bind("request", request)
-                .submit_with(ui::submit("Remove credential", false)))
-            p class="cloud-note" { "Removal takes effect at each running computer's next start or Claude turn, and for every future computer." }
-        }
-        @if let Some((csrf, request)) = add {
-            form class="cloud-form" method="post" action=(format!("{PAGE}/credential")) autocomplete="off" {
-                (ui::csrf(csrf))
-                (ui::hidden("request", request))
-                (material.clone().control(
-                    Select::new("material")
-                        .aria(material.aria())
-                        .option("anthropic_api_key", "Anthropic API key")
-                        .option("bedrock_credential", "Amazon Bedrock")
-                        .option("vertex_credential", "Google Vertex AI")
-                        .option("foundry_credential", "Microsoft Foundry"),
-                ))
-                (value.clone().control(Textarea::new("value")
-                    .aria(value.aria())
-                    .required(true)
-                    .autocomplete("off")
-                    .spellcheck(false)))
-                p class="cloud-note" {
-                    "Anthropic: the API key. Bedrock: {\"region\", \"access_key_id\", \"secret_access_key\", \"session_token\"} or {\"region\", \"bearer_token\"}. Vertex: {\"region\", \"project_id\", \"service_account\"}. Foundry: {\"resource\", \"api_key\"}."
-                }
-                p class="cloud-note" { (TERMS) }
-                (Checkbox::new("consent", "I consent to this custody")
-                    .value("custody")
-                    .required(true))
-                div class="cloud-form-actions" { (ui::submit("Save credential", true)) }
-            }
-        }
-    }
-}
-
-struct Context<'a> {
-    app: &'a App,
-    service: &'a super::session::CloudSession,
-    viewer: Viewer,
-    owner: Owner,
-    computers: &'a Computers,
-}
-
-async fn context<'a>(app: &'a App, headers: &HeaderMap) -> Result<Context<'a>, Response> {
-    let service = service(app)?;
-    let viewer = match service.authenticate(headers).await {
-        Ok(value) => value,
-        Err(SessionError::Unauthenticated) => {
-            return Err(protect(Redirect::to("/cloud/sign-in").into_response()));
-        }
-        Err(error) => return Err(refused(error)),
-    };
-    let computers = app
-        .config
-        .cloud_byo
-        .as_deref()
-        .ok_or_else(|| refused(SessionError::Forbidden))?;
-    let owner = Owner::from_viewer(&viewer).map_err(refused)?;
-    Ok(Context {
-        app,
-        service,
-        viewer,
-        owner,
-        computers,
-    })
-}
-
-fn custody_failure(error: CustodyError) -> Response {
-    let status = match error {
-        CustodyError::Invalid | CustodyError::Consent => StatusCode::BAD_REQUEST,
-        CustodyError::Absent | CustodyError::Changed => StatusCode::CONFLICT,
-        CustodyError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-    };
-    failure(status, "Claude credential", &error.to_string())
-}
-
-async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
-    let context = match context(&app, &headers).await {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    let status = match context.computers.status(&context.owner, now()) {
-        Ok(value) => value,
-        Err(error) => return custody_failure(error),
-    };
-    let mut tickets = Vec::new();
-    for scope in ["claude-credential", "claude-credential-remove"] {
-        let request = fresh_request();
-        match context.service.csrf(
-            &headers,
-            &context.viewer,
-            scope,
-            &target(&context.owner, &request),
-        ) {
-            Ok(csrf) => tickets.push((csrf, request)),
-            Err(error) => return refused(error),
-        }
-    }
-    let body = content(
-        status.as_ref(),
-        Some((&tickets[0].0, &tickets[0].1)),
-        Some((&tickets[1].0, &tickets[1].1)),
-    );
-    workspace_shell(
-        context.app,
-        &headers,
-        context.service,
-        &context.viewer,
-        "settings",
-        Some(body),
-        None,
-    )
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AddForm {
-    csrf: String,
-    request: String,
-    material: Material,
-    value: String,
-    consent: Option<String>,
-}
-
-async fn add(
-    State(app): State<App>,
-    headers: HeaderMap,
-    form: Result<Form<AddForm>, FormRejection>,
-) -> Response {
-    let Ok(Form(mut form)) = form else {
-        return refused(SessionError::InvalidRequest);
-    };
-    let context = match context(&app, &headers).await {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    if let Err(error) = context.service.verify_csrf(
-        &headers,
-        Some(&context.viewer),
-        "claude-credential",
-        &target(&context.owner, &form.request),
-        &form.csrf,
-    ) {
-        return refused(error);
-    }
-    let key = match Key::for_material(form.material, std::mem::take(&mut form.value)) {
-        Ok(value) => value,
-        Err(error) => return custody_failure(error),
-    };
-    let consent = form.consent.as_deref() == Some("custody");
-    match context
-        .computers
-        .store(&context.owner, form.material, key, consent, now())
-    {
-        Ok(_) => protect(Redirect::to(PAGE).into_response()),
-        Err(error) => custody_failure(error),
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RemoveForm {
-    csrf: String,
-    request: String,
-}
-
-async fn remove(
-    State(app): State<App>,
-    headers: HeaderMap,
-    form: Result<Form<RemoveForm>, FormRejection>,
-) -> Response {
-    let Ok(Form(form)) = form else {
-        return refused(SessionError::InvalidRequest);
-    };
-    let context = match context(&app, &headers).await {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    if let Err(error) = context.service.verify_csrf(
-        &headers,
-        Some(&context.viewer),
-        "claude-credential-remove",
-        &target(&context.owner, &form.request),
-        &form.csrf,
-    ) {
-        return refused(error);
-    }
-    match context.computers.revoke(&context.owner) {
-        Ok(_) => protect(Redirect::to(PAGE).into_response()),
-        Err(error) => custody_failure(error),
-    }
 }
 
 #[cfg(test)]
@@ -708,30 +465,5 @@ mod tests {
         )
         .unwrap();
         assert_eq!(format!("{vertex:?}"), "Key(redacted)");
-    }
-
-    #[test]
-    fn the_page_states_usage_bills_to_the_users_own_account() {
-        let html = content(None, Some(("t", "r")), Some(("t", "r"))).into_string();
-        assert!(html.contains("bills to your own Anthropic or cloud account"));
-        assert!(html.contains("Parallel Claude Code tasks need your own Anthropic API key"));
-        assert!(!html.contains("Remove credential"));
-        // The secret never reaches autofill or the spellchecker.
-        assert!(html.contains("<form class=\"cloud-form\" method=\"post\" action=\"/cloud/app/settings/claude/credential\" autocomplete=\"off\">"));
-        let area = html
-            .split("<textarea")
-            .nth(1)
-            .unwrap()
-            .split('>')
-            .next()
-            .unwrap();
-        assert!(
-            area.contains(" autocomplete=\"off\" spellcheck=\"false\""),
-            "{area}"
-        );
-        assert!(html.contains("name=\"consent\" value=\"custody\""));
-        assert!(TERMS.contains(
-            "never put in a checkpoint, saved environment image, export, log, or evidence"
-        ));
     }
 }

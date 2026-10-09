@@ -173,11 +173,6 @@ pub async fn serve(
     {
         return Err("fixture requires absolute paths and a 127.0.0.1 listen address".into());
     }
-    if !build.join("coder_cloud_web.js").is_file()
-        || !build.join("coder_cloud_web_bg.wasm").is_file()
-    {
-        return Err("fixture requires the real Cloud Wasm build".into());
-    }
     std::fs::create_dir(&directory).map_err(|_| "fixture directory must be new")?;
     std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
         .map_err(|_| "fixture directory permissions failed")?;

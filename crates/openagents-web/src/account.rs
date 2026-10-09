@@ -1,8 +1,8 @@
 //! Who is signed in, for the account button at the bottom of the left panel.
 //!
 //! A middleware ([`scope`]) reads the Cloud web session (the same
-//! [`crate::cloud::session::CloudSession::authenticate`] the Cloud app
-//! uses) once for a full-page HTML `GET` and keeps the result for the
+//! [`crate::cloud::session::CloudSession::authenticate`] sign-in and
+//! Settings use) once for a full-page HTML `GET` and keeps the result for the
 //! request's handler; [`crate::ui_page::UiPage`] reads it with
 //! [`current`]. Visitors without the session cookie cost nothing, and
 //! HTMX fragments, scripts, streams and posts skip it.

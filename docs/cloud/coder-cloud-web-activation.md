@@ -1,5 +1,7 @@
 # Coder Cloud web: packaging, reconnect acceptance, and activation record
 
+> **Removed 2026-10-08.** The `/cloud/app` pages this describes were deleted; see [the Cloud reset](../web/cloud-reset.md).
+
 This is the WEB-17 ([#10963](https://github.com/OpenAgentsInc/openagents/issues/10963))
 record for the browser Cloud workspace that WEB-01 to WEB-16 built in
 `crates/openagents-web` (roadmap [#10964](https://github.com/OpenAgentsInc/openagents/issues/10964);
