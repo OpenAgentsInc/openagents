@@ -835,3 +835,23 @@ uses, and marks which are implemented and which are only specified.
   checks derived from the definition, its provenance (the tasks it was
   learned from, which never count as its evidence), and its admission
   record. An entry cites a textbook or reference, never a benchmark task.
+
+## Cursor Cloud specific instructions
+
+Cloud Agents already have the pinned toolchain (Rust 1.97.1, rustfmt, and
+Clippy), `protoc`, OpenSSL, SQLite, libclang, and `bubblewrap`. The root
+workspace crates are fetched. Put each checkout's Cargo output in
+`~/work/openagents-target-agentN`, as the Velocity section describes. This
+machine has 4 cores and about 16 GB of memory. Set `CARGO_BUILD_JOBS=2`
+when you compile `openagents` or `verse`, so a cold build stays within
+that memory.
+
+Build `openagents` with `cargo build -p openagents-cli --bin openagents`
+before you use `openagents lease`. The day-to-day check is still
+`cargo test -p` for the crates you edit, plus `cargo fmt`.
+
+`cargo fetch --locked --manifest-path crates/openagents-mobile/Cargo.toml`
+stops because Cargo wants to update that lock file. Leave the phone
+workspace until the lock file resolves. Relay release checks need
+PostgreSQL (`initdb`, `pg_ctl`, `createdb`). Psionic stays its own
+workspace, and this setup does not fetch it.
