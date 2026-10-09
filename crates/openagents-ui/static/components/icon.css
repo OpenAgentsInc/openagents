@@ -1,0 +1,41 @@
+/* Icons: inline SVG emitted by openagents_ui::icons::Icon.
+   Sizes port the Apps SDK UI icon-* utilities (MIT, see NOTICE).
+   One rule set covers every icon, so unused icons add nothing here. */
+
+.oa-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+}
+
+.oa-icon[data-size="xs"] {
+  width: var(--control-icon-size-xs, 0.875rem);
+  height: var(--control-icon-size-xs, 0.875rem);
+}
+
+.oa-icon[data-size="sm"] {
+  width: var(--control-icon-size-sm, 1rem);
+  height: var(--control-icon-size-sm, 1rem);
+}
+
+.oa-icon[data-size="md"] {
+  width: var(--control-icon-size-md, 1.125rem);
+  height: var(--control-icon-size-md, 1.125rem);
+}
+
+.oa-icon[data-size="lg"] {
+  width: var(--control-icon-size-lg, 1.25rem);
+  height: var(--control-icon-size-lg, 1.25rem);
+}
+
+.oa-icon[data-size="xl"] {
+  width: var(--control-icon-size-xl, 1.375rem);
+  height: var(--control-icon-size-xl, 1.375rem);
+}
+
+.oa-icon[data-size="2xl"] {
+  width: var(--control-icon-size-2xl, 1.5rem);
+  height: var(--control-icon-size-2xl, 1.5rem);
+}
