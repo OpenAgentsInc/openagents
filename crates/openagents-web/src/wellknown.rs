@@ -46,12 +46,11 @@ async fn skills_index(State(app): State<App>) -> impl IntoResponse {
     Json(crate::agent_ready::skills_index(&origin(&app)))
 }
 
-async fn security_txt(State(app): State<App>) -> impl IntoResponse {
-    let origin = origin(&app);
+async fn security_txt() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
         format!(
-            "Contact: {SECURITY_CONTACT}\nExpires: {SECURITY_EXPIRES}\nPreferred-Languages: en\nCanonical: {origin}/.well-known/security.txt\n"
+            "Contact: {SECURITY_CONTACT}\nExpires: {SECURITY_EXPIRES}\nPreferred-Languages: en\n"
         ),
     )
 }
