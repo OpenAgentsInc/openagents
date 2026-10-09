@@ -17,7 +17,7 @@ mode. Coder Noir stays as the dark theme.
 | `~/work/projects/repos/apps-sdk-ui` (`@openai/apps-sdk-ui` 0.2.2, commit `0f00143`, MIT) | The reference design system: React components over CSS modules, Tailwind 4 tokens, 755 icons | Read-only reference |
 | `~/work/autopilot4-deprecated/src/apps_sdk_icons.rs` (commit `b94fe7a`, "Add Apps SDK icon component gallery") | All 755 icons already converted to a dependency-free Rust and Maud module (3,043 lines; `AppsSdkIcon { name, svg }`, `apps_sdk_icon_named`) | Pull in (phase 1) |
 | `~/work/autopilot4-deprecated/src/ui_components/` and `static/styles/foundations/` | Earlier Maud components and tokens | **Do not reuse.** They follow shadcn and an older `--oa-*` palette, not Apps SDK UI |
-| A saved snapshot of the live ChatGPT web app (Codex view, dark), studied with `scripts/web-ui-snapshot-reference.py` | How the shipping product applies the same design language | Reference only: [chatgpt-ui-reference.md](chatgpt-ui-reference.md). The snapshot is not committed (it carries account identifiers), and its stylesheet is not licensed to us, so values and CSS come from Apps SDK UI |
+| Four saved pages of the live ChatGPT web app (dark): a Codex conversation, the Home page Chat and Work tabs, and the Codex Explore page, studied with `scripts/web-ui-snapshot-reference.py` | How the shipping product applies the same design language | Reference only: [chatgpt-ui-reference.md](chatgpt-ui-reference.md). The snapshots are not committed (they carry account identifiers), and their stylesheets are not licensed to us, so values and CSS come from Apps SDK UI |
 
 Apps SDK UI is MIT licensed. Ported token values, component CSS and icon paths
 carry its copyright notice in a `NOTICE` file in the crate that holds them,
@@ -57,28 +57,59 @@ as `crates/coder-ui/NOTICE` already does for its sources.
 
 ## What the live ChatGPT app shows
 
-[chatgpt-ui-reference.md](chatgpt-ui-reference.md) is generated from a saved
-page of the ChatGPT web app. Regenerate it with:
+[chatgpt-ui-reference.md](chatgpt-ui-reference.md) is generated from four
+saved pages of the ChatGPT web app, one per view we care about:
+
+| View | What it covers |
+| --- | --- |
+| Codex conversation | A long report with headings, lists, tables, inline code and code blocks |
+| Home, Chat tab | The home page in chat mode: shell, sidebar, composer, model picker |
+| Home, Work tab | The same home page in work mode |
+| Codex, Explore page | The Codex side: thread sidebar, explore content, composer |
+
+Regenerate it with one `LABEL=PATH` per saved page:
 
 ```sh
-scripts/web-ui-snapshot-reference.py SNAPSHOT.html --out docs/web/chatgpt-ui-reference.md
+scripts/web-ui-snapshot-reference.py \
+  "Codex conversation=conversation.html" "Home, Chat tab=home-chat.html" \
+  "Home, Work tab=home-work.html" "Codex, Explore page=explore.html" \
+  --out docs/web/chatgpt-ui-reference.md
 ```
 
 The script reads only tag names, class names, roles and enum-like `data-*`
 values, maps each utility to its compiled rule and tokens, and groups usage by
-page area and component. What it shows:
+page area and component, then separates the shell shared by every view from
+what each view adds. What it shows:
 
-- **Same token system.** The page defines all 723 Apps SDK UI tokens, plus
+- **One shell for every view.** 32 components appear on all four pages: the
+  layout and left panel (`Layout`, `LeftPanel`, `ConversationSidebar`,
+  `Navigation`), the main surface (`MainContentSurface`, `MainContentFrame`,
+  `MainContentViewport`, `MainContentTopFade`, `Workspace`), and the whole
+  composer (`ComposerLayoutRoot`, `ComposerLayoutBody`, `ComposerLayoutInput`,
+  `ComposerLayoutFooter`, `ComposerLayoutAttachments`, `RichTextInput`, the
+  composer dropdown labels and the `ModelPickerTrigger*` parts). 369 utilities
+  are common to all four. Home (Chat and Work) and Codex differ in content,
+  not in chrome: the Chat and Work tabs differ by only about 16 and 41
+  utilities. Our web app should likewise have one shell and one composer used
+  by the home page, chat and Cloud/Coder work views.
+- **Content components come with conversations.** Only the conversation view
+  has the Markdown set: `MarkdownRoot`, `Paragraph`, `Heading`, `List`,
+  `ListItem`, `InlineCode`, `CodeBlock` (`CodeSurface`, `CodeContent`,
+  `InlineCodePane`), the `Table*` family, `Favicon` and source chips, and a
+  `StickyActionBar`. These map to our Markdown renderer's output and need their
+  own components in phase 1.
+
+- **Same token system.** Every view defines all 723 Apps SDK UI tokens, plus
   about 1,000 product-only properties. Its utilities resolve to those tokens:
   `bg-secondary-soft` is `background-color: var(--color-background-secondary-soft)`,
   `border-default` is `var(--color-border)`, `rounded-button-action` is
   `var(--radius-button-action)`. Our plan to build on these tokens matches how
   the product itself is styled.
 - **Tailwind classes survive in the DOM.** Tailwind 4.3.3, with utilities left
-  readable on the elements (607 distinct), so real usage per surface can be
-  studied: sidebar, navigation, header, main content, composer form, tables,
-  code blocks.
-- **Utilities plus CSS-module components.** 55 hashed module components
+  readable on the elements (836 distinct across the four views), so real usage
+  per surface can be studied: sidebar, navigation, header, main content,
+  composer, tables, code blocks.
+- **Utilities plus CSS-module components.** 70 hashed module components
   (`Button`, `Paragraph`, `Heading`, `TableCell`, `CodeBlock`, `Icon`,
   `ConversationSidebar`, `Workspace`, and others) sit next to the utilities.
   This is the split this plan already takes: components own their look,
@@ -234,6 +265,13 @@ Each phase lands on `main` with `cargo fmt` and the touched crates' tests.
   CopyButton, TextLink, Badge, Indicator, Avatar, Alert, EmptyMessage, Input,
   Textarea, Checkbox, RadioGroup, Switch, SegmentedControl, Slider, Image,
   CodeBlock, Markdown styling, ShimmerText.
+- Add the shared app-shell pieces the reference shows on every view: layout
+  and left panel, conversation sidebar, main content frame with its top fade,
+  and the composer (input, attachments, footer, dropdown labels, model picker
+  trigger).
+- Add the conversation content set: Markdown root, paragraph, heading, list,
+  inline code, code block, the table family, source chips and the sticky
+  action bar, styled over our existing Rust Markdown renderer.
 - Add a catalog route, `/ui`, that renders every component in every variant,
   in both themes side by side. It doubles as the visual test surface.
 
@@ -250,8 +288,10 @@ Move pages from `format!` to Maud with `openagents-ui` components, in this
 order. Each step deletes the CSS it replaces from the old `static/*.css`
 files.
 
-1. The document shell, header and navigation (`layout.rs`), so every page
-   gets the theme and the toggle.
+1. The document shell, header, left panel and navigation (`layout.rs`), so
+   every page gets the theme and the toggle. Like ChatGPT's views, home, chat
+   and the Cloud/Coder work views share this one shell and one composer
+   component; only the content area changes.
 2. Home and the chat composer (`pages/home.rs`, `composer.rs`,
    `chat_html.rs`, `pages/chat.rs`), the most-used surfaces.
 3. The Cloud app (`src/cloud/`): workbench, projects, environment panel,
