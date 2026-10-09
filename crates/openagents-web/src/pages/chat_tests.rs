@@ -428,16 +428,17 @@ async fn chat_and_information_panels_render_semantic_controls() {
     ] {
         assert_eq!(body.matches(&format!("id=\"{id}\"")).count(), 1, "{id}");
     }
-    for kind in [
-        "repository",
-        "branch",
-        "environment",
-        "context",
-        "model",
-        "voice",
-    ] {
+    // A chat that pins a source shows the source selectors; the context,
+    // model and voice buttons are commented out until they work.
+    for kind in ["repository", "branch", "environment"] {
         assert!(
             body.contains(&format!("hx-get=\"/composer/{kind}\"")),
+            "{kind}"
+        );
+    }
+    for kind in ["context", "model", "voice"] {
+        assert!(
+            !body.contains(&format!("hx-get=\"/composer/{kind}\"")),
             "{kind}"
         );
     }

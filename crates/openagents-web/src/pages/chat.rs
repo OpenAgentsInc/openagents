@@ -15,10 +15,12 @@ use maud::{Markup, PreEscaped, Render, html};
 use openagents_chat::basic_coder::{self, Reply, Turn};
 use openagents_chat::router::{Context, Surface};
 use openagents_ui::content::MarkdownRoot;
-use openagents_ui::icons::Icon;
+// Disabled until the composer's context, model and voice controls do
+// something (see `composer`):
+// use openagents_ui::icons::Icon;
+// use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
-    Composer, ComposerAction, HxGet, Message as ThreadMessage, ModelPickerTrigger, NavItem,
-    SidebarSection, composer_panel_host,
+    ChatList, Composer, HxGet, Message as ThreadMessage, NavItem, composer_panel_host,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -37,7 +39,7 @@ const LEASE_SECONDS: u64 = 180;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        // The navigation's "Chat" entry: a new chat starts on the home page.
+        // `/chat` has no page of its own: a new chat starts on the home page.
         .route(
             "/chat",
             get(|| async { crate::chat_html::protect(Redirect::to("/").into_response()) })
@@ -396,16 +398,17 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         return crate::cloud::composer::view(&app, &headers, cloud).await;
     }
     let chat = &record.conversation;
+    let selection = chat.selection.clone().unwrap_or_default();
+    let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
     let dock = html! {
-        (ticket(&app, chat, false))
+        (ticket(&app, chat, false, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
     let page = UiPage::new(chat.title.clone())
-        .section("/chat")
         .path(format!("/chat/{id}"))
         .app()
         .head(crate::chat_html::head())
-        .sidebar_section(sidebar(&app, chat, false).await)
+        .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None)) }
@@ -414,6 +417,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
             &format!("/chat/{id}"),
             "Continue this chat",
             chat.selection.as_ref(),
+            selectors,
             dock,
         ));
     crate::chat_html::protect(page.respond(&headers))
@@ -437,7 +441,14 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         );
         return response;
     }
-    let body = html! { title {(record.conversation.title) " · OpenAgents"} (content(&record.conversation,None)) (ticket(&app,&record.conversation,true)) (sidebar(&app,&record.conversation,true).await) };
+    let chat = &record.conversation;
+    let selectors = crate::composer::selectors_shown(
+        &app,
+        &headers,
+        &chat.selection.clone().unwrap_or_default(),
+    )
+    .await;
+    let body = html! { title {(chat.title) " · OpenAgents"} (content(chat,None)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -599,8 +610,15 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
             );
             return response;
         }
+        let selectors = crate::composer::selectors_shown(
+            app,
+            headers,
+            &chat.selection.clone().unwrap_or_default(),
+        )
+        .await;
         crate::chat_html::protect(
-            html! { (ticket(app,chat,true)) (sidebar(app,chat,true).await) }.into_response(),
+            html! { (ticket(app,chat,true,selectors)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await) }
+                .into_response(),
         )
     } else {
         crate::chat_html::protect(Redirect::to(&format!("/chat/{}", chat.id)).into_response())
@@ -807,48 +825,52 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     }
 }
 
-/// The conversation list in the left panel. Responses that change it carry
-/// it again with `oob`, replacing `#chat-sidebar` in place.
-async fn sidebar(app: &App, chat: &Conversation, oob: bool) -> SidebarSection {
-    let chats = app.config.chat_store.list(&chat.owner).await;
-    let section = SidebarSection::new("Chats")
-        .id("chat-sidebar")
-        .swap_oob(oob)
-        .item(NavItem::new("New chat", "/").icon(Icon::Plus));
-    let demo = html! {
-        ul.oa-nav-list role="list" { (NavItem::new("Onboarding demo", "/demo")) }
+/// The visitor's recent chats in the left panel, newest first (the store
+/// sorts by last update), `current` marked. On a chat page (`hx`) a row also
+/// loads its conversation into `#chat-content`; elsewhere rows are plain
+/// links. Responses that change the list carry it again with `oob`,
+/// replacing `#chat-sidebar` in place. An unavailable store leaves the list
+/// empty rather than showing an error in the sidebar.
+pub(crate) async fn chat_list(
+    app: &App,
+    owner: &str,
+    current: Option<&str>,
+    hx: bool,
+    oob: bool,
+) -> ChatList {
+    let list = ChatList::new().id("chat-sidebar").swap_oob(oob);
+    let rows = match app.config.chat_store.list(owner).await {
+        Ok(rows) => rows,
+        Err(error) => {
+            eprintln!("openagents-web: chat list: {error}");
+            return list;
+        }
     };
-    match chats {
-        Ok(rows) => section
-            .items(rows.iter().map(|row| {
-                NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
-                    .current(row.id == chat.id)
-                    .hx(HxGet::new(format!("/chat/{}/workspace", row.id))
-                        .target("#chat-content")
-                        .swap("innerHTML")
-                        .sync("#chat-content:replace"))
-            }))
-            .after(html! {
-                p.oa-sidebar-empty { "Showing up to 256 recent chats." }
-                (demo)
-            }),
-        Err(_) => section.after(html! {
-            p.oa-sidebar-empty role="alert" {
-                "The chat list is unavailable. Your current conversation is retained."
-            }
-            (demo)
-        }),
-    }
+    list.items(rows.iter().map(|row| {
+        let item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
+            .current(current == Some(row.id.as_str()));
+        if hx {
+            item.hx(HxGet::new(format!("/chat/{}/workspace", row.id))
+                .target("#chat-content")
+                .swap("innerHTML")
+                .sync("#chat-content:replace"))
+        } else {
+            item
+        }
+    }))
 }
 
-pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
+/// The chat's hidden composer fields. With `oob` they replace the page's
+/// copies, and the selector row (`selectors`, when the composer shows it,
+/// see [`crate::composer::selectors_shown`]) is replaced too.
+pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool) -> Markup {
     let selection = chat.selection.clone().unwrap_or_default();
     html! { div #chat-ticket hx-swap-oob=[oob.then_some("outerHTML")] {
         input type="hidden" id="chat-selected" name="chat" value=(chat.id) form="chat-form";
         input type="hidden" name="request_id" value=(new_id()) form="chat-form";
         input type="hidden" name="csrf" value=(csrf(app,&chat.owner)) form="chat-form";
 
-    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob { (crate::composer::controls(&selection, true)) } }
+    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob && selectors { (crate::composer::controls(&selection, true)) } }
 }
 
 fn content(chat: &Conversation, before: Option<usize>) -> Markup {
@@ -1068,21 +1090,24 @@ fn unavailable(error: Error) -> Response {
         "The conversation store is unavailable. Your message was not repeated; try again with the same ticket.",
     )
 }
-/// The homepage and chat share one composer: the source/runtime selectors
-/// (replaced out of band as `#composer-controls`), a stable text box
-/// (`#chat-input` in `#chat-card`, which the browser adapter binds), the
-/// context, model and voice panels loaded into `#composer-panel`, and
-/// `after` under the form. The chat posts with HTMX and keeps the draft
-/// until the server accepts it; the homepage posts a plain form and follows
-/// the redirect to the new chat.
+/// The homepage and chat share one composer: a stable text box
+/// (`#chat-input` in `#chat-card`, which the browser adapter binds; Enter
+/// sends, Shift+Enter adds a line, through the adapter or else the shell
+/// script), the source/runtime selectors when `selectors` (replaced out of
+/// band as `#composer-controls`; see [`crate::composer::selectors_shown`]),
+/// the panel host they load into (`#composer-panel`), and `after` under the
+/// form. The chat posts with HTMX and keeps the draft until the server
+/// accepts it; the homepage posts a plain form and follows the redirect to
+/// the new chat, with or without JavaScript.
 pub(crate) fn composer(
     action: &str,
     label: &str,
     selection: Option<&Selection>,
+    selectors: bool,
     after: Markup,
 ) -> Markup {
     let selection = selection.cloned().unwrap_or_default();
-    Composer::new("chat-form", action)
+    let mut composer = Composer::new("chat-form", action)
         .label(label)
         .enhanced(action.starts_with("/chat/"))
         .input_id("chat-input")
@@ -1090,19 +1115,28 @@ pub(crate) fn composer(
         .max_chars(MAX_CHARS)
         .placeholder("Ask OpenAgents to build, fix bugs, explore")
         .autofocus(true)
-        .selectors(crate::composer::controls(&selection, false))
-        .leading(
-            ComposerAction::new(Icon::Plus, "Add context and tools")
-                .hx(crate::composer::load("context")),
-        )
-        .model_picker(ModelPickerTrigger::new("Auto").hx(crate::composer::load("model")))
-        .trailing(
-            ComposerAction::new(Icon::Mic, "Voice input")
-                .title("Voice input availability")
-                .hx(crate::composer::load("voice")),
-        )
-        .after(html! { (composer_panel_host("composer-panel")) (after) })
-        .render()
+        // Disabled until the composer can attach files or tools: the "+"
+        // button only opened a panel restating the repository selector and
+        // saying uploads are not available.
+        // .leading(
+        //     ComposerAction::new(Icon::Plus, "Add context and tools")
+        //         .hx(crate::composer::load("context")),
+        // )
+        // Disabled until there is a model to choose: "Auto" only opened a
+        // panel describing the managed Web answer service.
+        // .model_picker(ModelPickerTrigger::new("Auto").hx(crate::composer::load("model")))
+        // Disabled until voice input works: the mic only opened a panel
+        // saying voice input is not available.
+        // .trailing(
+        //     ComposerAction::new(Icon::Mic, "Voice input")
+        //         .title("Voice input availability")
+        //         .hx(crate::composer::load("voice")),
+        // )
+        .after(html! { (composer_panel_host("composer-panel")) (after) });
+    if selectors {
+        composer = composer.selectors(crate::composer::controls(&selection, false));
+    }
+    composer.render()
 }
 
 fn normalize(value: &str) -> Option<String> {

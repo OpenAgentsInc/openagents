@@ -212,6 +212,19 @@ pub(crate) fn controls(selection: &Selection, oob: bool) -> Markup {
     }
 }
 
+/// Whether the composer shows the Repository, Branch and Environment
+/// selectors. They act only when the visitor can choose an admitted Cloud
+/// runtime (a signed-in workspace with a connected computer), or when the
+/// chat already pins a selection, which they then show. A visitor without
+/// one gets no selectors: their panels offered only "Web answers" and a
+/// public repository name the answer service cannot read.
+pub(crate) async fn selectors_shown(app: &App, headers: &HeaderMap, selection: &Selection) -> bool {
+    if *selection != Selection::default() {
+        return true;
+    }
+    matches!(choices(app, headers).await, Ok(choices) if !choices.is_empty())
+}
+
 /// A request that loads the `kind` panel into `#composer-panel`.
 pub(crate) fn load(kind: &str) -> HxGet {
     HxGet::new(format!("/composer/{kind}"))
@@ -808,7 +821,8 @@ async fn select(
                 ));
             }
         };
-        ticket = crate::pages::chat::ticket(&app, &saved.conversation, true);
+        // The selectors are on the page: this request came from one.
+        ticket = crate::pages::chat::ticket(&app, &saved.conversation, true, true);
     }
     response(html! {
         @if form.chat.is_some() { (ticket) } @else {

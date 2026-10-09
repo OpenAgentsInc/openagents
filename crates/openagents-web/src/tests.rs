@@ -65,9 +65,8 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 43] = [
+const PAGES: [&str; 42] = [
     "/",
-    "/cloud",
     "/live",
     "/everglade",
     "/druid",
@@ -201,37 +200,20 @@ async fn every_public_page_answers_in_development() {
 }
 
 #[tokio::test]
-async fn cloud_is_public_but_browser_work_and_purchases_remain_unavailable() {
+async fn the_public_cloud_page_redirects_home_and_browser_work_stays_unavailable() {
     let root = tempfile::tempdir().unwrap();
     let store = root.path().join("unopened-tasks");
     let mut settings = config(store.clone());
     settings.public_hosts.push("openagents.com".into());
     let site = router(settings);
     let (status, headers, html) = get_with(site.clone(), "/cloud", "openagents.com").await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/");
     assert!(!headers.contains_key(header::SET_COOKIE));
-    assert!(!html.contains("<script"));
-    assert!(html.contains("retail-2026-10-06.1"));
-    assert!(html.contains("244 sats / 244 credits"));
-    assert!(html.contains("Operator Boat · Unavailable in this browser"));
-    assert!(html.contains("Operator GCE · Unavailable in this browser"));
-    assert!(html.contains("Retail Cloud v1 · Proposed"));
-    // The workspace button is disabled and says why.
-    let reason = html.find("aria-describedby=\"workspace-reason\"").unwrap();
-    let button = &html[html[..reason].rfind('<').unwrap()..reason];
-    assert!(
-        button.starts_with("<button") && button.contains(" disabled"),
-        "{button}"
-    );
-    assert!(!html.contains("<form"));
-    for path in ["/download", "/grid", "/docs", "/components"] {
-        assert!(html.contains(&format!("href=\"{path}\"")), "{path}");
-        let (status, _, _) = get_with(site.clone(), path, "openagents.com").await;
-        assert_eq!(status, StatusCode::OK, "{path}");
-    }
+    assert!(html.is_empty(), "{html}");
     assert!(
         !store.exists(),
-        "public Cloud never opens the local task store"
+        "the Cloud redirect never opens the local task store"
     );
     assert_eq!(
         get_with(site, "/app", "openagents.com").await.0,
@@ -288,12 +270,17 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(
-        home.contains(
-            "<a class=\"oa-nav-item\" href=\"/download\"><span class=\"oa-nav-item-label\">Download</span></a>"
-        ),
-        "the navigation links /download"
-    );
+    // Download is a pill link in the header's top-right actions.
+    let download = home
+        .find("href=\"/download\"")
+        .expect("the header links /download");
+    assert_eq!(home.matches("href=\"/download\"").count(), 1);
+    assert!(home.find("class=\"oa-main-header-actions\"").unwrap() < download);
+    assert!(home[home[..download].rfind('<').unwrap()..download].contains("class=\"oa-button\""));
+    assert!(download < home.find("data-oa-theme-toggle").unwrap());
+    // No Chat or Cloud entries; "New chat" heads the left panel.
+    assert!(!home.contains("href=\"/chat\"") && !home.contains("href=\"/cloud/app\""));
+    assert!(home.contains(">New chat</span>"));
     assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
     assert!(!home.contains("/install"), "every link says /download");
     assert!(!home.contains(".dmg"), "downloads live on /download");
@@ -360,6 +347,9 @@ async fn the_homepage_composer_is_the_design_language_component() {
         home.contains("<button type=\"submit\" class=\"oa-composer-send\" aria-label=\"Send\"")
     );
     assert!(home.contains("<div id=\"composer-panel\" class=\"oa-composer-panel-host\"></div>"));
+    // Controls that do nothing for this visitor are commented out: the
+    // context, model and voice buttons only opened placeholder panels, and
+    // the source selectors need an admitted Cloud runtime.
     for kind in [
         "repository",
         "branch",
@@ -369,11 +359,14 @@ async fn the_homepage_composer_is_the_design_language_component() {
         "voice",
     ] {
         assert!(
-            home.contains(&format!("hx-get=\"/composer/{kind}\"")),
+            !home.contains(&format!("hx-get=\"/composer/{kind}\"")),
             "{kind}"
         );
     }
-    assert!(home.contains("<footer") || home.contains("class=\"oa-legal\""));
+    assert!(!home.contains("Voice input") && !home.contains("Model: Auto"));
+    // The legal links are quiet text at the bottom of the left panel.
+    assert!(!home.contains("<footer") && !home.contains("class=\"oa-legal\""));
+    assert!(home.contains("class=\"oa-sidebar-legal\""));
     let (status, headers, css) = get_with(site, "/static/ui.css", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
@@ -473,13 +466,22 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     // composer docked under the scrolling thread.
     assert!(html.contains("<header class=\"oa-main-header\">"));
     assert!(html.contains("class=\"oa-layout\" data-mode=\"app\""));
-    assert!(
-        !html.contains("class=\"oa-legal\""),
-        "the chat page has no footer"
-    );
-    assert!(!html.contains("href=\"/terms\"") && !html.contains("href=\"/privacy\""));
+    assert!(!html.contains("<footer"), "the chat page has no footer");
+    assert!(html.contains("class=\"oa-sidebar-legal\""));
+    assert_eq!(html.matches("href=\"/terms\"").count(), 1);
     assert!(html.contains("<main id=\"content\" class=\"oa-workspace\""));
-    assert!(html.contains("href=\"/chat\" aria-current=\"page\""));
+    // The open chat is the current row of the recent-chat list, and it
+    // loads into the content area with HTMX.
+    let row = html
+        .find(&format!("<a class=\"oa-nav-item\" href=\"{location}\""))
+        .expect("the chat lists itself");
+    let row = &html[row..row + html[row..].find('>').unwrap()];
+    assert!(
+        row.contains(&format!("hx-get=\"{location}/workspace\"")),
+        "{row}"
+    );
+    assert!(row.contains("aria-current=\"page\""), "{row}");
+    assert!(!html.contains("Showing up to 256") && !html.contains("Onboarding demo"));
     let thread = html.find("id=\"chat-thread\"").unwrap();
     let dock = html.find("class=\"oa-main-composer\"").unwrap();
     let card = html.find("id=\"chat-card\"").unwrap();
@@ -497,8 +499,29 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     );
     assert!(html.contains("id=\"chat-feedback\""));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("class=\"oa-legal\""));
+    assert!(home.contains("class=\"oa-sidebar-legal\""));
     assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
+    // The homepage lists the same visitor's chats as plain links.
+    let home = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, LOCAL)
+                .header(header::COOKIE, visitor)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let home =
+        String::from_utf8(to_bytes(home.into_body(), 1 << 20).await.unwrap().to_vec()).unwrap();
+    assert!(home.contains("id=\"chat-sidebar\""));
+    assert!(home.contains(&format!("<a class=\"oa-nav-item\" href=\"{location}\">")));
+    assert!(
+        !home.contains("/workspace\""),
+        "no content area to load into"
+    );
     let (status, missing) = get(site, "/chat/00000000-0000-4000-8000-000000000000").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(missing.contains("<h1>Not found</h1>"));
@@ -1818,7 +1841,13 @@ async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
                     )
                     .await
                     .unwrap();
-                assert_eq!(response.status(), StatusCode::OK, "{host}{path} {cookie}");
+                // `/cloud` answers locally with its redirect home.
+                let expected = if path == "/cloud" {
+                    StatusCode::SEE_OTHER
+                } else {
+                    StatusCode::OK
+                };
+                assert_eq!(response.status(), expected, "{host}{path} {cookie}");
             }
         }
         for (host, path) in [

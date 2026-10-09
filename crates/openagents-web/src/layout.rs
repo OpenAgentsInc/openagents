@@ -7,17 +7,20 @@
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 
-/// The copyright line the footer carries.
+/// The copyright line at the bottom of the left panel.
 pub const COPYRIGHT: &str = "\u{a9} 2026 OpenAgents, Inc.";
 
-/// The source code, linked from every footer.
+/// The source code, linked from the bottom of the left panel.
 pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 
-/// OpenAgents on X, linked from every footer.
+/// OpenAgents on X, linked from the bottom of the left panel.
 pub const X: &str = "https://x.com/OpenAgentsInc";
 
-/// The sections the navigation links to after the primary ones, in order.
-pub const SECTIONS: [(&str, &str); 2] = [("Download", "/download"), ("Docs", "/docs")];
+/// The download page, linked from the header's pill on every page.
+pub const DOWNLOAD: &str = "/download";
+
+/// The documentation, linked from the bottom of the left panel.
+pub const DOCS: &str = "/docs";
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]

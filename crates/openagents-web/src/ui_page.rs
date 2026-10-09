@@ -6,20 +6,20 @@
 //! toggle, and the design-language assets. Pages supply only their content,
 //! and optionally a header, actions, a composer, or extra sidebar sections.
 
+use axum::http::header;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use maud::{Markup, PreEscaped, Render, html};
-use openagents_ui::actions::{ButtonLink, ButtonVariant, Color};
+use openagents_ui::actions::{ButtonLink, ButtonVariant, Color, ControlSize};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::icons::{Icon, IconSize};
 use openagents_ui::shell::{
-    AppShell, Document, MainMode, NavItem, Sidebar, SidebarSection, ThemeToggle,
+    AppShell, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE, Sidebar, ThemeToggle,
+    sidebar_collapsed_from_cookie,
 };
 
-use crate::layout::{COPYRIGHT, GITHUB, SECTIONS, X};
+use crate::layout::{COPYRIGHT, DOCS, DOWNLOAD, GITHUB, X};
 use crate::theme;
-
-/// The navigation every page shares, before [`SECTIONS`].
-const PRIMARY: [(&str, &str); 3] = [("Home", "/"), ("Chat", "/chat"), ("Cloud", "/cloud/app")];
 
 /// One page: title, current section, content, and optional shell slots.
 #[must_use]
@@ -32,8 +32,7 @@ pub struct UiPage {
     actions: Option<Markup>,
     content: Option<Markup>,
     composer: Option<Markup>,
-    footer: Option<Markup>,
-    sections: Vec<SidebarSection>,
+    sections: Vec<Markup>,
     head: Option<Markup>,
     scripts: bool,
     toggle: bool,
@@ -52,7 +51,6 @@ impl UiPage {
             actions: None,
             content: None,
             composer: None,
-            footer: None,
             sections: Vec::new(),
             head: None,
             scripts: true,
@@ -61,7 +59,8 @@ impl UiPage {
         }
     }
 
-    /// The navigation entry to mark current, by its href (for example `/chat`).
+    /// The navigation entry to mark current, by its href (`/` marks "New
+    /// chat", `/download` the Download pill, `/docs` the Docs row).
     pub fn section(mut self, href: impl Into<String>) -> Self {
         self.section = Some(href.into());
         self
@@ -100,12 +99,6 @@ impl UiPage {
         self
     }
 
-    /// Replaces the default legal footer on scrolling pages.
-    pub fn footer(mut self, footer: impl Render) -> Self {
-        self.footer = Some(footer.render());
-        self
-    }
-
     /// Extra `<head>` content after the design-language assets, such as an
     /// area's own stylesheet or deferred script (never inline script).
     pub fn head(mut self, head: impl Render) -> Self {
@@ -134,9 +127,10 @@ impl UiPage {
         self
     }
 
-    /// An extra left-panel section, such as a conversation list.
-    pub fn sidebar_section(mut self, section: SidebarSection) -> Self {
-        self.sections.push(section);
+    /// An extra left-panel section, such as the recent-chat list
+    /// ([`openagents_ui::shell::ChatList`]).
+    pub fn sidebar_section(mut self, section: impl Render) -> Self {
+        self.sections.push(section.render());
         self
     }
 
@@ -146,25 +140,50 @@ impl UiPage {
         let scripts = self.scripts;
         let mut sidebar = Sidebar::new()
             .label("Main")
-            .brand(html! { a class="oa-wordmark" href="/" { "OpenAgents" } });
-        for (name, href) in PRIMARY.iter().chain(SECTIONS.iter()) {
-            sidebar = sidebar.nav(NavItem::new(*name, *href).current(current == Some(*href)));
-        }
+            .brand(html! { a class="oa-wordmark" href="/" { "OpenAgents" } })
+            .nav(
+                NavItem::new("New chat", "/")
+                    .icon(Icon::ComposeEditSquare.size(IconSize::Md))
+                    .current(current == Some("/")),
+            );
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
+        let sidebar = sidebar
+            .bottom(
+                NavItem::new("Docs", DOCS)
+                    .icon(Icon::Book.size(IconSize::Md))
+                    .current(current == Some(DOCS)),
+            )
+            .footer(
+                LegalLinks::new()
+                    .link("Terms", "/terms")
+                    .link("Privacy", "/privacy")
+                    .link("GitHub", GITHUB)
+                    .link("X", X)
+                    .note(COPYRIGHT),
+            );
         let toggle = self.toggle.then(|| {
             ThemeToggle::new()
                 .fallback_action(theme::TOGGLE_PATH)
                 .return_to(self.return_to)
         });
+        let download = ButtonLink::new("Download", DOWNLOAD)
+            .color(Color::Secondary)
+            .variant(ButtonVariant::Outline)
+            .size(ControlSize::Sm)
+            .pill(true)
+            .icon_start(Icon::Download)
+            .selected(current == Some(DOWNLOAD));
         let actions = html! {
             @if let Some(actions) = &self.actions { (actions) }
+            (download)
             @if let Some(toggle) = toggle { (toggle) }
         };
         let mut shell = AppShell::new()
             .mode(self.mode)
             .sidebar(sidebar)
+            .sidebar_collapsed(sidebar_collapsed(headers))
             .actions(actions);
         if let Some(header) = self.header {
             shell = shell.header(header);
@@ -174,9 +193,6 @@ impl UiPage {
         }
         if let Some(composer) = self.composer {
             shell = shell.composer(composer);
-        }
-        if matches!(self.mode, MainMode::Scroll) {
-            shell = shell.footer(self.footer.unwrap_or_else(legal_footer));
         }
         Document::new(self.title)
             .theme(theme::from_headers(headers))
@@ -235,16 +251,16 @@ pub fn problem(
         .respond(headers)
 }
 
-fn legal_footer() -> Markup {
-    html! {
-        nav class="oa-legal" aria-label="Legal and links" {
-            span { (COPYRIGHT) } " \u{b7} "
-            a href="/terms" { "Terms" } " \u{b7} "
-            a href="/privacy" { "Privacy" } " \u{b7} "
-            a href=(GITHUB) rel="noopener" { "GitHub" } " \u{b7} "
-            a href=(X) rel="noopener" { "X" }
-        }
-    }
+/// Whether the visitor collapsed the left panel (the shell script's
+/// [`SIDEBAR_COOKIE`]).
+fn sidebar_collapsed(headers: &HeaderMap) -> bool {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .any(|(name, value)| name == SIDEBAR_COOKIE && sidebar_collapsed_from_cookie(value))
 }
 
 #[cfg(test)]
@@ -264,9 +280,9 @@ mod tests {
 
     #[test]
     fn carries_assets_navigation_toggle_and_marks_the_section() {
-        let html = UiPage::new("Chat")
-            .section("/chat")
-            .path("/chat")
+        let html = UiPage::new("OpenAgents")
+            .section("/")
+            .path("/")
             .app()
             .content(html! { p { "x" } })
             .render(&HeaderMap::new())
@@ -276,18 +292,34 @@ mod tests {
             theme::SCRIPT_PATH,
             theme::ALPINE_PATH,
             "data-oa-theme-toggle",
-            "href=\"/chat\" aria-current=\"page\"",
+            "data-oa-sidebar-toggle",
+            "href=\"/\" aria-current=\"page\"",
+            ">New chat</span>",
         ] {
             assert!(html.contains(needle), "{needle}");
         }
-        assert!(
-            !html.contains("class=\"oa-legal\""),
-            "app pages have no footer"
-        );
+        // No Chat or Cloud entries, no main-header menu button.
+        assert!(!html.contains(">Chat</span>") && !html.contains(">Cloud</span>"));
+        assert!(!html.contains("href=\"/chat\"") && !html.contains("href=\"/cloud/app\""));
+        assert_eq!(html.matches("data-oa-sidebar-toggle").count(), 1);
+        assert!(!html.contains("Open sidebar") && !html.contains("Close sidebar"));
+        assert!(html.contains("data-sidebar=\"expanded\""));
+        assert!(!html.contains("<footer"), "no page footer");
     }
 
     #[test]
-    fn every_scrolling_page_links_the_terms_privacy_github_and_x_once() {
+    fn the_collapsed_cookie_renders_the_rail() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            header::COOKIE,
+            HeaderValue::from_static("oa_theme=dark; oa_sidebar=collapsed"),
+        );
+        let html = UiPage::new("x").render(&h).into_string();
+        assert!(html.contains("data-sidebar=\"collapsed\""), "{html}");
+    }
+
+    #[test]
+    fn download_is_a_pill_beside_the_toggle_and_docs_and_legal_sit_at_the_sidebar_bottom() {
         let html = UiPage::new("Download OpenAgents")
             .section("/download")
             .scriptless()
@@ -301,8 +333,23 @@ mod tests {
         ));
         assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
         assert!(html.contains(COPYRIGHT));
-        assert!(html.contains("href=\"/download\" aria-current=\"page\""));
-        assert!(!html.contains("href=\"/docs\" aria-current"));
+        assert!(!html.contains("<footer") && !html.contains("oa-legal\""));
+        // The legal links and Docs live in the left panel's footer.
+        let aside_end = html.find("</aside>").unwrap();
+        let sidebar_footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
+        assert!(sidebar_footer < html.find("href=\"/docs\"").unwrap());
+        assert!(html.find("href=\"/terms\"").unwrap() < aside_end);
+        // Download is a pill link in the header actions, before the toggle.
+        let actions = html.find("class=\"oa-main-header-actions\"").unwrap();
+        let download = html.find("href=\"/download\"").unwrap();
+        let toggle = html.find("data-oa-theme-toggle").unwrap();
+        assert!(actions < download && download < toggle);
+        assert!(html[download.saturating_sub(200)..download].contains("oa-button"));
+        assert!(html.contains("data-pill"), "{html}");
+        assert!(
+            html.contains("data-selected"),
+            "the current page's pill is selected"
+        );
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
     }
