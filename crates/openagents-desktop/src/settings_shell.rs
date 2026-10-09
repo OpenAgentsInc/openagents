@@ -301,8 +301,6 @@ impl DesktopApp {
             .map_or_else(Arc::default, |state| state.settings.motion())
     }
 
-    /// Sizes the chat's text as the preferences say. The theme's sizes are
-    /// read with each layout ([`rust_native_desktop::App::theme`]).
     /// Paints with the scheme the person's theme choice resolves to against
     /// the system's appearance (#11028): sets it at the theme seam
     /// ([`openagents_chat_app::visual::set_scheme`]), repaints the chat in
@@ -326,6 +324,8 @@ impl DesktopApp {
         self.present();
     }
 
+    /// Sizes the chat's text as the preferences say. The theme's sizes are
+    /// read with each layout ([`rust_native_desktop::App::theme`]).
     fn apply_text_size(&mut self) {
         if let (Some(state), Some(chat)) = (&self.navigation, &mut self.chat) {
             chat.set_text_size(state.settings.preferences.text_size);
@@ -1017,5 +1017,114 @@ mod tests {
         );
         setting(&mut app, Action::ReduceMotion { on: true }, now);
         capture(&mut app, "settings-appearance-reduced");
+    }
+
+    /// Settings > Appearance > Theme repaints the window in Coder Light and
+    /// back (#11028): the window's appearance, the shell's colors, and the
+    /// chat page. System, the default, follows the system's appearance and
+    /// reads as dark when the system does not say. The scheme stays on this
+    /// test's thread ([`openagents_chat_app::visual::scoped`]), so no other
+    /// test paints light, and the process's scheme is as it was after.
+    #[test]
+    fn the_theme_switches_to_light_and_back() {
+        use openagents_chat_app::preferences::ThemeChoice;
+        use openagents_chat_app::visual::{self, Scheme};
+        use rust_native_desktop::theme::Appearance;
+        let before = visual::scheme();
+        visual::scoped(|| {
+            let luma = |c: rust_native::style::Color| {
+                (u32::from(c.red) * 2126 + u32::from(c.green) * 7152 + u32::from(c.blue) * 722)
+                    / 10_000
+            };
+            // The chat page's mean luma, over every fourth pixel each way.
+            let page_luma = |app: &mut DesktopApp| {
+                app.navigation.as_mut().unwrap().page = Page::Chat(0);
+                app.present();
+                app.viewport(1200.0, 840.0, 1.0);
+                let (frame, scene) = rust_native_desktop::capture(app, 1200.0, 840.0, 1.0);
+                assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+                let (mut sum, mut count) = (0u64, 0u64);
+                for y in (0..frame.height).step_by(4) {
+                    for x in (0..frame.width).step_by(4) {
+                        let [r, g, b] = frame.pixel(x, y);
+                        sum += u64::from(luma(rust_native::style::Color::rgb(r, g, b)));
+                        count += 1;
+                    }
+                }
+                sum / count.max(1)
+            };
+            let home = tempfile::tempdir().unwrap();
+            let file = home.path().join("settings.json");
+            let (mut app, now) = chat_fixture(4);
+            app.use_settings_file(file.clone());
+            let preferences =
+                |app: &DesktopApp| app.navigation.as_ref().unwrap().settings.preferences;
+            assert_eq!(preferences(&app).theme, ThemeChoice::System);
+            assert_eq!(
+                visual::scheme(),
+                Scheme::Dark,
+                "no system appearance reads dark"
+            );
+            assert_eq!(app.theme().appearance, Appearance::Dark);
+            let dark = page_luma(&mut app);
+            assert!(dark < 60, "{dark}");
+
+            app.click(
+                Intent::Navigate {
+                    action: Navigate::Settings,
+                },
+                now,
+            );
+            setting(
+                &mut app,
+                Action::Theme {
+                    choice: ThemeChoice::Light,
+                },
+                now,
+            );
+            assert_eq!(visual::scheme(), Scheme::Light);
+            let theme = app.theme();
+            assert_eq!(theme.appearance, Appearance::Light);
+            assert!(luma(theme.background) > 200 && luma(theme.text) < 64);
+            let light = page_luma(&mut app);
+            assert!(light > 180, "{light}");
+            let saved: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+            assert_eq!(saved[SECTION]["theme"], "light");
+
+            // System follows the system's appearance as it changes.
+            setting(
+                &mut app,
+                Action::Theme {
+                    choice: ThemeChoice::System,
+                },
+                now,
+            );
+            assert_eq!(visual::scheme(), Scheme::Dark);
+            app.system_appearance(Some(Appearance::Light));
+            assert_eq!(visual::scheme(), Scheme::Light);
+            assert_eq!(app.theme().appearance, Appearance::Light);
+            app.system_appearance(Some(Appearance::Dark));
+            assert_eq!(visual::scheme(), Scheme::Dark);
+
+            // Dark holds whatever the system says.
+            app.system_appearance(Some(Appearance::Light));
+            setting(
+                &mut app,
+                Action::Theme {
+                    choice: ThemeChoice::Dark,
+                },
+                now,
+            );
+            assert_eq!(visual::scheme(), Scheme::Dark);
+            assert_eq!(app.theme().appearance, Appearance::Dark);
+            let again = page_luma(&mut app);
+            assert!(again < 60, "{again}");
+        });
+        assert_eq!(
+            visual::scheme(),
+            before,
+            "the process's scheme is untouched"
+        );
     }
 }
