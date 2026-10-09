@@ -34,7 +34,7 @@ fn a_sealed_token_opens_only_for_its_account_user_and_key() {
     // An unset key stores nothing.
     assert_eq!(
         seal(&github([0; 32]), "acct_a", 42, "t").unwrap_err(),
-        RepoError::Unavailable
+        RepoError::NotConfigured
     );
     assert!(!format!("{:?}", open(&gh, "acct_a", 42, &sealed).unwrap()).contains("gho_"));
 }
@@ -103,7 +103,18 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
     assert!(!file(dir.path(), "acct_a", "lock").exists());
 
     // A revoked token reads as Reconnect; projects stay.
-    checked(dir.path(), "acct_a", 401, Value::Null).unwrap_err();
+    let revoked = Api {
+        status: 401,
+        scopes: None,
+        body: Value::Null,
+        next: None,
+        sso: None,
+        rate_limited: false,
+    };
+    assert_eq!(
+        checked(dir.path(), "acct_a", revoked).err(),
+        Some(RepoError::Reconnect)
+    );
     let after = status(dir.path(), "acct_a").unwrap();
     assert_eq!(
         after.access,
@@ -138,45 +149,32 @@ fn names_ids_and_error_codes() {
     assert!(project_id("prj_0123456789abcdef"));
     assert!(!project_id("prj_0123"));
     assert!(!project_id("0123456789abcdef"));
-    for error in [
-        RepoError::NotConnected,
-        RepoError::Reconnect,
-        RepoError::OtherGithub,
-        RepoError::NotFound,
-        RepoError::Full,
-        RepoError::Denied,
-        RepoError::Invalid,
-        RepoError::Unavailable,
-    ] {
+    for error in RepoError::ALL {
         assert_eq!(RepoError::from_code(error.code()), Some(error));
         let text = error.to_string();
         assert!(!text.contains("token") && !text.contains("scope"), "{text}");
+        // Only GitHub not answering is said to be GitHub not answering.
+        assert_eq!(
+            text.contains("isn't answering"),
+            error == RepoError::Unavailable,
+            "{text}"
+        );
     }
 }
 
 /// A real account's first page of 100 repositories is about 600 KB; the
 /// API read must take it (the 256 KB cap read as "GitHub isn't answering").
+/// The fake answers with GitHub's whole repository objects, so every test
+/// that lists repositories reads real-sized pages.
 #[tokio::test]
 async fn a_full_page_of_repositories_is_read() {
-    let repo = |n: usize| {
-        serde_json::json!({
-            "id": n, "full_name": format!("owner/repo-{n}"), "private": false,
-            "default_branch": "main", "description": "x".repeat(5_800),
-        })
-    };
-    let page: Vec<_> = (0..100).map(repo).collect();
-    let body = serde_json::to_string(&page).unwrap();
-    assert!(body.len() > 512 * 1024);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let origin = format!("http://{}", listener.local_addr().unwrap());
-    let app = axum::Router::new().route(
-        "/user/repos",
-        axum::routing::get(move || {
-            let body = body.clone();
-            async move { ([("content-type", "application/json")], body) }
-        }),
+    let fake = crate::fake::Fake::new(
+        "Ov23liAbc",
+        "secret",
+        "http://127.0.0.1:4301/auth/github/callback",
+        vec![crate::fake::busy(150)],
     );
-    tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+    let origin = fake.spawn().await.unwrap();
     let credentials = crate::fake::credentials(
         &origin,
         "Ov23liAbc",
@@ -185,7 +183,69 @@ async fn a_full_page_of_repositories_is_read() {
     )
     .unwrap();
     let gh = Github::new(credentials).unwrap();
-    let answer = gh.api("gho_t", "/user/repos?per_page=100&page=1").await.unwrap();
+    // A token for the busy person, straight from the fake's token table.
+    let (url, flow) = crate::Flow::start_for(
+        &gh.credentials().app,
+        None,
+        crate::Purpose::Repos { private: true },
+    )
+    .unwrap();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let response = http
+        .get(format!("{url}&login=busy-local"))
+        .send()
+        .await
+        .unwrap();
+    let location = url::Url::parse(response.headers()["location"].to_str().unwrap()).unwrap();
+    let code = location
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let token = gh.exchange(&code, flow.verifier()).await.unwrap();
+    let answer = gh
+        .api(token.as_str(), "/user/repos?per_page=100&sort=pushed")
+        .await
+        .unwrap();
     assert_eq!(answer.status, 200);
     assert_eq!(answer.body.as_array().map(Vec::len), Some(100));
+    let bytes = serde_json::to_vec(&answer.body).unwrap().len();
+    assert!(bytes > 500 * 1024, "{bytes} bytes");
+    assert_eq!(
+        answer.next.as_deref(),
+        Some("/user/repos?per_page=100&sort=pushed&page=2")
+    );
+    assert!(!answer.rate_limited && answer.sso.is_none());
+}
+
+#[test]
+fn only_a_next_page_on_the_same_api_origin_is_followed() {
+    let base = "https://api.github.com";
+    let link = "<https://api.github.com/user/repos?page=2&per_page=100>; rel=\"next\", <https://api.github.com/user/repos?page=9&per_page=100>; rel=\"last\"";
+    assert_eq!(
+        crate::github::next_page(link, base).as_deref(),
+        Some("/user/repos?page=2&per_page=100")
+    );
+    for foreign in [
+        "<https://evil.example/user/repos?page=2>; rel=\"next\"",
+        "<https://api.github.com.evil.example/user/repos?page=2>; rel=\"next\"",
+        "<http://api.github.com/user/repos?page=2>; rel=\"next\"",
+        "<https://api.github.com/user/repos?page=9>; rel=\"last\"",
+        "",
+    ] {
+        assert_eq!(crate::github::next_page(foreign, base), None, "{foreign}");
+    }
+    // GitHub Enterprise Server keeps its /api/v3 prefix.
+    assert_eq!(
+        crate::github::next_page(
+            "<https://ghe.example/api/v3/user/repos?page=2>; rel=\"next\"",
+            "https://ghe.example/api/v3"
+        )
+        .as_deref(),
+        Some("/user/repos?page=2")
+    );
 }

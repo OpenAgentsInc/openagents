@@ -27,7 +27,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
-use oa_auth::repos::{Access, Project, RepoError, Repository, Status};
+use oa_auth::repos::{Access, Listing, Project, RepoError, Repository, Status};
 use openagents_ui::actions::{
     Alert, Badge, Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize,
 };
@@ -303,12 +303,16 @@ fn fragment(body: Markup) -> Response {
 /// added), and the button that loads the next page in its place.
 fn repos_page(
     state: &Status,
-    listed: Result<(Vec<Repository>, bool), RepoCallError>,
+    listed: Result<Listing, RepoCallError>,
     csrf: &str,
     q: &str,
     page: u32,
 ) -> Markup {
-    let (repositories, more) = match listed {
+    let Listing {
+        repositories,
+        more,
+        sso_hidden,
+    } = match listed {
         Ok(found) => found,
         Err(RepoCallError::Repo(RepoError::Reconnect)) => {
             return html! {
@@ -341,6 +345,12 @@ fn repos_page(
         .filter(|r| !have.contains(&r.id))
         .filter(|r| needle.is_empty() || r.full_name.to_lowercase().contains(&needle))
         .collect();
+    // A repository not on these pages can still be added by owner/name.
+    let by_name = page == 1
+        && oa_auth::repos::full_name(q)
+        && !repositories
+            .iter()
+            .any(|r| r.full_name.eq_ignore_ascii_case(q));
     let next = format!("projects-repos-{}", page + 1);
     html! {
         @if !shown.is_empty() {
@@ -350,6 +360,7 @@ fn repos_page(
                         span {
                             (repository.full_name)
                             @if repository.private { " " (Badge::new("Private")) }
+                            @if repository.archived { " " (Badge::new("Archived")) }
                         }
                         form method="post" action=(PAGE) {
                             input type="hidden" name="csrf" value=(csrf);
@@ -363,8 +374,22 @@ fn repos_page(
                     }
                 }
             }
-        } @else if !more && page == 1 {
+        } @else if !more && page == 1 && !by_name {
             p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
+        }
+        @if by_name {
+            form method="post" action=(PAGE) {
+                input type="hidden" name="csrf" value=(csrf);
+                input type="hidden" name="repository" value=(q);
+                (Button::new(format!("Add {q}"))
+                    .kind(ButtonType::Submit)
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary))
+            }
+        }
+        @if sso_hidden && page == 1 {
+            p.oa-page-meta { "Some organization repositories are hidden until you authorize OpenAgents for that organization's single sign-on on GitHub." }
         }
         @if more {
             div id=(next) {

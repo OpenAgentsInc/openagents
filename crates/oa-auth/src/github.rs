@@ -125,50 +125,167 @@ impl Github {
         Ok(serde_json::from_value(answer.body).ok())
     }
 
-    /// One GitHub API read with `bearer`: the status, the scopes GitHub
-    /// says the token holds (`X-OAuth-Scopes`), and the JSON body (null
-    /// when it isn't JSON).
-    pub(crate) async fn api(&self, bearer: &str, path: &str) -> Result<Api, AuthError> {
-        let url = format!(
-            "{}{path}",
-            self.credentials.app.endpoints.api_url.trim_end_matches('/')
-        );
+    /// One GitHub API read with `bearer` (see [`Github::api_within`]),
+    /// bounded by [`API_TIMEOUT`].
+    pub(crate) async fn api(&self, bearer: &str, path: &str) -> Result<Api, ApiFault> {
+        self.api_within(bearer, path, API_TIMEOUT).await
+    }
+
+    /// One GitHub API read with `bearer` within `limit`: the status, the
+    /// scopes GitHub says the token holds (`X-OAuth-Scopes`), what it said
+    /// about rate limits and single sign-on, the next page (only when its
+    /// `Link` stays on this API origin), and the JSON body (null when it
+    /// isn't JSON). A dropped connection or a 502/503/504 is tried once
+    /// more after a short pause; GitHub answers those to slow listings.
+    pub(crate) async fn api_within(
+        &self,
+        bearer: &str,
+        path: &str,
+        limit: Duration,
+    ) -> Result<Api, ApiFault> {
+        let started = std::time::Instant::now();
+        let first = self.api_once(bearer, path, limit).await;
+        match &first {
+            Ok(answer) if !matches!(answer.status, 502..=504) => return first,
+            Err(ApiFault::TooLarge) => return first,
+            _ => {}
+        }
+        let left = limit.saturating_sub(started.elapsed() + RETRY_PAUSE);
+        if left < Duration::from_secs(1) {
+            return first;
+        }
+        tokio::time::sleep(RETRY_PAUSE).await;
+        self.api_once(bearer, path, left).await
+    }
+
+    async fn api_once(&self, bearer: &str, path: &str, limit: Duration) -> Result<Api, ApiFault> {
+        let base = self.credentials.app.endpoints.api_url.trim_end_matches('/');
         let mut response = self
             .http
-            .get(url)
+            .get(format!("{base}{path}"))
             .bearer_auth(bearer)
             .header("accept", "application/vnd.github+json")
             .header("x-github-api-version", "2022-11-28")
+            .timeout(limit)
             .send()
             .await
-            .map_err(|_| AuthError::Unavailable)?;
+            .map_err(|_| ApiFault::Unreachable)?;
         let status = response.status().as_u16();
-        let scopes = response
-            .headers()
-            .get("x-oauth-scopes")
-            .and_then(|value| value.to_str().ok())
-            .map(|value| {
-                value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|scope| !scope.is_empty() && scope.len() <= 64)
-                    .take(32)
-                    .map(str::to_string)
-                    .collect()
-            });
-        let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| AuthError::Unavailable)? {
-            body.extend_from_slice(&chunk);
-            if body.len() > BODY_MAX {
-                return Err(AuthError::Unavailable);
+        let headers = response.headers();
+        let text = |name: &str| {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+        };
+        let number = |name: &str| text(name).and_then(|value| value.parse::<u64>().ok());
+        let scopes = text("x-oauth-scopes").map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|scope| !scope.is_empty() && scope.len() <= 64)
+                .take(32)
+                .map(str::to_string)
+                .collect()
+        });
+        let sso = text("x-github-sso").and_then(|value| {
+            if value.starts_with("required") {
+                Some(Sso::Required)
+            } else if value.starts_with("partial-results") {
+                Some(Sso::Partial)
+            } else {
+                None
             }
+        });
+        let next = text("link").and_then(|value| next_page(value, base));
+        let remaining = number("x-ratelimit-remaining");
+        let retry_after = number("retry-after");
+        if response
+            .content_length()
+            .is_some_and(|length| length > BODY_MAX as u64)
+        {
+            return Err(ApiFault::TooLarge);
         }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| ApiFault::Unreachable)? {
+            if body.len().saturating_add(chunk.len()) > BODY_MAX {
+                return Err(ApiFault::TooLarge);
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let body: serde_json::Value =
+            serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+        // GitHub's documented rate-limit answers: 429, or 403 with no
+        // requests left, a Retry-After, or a rate-limit message (the
+        // secondary limits).
+        let limited = status == 429
+            || (status == 403
+                && (remaining == Some(0)
+                    || retry_after.is_some()
+                    || body["message"]
+                        .as_str()
+                        .is_some_and(|m| m.to_ascii_lowercase().contains("rate limit"))));
         Ok(Api {
             status,
             scopes,
-            body: serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+            body,
+            next,
+            sso,
+            rate_limited: limited,
         })
     }
+}
+
+/// How long one GitHub API read may take. A page of 100 repositories for
+/// an account in large organizations can take GitHub several seconds.
+const API_TIMEOUT: Duration = Duration::from_secs(15);
+/// The pause before the one retry of a dropped or 502/503/504 read.
+const RETRY_PAUSE: Duration = Duration::from_millis(500);
+
+/// The `rel="next"` target of a `Link` header, as a path under `base`.
+/// A next page on any other origin is not followed: the token would go
+/// with it.
+pub(crate) fn next_page(link: &str, base: &str) -> Option<String> {
+    link.split(',').find_map(|part| {
+        let (target, params) = part.trim().split_once(';')?;
+        let target = target.trim().strip_prefix('<')?.strip_suffix('>')?;
+        if !params
+            .split(';')
+            .any(|p| matches!(p.trim(), "rel=\"next\"" | "rel=next"))
+        {
+            return None;
+        }
+        let rest = target.strip_prefix(base)?;
+        (rest.starts_with('/')
+            && rest.len() <= 2048
+            && !rest.chars().any(|c| c.is_whitespace() || c.is_control()))
+        .then(|| rest.to_string())
+    })
+}
+
+/// Why a GitHub API read produced no answer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ApiFault {
+    /// No connection, a dropped one, or no answer in time.
+    Unreachable,
+    /// The answer was larger than [`BODY_MAX`].
+    TooLarge,
+}
+
+impl From<ApiFault> for AuthError {
+    fn from(_: ApiFault) -> Self {
+        Self::Unavailable
+    }
+}
+
+/// What `X-GitHub-SSO` said.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Sso {
+    /// The resource belongs to an organization that requires single
+    /// sign-on, and the token isn't authorized for it yet.
+    Required,
+    /// A listing left out such organizations' repositories.
+    Partial,
 }
 
 /// A GitHub access token in memory. `Debug` never shows it, and the
@@ -206,6 +323,11 @@ pub(crate) struct Api {
     pub status: u16,
     pub scopes: Option<Vec<String>>,
     pub body: serde_json::Value,
+    /// The next page's path, from `Link: <...>; rel="next"`.
+    pub next: Option<String>,
+    pub sso: Option<Sso>,
+    /// GitHub said the token is over a rate limit.
+    pub rate_limited: bool,
 }
 
 /// GitHub's `/user`, tolerant of any extra fields.

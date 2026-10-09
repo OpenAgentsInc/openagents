@@ -514,7 +514,10 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
     // The page shows at once; the list loads after it.
     let html = view(&status, "t", "", None).into_string();
     assert!(html.contains("Include private repositories"), "{html}");
-    assert!(html.contains(r#"hx-get="/projects/repositories?page=1""#), "{html}");
+    assert!(
+        html.contains(r#"hx-get="/projects/repositories?page=1""#),
+        "{html}"
+    );
     assert!(html.contains("Loading your repositories"));
     crate::copy_guard::assert_plain(PAGE, &html);
     let repo = |id: u64| Repository {
@@ -522,18 +525,63 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         full_name: format!("octo/repo-{id}"),
         default_branch: "main".into(),
         private: false,
+        archived: id == 2,
+    };
+    let listing = |repositories: Vec<Repository>, more: bool| {
+        Ok(Listing {
+            repositories,
+            more,
+            sso_hidden: false,
+        })
     };
     // One page, newest first, with Show more when GitHub has more.
     let page: Vec<Repository> = (1..=30).map(repo).collect();
-    let html = repos_page(&status, Ok((page.clone(), true)), "t", "", 1).into_string();
+    let html = repos_page(&status, listing(page.clone(), true), "t", "", 1).into_string();
     assert!(html.contains("octo/repo-1") && html.contains("octo/repo-30"));
-    assert!(html.contains(r#"hx-get="/projects/repositories?page=2""#), "{html}");
+    assert!(
+        html.contains(r#"hx-get="/projects/repositories?page=2""#),
+        "{html}"
+    );
     assert!(html.contains("Show more"));
+    assert!(html.contains("Archived"));
+    assert!(!html.contains("single sign-on"));
     crate::copy_guard::assert_plain(PAGE, &html);
-    let html = repos_page(&status, Ok((page.clone(), false)), "t", "", 2).into_string();
+    let html = repos_page(&status, listing(page.clone(), false), "t", "", 2).into_string();
     assert!(!html.contains("Show more"));
-    let html = repos_page(&status, Ok((page, false)), "t", "zzz", 1).into_string();
+    let html = repos_page(&status, listing(page.clone(), false), "t", "zzz", 1).into_string();
     assert!(html.contains("No repositories match."));
-    let html = repos_page(&status, Ok((vec![repo(1)], true)), "t", "my app", 1).into_string();
+    let html = repos_page(&status, listing(vec![repo(1)], true), "t", "my app", 1).into_string();
     assert!(html.contains("page=2&amp;q=my+app"), "{html}");
+    // A repository not on the pages can be added by owner/name; one that
+    // is listed is not offered twice.
+    let html = repos_page(
+        &status,
+        listing(page.clone(), true),
+        "t",
+        "acme/far-away",
+        1,
+    )
+    .into_string();
+    assert!(html.contains("Add acme/far-away"), "{html}");
+    assert!(!html.contains("No repositories match."));
+    crate::copy_guard::assert_plain(PAGE, &html);
+    let html =
+        repos_page(&status, listing(page.clone(), true), "t", "octo/repo-3", 1).into_string();
+    assert!(!html.contains("Add octo/repo-3"));
+    // Single sign-on hiding repositories is said once.
+    let hidden = Ok(Listing {
+        repositories: page,
+        more: false,
+        sso_hidden: true,
+    });
+    let html = repos_page(&status, hidden, "t", "", 1).into_string();
+    assert!(html.contains("single sign-on"), "{html}");
+    crate::copy_guard::assert_plain(PAGE, &html);
+    // A rate limit says so, not that GitHub isn't answering.
+    let limited = Err(RepoCallError::Repo(RepoError::RateLimited));
+    let html = repos_page(&status, limited, "t", "", 1).into_string();
+    assert!(
+        html.contains("limiting") && !html.contains("answering"),
+        "{html}"
+    );
 }

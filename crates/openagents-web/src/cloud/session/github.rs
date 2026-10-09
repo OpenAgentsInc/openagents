@@ -5,7 +5,7 @@
 //! as the person, and it is never stored or logged here.
 
 use axum::http::HeaderMap;
-use oa_auth::repos::{Project, RepoError, Repository, Status};
+use oa_auth::repos::{Listing, Project, RepoError, Status};
 use reqwest::Method;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -77,12 +77,13 @@ impl CloudSession {
     }
 
     /// One page of the repositories the person can connect, most recently
-    /// pushed first, and whether there are more.
+    /// pushed first, whether there are more, and whether single sign-on
+    /// hid some.
     pub(crate) async fn github_repositories(
         &self,
         headers: &HeaderMap,
         page: u32,
-    ) -> Result<(Vec<Repository>, bool)> {
+    ) -> Result<Listing> {
         let body = self
             .account_call(
                 headers,
@@ -91,9 +92,7 @@ impl CloudSession {
                 None,
             )
             .await?;
-        let found = serde_json::from_value(body["repositories"].clone())
-            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))?;
-        Ok((found, body["more"].as_bool().unwrap_or(false)))
+        serde_json::from_value(body).map_err(|_| RepoCallError::Session(SessionError::Unavailable))
     }
 
     /// The person's GitHub token, to read GitHub as them for this request.

@@ -133,10 +133,29 @@ Account-service routes (session bearer), served by the gateway and by
 | `GET /v1/account/github` | `{github: {state: none\|connected\|reconnect, login, private}, projects}` |
 | `POST /v1/account/github/grant` `{code, code_verifier}` | the status |
 | `DELETE /v1/account/github/grant` | the status; the token is forgotten |
-| `GET /v1/account/github/repositories` | up to 300, most recently pushed first |
+| `GET /v1/account/github/repositories?page=N` | `{repositories, more, sso_hidden}`: one GitHub page of 30, most recently pushed first (pages 1–20); `more` when GitHub's `Link` names a next page; disabled repositories left out, archived ones marked `archived`; `sso_hidden` when GitHub's `X-GitHub-SSO: partial-results` says an organization hid some |
 | `POST /v1/account/github/token` | `{token, private}` for this deployment's web server to read GitHub as the person (`/environments`); never stored there |
 | `POST /v1/account/projects` `{repository}` | `{project}`: id, name, repository id and full name, default branch, private, created time; one per repository |
 | `DELETE /v1/account/projects/{id}` | `{removed}` |
+
+Every GitHub read (`oa_auth::github`) sends `Accept:
+application/vnd.github+json` and `X-GitHub-Api-Version: 2022-11-28`, takes
+bodies up to 8 MB (a page of 100 whole repositories is about 600 KB), waits
+at most 15 seconds, and tries a dropped connection or a 502/503/504 once more
+after half a second. Errors say what GitHub said, with these codes:
+
+| Code | Status | When |
+| --- | --- | --- |
+| `github_reconnect` | 409 | GitHub answered 401 to the stored token (it is marked revoked) |
+| `github_rate_limited` | 429 | 429, or 403 with `x-ratelimit-remaining: 0`, a `Retry-After`, or a rate-limit message (secondary limits) |
+| `github_sso_required` | 403 | 403 with `X-GitHub-SSO: required` |
+| `github_forbidden` | 403 | any other 403 or 451 (an organization's OAuth App access restrictions), or a disabled repository |
+| `repository_not_found` | 404 | 404 |
+| `github_error` | 502 | GitHub's own 5xx |
+| `github_bad_answer` | 502 | a 2xx that isn't JSON (an HTML outage page), the wrong shape, or a body over 8 MB |
+| `github_unavailable` | 503 | no connection or no answer in time: the only "isn't answering" |
+| `github_not_configured` | 503 | this server has no GitHub App file or token key |
+| `github_access_storage` | 500 | the sealed token or its file couldn't be read or written |
 
 ## Local testing
 
@@ -164,7 +183,15 @@ Tests: `cargo test -p oa-auth` (flow, config, and end to end against the
 fake: sign-up, returning user, rename, email-less user, wrong verifier,
 reused code, cancel, linking conflict; repository access: public and
 private grants, projects, revocation, another GitHub account, the token
-only encrypted on disk), `cargo test -p tenancy identities`, and
+only encrypted on disk; a 250-repository account paged by real-sized
+pages and `Link` headers; rate limits, secondary limits, 429, 5xx, an HTML
+page, single sign-on, organization restrictions, a retried 502). The fake (`oa_auth::fake`) answers with GitHub's
+whole repository objects (`fake::repository`, about 6 KB each), pages
+`/user/repos` with `per_page`/`page` and `Link`, sends rate-limit headers,
+and fails on request with `Fake::fail` / `Fake::fail_later` and
+`fake::Fault`; `fake::busy(n)` is a person with `n` repositories across
+two organizations, some private, archived, or disabled. Also
+`cargo test -p tenancy identities`, and
 `openagents-web`'s `auth::tests` (header buttons, `/login`, the full
 browser trip, state mismatch, cancel, open-redirect attempts) and
 `projects::tests` (Connect GitHub through the site, adding a project, the

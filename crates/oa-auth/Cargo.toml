@@ -9,9 +9,9 @@ description = "OpenAgents sign-in: GitHub OAuth (authorization code + PKCE), pro
 [features]
 # An in-process fake GitHub (authorize, token, user, emails) for tests and
 # the local fixture.
-fake = ["dep:axum", "dep:tokio"]
+fake = ["dep:axum"]
 # A small account service over the tenancy stores, for local fixtures only.
-local = ["dep:axum", "dep:tokio"]
+local = ["dep:axum"]
 
 [dependencies]
 axum = { version = "0.8", optional = true }
@@ -24,7 +24,7 @@ serde_json = "1"
 sha2 = "0.10"
 subtle = "2"
 tenancy = { path = "../tenancy" }
-tokio = { version = "1", features = ["net", "rt", "sync"], optional = true }
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 url = "2"
 
 [dev-dependencies]

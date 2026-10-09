@@ -21,7 +21,11 @@ struct World {
 }
 
 async fn world() -> World {
-    let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
+    world_of(vec![fake::octo(), fake::quiet()]).await
+}
+
+async fn world_of(people: Vec<fake::FakeUser>) -> World {
+    let fake = Fake::new(CLIENT, SECRET, REDIRECT, people);
     let origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&origin, CLIENT, SECRET, REDIRECT).unwrap();
     let app = credentials.app.clone();
@@ -320,4 +324,148 @@ async fn access_from_another_github_account_or_without_a_session_is_refused() {
         (status, again["error"]["code"].clone()),
         (401, json!("github_denied"))
     );
+}
+
+/// A connected busy person and their session.
+async fn busy(count: usize) -> (World, String) {
+    let world = world_of(vec![fake::busy(count), fake::octo()]).await;
+    let session = sign_in(&world, "busy-local").await;
+    let (status, body) = grant(&world, &session, true, "busy-local").await;
+    assert_eq!(status, 200, "{body}");
+    (world, session)
+}
+
+async fn list(world: &World, session: &str, page: u32) -> (u16, Value) {
+    call(
+        world,
+        "GET",
+        session,
+        &format!("/v1/account/github/repositories?page={page}"),
+        json!({}),
+    )
+    .await
+}
+
+/// A real account: 250 repositories, one real-sized GitHub page per page
+/// shown, "more" taken from GitHub's `Link` header. Disabled ones are left
+/// out, archived ones marked, and a missing default branch reads as `main`.
+#[tokio::test]
+async fn a_busy_account_pages_by_githubs_links() {
+    let (world, session) = busy(250).await;
+    let before = world.fake.api_calls();
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(status, 200, "{}", body["error"]);
+    assert_eq!(world.fake.api_calls() - before, 1);
+    let listed = names(&body);
+    assert_eq!(listed.len(), 29, "thirty, less the disabled one");
+    assert!(!listed.contains(&"example-labs/project-0005".to_string()));
+    assert_eq!(body["more"], true);
+    assert_eq!(body["sso_hidden"], false);
+    let rows = body["repositories"].as_array().unwrap();
+    let find = |name: &str| rows.iter().find(|r| r["full_name"] == name).unwrap();
+    assert_eq!(find("example-labs/project-0011")["archived"], true);
+    assert!(find("acme-corp/project-0010").get("archived").is_none());
+    assert_eq!(find("acme-corp/project-0013")["default_branch"], "main");
+    assert_eq!(find("busy-local/project-0021")["private"], true);
+
+    let (_, body) = list(&world, &session, 8).await;
+    assert_eq!(
+        (names(&body).len(), body["more"].clone()),
+        (30, json!(true))
+    );
+    let (_, body) = list(&world, &session, 9).await;
+    assert_eq!(
+        (names(&body).len(), body["more"].clone()),
+        (10, json!(false))
+    );
+    assert_eq!(names(&body).last().unwrap(), "acme-corp/project-0250");
+}
+
+/// Each way GitHub refuses says what happened, never "isn't answering",
+/// and none of them marks the access ended.
+#[tokio::test]
+async fn github_refusals_say_what_went_wrong() {
+    let (world, session) = busy(30).await;
+    for (fault, status, code) in [
+        (fake::Fault::RateLimited, 429, "github_rate_limited"),
+        (fake::Fault::SecondaryRateLimit, 429, "github_rate_limited"),
+        (fake::Fault::TooManyRequests, 429, "github_rate_limited"),
+        (fake::Fault::ServerError(500), 502, "github_error"),
+        (fake::Fault::NotJson, 502, "github_bad_answer"),
+        (fake::Fault::OrgRestricted, 403, "github_forbidden"),
+    ] {
+        world.fake.fail("/user/repos", fault, 1);
+        let (got, body) = list(&world, &session, 1).await;
+        assert_eq!(
+            (got, body["error"]["code"].as_str().unwrap()),
+            (status, code),
+            "{fault:?}: {body}"
+        );
+        let message = body["error"]["message"].as_str().unwrap();
+        assert!(!message.contains("isn't answering"), "{fault:?}: {message}");
+        let (_, state) = call(&world, "GET", &session, "/v1/account/github", json!({})).await;
+        assert_eq!(state["github"]["state"], "connected", "{fault:?}");
+    }
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(status, 200, "{body}");
+
+    // An organization repository behind single sign-on.
+    world
+        .fake
+        .fail("/repos/acme-corp/", fake::Fault::SsoRequired, 1);
+    let (status, body) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/account/projects",
+        json!({"repository": "acme-corp/project-0001"}),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (403, json!("github_sso_required")),
+        "{body}"
+    );
+    // A repository GitHub disabled can't become a project.
+    let (status, body) = call(
+        &world,
+        "POST",
+        &session,
+        "/v1/account/projects",
+        json!({"repository": "example-labs/project-0005"}),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (403, json!("github_forbidden")),
+        "{body}"
+    );
+}
+
+/// GitHub's 502 for a slow listing is tried once more, and single sign-on
+/// hiding repositories is reported.
+#[tokio::test]
+async fn a_502_is_retried_and_hidden_organizations_are_reported() {
+    let (world, session) = busy(60).await;
+    world
+        .fake
+        .fail("/user/repos", fake::Fault::ServerError(502), 1);
+    let before = world.fake.api_calls();
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(names(&body).len(), 29);
+    assert_eq!(world.fake.api_calls() - before, 2);
+    // Two 502s in a row are GitHub's problem, said as such.
+    world
+        .fake
+        .fail("/user/repos", fake::Fault::ServerError(502), 2);
+    let (status, body) = list(&world, &session, 1).await;
+    assert_eq!(
+        (status, body["error"]["code"].clone()),
+        (502, json!("github_error"))
+    );
+
+    world.fake.sso_partial();
+    let (_, body) = list(&world, &session, 1).await;
+    assert_eq!(body["sso_hidden"], true);
 }
