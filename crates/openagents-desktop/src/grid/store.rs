@@ -82,19 +82,19 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
     }
     let preferences = match std::fs::read(directory.join("preferences.json")) {
         Ok(bytes) if bytes.len() <= 1024 => serde_json::from_slice(&bytes)
-            .map_err(|_| "The Grid preferences are invalid".to_owned())?,
+            .map_err(|_| "Your Grid settings file is damaged".to_owned())?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Preferences::default(),
         _ => return Err("Could not read the Grid preferences".into()),
     };
     let _identity = IDENTITY_LOCK
         .lock()
-        .map_err(|_| "The world identity store is unavailable".to_owned())?;
+        .map_err(|_| "Couldn't open your Grid key. Try again.".to_owned())?;
     let secret = load_or_create(read, write)?;
     let code = read(GYM)?;
     let check_relay = if relay.starts_with("ws:") {
         coder_connect::RelayPolicy::LoopbackTest
             .validate(relay)
-            .map_err(|_| "Use a secure relay or an explicit loopback fixture".to_owned())?;
+            .map_err(|_| "This Grid server address isn't secure".to_owned())?;
         Some(relay.to_owned())
     } else {
         None
@@ -131,10 +131,10 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
 pub fn world_key() -> Result<secp256k1::SecretKey, String> {
     let _identity = IDENTITY_LOCK
         .lock()
-        .map_err(|_| "The world identity store is unavailable".to_owned())?;
+        .map_err(|_| "Couldn't open your Grid key. Try again.".to_owned())?;
     load_or_create(read, write)?
         .parse()
-        .map_err(|_| "The saved world identity is invalid".to_owned())
+        .map_err(|_| "Your saved Grid key is damaged".to_owned())
 }
 
 fn load_or_create(
@@ -148,16 +148,16 @@ fn load_or_create(
         .display_secret()
         .to_string();
     write(WORLD_KEY, &secret)?;
-    let returned = read(WORLD_KEY)?.ok_or("The world identity was not saved")?;
+    let returned = read(WORLD_KEY)?.ok_or("Couldn't save your Grid key")?;
     if returned != secret {
-        return Err("The world identity could not be verified".into());
+        return Err("Your Grid key didn't save correctly".into());
     }
     validate_key(returned)
 }
 
 fn validate_key(secret: String) -> Result<String, String> {
     if secret.len() != 64 || secret.parse::<secp256k1::SecretKey>().is_err() {
-        return Err("The saved world identity is invalid".into());
+        return Err("Your saved Grid key is damaged".into());
     }
     Ok(secret)
 }
@@ -193,7 +193,7 @@ pub fn read_connection(path: &Path) -> Result<String, String> {
         .map_err(|_| "Could not read the Gym connection file".to_owned())?;
     let metadata = file
         .metadata()
-        .map_err(|_| "Could not inspect the Gym connection file".to_owned())?;
+        .map_err(|_| "Could not read the Gym connection file".to_owned())?;
     if !metadata.is_file() || metadata.len() > 65_536 {
         return Err("Use a regular Gym connection file under 64 KiB".into());
     }
@@ -203,7 +203,7 @@ pub fn read_connection(path: &Path) -> Result<String, String> {
         .read_to_string(&mut text)
         .map_err(|_| "The Gym connection is not text".to_owned())?;
     if text.len() > 65_536 {
-        return Err("The Gym connection exceeds its size limit".into());
+        return Err("The Gym connection file is too large".into());
     }
     Ok(text.trim().into())
 }
@@ -223,34 +223,34 @@ fn write(account: &str, value: &str) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn platform_read(account: &str) -> Result<Option<String>, String> {
     let entry = keyring::Entry::new(SERVICE, account)
-        .map_err(|_| "Could not open the world identity store".to_owned())?;
+        .map_err(|_| "Couldn't open your keychain".to_owned())?;
     match entry.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => Err("Could not read the world identity store. Play stays offline.".into()),
+        Err(_) => Err("Couldn't read your keychain, so Play is offline.".into()),
     }
 }
 #[cfg(target_os = "linux")]
 fn platform_write(account: &str, value: &str) -> Result<(), String> {
     keyring::Entry::new(SERVICE, account)
         .and_then(|entry| entry.set_password(value))
-        .map_err(|_| "Could not save the world identity or Gym connection".into())
+        .map_err(|_| "Couldn't save to your keychain".into())
 }
 #[cfg(target_os = "macos")]
 fn platform_read(account: &str) -> Result<Option<String>, String> {
     match security_framework::os::macos::passwords::find_generic_password(None, SERVICE, account) {
         Ok((value, _)) => String::from_utf8(value.to_vec())
             .map(Some)
-            .map_err(|_| "The world identity store contains invalid text".into()),
+            .map_err(|_| "Your saved Grid key is damaged".into()),
         Err(error) if error.code() == -25_300 => Ok(None),
-        Err(_) => Err("Could not read the world identity store. Play stays offline.".into()),
+        Err(_) => Err("Couldn't read your keychain, so Play is offline.".into()),
     }
 }
 #[cfg(target_os = "macos")]
 fn platform_write(account: &str, value: &str) -> Result<(), String> {
     security_framework::os::macos::keychain::SecKeychain::default()
         .and_then(|keychain| keychain.set_generic_password(SERVICE, account, value.as_bytes()))
-        .map_err(|_| "Could not save the world identity or Gym connection".into())
+        .map_err(|_| "Couldn't save to your keychain".into())
 }
 
 pub fn fixture_root() -> PathBuf {

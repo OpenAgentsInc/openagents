@@ -134,6 +134,8 @@ libc = "0.2"
 background = { path = "../background" }
 
 [dev-dependencies]
+# The machine-talk guard over the copy people see (#11031).
+oa-copy = { path = "../oa-copy" }
 pollster = "0.4"
 # The seeded pylon league on an in-process relay, for the Gym's league capture.
 pylon = { path = "../pylon", features = ["fixture"] }

@@ -93,6 +93,8 @@ pub mod words;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod copy_guard_tests;
 
 #[cfg(feature = "app")]
 pub mod chat;

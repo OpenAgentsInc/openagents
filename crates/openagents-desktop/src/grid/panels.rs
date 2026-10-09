@@ -64,7 +64,7 @@ impl Projection {
             self.words(notice);
         }
         if let Some(run) = view.selected_run {
-            self.words(format!("{} · {:?} · {:?}\nProgress: {} / {}\nCost: {} USD · elapsed: {} ms\nSource: {}\nProvenance: {}", run.title, run.category, run.status, known(run.completed), known(run.total), known(run.cost_usd), known(run.elapsed_ms), run.source, run.provenance));
+            self.words(format!("{} · {:?} · {:?}\nProgress: {} / {}\nCost: {} USD · elapsed: {} ms\nSource: {}\nOrigin: {}", run.title, run.category, run.status, known(run.completed), known(run.total), known(run.cost_usd), known(run.elapsed_ms), run.source, run.provenance));
             for metric in run.metrics {
                 self.words(format!(
                     "{} ({})\n{}",
@@ -80,7 +80,7 @@ impl Projection {
             }
             self.button("Back to runs", Command::Back);
         } else if let Some(recipe) = view.selected_recipe {
-            self.words(format!("{}\n{}\nRevision: {}\nBudget: {} ms · {} starts\nSpend limit: {} USD · enforced by host: {}", recipe.title, recipe.detail, recipe.revision, recipe.budget.wall_ms, recipe.budget.max_starts, known(recipe.budget.spend_limit_usd), recipe.budget.spend_enforced));
+            self.words(format!("{}\n{}\nRevision: {}\nBudget: {} ms · {} starts\nSpend limit: {} USD · hard cap: {}", recipe.title, recipe.detail, recipe.revision, recipe.budget.wall_ms, recipe.budget.max_starts, known(recipe.budget.spend_limit_usd), recipe.budget.spend_enforced));
             self.button("Confirm and launch this recipe", Command::Launch);
             self.button("Back to recipes", Command::Back);
         } else {

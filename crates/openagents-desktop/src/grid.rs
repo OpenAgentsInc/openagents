@@ -112,7 +112,7 @@ impl Grid {
                 let _ = tx.send(store::launch(&root, &relay, fixture));
             }) {
             Ok(_) => self.loading = Some(rx),
-            Err(_) => self.offline("Could not start the world identity worker".into()),
+            Err(_) => self.offline("Couldn't start Play. Try again.".into()),
         }
     }
 

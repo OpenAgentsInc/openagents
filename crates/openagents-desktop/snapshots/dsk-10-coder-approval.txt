@@ -15,4 +15,4 @@ vertical stack [card]
   horizontal stack
     button "Allow once"
     button "Deny"
-  status "Allow once never widens the task's grant. You can also answer in your own words below."
+  status "You can also answer in your own words below."

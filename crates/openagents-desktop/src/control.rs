@@ -91,7 +91,7 @@ pub trait HostControl: Send {
         let _ = (request, chat, task);
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "Update this host to continue saved sessions through Coder.".into(),
+            message: "Update Coder on this computer to continue saved sessions.".into(),
         })
     }
     fn task_chat(
@@ -101,7 +101,7 @@ pub trait HostControl: Send {
         let _ = request;
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "This host does not support the task chat. Update the host.".into(),
+            message: "Update Coder on this computer to open this chat.".into(),
         })
     }
 
@@ -113,7 +113,7 @@ pub trait HostControl: Send {
         let _ = command;
         Err(ControlError::Refused {
             code: "unsupported".into(),
-            message: "This host does not support desktop chat yet. Update the host.".into(),
+            message: "Update Coder on this computer to chat here.".into(),
         })
     }
 
@@ -334,7 +334,7 @@ impl SocketControl {
             }
             Ok(_) => Err(Error::new(
                 Code::Malformed,
-                "Coder answered another operation",
+                "Coder sent an unexpected answer. Try again.",
             )),
             Err(ControlError::Refused { code, message }) => Err(Error::new(
                 serde_json::from_value(serde_json::Value::String(code))

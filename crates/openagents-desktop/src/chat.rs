@@ -392,7 +392,7 @@ impl Panel {
                 let result = self.session.images.add(&chat, image);
                 if self.session.selected.as_deref() == Some(&chat) {
                     self.notice = Some(result.err().unwrap_or_else(|| {
-                        "Image added. Images go only to Coder, never to the hosted chat.".into()
+                        "Image added. It goes to Coder when Coder starts.".into()
                     }));
                 }
             }
@@ -630,7 +630,7 @@ impl Panel {
                         "saved-context-hint",
                         self.saved_project.as_ref().map_or(
                             "Choose a project in Settings to continue.",
-                            |_| "Continue with recent loaded context · up to 16 KiB",
+                            |_| "Coder picks up where this session left off",
                         ),
                         TextRole::Status,
                     ),

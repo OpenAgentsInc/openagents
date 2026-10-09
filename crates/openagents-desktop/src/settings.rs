@@ -549,7 +549,7 @@ fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
         ),
         text(
             "settings-notifications-line",
-            "When Coder asks you something, finishes, or fails while OpenAgents isn't in front. A notification names the chat, never a message.",
+            "When Coder asks you something, finishes, or fails while OpenAgents isn't in front.",
             TextRole::Status,
         ),
         toggle(
@@ -627,7 +627,7 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
         if ask_first {
             "The reply offers Run Coder, and Coder starts when you choose it."
         } else {
-            "Coder starts on this computer as soon as the reply says the message is coding work, whether you asked here or on your phone."
+            "Coder starts right away when you ask for coding work, here or on your phone."
         },
         TextRole::Status,
     ));
@@ -658,7 +658,7 @@ fn coder(settings: &Settings, model: &Model) -> Vec<Node<Intent>> {
     }
     rows.push(text(
         "settings-coder-agents-line",
-        "Coder uses every agent signed in on this computer, from the top, each only when it has room; nothing needs turning on. Turn one off to keep Coder from using it. At least one stays on.",
+        "Coder uses the agents signed in on this computer, top first, when each has room. Turn one off to keep Coder from using it. At least one stays on.",
         TextRole::Status,
     ));
     rows
