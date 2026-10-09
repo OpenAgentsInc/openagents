@@ -502,14 +502,30 @@ async fn the_homepage_composer_is_the_design_language_component() {
         .expect("link cards");
     assert!(stage < home.find("</main>").unwrap() && stage < dock);
     assert_eq!(home.matches("<a class=\"oa-link-card\" href=").count(), 4);
-    for (title, line, href, _) in crate::pages::home::LEARN {
+    for card in crate::pages::home::learn() {
+        let href = maud::html! { (card.href) }.into_string();
         assert!(home.contains(&format!("href=\"{href}\"")), "{href}");
-        assert!(home.contains(title) && home.contains(line), "{title}");
-        assert!(openagents_ui::content::safe_href(href).is_some(), "{href}");
-    }
-    for path in ["/docs/verse", "/docs/coder", "/docs/what-is-openagents"] {
-        let (status, _) = get(site.clone(), path).await;
-        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            home.contains(&maud::html! { (card.title) }.into_string()),
+            "{}",
+            card.title
+        );
+        assert!(
+            home.contains(&maud::html! { (card.line) }.into_string()),
+            "{}",
+            card.line
+        );
+        // Every card goes somewhere real: a site page this server answers.
+        if card.href.starts_with('/') {
+            let (status, _) = get(site.clone(), card.href).await;
+            assert_eq!(status, StatusCode::OK, "{}", card.href);
+        } else {
+            assert!(
+                openagents_ui::content::safe_href(card.href).is_some(),
+                "{}",
+                card.href
+            );
+        }
     }
     assert!(home.contains(
         "<form id=\"chat-form\" class=\"oa-composer-root\" action=\"/chat\" method=\"post\""

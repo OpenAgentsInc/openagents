@@ -1,7 +1,7 @@
 //! The homepage, which is every new chat: it looks like a chat page, with
 //! the composer docked at the bottom (the four starter questions over it)
 //! and, where the thread would be, a grid of "learn about" cards
-//! ([`LEARN`]). Sending a message starts a chat at `/chat/{uuid}`, which
+//! ([`learn`]). Sending a message starts a chat at `/chat/{uuid}`, which
 //! has no cards. The visitor's recent chats are in the left panel. The
 //! header links `/download`; the legal links sit centered under the composer
 //! (only here); the Grid's screenshot is on `/docs/the-grid`.
@@ -12,6 +12,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
 use maud::html;
+use openagents_chat::home_cards::{HOME_CARDS, HomeCard};
 use openagents_ui::content::{LinkCard, LinkCards};
 use openagents_ui::icons::Icon;
 use serde::Deserialize;
@@ -23,41 +24,52 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home))
 }
 
-/// The new chat's "learn about" cards: title, one line, where it goes, and
-/// its icon. Every target is a live public page.
-pub(crate) const LEARN: [(&str, &str, &str, Icon); 4] = [
-    (
-        "Explore the Verse",
-        "A shared world you can walk around in with other players.",
-        "/docs/verse",
-        Icon::EarthTravelWorld,
-    ),
-    (
-        "Meet Coder",
-        "An AI coding assistant in your terminal.",
-        "/docs/coder",
-        Icon::Terminal,
-    ),
-    (
-        "Tour the codebase",
-        "Everything we build is open source on GitHub.",
-        crate::layout::GITHUB,
-        Icon::Code,
-    ),
-    (
-        "Start with the basics",
-        "What OpenAgents is and how to get it.",
-        "/docs/what-is-openagents",
-        Icon::BookOpen,
-    ),
-];
+/// Site pages a shared card may link that this site doesn't serve yet: a
+/// card for one is left out, so no card goes nowhere. The roadmap card
+/// waits for `/roadmap` (#11122); take its entry out when that page ships.
+const NOT_YET_SERVED: &[&str] = &["/roadmap"];
 
-/// The [`LEARN`] cards as a grid.
+/// What fills the grid to four while a shared card waits for its page.
+const BASICS: HomeCard = HomeCard {
+    id: "basics",
+    title: "Start with the basics",
+    line: "What OpenAgents is and how to get it.",
+    href: "/docs/what-is-openagents",
+    message: "What is OpenAgents?",
+};
+
+/// The new chat's "learn about" cards: the one shared list
+/// ([`HOME_CARDS`], the phone shows the same), less any card whose page
+/// isn't served yet, filled to four with [`BASICS`].
+pub(crate) fn learn() -> Vec<HomeCard> {
+    let mut cards: Vec<HomeCard> = HOME_CARDS
+        .iter()
+        .filter(|card| !NOT_YET_SERVED.contains(&card.href))
+        .copied()
+        .collect();
+    if cards.len() < HOME_CARDS.len() {
+        cards.push(BASICS);
+    }
+    cards
+}
+
+/// A card's icon, by its id.
+fn icon(id: &str) -> Icon {
+    match id {
+        "verse" => Icon::EarthTravelWorld,
+        "coder" => Icon::Terminal,
+        "codebase" => Icon::Code,
+        "roadmap" => Icon::Maps,
+        _ => Icon::BookOpen,
+    }
+}
+
+/// The [`learn`] cards as a grid.
 fn learn_cards() -> LinkCards {
     LinkCards::new("Learn about OpenAgents").cards(
-        LEARN
-            .iter()
-            .map(|(title, line, href, icon)| LinkCard::new(*title, *line, *href).icon(*icon)),
+        learn()
+            .into_iter()
+            .map(|card| LinkCard::new(card.title, card.line, card.href).icon(icon(card.id))),
     )
 }
 

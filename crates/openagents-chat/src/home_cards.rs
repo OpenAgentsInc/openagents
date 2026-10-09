@@ -31,7 +31,7 @@ pub const HOME_CARDS: &[HomeCard] = &[
         id: "coder",
         title: "Meet Coder",
         line: "An agent that writes code on your own computer.",
-        href: "/download",
+        href: "/docs/coder",
         message: "What is Coder and how do I start?",
     },
     HomeCard {
