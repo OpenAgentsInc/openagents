@@ -266,6 +266,7 @@ fn fill(mut attempt: Attempt, measure: &Measure) -> Attempt {
     attempt.total_ms = measure.total_ms.unwrap_or_default();
     attempt.tokens = measure.tokens;
     attempt.tokens_counted = false;
+    attempt.usage_reported = measure.usage_reported;
     attempt.reported_cost = measure.reported_cost;
     attempt.upstream_status = measure.upstream_status;
     attempt.error = measure

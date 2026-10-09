@@ -110,6 +110,36 @@ impl Tokens {
     }
 }
 
+/// Who used the API. Old records remain unclassified.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Audience {
+    #[default]
+    Unknown,
+    Internal,
+    Outside,
+}
+
+/// How the caller pays, independent of our upstream costs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Payment {
+    #[default]
+    Unknown,
+    Free,
+    Paid,
+    OwnKey,
+}
+
+/// Server-assigned traffic labels, never read from the request body.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Traffic {
+    pub audience: Audience,
+    pub payment: Payment,
+    #[serde(default)]
+    pub synthetic: bool,
+}
+
 /// One upstream attempt.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Attempt {
@@ -153,6 +183,11 @@ pub struct Attempt {
     /// True when the upstream gave no usage and we counted the tokens.
     #[serde(default)]
     pub tokens_counted: bool,
+    /// False for old records and when the upstream sent no usage.
+    #[serde(default)]
+    pub usage_reported: bool,
+    #[serde(default)]
+    pub traffic: Traffic,
     /// The currency of every amount below (`USD` unless a rate row says
     /// otherwise). Set by the meter from the rate row.
     #[serde(default, skip_serializing_if = "String::is_empty")]

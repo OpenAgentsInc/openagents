@@ -68,6 +68,7 @@ pub(crate) const API_DOCS: [(&str, &str); 12] = [
 const RATE_CARD: &str = "{{rate card}}";
 /// Where the models page draws the model table.
 const MODEL_TABLE: &str = "{{model table}}";
+const TOKENS: &str = "{{tokens served}}";
 
 /// How long the models page waits for the gateway's card.
 const WAIT: Duration = Duration::from_secs(2);
@@ -106,6 +107,94 @@ async fn read(app: &App) -> Option<Card> {
         .ok()?
         .ok()?;
     serde_json::from_slice(&body).ok()
+}
+
+/// Reads the meter's public counts without a key or a local estimate.
+async fn served(app: &App) -> String {
+    let unavailable = "Token totals are unavailable right now.".to_owned();
+    let Some(gateway) = app.config.inference.as_ref() else {
+        return unavailable;
+    };
+    let Ok(request) = Request::builder()
+        .method(Method::GET)
+        .uri("/v1/usage/tokens-served")
+        .header(header::ACCEPT, "application/json")
+        .body(Body::empty())
+    else {
+        return unavailable;
+    };
+    let Ok(response) = tokio::time::timeout(WAIT, gateway.forward(request)).await else {
+        return unavailable;
+    };
+    if response.status() != StatusCode::OK {
+        return unavailable;
+    }
+    let Ok(Ok(body)) = tokio::time::timeout(WAIT, to_bytes(response.into_body(), LIMIT)).await
+    else {
+        return unavailable;
+    };
+    let Ok(report) = serde_json::from_slice::<inference::meter::served::Report>(&body) else {
+        return unavailable;
+    };
+    if report.v != inference::meter::served::SCHEMA {
+        return unavailable;
+    }
+    served_table(&report)
+}
+
+fn served_table(report: &inference::meter::served::Report) -> String {
+    let counts = &report.totals;
+    let mut out = format!(
+        "**{} tokens served** (input and output).\n\n",
+        thousands(counts.all.total)
+    );
+    if let Some(since) = report.since_ms {
+        out.push_str(&format!(
+            "Counting since {} (UTC).\n\n",
+            inference::meter::store::date(since / inference::meter::store::DAY_MS)
+        ));
+    }
+    if !report.persistent {
+        out.push_str("These totals cover this server's current run.\n\n");
+    }
+    out.push_str("| Caller | Free calls | Paid calls |\n| --- | ---: | ---: |\n");
+    out.push_str(&format!(
+        "| Our services | {} | {} |\n| Outside callers | {} | {} |\n\n",
+        thousands(counts.internal.free.total),
+        thousands(counts.internal.paid.total),
+        thousands(counts.outside.free.total),
+        thousands(counts.outside.paid.total)
+    ));
+    let own = counts
+        .internal
+        .own_key
+        .total
+        .saturating_add(counts.outside.own_key.total);
+    out.push_str(&format!(
+        "Paid calls include **{} tokens on callers' own keys**.\n\n",
+        thousands(own)
+    ));
+    if !report.days.is_empty() {
+        out.push_str("| Day (UTC) | Our services, free | Our services, paid | Outside callers, free | Outside callers, paid | Total |\n| --- | ---: | ---: | ---: | ---: | ---: |\n");
+        for (day, totals) in report.days.iter().rev().take(7) {
+            // The date comes from the gateway, so escape it as Markdown text.
+            let day: String = day
+                .chars()
+                .filter(|c| c.is_ascii_digit() || *c == '-')
+                .collect();
+            out.push_str(&format!(
+                "| {day} | {} | {} | {} | {} | {} |\n",
+                thousands(totals.internal.free.total),
+                thousands(totals.internal.paid.total),
+                thousands(totals.outside.free.total),
+                thousands(totals.outside.paid.total),
+                thousands(totals.all.total)
+            ));
+        }
+        out.push('\n');
+    }
+    out.push_str("[Read the same counts as JSON](/api/v1/usage/tokens-served). Only answers with reported token counts are included.");
+    out
 }
 
 fn dollars(amount: &str) -> String {
@@ -234,6 +323,9 @@ pub(crate) async fn source(app: &App, text: &str) -> String {
         out = out
             .replace(RATE_CARD, &rate_card(&card))
             .replace(MODEL_TABLE, &model_table());
+    }
+    if out.contains(TOKENS) {
+        out = out.replace(TOKENS, &served(app).await);
     }
     if out.contains(crate::payments::TABLE) || out.contains(crate::payments::SENTENCE) {
         let methods = crate::payments::live(app).await;

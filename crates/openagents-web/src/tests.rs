@@ -2869,10 +2869,36 @@ async fn the_models_page_shows_the_gateways_rate_card() {
         }),
     );
     let body = serde_json::to_string(&served).unwrap();
+    use inference::meter::{Attempt, Audience, Meter, Payment, Recorder, Tokens, Traffic};
+    let meter = Meter::new(&Default::default());
+    meter.record(Attempt {
+        at_ms: 20_735 * inference::meter::store::DAY_MS,
+        usage_reported: true,
+        traffic: Traffic {
+            audience: Audience::Outside,
+            payment: Payment::Paid,
+            synthetic: false,
+        },
+        tokens: Tokens {
+            input: 1000,
+            output: 100,
+            ..Tokens::default()
+        },
+        ..Attempt::default()
+    });
+    let report = meter.tokens_served().unwrap();
+    let public_body = serde_json::to_string(&report).unwrap();
     let app = Router::new().route(
         "/v1/rates",
         axum::routing::get(move || {
             let body = body.clone();
+            async move { ([(header::CONTENT_TYPE, "application/json")], body) }
+        }),
+    );
+    let app = app.route(
+        "/v1/usage/tokens-served",
+        axum::routing::get(move || {
+            let body = public_body.clone();
             async move { ([(header::CONTENT_TYPE, "application/json")], body) }
         }),
     );
@@ -2888,6 +2914,13 @@ async fn the_models_page_shows_the_gateways_rate_card() {
     assert!(html.contains("$100,000 per bitcoin"));
     assert!(html.contains("promotion: Free this week"));
     crate::copy_guard::assert_plain("/docs/api/models", &html);
+    assert!(html.contains("1,100 tokens served"), "{html}");
+    assert!(html.contains("2026-10-09"));
+    let (_, json) = get(router(settings.clone()), "/api/v1/usage/tokens-served").await;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+        serde_json::to_value(&report).unwrap()
+    );
     let (_, markdown) = get(router(settings), "/docs/api/models.md").await;
     assert!(markdown.contains("(158 sats)"), "{markdown}");
     server.abort();

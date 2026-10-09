@@ -417,6 +417,12 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
                     "responses": {"200": json_response("The catalog.", "ModelList")}
                 }
             },
+            "/usage/tokens-served": {"get": {
+                "operationId": "tokensServed",
+                "summary": "Reported tokens served, total and per UTC day, split by caller and price tier.",
+                "tags": ["Catalog"], "security": [{}],
+                "responses": {"200": {"description": "Token totals since counting began. Own-key calls are included in paid calls.", "content": {"application/json": {"schema": {"type": "object"}}}}, "503": error_response("Token totals are unavailable.")}
+            }},
             "/rates": {
                 "get": {
                     "operationId": "getRates",

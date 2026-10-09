@@ -22,6 +22,10 @@ A few rules:
 
 {{model table}}
 
+## Tokens served
+
+{{tokens served}}
+
 ## Model names
 
 Model names are `publisher/model`, such as `zai/glm-5.3-flash`. Names that

@@ -73,6 +73,8 @@ pub struct Caller {
     pub tenant: Option<String>,
     pub key_id: Option<String>,
     pub api: Api,
+    /// Labels assigned by the admitting server.
+    pub traffic: meter::Traffic,
     /// Limits the key's owner set.
     pub limits: PriceLimit,
     /// Admission for a paying caller: checked before planning, held
@@ -131,6 +133,11 @@ pub trait Admit: Send + Sync {
 
 /// What an admitted request stands under until it ends.
 pub trait Admitted: Send {
+    /// The admitted price tier, for public token counts.
+    fn payment(&self) -> meter::Payment {
+        meter::Payment::Unknown
+    }
+
     /// Nothing was answered: release the hold, give a free request back.
     fn abandon(self: Box<Self>) -> BoxFuture<'static, ()>;
 
@@ -358,12 +365,13 @@ impl Gateway {
             return self.send(request, caller, prepared).await;
         };
         let limits = admission.check(request, caller).await?;
-        let caller = Caller {
+        let mut caller = Caller {
             limits: caller.limits.min(limits),
             ..caller.clone()
         };
         let prepared = self.prepare(request, &caller).await?;
         let admitted = admission.admit(request, &prepared, &caller).await?;
+        caller.traffic.payment = admitted.payment();
         match self.send(request, &caller, prepared).await {
             Ok(mut routed) => {
                 let events =
@@ -529,6 +537,14 @@ impl Gateway {
                 tenant: caller.tenant.clone(),
                 key_id: caller.key_id.clone(),
                 api: caller.api,
+                traffic: meter::Traffic {
+                    payment: if candidate.payer == ext::Payer::Mine {
+                        meter::Payment::OwnKey
+                    } else {
+                        caller.traffic.payment
+                    },
+                    ..caller.traffic
+                },
                 class: class.map(|class| class.as_str().to_owned()),
                 requested_model: requested.clone(),
                 model: candidate.model.clone(),

@@ -15,9 +15,10 @@ use axum::routing::{MethodRouter, get};
 use crate::serve::ServeState;
 
 pub const PATH: &str = "/v1/rates";
+pub const TOKENS: &str = "/v1/usage/tokens-served";
 
 pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
-    vec![(PATH, get(rates))]
+    vec![(PATH, get(rates)), (TOKENS, get(tokens))]
 }
 
 /// The card this gateway charges by: its meter's rate rows.
@@ -63,4 +64,19 @@ pub fn catalog(state: &ServeState) -> Option<serde_json::Value> {
 
 async fn rates(State(state): State<Arc<ServeState>>) -> Json<inference::rates::Card> {
     Json(card(&state))
+}
+
+/// Anonymous aggregate read; no caller or key identifiers leave the meter.
+async fn tokens(State(state): State<Arc<ServeState>>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match state.meter.as_ref().and_then(|meter| meter.tokens_served()) {
+        Some(report) => Json(report).into_response(),
+        None => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(
+                serde_json::json!({"error":{"message":"Token totals are unavailable right now."}}),
+            ),
+        )
+            .into_response(),
+    }
 }

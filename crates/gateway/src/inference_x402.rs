@@ -679,6 +679,11 @@ pub(crate) fn admit(
             tenant: Some(TENANT.to_owned()),
             key_id: None,
             api,
+            traffic: inference::meter::Traffic {
+                audience: inference::meter::Audience::Outside,
+                payment: inference::meter::Payment::Paid,
+                synthetic: false,
+            },
             limits: PriceLimit::default(),
             admission: Some(Admission(run.clone())),
             own: inference::run::OwnUpstreams::default(),
@@ -823,6 +828,10 @@ struct Answering {
 }
 
 impl Admitted for Answering {
+    fn payment(&self) -> inference::meter::Payment {
+        inference::meter::Payment::Paid
+    }
+
     fn abandon(self: Box<Self>) -> BoxFuture<'static, ()> {
         Box::pin(async move {
             release_once(&self.run.state, &self.run.key, &self.run.given_back);

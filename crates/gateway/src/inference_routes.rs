@@ -324,6 +324,19 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         tenant: Some(authenticated.tenant),
         key_id: Some(authenticated.key_id),
         api: Api::Responses,
+        traffic: inference::meter::Traffic {
+            audience: if service {
+                inference::meter::Audience::Internal
+            } else {
+                inference::meter::Audience::Outside
+            },
+            payment: if service {
+                inference::meter::Payment::Free
+            } else {
+                inference::meter::Payment::Unknown
+            },
+            synthetic: false,
+        },
         limits: inference::router::PriceLimit::default(),
         admission,
         own,

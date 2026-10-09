@@ -736,6 +736,14 @@ P1 public API as built (#11065), local only until deployed:
   its price per million tokens with margin, zero retention, and the last
   hour's requests, uptime, and median time to first token; then the router
   ids. A keyed caller also gets the decision doors in `models`, as before.
+- `GET /v1/usage/tokens-served` is public JSON: total and UTC-day input
+  plus output tokens, split by service or outside caller and free or paid
+  calls. Own-key calls are identified as a subset of paid calls. Only
+  successful answers with reported usage count; failed attempts, estimates,
+  synthetic records, and old records without traffic labels do not. The
+  meter saves totals beside its day files and replays updates after a
+  restart. Without a journal, the response says totals cover this process.
+  `/docs/api/models` reads the same JSON through the site's API alias.
 - `GET /v1/usage/{request_id}` (the meter keeps 25 hours) and `GET
   /v1/key` (limits, spend today, this month, and in total, free requests
   left, balance), to the key's own tenant only.
@@ -883,7 +891,7 @@ Sources: [241](../transcripts/241.md), [242](../transcripts/242.md),
 | 242 | Open pool: anyone running a Pylon serves and is paid in bitcoin | Kept | Section 4 (Pylon providers), P2 [#11070](https://github.com/OpenAgentsInc/openagents/issues/11070) |
 | 242, 247 | Programs and other people's agents compose answers that are work (code, sites, briefs), with contributors paid | Later | [#11082](https://github.com/OpenAgentsInc/openagents/issues/11082), after #11070 |
 | 242 | Confidential compute as one more route for private work | Later | A future privacy level above `strict` (section 9); no account today |
-| 243 | Tokens served per day as the honest public number, ours kept apart from outside demand | Now in spec, build later | Section 6, [#11081](https://github.com/OpenAgentsInc/openagents/issues/11081) |
+| 243 | Tokens served per day as the honest public number, ours kept apart from outside demand | Implemented; local checks | Section 6, [#11081](https://github.com/OpenAgentsInc/openagents/issues/11081) |
 | 243 | One-config-line drop-in for OpenCode and other tools; the content-array and tool-call-delta bugs | Kept | Section 11 ("Use with your tools"), acceptance [#11068](https://github.com/OpenAgentsInc/openagents/issues/11068) |
 | 243 | Free tier sized from a cost model, not a guess | Kept | Section 5 burn-down feeds decision 9 |
 | 243 | Head-to-head Gym and honest published numbers | Kept | Section 6 (Quality, Published comparisons) |

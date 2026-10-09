@@ -522,3 +522,40 @@ async fn the_model_catalog_is_public_in_the_openai_shape() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(keyed["data"], list["data"]);
 }
+
+#[tokio::test]
+async fn public_token_totals_match_answering_meter_records() {
+    let d = deploy(true, None).await;
+    let mut total = 0;
+    for (key, model) in [(&d.acme, FREE), (&d.acme, PAID), (&d.house, PAID)] {
+        let (status, body, id) = call(
+            &d,
+            key,
+            "/v1/responses",
+            json!({"model": model, "input": "hi"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (_, usage) = read(&d, Some(key), &format!("/v1/usage/{id}")).await;
+        assert!(
+            usage["attempts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|attempt| attempt["outcome"] == "ok")
+        );
+        total += usage["tokens"]["input"].as_u64().unwrap()
+            + usage["tokens"]["output"].as_u64().unwrap();
+    }
+    let (status, report) = read(&d, None, "/v1/usage/tokens-served").await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["totals"]["all"]["total"], total);
+    assert_eq!(total, 3300);
+    assert_eq!(report["totals"]["all"]["answers"], 3);
+    assert_eq!(report["totals"]["internal"]["free"]["total"], 1100);
+    assert_eq!(report["totals"]["outside"]["free"]["total"], 1100);
+    assert_eq!(report["totals"]["outside"]["paid"]["total"], 1100);
+    let day = report["days"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(day, &report["totals"]);
+    assert!(!report.to_string().contains("acme"));
+}

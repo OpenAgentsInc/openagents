@@ -258,8 +258,31 @@ fn records_never_carry_text() {
             "tokens",
             "tokens_counted",
             "total_ms",
+            "traffic",
             "upstream",
             "upstream_status",
+            "usage_reported",
         ]
+    );
+}
+
+#[test]
+fn traffic_labels_are_closed_values_and_old_records_are_unknown() {
+    let value = serde_json::to_value(Traffic::default()).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({"audience":"unknown", "payment":"unknown", "synthetic":false})
+    );
+    let mut old = serde_json::to_value(glm(NOW, 1, 1)).unwrap();
+    old.as_object_mut().unwrap().remove("traffic");
+    old.as_object_mut().unwrap().remove("usage_reported");
+    let attempt: Attempt = serde_json::from_value(old).unwrap();
+    assert_eq!(attempt.traffic, Traffic::default());
+    assert!(!attempt.usage_reported);
+    assert!(
+        serde_json::from_value::<Traffic>(
+            serde_json::json!({"audience":"prompt text", "payment":"paid", "synthetic":false})
+        )
+        .is_err()
     );
 }

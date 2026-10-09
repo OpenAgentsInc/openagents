@@ -16,6 +16,7 @@ pub mod card;
 pub mod ledger;
 pub mod live;
 pub mod reconcile;
+pub mod served;
 pub mod store;
 
 use std::collections::BTreeMap;
@@ -24,7 +25,10 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-pub use attempt::{Api, Attempt, Collect, ErrorClass, NoRecorder, Outcome, Recorder, Tokens};
+pub use attempt::{
+    Api, Attempt, Audience, Collect, ErrorClass, NoRecorder, Outcome, Payment, Recorder, Tokens,
+    Traffic,
+};
 pub use card::{Promotion, RateCard, RateRow};
 pub use ledger::{Alert, Basis, BurnDown, CreditAccount, Ledger};
 pub use live::Rate;
@@ -104,6 +108,7 @@ struct Inner {
     store: Store,
     ledger: Ledger,
     journal: Option<Journal>,
+    served: served::Counter,
     unpriced: u64,
     journal_errors: u64,
     reconciled_day: Option<u64>,
@@ -163,6 +168,7 @@ impl Meter {
                     .journal
                     .as_ref()
                     .map(|dir| Journal::new(dir, config.keep_days.unwrap_or(30))),
+                served: served::Counter::open(config.journal.as_deref()),
                 unpriced: 0,
                 journal_errors: 0,
                 reconciled_day: None,
@@ -218,6 +224,11 @@ impl Meter {
             reconciled_day: inner.reconciled_day.map(date),
             reconciliations: inner.reconciliations.clone(),
         })
+    }
+
+    /// Public totals from answering attempts with reported usage.
+    pub fn tokens_served(&self) -> Option<served::Report> {
+        self.inner.lock().ok()?.served.report()
     }
 
     /// Every attempt kept for `request_id`, in the order recorded: what
@@ -418,11 +429,13 @@ impl Recorder for Meter {
         if let Some(journal) = inner.journal.as_mut()
             && let Err(trouble) = journal.append(&attempt)
         {
+            inner.served.unavailable();
             inner.journal_errors += 1;
             if inner.journal_errors == 1 {
                 eprintln!("inference: attempt journal: {trouble}");
             }
         }
+        inner.served.record(&attempt);
         inner.store.push(attempt);
         inner.store.prune(now);
         let alerts = inner.ledger.check(now);

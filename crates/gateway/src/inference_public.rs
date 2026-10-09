@@ -506,6 +506,14 @@ struct Held {
 }
 
 impl inference::run::Admitted for Held {
+    fn payment(&self) -> inference::meter::Payment {
+        match self.ticket.kind {
+            Kind::Free => inference::meter::Payment::Free,
+            Kind::Mine => inference::meter::Payment::OwnKey,
+            Kind::Paid { .. } => inference::meter::Payment::Paid,
+        }
+    }
+
     fn abandon(self: Box<Self>) -> BoxFuture<'static, ()> {
         Box::pin(async move { abandon(&self.state, self.ticket).await })
     }
