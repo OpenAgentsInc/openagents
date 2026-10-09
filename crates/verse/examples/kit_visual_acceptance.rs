@@ -228,7 +228,8 @@ fn damage() {
     let (scene, _) = scene::build_painted(&pack, &placements, layout::paint).unwrap();
     assert_eq!(scene.detail_groups.len(), 1);
     let scene = Arc::new(scene);
-    let mut town = Town::standalone(&pack, &placements, scene.clone()).unwrap();
+    let mut town =
+        Town::standalone_with_houses(&pack, &placements, scene.clone(), &[house]).unwrap();
     town.set_numbers(false);
     let world = Mesh {
         textured: Some(scene.clone()),

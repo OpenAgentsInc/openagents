@@ -369,6 +369,7 @@ async fn plans_list(State(state): State<Arc<ServeState>>) -> Response {
                 "models": plan.models,
                 "credit_expiry_secs": plan.credit_expiry_secs,
                 "topups_allowed": plan.topups_allowed,
+                "environments": plan.environments,
             })
         })
         .collect();
@@ -432,6 +433,13 @@ async fn webhook(
     body: Bytes,
 ) -> Response {
     let config = config(&state);
+    if let Some(stripe) = config
+        .stripe
+        .as_ref()
+        .filter(|_| config.provider == "stripe")
+    {
+        return stripe_webhook(&state, stripe, &headers, &body).await;
+    }
     let secret = match std::env::var(&config.webhook_secret_env) {
         Ok(secret) if !secret.is_empty() => secret,
         _ => {
@@ -517,7 +525,14 @@ async fn webhook(
             ),
         );
     }
-    let store = match store_of(&state) {
+    deliver(&state, event).await
+}
+
+/// Journal one verified provider event, apply it, and hand its effects to
+/// the ledger and the account store.
+async fn deliver(state: &ServeState, event: Event) -> Response {
+    let config = config(state);
+    let store = match store_of(state) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -540,7 +555,7 @@ async fn webhook(
         Outcome::Applied(effects) => effects.clone(),
         _ => Vec::new(),
     };
-    let notes = match apply_effects(&state, &effects, false).await {
+    let notes = match apply_effects(state, &effects, false).await {
         Ok(notes) => notes,
         Err(response) => return response,
     };
@@ -556,6 +571,80 @@ async fn webhook(
             "effects": notes,
         }),
     )
+}
+
+/// A `Stripe-Signature` event (#11072): verified against the configured
+/// secrets, read against the book, its paid month written to the
+/// environment meter, then journaled and applied like any provider event.
+/// An invoice for a subscription the book hasn't started yet answers 409,
+/// so Stripe sends it again after the checkout completes.
+async fn stripe_webhook(
+    state: &ServeState,
+    stripe: &crate::subscriptions::Config,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Response {
+    use crate::subscriptions::{Meaning, meter, read};
+    let Some(header) = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+    else {
+        return refused(
+            StatusCode::UNAUTHORIZED,
+            "bad_signature",
+            "The event is missing the `Stripe-Signature` header.",
+        );
+    };
+    let mut value = match stripe.verify(body, header, unix_now()) {
+        Ok(value) => value,
+        Err(problem) => return refused(StatusCode::UNAUTHORIZED, "bad_signature", problem),
+    };
+    let book = match store_of(state).and_then(|store| {
+        store.store().map_err(|t| {
+            refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "billing_unavailable",
+                t.to_string(),
+            )
+        })
+    }) {
+        Ok(snapshot) => snapshot.book,
+        Err(response) => return response,
+    };
+    // A dispute names only its charge: read the charge from Stripe so the
+    // dispute finds its invoice. If Stripe can't answer, Stripe retries.
+    if let Some(charge) = crate::subscriptions::charge_to_fetch(&value, &book) {
+        match crate::subscriptions::fetch_charge(stripe, &charge).await {
+            Ok(fetched) => value["data"]["object"]["oa_charge"] = fetched,
+            Err(problem) => {
+                return refused(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "stripe_unavailable",
+                    problem,
+                );
+            }
+        }
+    }
+    let (meaning, owed) = read(&value, &book, &config(state).plans, unix_now());
+    if let (Some(owed), Some(path)) = (owed, &stripe.environment_meter)
+        && let Err(problem) = meter(path, &owed)
+    {
+        // Stripe retries a failed delivery; the meter write is idempotent.
+        return refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "meter_unavailable",
+            problem,
+        );
+    }
+    let response = match meaning {
+        Meaning::Book(event) => deliver(state, *event).await,
+        Meaning::Later(why) => refused(StatusCode::CONFLICT, "not_yet", why),
+        Meaning::Ignored(why) => {
+            answered(StatusCode::OK, json!({"outcome": format!("ignored:{why}")}))
+        }
+    };
+    crate::subscriptions::post_now(state).await;
+    response
 }
 
 /// `GET /v1/workspaces/{id}/billing`: the workspace's billing account —
@@ -690,6 +779,17 @@ async fn checkout(
         Err(response) => return response,
     };
     let config = config(&state);
+    let stripe = config
+        .stripe
+        .as_ref()
+        .filter(|_| config.provider == "stripe");
+    if stripe.is_some() && body.get("top_up").is_some() {
+        return refused(
+            StatusCode::CONFLICT,
+            "topups_elsewhere",
+            "Add credits from the credits page, not through a plan checkout.",
+        );
+    }
     let store = match store_of(&state) {
         Ok(store) => store,
         Err(response) => return response,
@@ -819,6 +919,9 @@ async fn checkout(
         Ok(checkout) => checkout,
         Err(refusal) => return billing_refusal(refusal),
     };
+    if let Some(stripe) = stripe {
+        return stripe_checkout(stripe, &store, &principal, &workspace, &plan, checkout).await;
+    }
     let url = format!(
         "{}/v1/billing/sessions/{}",
         origin(&state, &headers),
@@ -835,6 +938,63 @@ async fn checkout(
     )
 }
 
+/// Open the Stripe Checkout Session for a checkout the book just opened,
+/// and bind its session id. A session Stripe never opened closes the
+/// checkout again, so the person can try once more at once.
+async fn stripe_checkout(
+    stripe: &crate::subscriptions::Config,
+    store: &Billing,
+    principal: &Principal,
+    workspace: &str,
+    plan: &Plan,
+    checkout: billing::Checkout,
+) -> Response {
+    let account = match member_account(principal) {
+        Ok(account) => account.to_string(),
+        Err(response) => return response,
+    };
+    let customer = store.store().ok().and_then(|snapshot| {
+        snapshot
+            .book
+            .subscription_for(workspace)
+            .and_then(|sub| sub.customer.clone())
+    });
+    let buyer = crate::subscriptions::Buyer {
+        checkout: &checkout.id,
+        workspace,
+        account: &account,
+        plan: &plan.id,
+        customer: customer.as_deref(),
+        expires_at: checkout.expires_at.saturating_sub(60),
+    };
+    match crate::subscriptions::open_checkout(stripe, &buyer).await {
+        Ok(session) => {
+            match store.mutate(|book, _, _| book.bind_checkout(&checkout.id, &session.id)) {
+                Ok(checkout) => answered(
+                    StatusCode::CREATED,
+                    json!({
+                        "checkout": checkout,
+                        "url": session.url,
+                        "notice": "the subscription starts only when Stripe's signed event arrives",
+                    }),
+                ),
+                Err(refusal) => billing_refusal(refusal),
+            }
+        }
+        Err(problem) => {
+            let _ = store.mutate(|book, _, now| {
+                book.abandon_checkout(&checkout.id, now);
+                Ok(())
+            });
+            refused(
+                StatusCode::BAD_GATEWAY,
+                "checkout_unavailable",
+                format!("Checkout couldn't start. {problem}"),
+            )
+        }
+    }
+}
+
 /// `POST /v1/workspaces/{id}/billing/portal`: the customer portal —
 /// the canonical billing view's URL. The portal is the read plus the
 /// management routes; there is no separate hosted page to drift from.
@@ -845,6 +1005,41 @@ async fn portal(
 ) -> Response {
     if let Err(response) = owner(&state, &headers, &workspace) {
         return response;
+    }
+    let config = config(&state);
+    if let Some(stripe) = config
+        .stripe
+        .as_ref()
+        .filter(|_| config.provider == "stripe")
+    {
+        let customer = store_of(&state)
+            .ok()
+            .and_then(|store| store.store().ok())
+            .and_then(|snapshot| {
+                snapshot
+                    .book
+                    .subscription_for(&workspace)
+                    .and_then(|sub| sub.customer.clone())
+            });
+        let Some(customer) = customer else {
+            return refused(
+                StatusCode::NOT_FOUND,
+                "no_subscription",
+                "There's no subscription to manage yet.",
+            );
+        };
+        let idempotency = match billing::fresh_ref() {
+            Ok(reference) => format!("portal_{reference}"),
+            Err(refusal) => return billing_refusal(refusal),
+        };
+        return match crate::subscriptions::open_portal(stripe, &customer, &idempotency).await {
+            Ok(url) => answered(StatusCode::OK, json!({"url": url})),
+            Err(problem) => refused(
+                StatusCode::BAD_GATEWAY,
+                "portal_unavailable",
+                format!("The billing page couldn't open. {problem}"),
+            ),
+        };
     }
     answered(
         StatusCode::OK,
@@ -950,6 +1145,15 @@ async fn cancel(
         Ok(pair) => pair,
         Err(response) => return response,
     };
+    if config(&state).provider == "stripe" {
+        // Stripe keeps charging until Stripe cancels; the billing page
+        // does that, and its event ends the subscription here.
+        return refused(
+            StatusCode::CONFLICT,
+            "cancel_in_portal",
+            "Cancel from the billing page (Manage subscription). Your plan stays until the end of the month you paid for.",
+        );
+    }
     let store = match store_of(&state) {
         Ok(store) => store,
         Err(response) => return response,

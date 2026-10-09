@@ -38,6 +38,9 @@ pub struct Endpoints {
     pub token_url: String,
     #[serde(default = "default_api")]
     pub api_url: String,
+    /// github.com itself, where a GitHub App's install page lives.
+    #[serde(default = "default_web")]
+    pub web_url: String,
 }
 
 fn default_authorize() -> String {
@@ -49,6 +52,9 @@ fn default_token() -> String {
 fn default_api() -> String {
     "https://api.github.com".into()
 }
+fn default_web() -> String {
+    "https://github.com".into()
+}
 
 impl Default for Endpoints {
     fn default() -> Self {
@@ -56,6 +62,7 @@ impl Default for Endpoints {
             authorize_url: default_authorize(),
             token_url: default_token(),
             api_url: default_api(),
+            web_url: default_web(),
         }
     }
 }
@@ -69,11 +76,17 @@ impl Endpoints {
             authorize_url: format!("{origin}/login/oauth/authorize"),
             token_url: format!("{origin}/login/oauth/access_token"),
             api_url: origin.to_string(),
+            web_url: origin.to_string(),
         }
     }
 
     fn check(&self) -> Result<(), String> {
-        for value in [&self.authorize_url, &self.token_url, &self.api_url] {
+        for value in [
+            &self.authorize_url,
+            &self.token_url,
+            &self.api_url,
+            &self.web_url,
+        ] {
             web_url(value)?;
         }
         Ok(())
@@ -196,6 +209,13 @@ struct File {
 }
 
 fn read_private(path: &Path) -> Result<File, String> {
+    let bytes = read_private_bytes(path)?;
+    serde_json::from_slice(&bytes).map_err(|_| "The GitHub credentials file is malformed.".into())
+}
+
+/// A small regular file readable by its owner only (the OAuth App's and
+/// the GitHub App's private files, and the App's private key).
+pub(crate) fn read_private_bytes(path: &Path) -> Result<Vec<u8>, String> {
     let meta = std::fs::symlink_metadata(path)
         .map_err(|_| "The GitHub credentials file is unavailable.")?;
     if !meta.is_file() || meta.len() > 16 * 1024 {
@@ -211,8 +231,7 @@ fn read_private(path: &Path) -> Result<File, String> {
             );
         }
     }
-    let bytes = std::fs::read(path).map_err(|_| "The GitHub credentials file is unavailable.")?;
-    serde_json::from_slice(&bytes).map_err(|_| "The GitHub credentials file is malformed.".into())
+    std::fs::read(path).map_err(|_| "The GitHub credentials file is unavailable.".into())
 }
 
 /// An `https` URL, or `http` on a literal loopback address.

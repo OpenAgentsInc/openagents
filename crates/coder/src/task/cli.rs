@@ -34,7 +34,7 @@ The default store is ~/.openagents/tasks. Submission is inert. An explicit
 execution grant admits the bounded-command adapter through start (detached host)
 or execute (foreground host). Cancellation acknowledges a request; inspect the
 execution result for confirmed stop. Recover records owner loss as unknown and
-never reruns an effect. Model adapters are not admitted by this path.
+never reruns an effect. Model adapters can't be started this way.
 Archive takes a finished or cancelled task off every device's task and chat
 lists and deletes nothing; restore shows it again. Resume continues a task a
 usage limit stopped from its resume point now, without waiting for the reset;
@@ -383,7 +383,10 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     if grant == "-" {
-        return failure("configuration", "start requires a retained grant file");
+        return failure(
+            "configuration",
+            "start needs a grant file, not standard input",
+        );
     }
     let result = (|| -> Result<Value, Box<dyn std::error::Error>> {
         let bytes = read_command(grant)?;
@@ -455,7 +458,7 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
         let child = command.spawn()?;
         Ok(
             json!({"task_id": task.task_id, "owner_process": child.id(), "admission": "pending", "diagnostic_path": diagnostic_path,
-            "message": "The owner is detached. Inspect the task for durable admission and results."}),
+            "message": "The task runs in the background. Check the task for its progress and results."}),
         )
     })();
     match result {

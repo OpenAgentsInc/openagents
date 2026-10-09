@@ -121,7 +121,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "boat-cloud",
         name: "Boat Cloud",
-        description: "Delegate through Boat integrated agents or headless Coder, with retained workspaces and usage.",
+        description: "Delegate through Boat integrated agents or headless Coder, with saved workspaces and usage.",
         default_enabled: false,
         tools: &[ToolBinding::BoatDelegate, ToolBinding::BoatJob],
         model_provider: None,

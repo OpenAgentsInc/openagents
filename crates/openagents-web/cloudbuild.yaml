@@ -39,6 +39,25 @@ steps:
           printf '%s  %s\n' "$$bake_sha" "$$bake_file" | sha256sum -c -
           test "$$(wc -c < "$$bake_file")" -eq "$$bake_bytes"
         fi
+        # The phone tier's kit pack and layers (#10908), once pinned. A
+        # published pin must resolve to its exact private object.
+        kit_pin=crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs
+        phone_sha="$$(sed -n 's/^pub const KIT_PHONE_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' "$$kit_pin")"
+        phone_bytes="$$(sed -n 's/^pub const KIT_PHONE_BYTES: u64 = \([0-9]*\);$$/\1/p' "$$kit_pin")"
+        if [ -n "$$phone_sha" ]; then
+          phone_file="crates/openagents-web/kit/$$phone_sha.vtp"
+          gcloud storage cp "gs://openagentsgemini-verse-private-assets/packs/$$phone_sha.vtp" "$$phone_file"
+          printf '%s  %s\n' "$$phone_sha" "$$phone_file" | sha256sum -c -
+          test "$$(wc -c < "$$phone_file")" -eq "$$phone_bytes"
+        fi
+        layers_sha="$$(sed -n 's/^pub const KIT_BAKE_PHONE_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' "$$bake_pin")"
+        layers_bytes="$$(sed -n 's/^pub const KIT_BAKE_PHONE_BYTES: u64 = \([0-9]*\);$$/\1/p' "$$bake_pin")"
+        if [ -n "$$layers_sha" ]; then
+          layers_file="crates/openagents-web/kit/bake/$$layers_sha.vlay"
+          gcloud storage cp "gs://openagentsgemini-verse-private-assets/bakes/$$layers_sha.vlay" "$$layers_file"
+          printf '%s  %s\n' "$$layers_sha" "$$layers_file" | sha256sum -c -
+          test "$$(wc -c < "$$layers_file")" -eq "$$layers_bytes"
+        fi
   - name: gcr.io/cloud-builders/docker
     args:
       - build

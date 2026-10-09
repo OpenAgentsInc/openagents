@@ -24,6 +24,9 @@ use crate::{Error, Ledger, Rail, Recorded, Result, SettlementInput, Split, recor
 
 /// The resource a retail compute settlement records.
 pub const RETAIL_RESOURCE: &str = "openagents.cloud.retail.v1";
+/// The resource a saved customer environment's settlement records
+/// (`docs/cloud/retail-environment-contract.md`).
+pub const ENVIRONMENT_RESOURCE: &str = "openagents.cloud.retail-environment.v1";
 
 /// A request to hold funds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,6 +368,27 @@ impl Ledger {
             return Ok((hold, record));
         }
         self.settle_local_hold(id, charge_msat, at, RETAIL_RESOURCE, Split::OpenAgents)
+    }
+
+    /// Settle a hold that paid for one saved customer environment's setup,
+    /// build, check, and storage: as [`Ledger::settle_hold`], recorded under
+    /// [`ENVIRONMENT_RESOURCE`]. Only native balances hold for environments.
+    ///
+    /// # Errors
+    ///
+    /// As [`Ledger::settle_hold`], and a hold of the shared retail book.
+    pub fn settle_environment_hold(
+        &mut self,
+        id: &str,
+        charge_msat: i64,
+        at: i64,
+    ) -> Result<(Hold, Option<Recorded>)> {
+        if self.shared_retail_outcome(id)?.is_some() {
+            return Err(Error::Invalid(
+                "a shared retail hold never pays for a saved environment",
+            ));
+        }
+        self.settle_local_hold(id, charge_msat, at, ENVIRONMENT_RESOURCE, Split::OpenAgents)
     }
 
     /// Settle a hold that paid for one brokered pylon job: as

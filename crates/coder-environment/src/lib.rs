@@ -113,6 +113,10 @@ impl SourcePin {
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     Boat,
+    /// The optional dedicated GCE image adapter (ENV-09): one isolated
+    /// instance per setup, builder, or verifier, and GCE images pinned by
+    /// their numeric ID. Never the shared Coder pool.
+    Gce,
 }
 
 /// A resolved, never-moving provider image identity.

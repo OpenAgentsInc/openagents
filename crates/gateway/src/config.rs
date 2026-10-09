@@ -202,6 +202,29 @@ pub struct Config {
     /// Private task evidence and current native team reports. Absent disables these routes.
     #[serde(default)]
     pub team_reports: Option<crate::team_reports::Config>,
+    /// The inference meter (docs/inference/gateway.md, sections 5 and 6):
+    /// rate table, the credit accounts we hold, and the attempt store.
+    /// Absent mounts no route and keeps no records.
+    #[serde(default)]
+    pub inference: Option<Inference>,
+}
+
+/// The inference meter's configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Inference {
+    #[serde(flatten)]
+    pub meter: inference::meter::Config,
+    /// The environment variable holding the bearer the admin status
+    /// route (`/v1/admin/inference/status`) answers.
+    pub admin_token_env: String,
+    /// The tenants whose `oak_` keys are our own services: they may call
+    /// `/v1/responses` and `/v1/chat/completions`, metered and not
+    /// charged. Empty admits no one (P0 serves our services only).
+    #[serde(default)]
+    pub service_tenants: Vec<String>,
+    /// A class table in place of the spec's starting one.
+    #[serde(default)]
+    pub classes: Option<inference::router::ClassTable>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -376,6 +399,11 @@ pub struct Billing {
     /// is refused.
     #[serde(default = "default_webhook_skew")]
     pub webhook_skew_secs: u64,
+    /// Stripe subscriptions (`provider: "stripe"` with plans): the
+    /// Checkout prices, key and webhook secret names, return pages, and
+    /// the environment meter (#11072).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stripe: Option<crate::subscriptions::Config>,
 }
 
 fn default_provider() -> String {
@@ -430,6 +458,13 @@ pub struct Accounts {
     /// New accounts land on `signup_tenant`, which must be set too.
     #[serde(default)]
     pub github: Option<GithubSignIn>,
+    /// Repository access through a GitHub App (#11056): the App's private
+    /// file (`{"app_id", "slug", "client_id", "client_secret",
+    /// "token_encryption_key", "private_key"}`, its key file beside it,
+    /// both mode 0600) and the callback registered with it. Absent leaves
+    /// repository access on the OAuth App.
+    #[serde(default)]
+    pub github_app: Option<GithubSignIn>,
 }
 
 /// The OAuth App behind `POST /v1/sessions/github`.
@@ -770,11 +805,37 @@ impl Config {
                         "Native prepaid cards require explicitly priced USD resources.".into(),
                     );
                 }
+            } else if billing.provider == "stripe" {
+                let Some(stripe) = &billing.stripe else {
+                    return Err(format!(
+                        "{}: billing provider `stripe` sells plans only with a `stripe` section",
+                        name.display()
+                    ));
+                };
+                stripe
+                    .check(&billing.plans)
+                    .map_err(|problem| format!("{}: {problem}", name.display()))?;
+                // Stripe sessions live 30 minutes to 24 hours; the book's
+                // checkout outlives its session by a minute.
+                if !(1860..=86_400).contains(&billing.checkout_ttl_secs) {
+                    return Err(format!(
+                        "{}: with Stripe, checkout_ttl_secs is between 1860 and 86400",
+                        name.display()
+                    ));
+                }
             } else if billing.provider != "sandbox" {
                 return Err(format!(
-                    "{}: billing provider `{}` is not one this build knows (`sandbox`)",
+                    "{}: billing provider `{}` is not one this build knows (`sandbox` or `stripe`)",
                     name.display(),
                     billing.provider
+                ));
+            }
+            if billing.stripe.is_some()
+                && (billing.provider != "stripe" || billing.prepaid.is_some())
+            {
+                return Err(format!(
+                    "{}: a `stripe` subscription section needs `provider: \"stripe\"` and no prepaid cards",
+                    name.display()
                 ));
             }
             if billing.prepaid.is_none() && billing.plans.is_empty() {
@@ -831,6 +892,13 @@ impl Config {
                         plan.id,
                         plan.price.currency
                     ));
+                }
+                if let Some(problem) = plan
+                    .environments
+                    .as_ref()
+                    .and_then(tenancy::billing::EnvironmentAllowance::problem)
+                {
+                    return Err(format!("{}: plan `{}`: {problem}", name.display(), plan.id));
                 }
                 if let tenancy::billing::ModelAccess::Listed(doors) = &plan.models {
                     for door in doors {

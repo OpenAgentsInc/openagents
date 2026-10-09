@@ -11,6 +11,8 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 openagents-chat-app = { path = "../openagents-chat-app" }
+# The theme (#11028): Coder Light's roles for the hosts' own chrome.
+oa-tokens = { path = "../oa-tokens" }
 openagents-chat = { path = "../openagents-chat" }
 # Account > Your keys (BYOK, #10176): who pays and the key tests.
 model-access = { path = "../model-access" }

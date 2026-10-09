@@ -55,6 +55,8 @@ pub(crate) fn routes() -> Router<App> {
         .merge(sidebar::routes())
         .merge(delete_all::routes())
         .merge(live::routes())
+        .merge(work::routes())
+        .merge(continued::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -330,6 +332,9 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         archived_unix: None,
         project,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -426,7 +431,9 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
             return Err(refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE));
         }
     }
-    Ok(loaded)
+    // A running task's new state is written before anything shows the chat,
+    // and showing it clears a waiting Done.
+    Ok(work::mark_opened(app, work::sync(app, loaded).await).await)
 }
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -445,15 +452,18 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
+    let offer = work::offer(&app, &headers, chat).await;
+    let links = work::links(&app, &headers);
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
-        .breadcrumb(Breadcrumb::new(chat.title.clone()))
+        .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
+        .actions(work::actions(chat, offer.as_ref(), false))
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips)) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
         })
         .composer(composer(
             &format!("/chat/{id}"),
@@ -465,9 +475,12 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     crate::chat_html::protect(page.respond(&headers))
 }
 
-/// A chat synced from Coder (#11047): the transcript, read-only, and in
-/// place of the composer one line saying where it runs. Rows are plain
-/// links here, since there is no composer for a web chat to load into.
+/// A chat synced from Coder (#11047): the transcript, and a composer
+/// whose replies Coder on that computer takes and answers (#11048) while
+/// it is online ([`crate::coder_sync::online`]); otherwise one line saying
+/// where it runs, and, when the chat's project has a saved environment,
+/// Continue on a Cloud computer (#11050, [`continued`]). Rows are plain
+/// links here, since a web chat can't load into this composer.
 async fn show_terminal(
     app: &App,
     headers: &HeaderMap,
@@ -475,6 +488,15 @@ async fn show_terminal(
     computer: &str,
 ) -> Response {
     let id = &chat.id;
+    let online = continued::online(app, chat).await;
+    let dock = if online {
+        terminal_composer(app, chat, computer)
+    } else if continued::offer(app, headers, chat, online).await.is_some() {
+        html! { (terminal_note(computer)) (continued::button(chat)) }
+    } else {
+        terminal_note(computer)
+    };
+    let links = work::links(app, headers);
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -482,15 +504,90 @@ async fn show_terminal(
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
         .content(html! {
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {})) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
         })
-        .composer(terminal_note(computer));
+        .composer(dock);
     crate::chat_html::protect(page.respond(headers))
 }
 
-/// What a Coder chat shows where the composer would be.
+/// What a Coder chat shows where the composer would be when Coder on its
+/// computer isn't online.
 pub(crate) fn terminal_note(computer: &str) -> Markup {
-    html! { p.oa-thread-notice #chat-terminal-note { "This chat runs in Coder on " (computer) "." } }
+    html! {
+        p.oa-thread-notice #chat-terminal-note {
+            "This chat runs in Coder on " (computer) ". To reply here, open Coder there with /sync on."
+        }
+    }
+}
+
+/// The composer on a Coder chat while Coder on its computer is online: a
+/// reply waits for Coder there, which answers it with that computer's
+/// tools.
+fn terminal_composer(app: &App, chat: &Conversation, computer: &str) -> Markup {
+    Composer::new("chat-form", format!("/chat/{}", chat.id))
+        .label("Reply in Coder")
+        .enhanced(true)
+        .input_id("chat-input")
+        .body_id("chat-card")
+        .max_chars(MAX_CHARS)
+        .placeholder(format!("Reply to Coder on {computer}"))
+        .autofocus(true)
+        .after(html! {
+            (ticket(app, chat, false, false))
+            p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
+        })
+        .render()
+}
+
+/// A reply sent from a Coder chat's page: it waits for Coder on the
+/// computer ([`crate::coder_sync::queue_reply`]), and the thread's live
+/// stream shows it, then Coder's answer.
+async fn reply_to_coder(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    request_id: &str,
+    text: &str,
+) -> Response {
+    use crate::coder_sync::Queued;
+    let store = &app.config.chat_store;
+    match crate::coder_sync::queue_reply(store, owner, id, request_id, text).await {
+        Ok(Queued::Queued) => {}
+        Ok(Queued::Offline(computer)) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                &format!("Coder on {computer} isn't online now. Open Coder there to reply."),
+            );
+        }
+        Ok(Queued::Full) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                "Wait for Coder to answer your earlier replies.",
+            );
+        }
+        Ok(Queued::Secret) => {
+            return refusal(
+                StatusCode::BAD_REQUEST,
+                "This looks like it holds a password or key, so it wasn't sent.",
+            );
+        }
+        Ok(Queued::Missing) => return missing(),
+        Err(e) => return unavailable(e),
+    }
+    let chat = match store.load(owner, id).await {
+        Ok(Some(loaded)) => loaded.conversation,
+        Ok(None) => return missing(),
+        Err(e) => return unavailable(e),
+    };
+    if headers.get("HX-Request").is_some_and(|v| v == "true") {
+        crate::chat_html::protect(
+            html! { (ticket(app, &chat, true, false)) (chat_list(app, owner, Some(id), false, true).await) }
+                .into_response(),
+        )
+    } else {
+        crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+    }
 }
 
 async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -521,7 +618,9 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     )
     .await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let offer = work::offer(&app, &headers, chat).await;
+    let links = work::links(&app, &headers);
+    let body = html! { title {(chat.title) " · OpenAgents"} (work::breadcrumb(chat, offer.as_ref()).swap_oob(true)) (work::actions(chat, offer.as_ref(), true)) (content(chat,None,chips,links)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -667,7 +766,7 @@ async fn follow(
         Err(r) => return r,
     };
     if loaded.conversation.terminal.is_some() {
-        return refusal(StatusCode::CONFLICT, "Continue this chat in Coder.");
+        return reply_to_coder(&app, &headers, &owner, &id, &prompt.request_id, &text).await;
     }
     let selection = match selected(&app, &owner, &prompt) {
         Ok(v) => v,
@@ -908,9 +1007,17 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                 r.text.clone(),
                 r.done,
                 r.failure.as_ref().map(|e| e.describe()),
-                // What the chips under the answer read (`crate::suggestions`).
+                // What the chips under the answer read (`crate::suggestions`),
+                // and how it was served: its tier and route, which the
+                // reply's marker carries for the chat goldens
+                // (docs/web/chat-goldens.md).
                 r.done
-                    .then(|| openagents_chat::suggestions::chip_meta(&r.meta))
+                    .then(|| {
+                        let mut meta = openagents_chat::suggestions::chip_meta(&r.meta);
+                        meta.tier = r.meta.tier.clone();
+                        meta.route = r.meta.route.clone();
+                        meta
+                    })
                     .filter(|meta| !meta.is_empty()),
             )
         };
@@ -1054,18 +1161,26 @@ pub(crate) async fn chat_list(
 }
 
 /// A chat row's second line: the repository and branch it was started
-/// with. The list is the owner's own, so the names never reach anyone else.
-fn row_detail(chat: &Conversation) -> Option<String> {
+/// with, then its environment and version ("Environment v3"). Inside a
+/// project's group (`repository` false) the repository is left out: the
+/// group's heading names it. The list is the owner's own, so the names
+/// never reach anyone else.
+fn line_two(chat: &Conversation, repository: bool) -> Option<String> {
     // A Coder chat says so, and on which computer (#11047).
     if let Some(terminal) = &chat.terminal {
         return Some(format!("Terminal · {}", terminal.computer));
     }
-    let source = chat.selection.as_ref()?.repository.as_ref()?;
-    Some(if source.branch.is_empty() {
-        source.repository.clone()
-    } else {
-        format!("{} · {}", source.repository, source.branch)
-    })
+    let mut parts = Vec::new();
+    if let Some(source) = chat.selection.as_ref().and_then(|s| s.repository.as_ref()) {
+        if repository {
+            parts.push(source.repository.clone());
+        }
+        if !source.branch.is_empty() {
+            parts.push(source.branch.clone());
+        }
+    }
+    parts.extend(work::detail(chat));
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 /// A chat row's status: "Working" while an answer runs, "Failed" when the
@@ -1081,9 +1196,18 @@ pub(crate) fn row_status_slot(chat: &Conversation, oob: bool) -> Markup {
     }
 }
 
+/// Working also while a task started from the chat runs, Failed when the
+/// newest task failed and nothing was sent since, and Done when a long task
+/// finished and the chat wasn't opened since ([`work`]).
 fn row_status(chat: &Conversation) -> Option<ChatStatus> {
-    if chat.working() {
+    if chat.working() || work::running(chat) {
         return Some(ChatStatus::Working);
+    }
+    if work::failed(chat) {
+        return Some(ChatStatus::Failed);
+    }
+    if work::unseen_done(chat) {
+        return Some(ChatStatus::Done);
     }
     match chat.requests.last()?.outcome {
         Outcome::Failed => Some(ChatStatus::Failed),
@@ -1106,11 +1230,12 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool)
 
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
 /// it. The title is the header row's breadcrumb, not part of the thread.
-fn content(chat: &Conversation, before: Option<usize>, chips: Markup) -> Markup {
+/// `links` links task rows to their runs ([`work::links`]).
+fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: bool) -> Markup {
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
-                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) (chips) }
+                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before,links)) (chips) }
             }
         }
         (ScrollToBottom::new("#chat-thread"))
@@ -1120,13 +1245,26 @@ fn content(chat: &Conversation, before: Option<usize>, chips: Markup) -> Markup 
 /// One stored message as a thread turn. Assistant text is rendered Markdown
 /// (the renderer escapes it), followed by the plugin cards its answer came
 /// with (`plugins`, `docs/web/plugin-card.md`); user and status text is
-/// escaped as written.
-fn turn(message: &Message, index: usize, plugins: &[String]) -> ThreadMessage {
+/// escaped as written. A reply sits between two hidden markers: the first
+/// names how it was served (`reply`: its tier, route, and prepared
+/// answer, once answered), so the chat goldens can read a reply from the
+/// page exactly as a person gets it (docs/web/chat-goldens.md).
+fn turn(
+    message: &Message,
+    index: usize,
+    plugins: &[String],
+    reply: Option<&openagents_chat::router::Meta>,
+) -> ThreadMessage {
     match message.role {
         Role::User => ThreadMessage::user(&message.text),
         Role::Assistant => ThreadMessage::assistant(html! {
+            span hidden data-oa-reply=(index)
+                data-oa-tier=[reply.and_then(|r| r.tier.as_deref())]
+                data-oa-route=[reply.and_then(|r| r.route.as_deref())]
+                data-oa-answer=[reply.and_then(|r| r.answer.as_deref())] {}
             (MarkdownRoot::new(PreEscaped(crate::markdown::render(&message.text))))
             (crate::suggestions::plugin_cards(plugins))
+            span hidden data-oa-reply-end {}
         })
         .author("OpenAgents"),
         Role::Tool => ThreadMessage::status(&message.text),
@@ -1134,7 +1272,9 @@ fn turn(message: &Message, index: usize, plugins: &[String]) -> ThreadMessage {
     .id(format!("chat-message-{index}"))
 }
 
-fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
+/// The messages in the window, each followed by the tasks started after it
+/// ([`work::rows`]).
+fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
     let end = before
         .unwrap_or(chat.messages.len())
         .min(chat.messages.len());
@@ -1148,11 +1288,25 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
             // button follows this link to them.
             a hidden href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" data-oa-scroll-tail {}
         }
+        @if start == 0 { (work::rows(chat, 0, links)) }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
-            (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
+            (turn(
+                message,
+                index + start,
+                crate::suggestions::message_plugins(chat, message),
+                crate::suggestions::message_reply(chat, message),
+            ))
+            (work::rows(chat, index + start + 1, links))
+        }
+        // Replies sent here that Coder hasn't taken yet (#11048).
+        @if let Some(terminal) = chat.terminal.as_ref().filter(|_| before.is_none()) {
+            @for (index, reply) in terminal.replies.iter().enumerate() {
+                (ThreadMessage::user(&reply.text).id(format!("chat-reply-{index}")))
+            }
         }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
-            @if chat.working() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
+            @if chat.working() {(openagents_ui::actions::Busy::new("Working"))}
+            @else if let Some(terminal) = chat.terminal.as_ref().filter(|t| !t.replies.is_empty()) {"Waiting for Coder on " (terminal.computer) "."}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
         }
@@ -1173,7 +1327,7 @@ async fn transcript(
                 Some(_) => html! {},
             };
             crate::chat_html::protect(
-                html! { (messages(&v.conversation, window.before)) (chips) }.into_response(),
+                html! { (messages(&v.conversation, window.before, work::links(&app, &headers))) (chips) }.into_response(),
             )
         }
         Err(r) => r,
@@ -1267,9 +1421,10 @@ async fn events(
     if cursor > loaded.conversation.revision {
         return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
+    let links = work::links(&app, &headers);
     let stream = futures_util::stream::unfold(
         (app, owner, id, cursor, 0u16),
-        |(app, owner, id, mut cursor, mut ticks)| async move {
+        move |(app, owner, id, mut cursor, mut ticks)| async move {
             if ticks >= 300 {
                 return None;
             }
@@ -1280,7 +1435,7 @@ async fn events(
                     let missed = revision.saturating_sub(cursor + 1);
                     let _ = missed; // A resume re-renders the full transcript; nothing to announce.
                     let chips = crate::suggestions::reply_chips(&app, &v.conversation).await;
-                    let body = html! { (messages(&v.conversation,None)) (chips) (row_status_slot(&v.conversation, true)) }.into_string();
+                    let body = html! { (messages(&v.conversation,None,links)) (chips) (row_status_slot(&v.conversation, true)) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))
@@ -1471,10 +1626,14 @@ mod uuid_tests {
 #[path = "chat_sidebar.rs"]
 mod sidebar;
 
+#[path = "chat_continued.rs"]
+mod continued;
 #[path = "chat_delete_all.rs"]
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_work.rs"]
+mod work;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

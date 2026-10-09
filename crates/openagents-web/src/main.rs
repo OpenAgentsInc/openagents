@@ -5,7 +5,8 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
-[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
+[--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
+[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,8 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
     let mut github_oauth: Option<PathBuf> = None;
     let mut github_redirect: Option<String> = None;
+    let mut github_app: Option<PathBuf> = None;
     let mut cloud_byo: Option<PathBuf> = None;
     let mut cloud_byo_keys: Option<PathBuf> = None;
+    let mut plan_meter: Option<PathBuf> = None;
+    let mut plan_checkout: Option<String> = None;
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -58,10 +62,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--cloud-byo" => cloud_byo = Some(PathBuf::from(value)),
             "--cloud-byo-keys" => cloud_byo_keys = Some(PathBuf::from(value)),
+            // The environment meter journal behind Settings > Plan, and the
+            // billing plan Subscribe opens Stripe Checkout for (through the
+            // account service), when checkout is set up.
+            "--plan-meter" => plan_meter = Some(PathBuf::from(value)),
+            "--plan-checkout" => plan_checkout = Some(value),
             // The OAuth App's private file ({client_id, client_secret,
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
             "--github-redirect" => github_redirect = Some(value),
+            // The GitHub App's private file; the web server reads its
+            // client id and slug only.
+            "--github-app" => github_app = Some(PathBuf::from(value)),
             "--environments" => {
                 let studio =
                     coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
@@ -106,6 +118,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if cloud_byo_keys.is_some() {
         return Err("--cloud-byo-keys needs --cloud-byo".into());
     }
+    if plan_meter.is_some() || plan_checkout.is_some() {
+        config.plan = Some(std::sync::Arc::new(openagents_web::plan::Plans::open(
+            plan_meter.as_deref(),
+            plan_checkout,
+        )?));
+    }
+    if let Some(path) = github_app {
+        let redirect = match (github_redirect.clone(), config.cloud.as_deref()) {
+            (Some(url), _) => url,
+            (None, Some(cloud)) => format!("{}{}", cloud.origin(), oa_auth::CALLBACK_PATH),
+            (None, None) => {
+                return Err("--github-app needs --cloud-config (or --github-redirect)".into());
+            }
+        };
+        config.github_install = Some(std::sync::Arc::new(oa_auth::AppInstall::load(
+            &path,
+            &redirect,
+            oa_auth::Endpoints::default(),
+        )?));
+        println!("Repositories are added through the GitHub App");
+    }
     if let Some(path) = github_oauth {
         // The callback defaults to the Cloud origin's /auth/github/callback.
         let redirect = match (github_redirect, config.cloud.as_deref()) {
@@ -134,6 +167,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         openagents_web::chat_store::spawn_expiry(config.chat_store.clone(), days);
         println!("Chats untouched for {days} days are removed");
     }
+    let worker = openagents_web::ask::Worker::from_env()?;
+    if !worker.is_production() {
+        println!("Chat answers come from the worker {}", worker.worker());
+    }
+    config.chat = std::sync::Arc::new(worker);
     config.port = listen.port();
     // A public deployment is served over HTTPS behind its proxy.
     config.secure_cookies = !config.public_hosts.is_empty();

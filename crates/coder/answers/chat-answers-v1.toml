@@ -29,27 +29,40 @@ bank = "chat-answers-v1"
 
 [[answer]]
 id = "meta.who"
-version = 1
+version = 2
 routes = ["meta"]
 place = "away"
 when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
 examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
-text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to a computer you've connected."
+text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we send Coder, our coding agent, to a computer you've connected."
 chip = "Who are you?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.capabilities", "meta.model", "meta.pricing"]
 
 [[answer]]
 id = "meta.who.here"
-version = 1
+version = 2
 routes = ["meta"]
 place = "here"
 when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
 examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
-text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs this computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to work here."
+text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs this computer, like reading or changing a repository or running commands, we send Coder, our coding agent, to work here."
 chip = "Who are you?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.capabilities", "meta.model", "meta.pricing"]
+
+
+[[answer]]
+id = "meta.who.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
+examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. Sign in with GitHub to keep your chats on your account and add your repositories as projects. For hands-on work in your code, Coder, our coding agent, runs in your terminal: get it at openagents.com/download."
+chip = "Who are you?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/auth/README.md", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.capabilities", "meta.github", "meta.pricing"]
 
 [[answer]]
 id = "meta.model"
@@ -64,10 +77,10 @@ followups = ["meta.jev", "meta.privacy", "meta.pricing"]
 
 [[answer]]
 id = "meta.jev"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks what Jev or TypeSafe is, or how we decide how to answer a message; not which model writes our chat replies"
-text = "Jev is a small, fast model from TypeSafe. It reads each message first and chooses how we reply: a prepared answer like this one, our chat model, or dispatching Coder. It writes none of the words you see."
+text = "Jev is a small, fast model from TypeSafe. It reads each message first and chooses how we reply: a prepared answer like this one, our chat model, or sending Coder to work. It writes none of the words you see."
 chip = "What is Jev?"
 sources = ["crates/coder/src/router.rs", "crates/jev/Cargo.toml"]
 followups = ["meta.model", "meta.privacy"]
@@ -132,13 +145,38 @@ chip = "What can you do?"
 sources = ["crates/openagents-chat/src/basic_coder.rs"]
 followups = ["meta.coder", "meta.limits_chat"]
 
+
+[[answer]]
+id = "meta.capabilities.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
+text = "In this chat we answer questions, explain code and concepts, and help you plan and write. We can't run code, open your files, or browse the web from here. Coder, our coding agent, does that work in your terminal, on your own computer: get it at openagents.com/download."
+chip = "What can you do?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "meta.github", "meta.limits_chat"]
+
+[[answer]]
+id = "meta.tools.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks what tools, abilities, or integrations we have or use, or what we can use to help them, without naming a project, file, error, or plugin of their own"
+not_for = "What a plugin is, or what one named plugin does, which other answers cover"
+examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
+text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Plugins give Coder extra abilities, like Project map, which shows it how a project is laid out. Get Coder at openagents.com/download."
+chip = "What tools do you have?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/plugins/README.md", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "gym.what_tool"]
+
 [[answer]]
 id = "meta.limits_chat"
-version = 2
+version = 3
 routes = ["meta"]
 place = "away"
 when = "The user asks whether we can see their files or screen, run code, or reach their computer or repository from this chat, without asking for a specific task to be done; not whether we can browse the web"
-text = "In this chat we can't run code, read files, or reach your computer or accounts. That work goes to Coder, our coding agent, which we dispatch to a computer you connect."
+text = "In this chat we can't run code, read files, or reach your computer or accounts. That work goes to Coder, our coding agent, which we send to a computer you connect."
 chip = "Can you see my files?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers"]
@@ -154,6 +192,18 @@ facts = { project = "chat.project", project_path = "chat.project_path" }
 chip = "Can you see my files?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder-host/src/control/mod.rs"]
 followups = ["meta.coder"]
+
+
+[[answer]]
+id = "meta.limits_chat.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks whether we can see their files or screen, run code, or reach their computer or repository from this chat, without asking for a specific task to be done; not whether we can browse the web"
+text = "In this chat we can't run code, read your files, or reach your computer. Coder, our coding agent, does that work in your terminal on your own computer: get it at openagents.com/download."
+chip = "Can you see my files?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "meta.github"]
 
 [[answer]]
 id = "meta.web_access"
@@ -189,6 +239,19 @@ chip = "What is Coder?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "README.md"]
 followups = ["meta.github", "meta.pricing"]
 
+
+[[answer]]
+id = "meta.coder.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks what Coder is or how Coder works, in general"
+examples = ["how does coder work", "what actually happens when you dispatch coder"]
+text = "Coder is our coding agent. It runs in your terminal on your own computer, where it reads and edits your files and runs commands. Install it from openagents.com/download, then run `coder` in your project. Signed in, `/sync on` saves its chats to your account, so they show here too."
+chip = "What is Coder?"
+sources = ["crates/coder-new/README.md", "crates/openagents-web/src/pages/download.rs", "docs/auth/README.md"]
+followups = ["meta.github", "meta.pricing"]
+
 [[answer]]
 id = "meta.github"
 version = 2
@@ -216,6 +279,19 @@ sources = ["crates/openagents-chat/src/basic_coder.rs"]
 followups = ["meta.coder"]
 
 [[answer]]
+id = "meta.github.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks us to connect to, sign in to, or link their GitHub account, asks how to connect or add a GitHub repository, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
+not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
+examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub", "how do I connect a github repo", "how do i connect to repo?"]
+text = "We work with GitHub two ways. Here on openagents.com, sign in with GitHub, open Projects in the left panel, and connect GitHub to add your repositories as projects; chats you start in a project are grouped under it. And Coder, our coding agent, works in your terminal on your own computer, with that computer's own git and GitHub login: get it at openagents.com/download."
+chip = "How do you work with GitHub?"
+sources = ["docs/auth/github.md", "crates/openagents-web/src/projects/mod.rs", "crates/coder-new/README.md"]
+followups = ["meta.coder", "meta.pricing"]
+
+[[answer]]
 id = "meta.open_source"
 version = 1
 routes = ["meta"]
@@ -228,12 +304,12 @@ followups = ["meta.who", "meta.model"]
 
 [[answer]]
 id = "meta.pricing"
-version = 2
+version = 3
 routes = ["meta"]
-when = "The user asks what this chat or OpenAgents costs, or whether it is free; not what the user's own coding agents or model providers charge them"
-text = "Chatting with us is free right now. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us."
+when = "The user asks what this chat or OpenAgents costs, whether it is free, or whether there is a paid or Pro plan; not what the user's own coding agents or model providers charge them"
+text = "Chatting with us is free right now. Coder runs on your own computer with the coding agents you already use there, so it doesn't bill you through us. A Pro plan for cloud environments is coming but isn't on sale yet: $20 a month with 100 machine-hours included."
 chip = "What does it cost?"
-sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md"]
+sources = ["docs/deployment/chat-worker-usage.md", "INVARIANTS.md", "docs/cloud/retail-environment-contract.md"]
 followups = ["meta.quota", "meta.privacy"]
 
 [[answer]]
@@ -536,12 +612,12 @@ followups = ["wallet.backup"]
 
 [[answer]]
 id = "account.computers"
-version = 1
+version = 2
 routes = ["account"]
 when = "The user asks how to connect, add, remove, or manage a computer for Coder"
 not_for = "Which computers are online right now, or listing them"
 examples = ["how do I remove a computer", "where do I see my connected computers"]
-text = "You connect and manage computers from your account. Once one is connected, we can dispatch Coder to it with a conversation as its task."
+text = "You connect and manage computers from your account. Once one is connected, we can send Coder to work on it from a chat."
 chip = "How do I connect a computer?"
 offer = { screen = "account.computers", label = "Connect a computer" }
 sources = ["docs/coder/runtime/host-service.md", "crates/openagents-mobile/src/basic_coder.rs"]

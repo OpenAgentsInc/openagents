@@ -45,7 +45,7 @@ pub(crate) fn tool_definition(rank: bool) -> Value {
     let (name, description, properties, required) = if rank {
         (
             "brainstorm_rank",
-            "Read Brainstorm house influence for admitted public keys. An input_ref may name the exact admitted rank input or a fresh admitted search that returned all requested keys. Without one, the host asks the owner to confirm the exact keys and recipient.",
+            "Read Brainstorm house influence for approved public keys. An input_ref may name the exact approved rank input or a fresh approved search that returned all requested keys. Without one, the host asks the owner to confirm the exact keys and recipient.",
             json!({"pubkeys":{"type":"array","minItems":1,"maxItems":20,"uniqueItems":true,"items":{"type":"string"}},"input_ref":{"type":"string","maxLength":80}}),
             json!(["pubkeys"]),
         )
@@ -146,7 +146,7 @@ pub(super) fn check(binding: &Binding, reference: &str, command: &Command) -> Re
         if !record.subjects.is_empty() && keys.iter().all(|key| record.subjects.contains(key)));
     if !matches {
         return Err(
-            "This input differs from the exact admitted input or its returned public keys.".into(),
+            "This input differs from the approved input or the public keys it returned.".into(),
         );
     }
     Ok(())

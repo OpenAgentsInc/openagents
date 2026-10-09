@@ -74,6 +74,19 @@ pub fn verify_webhook(
     api_version: &str,
     live: bool,
 ) -> Result<Event, String> {
+    verify_signature(body, header, secret, now, tolerance)?;
+    event(&strict(body)?, body, api_version, live)
+}
+
+/// Check a `Stripe-Signature` header (`t=<unix>,v1=<hex>[,v1=…]`) over the
+/// raw body: any matching `v1` tag within `tolerance` seconds of `now`.
+pub(crate) fn verify_signature(
+    body: &[u8],
+    header: &str,
+    secret: &[u8],
+    now: u64,
+    tolerance: u64,
+) -> Result<(), String> {
     if body.len() > MAX_BODY
         || header.len() > MAX_HEADER
         || secret.len() < 16
@@ -119,7 +132,7 @@ pub fn verify_webhook(
     if !tags.iter().any(|tag| mac.clone().verify_slice(tag).is_ok()) {
         return Err(refusal());
     }
-    event(&strict(body)?, body, api_version, live)
+    Ok(())
 }
 
 fn event(value: &Value, body: &[u8], api_version: &str, live: bool) -> Result<Event, String> {

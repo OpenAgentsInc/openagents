@@ -39,6 +39,10 @@ pub(super) const QUEUE: usize = 128;
 pub(super) const REPLY_BYTES: usize = 16 * 1024 * 1024;
 const CLOCK_BYTES: usize = 20;
 const CONFIRMATION_BYTES: usize = 4096;
+/// Loose props a movement confirmation carries, and how near the confirmed
+/// character they must be, m.
+const DYNAMIC_POSES: usize = 8;
+const DYNAMIC_RADIUS: f64 = 16.;
 const MAX_HELD_REPLY_BYTES: usize = MAX_RESPONSE_BYTES + CLOCK_BYTES + CONFIRMATION_BYTES;
 const HANDSHAKE: Duration = Duration::from_secs(5);
 const WRITE: Duration = Duration::from_secs(10);
@@ -116,6 +120,7 @@ struct CommitView {
     instance: u64,
     controls: BTreeMap<ConnectionId, Control>,
     confirmations: BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
+    dynamic: Vec<super::wire::ColliderPose>,
     authenticated: std::collections::BTreeSet<ConnectionId>,
 }
 impl CommitView {
@@ -132,6 +137,7 @@ impl CommitView {
                 })
                 .collect(),
             controls: gateway.committed_controls(),
+            dynamic: gateway.game().dynamic_poses(),
             authenticated: gateway.committed_connections(),
         }
     }
@@ -237,6 +243,7 @@ fn finish(
         let _ = reply.send(committed_movement(
             committed_control_credit(result, &view.controls),
             &view.confirmations,
+            &view.dynamic,
         ));
     }
     Ok(())
@@ -317,6 +324,7 @@ fn committed_world_credit(mut result: DispatchReply, world_step: u64) -> Dispatc
 fn committed_movement(
     mut result: DispatchReply,
     histories: &BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
+    dynamic: &[super::wire::ColliderPose],
 ) -> DispatchReply {
     let Ok((bytes, _)) = &mut result else {
         return result;
@@ -348,6 +356,22 @@ fn committed_movement(
     };
     baseline.validate()?;
     control.applied_movement = Some(*baseline);
+    // The nearest loose props, within reach of the replayed travel.
+    let feet = baseline.character.feet;
+    let mut near: Vec<_> = dynamic
+        .iter()
+        .filter(|p| p.pose.position.distance(feet) <= DYNAMIC_RADIUS)
+        .copied()
+        .collect();
+    near.sort_by(|a, b| {
+        a.pose
+            .position
+            .distance_squared(feet)
+            .total_cmp(&b.pose.position.distance_squared(feet))
+            .then(a.key.cmp(&b.key))
+    });
+    near.truncate(DYNAMIC_POSES);
+    control.dynamic = near;
     let encoded =
         serde_json::to_vec(&control).map_err(|_| "Cannot encode movement confirmation")?;
     if encoded.len() > CONFIRMATION_BYTES {
@@ -903,7 +927,7 @@ async fn serve_loop<F: Future<Output = ()>>(
                                     let result = gateway.dispatch_json(id, now, &bytes)
                                         .map(|bytes| (bytes, gateway.authenticated(id)));
                                     dispatch_progress(progress, &result);
-                                    let _ = reply.send(committed_movement(result, &committed.confirmations));
+                                    let _ = reply.send(committed_movement(result, &committed.confirmations, &committed.dynamic));
                                 }
                                 continue;
                             }
@@ -930,7 +954,8 @@ async fn serve_loop<F: Future<Output = ()>>(
                                 let life = a.actor();
                                 BTreeMap::from([(life, gateway.game().movement_confirmations(life))])
                             }).unwrap_or_default();
-                            let _ = reply.send(committed_movement(result, &histories));
+                            let dynamic = gateway.game().dynamic_poses();
+                            let _ = reply.send(committed_movement(result, &histories, &dynamic));
                         }
                     }
                     Some(Event::Close(id)) => {let _ = gateway.close(id); dirty = true;}
@@ -1269,6 +1294,7 @@ pub(super) mod tests {
             world_step: 12,
             credit_step: 16,
             applied_movement: None,
+            dynamic: Vec::new(),
         };
         let prefix = Response {
             version: VERSION,
@@ -1283,6 +1309,7 @@ pub(super) mod tests {
             instance: 120,
             controls: BTreeMap::from([(id, control)]),
             confirmations: BTreeMap::new(),
+            dynamic: Vec::new(),
             authenticated: std::collections::BTreeSet::from([id]),
         };
         view.controls.get_mut(&id).unwrap().credit_step = 20;
@@ -1341,6 +1368,7 @@ pub(super) mod tests {
                 world_step: 12,
                 credit_step: 12,
                 applied_movement: None,
+                dynamic: Vec::new(),
             }),
             body: Reply::Refused {
                 code: "gameplay".into(),
@@ -1352,7 +1380,7 @@ pub(super) mod tests {
         ahead.applied_sequence = 8;
         let histories = BTreeMap::from([(life, vec![baseline, ahead])]);
         let (encoded, authenticated) =
-            committed_movement(Ok((original.clone(), true)), &histories).unwrap();
+            committed_movement(Ok((original.clone(), true)), &histories, &[]).unwrap();
         assert!(authenticated);
         let actual: Response = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(
@@ -1379,7 +1407,7 @@ pub(super) mod tests {
             }
             let histories = BTreeMap::from([(life, vec![invalid.1])]);
             assert_eq!(
-                committed_movement(Ok((original.clone(), true)), &histories)
+                committed_movement(Ok((original.clone(), true)), &histories, &[])
                     .unwrap()
                     .0,
                 original
@@ -1393,7 +1421,9 @@ pub(super) mod tests {
         if let Reply::Refused { message, .. } = &mut bounded.body {
             *message = "a".repeat(MAX_RESPONSE_BYTES - overhead);
         }
-        assert!(committed_movement(Ok((bounded.encode().unwrap(), true)), &histories).is_err());
+        assert!(
+            committed_movement(Ok((bounded.encode().unwrap(), true)), &histories, &[]).is_err()
+        );
     }
 
     #[test]
@@ -1410,6 +1440,7 @@ pub(super) mod tests {
                 world_step: 9,
                 credit_step: 9,
                 applied_movement: None,
+                dynamic: Vec::new(),
             }),
             body: Reply::Refused {
                 code: "gameplay".into(),
@@ -1445,6 +1476,7 @@ pub(super) mod tests {
             world_step: 9,
             credit_step: 9,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         if let Reply::Refused { message, .. } = &mut response.body {
             message.clear();

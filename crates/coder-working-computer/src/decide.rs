@@ -4,6 +4,15 @@
 //! tick. It never dispatches while a checkpoint is fenced, never replaces a
 //! resource whose create outcome is unknown (it repeats the same idempotent
 //! operation identity), and never treats an unknown stop as stopped.
+//!
+//! Liveness: a running turn whose owner stopped beating for
+//! [`Computer::stale_ms`] stops as [`StopReason::Stale`] through the same
+//! stop path as any other stop. Nothing bounds how long a live turn runs
+//! besides the absolute bound the computer was admitted with.
+//!
+//! Circuit breaker: after [`BREAKER_FAILURES`] failed boots within
+//! [`BREAKER_WINDOW_MS`], a prompt that would boot again is refused with a
+//! plain message until the window passes.
 
 use crate::*;
 
@@ -69,6 +78,18 @@ pub enum Decision {
     },
     /// Read the provider's view to reconcile an unknown outcome.
     Inspect,
+}
+
+/// The refusal while the breaker is open, in plain words.
+pub fn breaker_message(c: &Computer, now_ms: u64) -> Option<String> {
+    let until = c.breaker_open_until(now_ms)?;
+    let minutes = until.saturating_sub(now_ms).div_ceil(60_000).max(1);
+    Some(format!(
+        "This computer failed to start {BREAKER_FAILURES} times in the last {} minutes, so it \
+         isn't trying again yet. It can try again in {minutes} minute{}.",
+        BREAKER_WINDOW_MS / 60_000,
+        if minutes == 1 { "" } else { "s" }
+    ))
 }
 
 fn create_operation(c: &Computer) -> String {
@@ -150,6 +171,10 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
         Phase::Turn { .. } if absolute_passed => Decision::Stop {
             reason: StopReason::Absolute,
         },
+        // A turn whose owner went silent ends; a live one runs on.
+        Phase::Turn { .. } if c.turn_silent(now_ms) => Decision::Stop {
+            reason: StopReason::Stale,
+        },
         Phase::Turn { .. } if prompt => Decision::Wait(WaitReason::TurnRunning),
         Phase::Turn { .. } => Decision::Skip,
         // The fence: a queued prompt first finishes this turn's checkpoint.
@@ -168,7 +193,9 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
         }
         Phase::Stopped => {
             let b = boot.expect("stopped has a boot");
-            if prompt {
+            if prompt && let Some(message) = breaker_message(c, now_ms) {
+                Decision::Refuse(message)
+            } else if prompt {
                 Decision::Restore {
                     checkpoint: c.latest_checkpoint().map(|k| k.id.clone()),
                 }
@@ -198,6 +225,9 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
         }
         Phase::Failed { .. } => {
             let Some(a) = live_create(c) else {
+                if prompt && let Some(message) = breaker_message(c, now_ms) {
+                    return Decision::Refuse(message);
+                }
                 return if prompt {
                     Decision::Create {
                         operation: create_operation(c),

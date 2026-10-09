@@ -135,6 +135,75 @@ pub fn compile(directory: &Path, grade: fn(u32, u32, &mut [u8])) -> Result<Compi
     })
 }
 
+/// The longest image edge in the phone tier's kit pack (#10908).
+pub const PHONE_EDGE: u32 = 256;
+
+/// Halves an sRGB image with straight alpha by averaging each 2x2 block;
+/// an odd last row or column averages what it has.
+fn halve(width: u32, height: u32, rgba: &[u8]) -> (u32, u32, Vec<u8>) {
+    let (w, h) = (width.div_ceil(2), height.div_ceil(2));
+    let mut out = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let mut sum = [0u32; 4];
+            let mut count = 0u32;
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let (sx, sy) = (x * 2 + dx, y * 2 + dy);
+                if sx < width && sy < height {
+                    let at = ((sy * width + sx) * 4) as usize;
+                    for c in 0..4 {
+                        sum[c] += u32::from(rgba[at + c]);
+                    }
+                    count += 1;
+                }
+            }
+            let at = ((y * w + x) * 4) as usize;
+            for c in 0..4 {
+                out[at + c] = ((sum[c] + count / 2) / count) as u8;
+            }
+        }
+    }
+    (w, h, out)
+}
+
+/// The phone tier's kit pack, derived from the full kit pack `full`: the
+/// same models and materials with every image halved until its longest
+/// edge is at most [`PHONE_EDGE`]. Deterministic, so the artifact queue can
+/// regenerate it from the pinned pack without the private build.
+///
+/// # Errors
+///
+/// Returns a message when `full` is not a kit pack or an image fails to
+/// decode or encode.
+pub fn phone(full: &[u8]) -> Result<Compiled, String> {
+    let limits = &Limits::KIT;
+    decode(full)?;
+    let mut contents = format::decode_contents(full, limits)?;
+    for texture in &mut contents.textures {
+        if texture.width.max(texture.height) <= PHONE_EDGE {
+            continue;
+        }
+        let decoded = format::decode_texture(texture)?;
+        let (mut width, mut height, mut rgba) = (decoded.width, decoded.height, decoded.rgba);
+        while width.max(height) > PHONE_EDGE {
+            (width, height, rgba) = halve(width, height, &rgba);
+        }
+        texture.width = width;
+        texture.height = height;
+        texture.png = super::encode_png(width, height, &rgba)?;
+    }
+    let bytes = format::encode(&contents, limits)?;
+    let decoded = decode(&bytes)?;
+    Ok(Compiled {
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        models: decoded.models.len(),
+        triangles: decoded.models.iter().map(Model::triangles).sum::<u64>(),
+        decoded_texture_bytes: decoded.decoded_texture_bytes(),
+        source_bytes: full.len() as u64,
+        bytes,
+    })
+}
+
 /// Decodes a kit pack and checks it holds only kit models.
 ///
 /// # Errors
@@ -231,6 +300,44 @@ pub fn sample(ids: &[&str]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_phone_pack_halves_large_images_and_keeps_models() {
+        let mut contents = format::decode_contents(&sample(&["wall-4"]), &Limits::KIT).unwrap();
+        // A 512 x 256 gradient halves once (to 256 x 128); a 2 x 2 checker
+        // averages to one gray.
+        let (w, h) = (512u32, 256u32);
+        let rgba: Vec<u8> = (0..w * h)
+            .flat_map(|i| [(i % w * 255 / w) as u8, (i / w * 255 / h) as u8, 90, 255])
+            .collect();
+        contents.textures[0] = format::EncodedTexture {
+            name: "kit/T_sample".into(),
+            width: w,
+            height: h,
+            png: super::super::encode_png(w, h, &rgba).unwrap(),
+        };
+        let full = format::encode(&contents, &Limits::KIT).unwrap();
+        let phone = phone(&full).unwrap();
+        let pack = decode(&phone.bytes).unwrap();
+        assert_eq!(
+            (pack.textures[0].width, pack.textures[0].height),
+            (256, 128)
+        );
+        assert_eq!(pack.models, decode(&full).unwrap().models);
+        assert!(phone.bytes.len() < full.len());
+        // Deterministic, and a pack already within the edge is unchanged.
+        assert_eq!(super::phone(&full).unwrap().sha256, phone.sha256);
+        let small = sample(&["wall-4"]);
+        assert_eq!(super::phone(&small).unwrap().bytes, small);
+        let (_, _, gray) = halve(
+            2,
+            2,
+            &[
+                0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 255,
+            ],
+        );
+        assert_eq!(gray, [128, 128, 128, 255]);
+    }
 
     #[test]
     fn a_sample_kit_pack_decodes_under_the_kit_limits() {

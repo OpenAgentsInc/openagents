@@ -1020,3 +1020,64 @@ async fn the_panel_lists_sessions_and_retains_steering_before_the_owner_wakes() 
         "Use stable."
     );
 }
+
+/// #11059: the setup agent beats while it runs; once it goes silent past
+/// the window, its command and computer stop and the setup waits for the
+/// person with a plain message. A message picks it up again.
+#[tokio::test]
+async fn a_silent_setup_turn_stops_its_computer_and_waits() {
+    use coder_working_computer::{STALE_AFTER_MS, StopReason as ComputerStop};
+    let dir = tempfile::tempdir().unwrap();
+    let setup = harness(&dir);
+    setup.open(&request(), &profile(), 1_000).await.unwrap();
+    let mut long = input("sleep 1000");
+    long.timeout_seconds = 3600;
+    let cmd = started(
+        setup
+            .run_command(SESSION, "q1", &long, 2_000)
+            .await
+            .unwrap(),
+    );
+    // A restarted owner's first visit counts as alive.
+    let s = setup.tick(SESSION, 3_000).await.unwrap();
+    assert_eq!(s.state, SetupState::Discovering);
+    // A beating agent keeps the turn however long it runs.
+    let mut now = 3_000;
+    for _ in 0..10 {
+        now += 30_000;
+        setup.heartbeat(SESSION, now).await.unwrap();
+        let s = setup.tick(SESSION, now + 1).await.unwrap();
+        assert_eq!(s.state, SetupState::Discovering);
+    }
+    // Silent past the window.
+    let s = setup.tick(SESSION, now + STALE_AFTER_MS).await.unwrap();
+    assert_eq!(
+        s.state,
+        SetupState::AwaitingInput {
+            question: crate::service::STALLED.into()
+        }
+    );
+    assert_eq!(
+        s.command(&cmd).unwrap().run,
+        Run::Stopped {
+            reason: "owner".into()
+        }
+    );
+    let computer = setup.computers.store.read(&s.computer).unwrap();
+    assert_eq!(computer.phase, Phase::Stopped);
+    assert_eq!(
+        computer.boot().unwrap().stop_reason,
+        Some(ComputerStop::Stale)
+    );
+    // Plain words for the person.
+    for word in ["stale", "heartbeat", "generation", "turn"] {
+        assert!(!crate::service::STALLED.to_lowercase().contains(word));
+    }
+    // The person answers: a restored computer, a new turn.
+    let s = setup
+        .steer(SESSION, "Keep going.", now + STALE_AFTER_MS + 1_000)
+        .await
+        .unwrap();
+    assert_eq!(s.state, SetupState::Discovering);
+    assert_eq!(s.generation, Some(2));
+}

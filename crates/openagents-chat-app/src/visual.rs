@@ -3,6 +3,7 @@
 //! Reference: zeronsh/zeron 50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4 (MIT).
 use rust_native::layout::{InlineCodeMetrics, MarkdownMetrics, Metrics, display::ColorRole};
 use rust_native::style::Color;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const CANVAS: Color = Color::rgb(6, 6, 6);
@@ -300,16 +301,34 @@ impl Visual {
 /// never sets it (the phones, today) keeps the dark look.
 static LIGHT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+std::thread_local! {
+    /// A scheme kept to this thread by [`scoped`]; while it is set,
+    /// [`set_scheme`] and [`scheme`] use it, not the process's.
+    static SCOPED: Cell<Option<Scheme>> = const { Cell::new(None) };
+}
+
 /// Sets the scheme every view reading [`current`] paints with. The app
 /// resolves it from the person's [`ThemeChoice`] and the system appearance,
-/// then rebuilds its views.
+/// then rebuilds its views. Inside [`scoped`] it sets only this thread's.
 pub fn set_scheme(scheme: Scheme) {
-    LIGHT_ACTIVE.store(scheme == Scheme::Light, Ordering::Relaxed);
+    let inside = SCOPED.with(|scoped| {
+        let inside = scoped.get().is_some();
+        if inside {
+            scoped.set(Some(scheme));
+        }
+        inside
+    });
+    if !inside {
+        LIGHT_ACTIVE.store(scheme == Scheme::Light, Ordering::Relaxed);
+    }
 }
 
 /// The scheme set by [`set_scheme`].
 #[must_use]
 pub fn scheme() -> Scheme {
+    if let Some(scheme) = SCOPED.with(Cell::get) {
+        return scheme;
+    }
     if LIGHT_ACTIVE.load(Ordering::Relaxed) {
         Scheme::Light
     } else {
@@ -317,10 +336,119 @@ pub fn scheme() -> Scheme {
     }
 }
 
+/// Runs `f` with the scheme kept to this thread: it starts at the
+/// process's scheme, [`set_scheme`] inside changes only this thread's, and
+/// it is dropped when `f` returns or panics. Tests switch schemes in here
+/// so they never change the scheme other tests paint with.
+pub fn scoped<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Scheme>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0;
+            SCOPED.with(|scoped| scoped.set(previous));
+        }
+    }
+    let start = scheme();
+    let _restore = Restore(SCOPED.with(|scoped| scoped.replace(Some(start))));
+    f()
+}
+
 /// The look for the scheme the app paints with.
 #[must_use]
 pub fn current() -> &'static Visual {
     Visual::of(scheme())
+}
+
+/// `dark` in the dark look and `light` in Coder Light, for a surface's own
+/// color that has no role in [`Visual`]; the dark value stays exactly what
+/// the surface painted before it followed the theme.
+#[must_use]
+pub fn pick(dark: Color, light: Color) -> Color {
+    match scheme() {
+        Scheme::Dark => dark,
+        Scheme::Light => light,
+    }
+}
+
+/// The few colors the shared Rust Native views (the phones' chat, its
+/// cards and panels, and the change pane) name outright, in one scheme.
+///
+/// [`Inks::DARK`] keeps the values those views always painted on the
+/// phones' black, so the dark look is unchanged; [`Inks::LIGHT`] is Coder
+/// Light's roles from the token table (#11028). Views read [`inks`] when
+/// they build, so a tree built after [`set_scheme`] paints in the new look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Inks {
+    /// Primary text and buttons.
+    pub text: Color,
+    /// Status lines, tool rows, and other receded text.
+    pub quiet: Color,
+    /// A card or panel's fill in the transcript.
+    pub card: Color,
+    /// A warning note.
+    pub warning: Color,
+    /// Added and removed lines in a change.
+    pub added: Color,
+    pub removed: Color,
+    /// A landing badge: landed, waiting on someone, or failed.
+    pub done: Color,
+    pub open: Color,
+    pub attention: Color,
+    /// An approval's risk chip fill: low, medium, high.
+    pub risk_low: Color,
+    pub risk_medium: Color,
+    pub risk_high: Color,
+}
+
+impl Inks {
+    /// The phones' established dark values.
+    pub const DARK: Inks = Inks {
+        text: Color::rgb(255, 255, 255),
+        quiet: Color::rgb(153, 153, 153),
+        card: Color::rgb(26, 29, 34),
+        warning: Color::rgb(229, 192, 123),
+        added: Color::rgb(163, 190, 140),
+        removed: Color::rgb(191, 120, 120),
+        done: Color::rgb(87, 196, 128),
+        open: Color::rgb(232, 176, 72),
+        attention: Color::rgb(232, 98, 92),
+        risk_low: Color::rgb(46, 92, 64),
+        risk_medium: Color::rgb(122, 92, 28),
+        risk_high: Color::rgb(128, 40, 40),
+    };
+
+    /// Coder Light. Text roles are the intent text tokens (WCAG AA on the
+    /// light canvas); fills are the soft intent backgrounds, so the
+    /// default (dark) label stays readable on them.
+    pub const LIGHT: Inks = Inks {
+        text: token(LIGHT_TOKENS.content),
+        quiet: token(LIGHT_TOKENS.content_secondary),
+        card: token(LIGHT_TOKENS.surface),
+        warning: token(LIGHT_TOKENS.warning),
+        added: token(LIGHT_TOKENS.success),
+        removed: token(LIGHT_TOKENS.danger),
+        done: token(LIGHT_TOKENS.success),
+        open: token(LIGHT_TOKENS.warning),
+        attention: token(LIGHT_TOKENS.danger),
+        risk_low: token(LIGHT_TOKENS.success_container),
+        risk_medium: token(LIGHT_TOKENS.warning_container),
+        risk_high: token(LIGHT_TOKENS.danger_container),
+    };
+
+    /// The inks for `scheme`.
+    #[must_use]
+    pub const fn of(scheme: Scheme) -> &'static Inks {
+        match scheme {
+            Scheme::Light => &Inks::LIGHT,
+            Scheme::Dark => &Inks::DARK,
+        }
+    }
+}
+
+/// The inks for the scheme the app paints with.
+#[must_use]
+pub fn inks() -> &'static Inks {
+    Inks::of(scheme())
 }
 
 #[cfg(test)]
@@ -333,6 +461,21 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    /// The shared views' inks: the dark set is what the phones always
+    /// painted, the light set Coder Light's roles.
+    #[test]
+    fn the_inks_follow_the_scheme() {
+        assert_eq!(Inks::of(Scheme::Dark), &Inks::DARK);
+        assert_eq!(Inks::of(Scheme::Light), &Inks::LIGHT);
+        assert_eq!(Inks::DARK.text, Color::rgb(255, 255, 255));
+        assert_eq!(Inks::DARK.quiet, Color::rgb(153, 153, 153));
+        let tokens = oa_tokens::Palette::LIGHT;
+        assert_eq!(Inks::LIGHT.text, token(tokens.content));
+        assert_eq!(Inks::LIGHT.quiet, token(tokens.content_secondary));
+        assert_eq!(Inks::LIGHT.card, token(tokens.surface));
+        assert_eq!(Inks::LIGHT.risk_high, token(tokens.danger_container));
+    }
 
     /// The dark look is the chat's established dark values; the light look
     /// is Coder Light from the shared token table, at the same geometry.
@@ -372,6 +515,24 @@ mod tests {
         };
         assert!(luma(Visual::LIGHT.canvas) > 200 && luma(Visual::LIGHT.text) < 32);
         assert!(luma(Visual::DARK.canvas) < 32 && luma(Visual::DARK.text) > 200);
+    }
+
+    /// A scoped scheme changes only this thread's look, and the process's
+    /// returns when the scope ends.
+    #[test]
+    fn a_scoped_scheme_stays_on_its_thread_and_ends_with_the_scope() {
+        let outside = scheme();
+        scoped(|| {
+            set_scheme(Scheme::Light);
+            assert_eq!(current(), &Visual::LIGHT);
+            assert_eq!(map::current(), &map::Kinds::LIGHT);
+            let other = std::thread::spawn(scheme).join().unwrap();
+            assert_eq!(other, outside, "another thread keeps the process's");
+            set_scheme(Scheme::Dark);
+            assert_eq!(current(), &Visual::DARK);
+            set_scheme(Scheme::Light);
+        });
+        assert_eq!(scheme(), outside);
     }
 
     #[test]
@@ -596,4 +757,72 @@ pub mod map {
         blue: 255,
         alpha: 38,
     };
+
+    /// The map's colors in one scheme: the dark values above, or their
+    /// Coder Light counterparts, darker and more saturated so each reads
+    /// on the light canvas.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct Kinds {
+        pub front: Color,
+        pub family: Color,
+        pub route: Color,
+        pub answer: Color,
+        pub knowledge: Color,
+        pub model: Color,
+        pub coder: Color,
+        pub engine: Color,
+        pub plugin: Color,
+        pub screen: Color,
+        pub gap: Color,
+        pub weak: Color,
+        pub edge: Color,
+    }
+
+    impl Kinds {
+        pub const DARK: Kinds = Kinds {
+            front: FRONT,
+            family: FAMILY,
+            route: ROUTE,
+            answer: ANSWER,
+            knowledge: KNOWLEDGE,
+            model: MODEL,
+            coder: CODER,
+            engine: ENGINE,
+            plugin: PLUGIN,
+            screen: SCREEN,
+            gap: GAP,
+            weak: WEAK,
+            edge: EDGE,
+        };
+
+        pub const LIGHT: Kinds = Kinds {
+            front: super::Visual::LIGHT.text,
+            family: Color::rgb(110, 110, 120),
+            route: super::Visual::LIGHT.accent,
+            answer: Color::rgb(0, 128, 116),
+            knowledge: Color::rgb(58, 128, 30),
+            model: Color::rgb(90, 104, 128),
+            coder: Color::rgb(120, 70, 200),
+            engine: Color::rgb(192, 50, 120),
+            plugin: Color::rgb(196, 100, 0),
+            screen: Color::rgb(150, 120, 0),
+            gap: Color::rgb(210, 40, 40),
+            weak: Color::rgb(220, 60, 60),
+            edge: Color {
+                red: 13,
+                green: 13,
+                blue: 13,
+                alpha: 51,
+            },
+        };
+    }
+
+    /// The map's colors in the scheme the app paints with.
+    #[must_use]
+    pub fn current() -> &'static Kinds {
+        match super::scheme() {
+            super::Scheme::Light => &Kinds::LIGHT,
+            super::Scheme::Dark => &Kinds::DARK,
+        }
+    }
 }

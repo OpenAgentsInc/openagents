@@ -1,0 +1,67 @@
+[
+  {
+    "type": "message",
+    "id": "msg_01A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6",
+    "role": "assistant",
+    "status": "completed",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "Hello! How can I assist you today?"
+      }
+    ]
+  },
+  {
+    "type": "function_call",
+    "id": "fc_00123xyzabc9876def0gh1ij2klmno345",
+    "name": "sendEmail",
+    "call_id": "call_987zyx654wvu321",
+    "arguments": "{\"recipient\":\"jane.doe@example.com\",\"subject\":\"Meeting Reminder\",\"body\":\"Don't forget about our meeting tomorrow at 10am.\"}"
+  },
+  {
+    "id": "ws_0df093a2d268cd7f0068efe79ac9408190b9833ec01e5d05ed",
+    "type": "openai:web_search_call",
+    "status": "completed",
+    "action": {
+      "type": "search",
+      "query": "weather: San Francisco, CA"
+    }
+  },
+  {
+    "type": "reasoning",
+    "status": "completed",
+    "summary": [
+      {
+        "type": "summary_text",
+        "text": "Determined that the user is asking for restaurant recommendations in a specific city, then filtered options by distance and rating before selecting three suggestions."
+      }
+    ],
+    "content": [
+      {
+        "type": "output_text",
+        "text": "User asked: \"Where should I eat dinner in downtown Seattle tonight?\""
+      }
+    ],
+    "encrypted_content": null
+  },
+  {
+    "type": "implementor_slug:custom_document_search",
+    "id": "cdc_759bd159770647a681a6ed186843fcca",
+    "query": [
+      "climate change",
+      "global warming"
+    ],
+    "status": "completed",
+    "results": [
+      {
+        "document_id": "result_6064c25dad6b4218b62e675234946de7",
+        "chunk": "Climate change threatens Cambodia's crops, floods cities, heats temperatures, strains resources..."
+      }
+    ]
+  },
+  {
+    "type": "function_call_output",
+    "call_id": "call_123",
+    "output": "tool result"
+  }
+]

@@ -208,6 +208,7 @@ async fn isolated_form_reaches_one_private_lead_and_preserves_email_consent_sour
     .await;
     assert_eq!(status, StatusCode::OK, "{html}");
     assert!(html.contains("Pilot request received"));
+    crate::copy_guard::assert_plain("/pilot", &html);
     assert!(!html.contains("synthetic@example.invalid"));
     assert!(!html.contains("A small public fix"));
     assert!(!html.contains("lead_"));
@@ -385,7 +386,8 @@ async fn revoked_capability_reports_unavailable_without_contact_content_or_new_r
     )
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(html.contains("No confirmation is available"));
+    assert!(html.contains("We couldn't confirm we got your request"));
+    crate::copy_guard::assert_plain("/pilot", &html);
     assert!(!html.contains("synthetic@example.invalid"));
     assert!(leads(&config, &owner_file).is_empty());
     assert_eq!(get(config, "/pilot").await.0, StatusCode::NOT_FOUND);

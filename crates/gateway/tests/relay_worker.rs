@@ -425,6 +425,7 @@ async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: None,
         billing: None,
         funding: None,

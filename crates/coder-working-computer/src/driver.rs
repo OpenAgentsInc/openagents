@@ -79,6 +79,14 @@ impl<P: Provider> Driver<P> {
         self.settle(&lease, Trigger::Tick, now_ms).await
     }
 
+    /// The running turn's owner is alive ([`HEARTBEAT_EVERY_MS`]). Refused
+    /// when this generation's turn is not the one running.
+    pub async fn heartbeat(&self, id: &str, generation: u64, now_ms: u64) -> Result<()> {
+        let lease = self.store.lease(id)?;
+        lease.apply(&Command::Heartbeat { generation }, now_ms)?;
+        Ok(())
+    }
+
     /// Stop the computer now (owner request), keeping its checkpoint.
     pub async fn stop(&self, id: &str, now_ms: u64) -> Result<Settled> {
         let lease = self.store.lease(id)?;

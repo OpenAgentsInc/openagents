@@ -1,11 +1,11 @@
 //! Synthetic native-counter fixtures over the real admission, ledgers, and
 //! sealed receipt path. No model weights, owner state, or real funds are used.
 
-#[path = "decision_offer_budgets.rs"]
+#[path = "decision_offer_parts/budgets.rs"]
 mod budgets;
-#[path = "decision_offer_reports.rs"]
+#[path = "decision_offer_parts/reports.rs"]
 mod reports;
-#[path = "decision_offer_shared.rs"]
+#[path = "decision_offer_parts/shared.rs"]
 mod shared;
 
 use axum::{

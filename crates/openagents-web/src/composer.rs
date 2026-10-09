@@ -4,7 +4,8 @@
 //! an independently admitted catalog entry; choosing it dispatches no work.
 
 use std::{
-    sync::OnceLock,
+    collections::BTreeMap,
+    sync::{Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -347,7 +348,17 @@ async fn show(
         "environment" => {
             environment_panel(&app, &owner, &selection, input.chat.as_deref(), &choices)
         }
-        "branch" => branch_panel(&app, &owner, &selection, input.chat.as_deref(), &choices).await,
+        "branch" => {
+            branch_panel(
+                &app,
+                &headers,
+                &owner,
+                &selection,
+                input.chat.as_deref(),
+                &choices,
+            )
+            .await
+        }
         "context" => context_panel(&selection),
         "model" => model_panel(&selection),
         _ => panel(
@@ -469,6 +480,7 @@ fn matches_source(choice: &RuntimeChoice, source: &RepositorySource) -> bool {
 
 async fn branch_panel(
     app: &App,
+    headers: &HeaderMap,
     owner: &str,
     selection: &Selection,
     chat: Option<&str>,
@@ -516,15 +528,16 @@ async fn branch_panel(
             },
         );
     }
-    let (branches, more) = match public_branches(&source.repository).await {
-        Ok(value) => value,
-        Err(message) => {
-            return panel(
-                "Branch",
-                html! { p role="alert" { (message) } p { "Nothing changed." } },
-            );
-        }
-    };
+    let (branches, more) =
+        match public_branches(&Reader::new(app, headers).await, &source.repository).await {
+            Ok(value) => value,
+            Err(message) => {
+                return panel(
+                    "Branch",
+                    html! { p role="alert" { (message) } p { "Nothing changed." } },
+                );
+            }
+        };
     panel(
         "Branch",
         html! {
@@ -669,7 +682,8 @@ async fn select(
                 next.runtime = Some(choice.runtime);
             }
             "repository" => {
-                next.repository = Some(public_source(value, None).await?);
+                next.repository =
+                    Some(public_source(&Reader::new(&app, &headers).await, value, None).await?);
             }
             "branch" => {
                 let repository = previous
@@ -684,7 +698,14 @@ async fn select(
                 }) {
                     return Err("Pick one of the branches on your connected computer.");
                 }
-                next.repository = Some(public_source(&repository.repository, Some(value)).await?);
+                next.repository = Some(
+                    public_source(
+                        &Reader::new(&app, &headers).await,
+                        &repository.repository,
+                        Some(value),
+                    )
+                    .await?,
+                );
             }
             "environment" if value == "none" => {
                 if previous.runtime.is_some() {
@@ -801,26 +822,98 @@ struct Repository {
     default_branch: String,
     private: bool,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Commit {
     sha: String,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Branch {
     name: String,
     commit: Commit,
 }
 
-fn github(path: &[&str]) -> Result<reqwest::Url, &'static str> {
-    let mut url = reqwest::Url::parse("https://api.github.com")
-        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
-    url.path_segments_mut()
-        .map_err(|_| "Couldn't reach GitHub. Try again.")?
-        .extend(path.iter().copied());
-    Ok(url)
+/// How this request reads GitHub: as the signed-in person when they
+/// connected GitHub (their token, fetched from the account service for
+/// this request and never kept here), else without a token. Reads without
+/// a token share GitHub's limit of 60 an hour for this whole server.
+struct Reader {
+    base: String,
+    token: Option<String>,
 }
 
-async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &'static str> {
+impl Reader {
+    async fn new(app: &App, headers: &HeaderMap) -> Self {
+        let base = app.config.github.as_ref().map_or_else(
+            || "https://api.github.com".to_string(),
+            |github| github.endpoints.api_url.trim_end_matches('/').to_string(),
+        );
+        let token = match app.config.cloud.as_deref() {
+            Some(service) => service.github_token(headers).await.ok(),
+            None => None,
+        };
+        Self { base, token }
+    }
+
+    fn url(&self, path: &[&str]) -> Result<reqwest::Url, &'static str> {
+        let mut url = reqwest::Url::parse(&self.base).map_err(|_| UNREACHABLE)?;
+        url.path_segments_mut()
+            .map_err(|_| UNREACHABLE)?
+            .pop_if_empty()
+            .extend(path.iter().copied());
+        Ok(url)
+    }
+
+    /// Whose branch lists these are: a digest of the token (a new
+    /// connection starts afresh), or everyone reading without one; per
+    /// GitHub API origin.
+    fn group(&self) -> String {
+        use sha2::Digest;
+        let who = self.token.as_ref().map_or_else(
+            || "anonymous".to_string(),
+            |token| {
+                Sha256::digest(token.as_bytes())[..12]
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect()
+            },
+        );
+        format!("{} {who}", self.base)
+    }
+}
+
+const UNREACHABLE: &str = "Couldn't reach GitHub. Try again.";
+/// GitHub's shared limit for reads without a sign-in is spent.
+pub(crate) const LIMITED_ANONYMOUS: &str =
+    "GitHub is limiting requests without a sign-in. Connect GitHub, or try again later.";
+/// The person's own GitHub limit is spent.
+pub(crate) const LIMITED: &str =
+    "GitHub is limiting requests right now. Try again in a few minutes.";
+
+/// Below this many anonymous reads left in the hour, kept branch lists
+/// are served without reading GitHub again.
+const LOW_ANONYMOUS: u64 = 10;
+/// The last anonymous `x-ratelimit-remaining` and `x-ratelimit-reset`, per
+/// GitHub API origin.
+static ANONYMOUS_BUDGET: Mutex<BTreeMap<String, (u64, u64)>> = Mutex::new(BTreeMap::new());
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+fn anonymous_budget_low(base: &str) -> bool {
+    ANONYMOUS_BUDGET
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(base)
+        .is_some_and(|(remaining, reset)| *remaining < LOW_ANONYMOUS && *reset > unix_now())
+}
+
+async fn metadata<T: DeserializeOwned>(
+    reader: &Reader,
+    url: reqwest::Url,
+) -> Result<(T, bool), &'static str> {
     static CLIENT: OnceLock<Result<reqwest::Client, reqwest::Error>> = OnceLock::new();
     let client = CLIENT
         .get_or_init(|| {
@@ -832,29 +925,62 @@ async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &
                 .build()
         })
         .as_ref()
-        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
-    let mut response = client
+        .map_err(|_| UNREACHABLE)?;
+    let mut request = client
         .get(url)
         .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2026-03-10")
-        .send()
-        .await
-        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
+        .header("X-GitHub-Api-Version", oa_auth::github::API_VERSION);
+    if let Some(token) = &reader.token {
+        request = request.bearer_auth(token);
+    }
+    let mut response = request.send().await.map_err(|_| UNREACHABLE)?;
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .map(str::to_owned)
+    };
+    let number = |name: &str| header(name).and_then(|value| value.parse::<u64>().ok());
+    let remaining = number("x-ratelimit-remaining");
+    let retry_after = header("retry-after").is_some();
+    let more = header("link").is_some_and(|value| value.contains("rel=\"next\""));
+    if reader.token.is_none()
+        && let (Some(remaining), Some(reset)) = (remaining, number("x-ratelimit-reset"))
+    {
+        let mut budgets = ANONYMOUS_BUDGET
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if budgets.len() >= 64 {
+            budgets.clear();
+        }
+        budgets.insert(reader.base.clone(), (remaining, reset));
+    }
+    let status = response.status().as_u16();
     if !response.status().is_success() {
-        return Err(match response.status().as_u16() {
-            404 => {
-                "Repository or branch not found. Private repositories need a connected computer."
-            }
-            403 | 429 => "GitHub is busy. Try again in a minute.",
+        let limited = status == 429
+            || (status == 403
+                && (remaining == Some(0) || retry_after || {
+                    let body = response.text().await.unwrap_or_default();
+                    body.to_ascii_lowercase().contains("rate limit")
+                }));
+        if limited {
+            return Err(if reader.token.is_some() {
+                LIMITED
+            } else {
+                LIMITED_ANONYMOUS
+            });
+        }
+        return Err(match status {
+            404 => "That repository or branch wasn't found.",
+            401 => "GitHub access ended. Connect GitHub again.",
+            403 => "GitHub didn't allow access to that repository.",
             301 | 302 | 307 | 308 => "The repository moved. Enter its current owner and name.",
-            _ => "Couldn't reach GitHub. Try again.",
+            500..=599 => "GitHub had a problem answering. Try again in a minute.",
+            _ => UNREACHABLE,
         });
     }
-    let more = response
-        .headers()
-        .get("link")
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.contains("rel=\"next\""));
     if response
         .content_length()
         .is_some_and(|length| length > MAX_METADATA as u64)
@@ -862,11 +988,7 @@ async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &
         return Err("That repository is too big to list here.");
     }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "Couldn't reach GitHub. Try again.")?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|_| UNREACHABLE)? {
         if bytes.len().saturating_add(chunk.len()) > MAX_METADATA {
             return Err("That repository is too big to list here.");
         }
@@ -880,6 +1002,7 @@ async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &
 }
 
 async fn public_source(
+    reader: &Reader,
     repository: &str,
     branch: Option<&str>,
 ) -> Result<RepositorySource, &'static str> {
@@ -888,7 +1011,7 @@ async fn public_source(
     let (owner, name) = repository
         .split_once('/')
         .ok_or("Enter a GitHub repository as owner/repository.")?;
-    let (info, _): (Repository, _) = metadata(github(&["repos", owner, name])?).await?;
+    let (info, _): (Repository, _) = metadata(reader, reader.url(&["repos", owner, name])?).await?;
     if info.private || !info.full_name.eq_ignore_ascii_case(repository) {
         return Err("Only public repositories work here.");
     }
@@ -896,8 +1019,11 @@ async fn public_source(
         .map_err(|_| "That repository name isn't supported.")?;
     let branch = branch.unwrap_or(&info.default_branch);
     coder_access::cloud::branch(branch).map_err(|_| "That branch name isn't supported.")?;
-    let (info_branch, _): (Branch, _) =
-        metadata(github(&["repos", owner, name, "branches", branch])?).await?;
+    let (info_branch, _): (Branch, _) = metadata(
+        reader,
+        reader.url(&["repos", owner, name, "branches", branch])?,
+    )
+    .await?;
     if info_branch.name != branch || !sha(&info_branch.commit.sha) {
         return Err("GitHub sent something we couldn't read. Try again.");
     }
@@ -908,14 +1034,45 @@ async fn public_source(
     })
 }
 
-async fn public_branches(repository: &str) -> Result<(Vec<Branch>, bool), &'static str> {
+/// Branch lists, per reader (see [`Reader::group`]) and repository, kept
+/// the way repository pages are ([`oa_auth::cache`]: fresh for 5 minutes,
+/// kept for an hour and served while one read refreshes them).
+type BranchCache = oa_auth::cache::Lists<String, String, (Vec<Branch>, bool)>;
+
+static BRANCHES: std::sync::LazyLock<BranchCache> =
+    std::sync::LazyLock::new(oa_auth::cache::Lists::new);
+
+async fn public_branches(
+    reader: &Reader,
+    repository: &str,
+) -> Result<(Vec<Branch>, bool), &'static str> {
     coder_access::cloud::repository(repository).map_err(|_| "Choose a valid repository first.")?;
     let (owner, name) = repository
         .split_once('/')
         .ok_or("Choose a valid repository first.")?;
-    let mut url = github(&["repos", owner, name, "branches"])?;
+    let mut url = reader.url(&["repos", owner, name, "branches"])?;
     url.query_pairs_mut().append_pair("per_page", "100");
-    let (mut branches, mut more): (Vec<Branch>, bool) = metadata(url).await?;
+    let may_refresh = reader.token.is_some() || !anonymous_budget_low(&reader.base);
+    let read = Reader {
+        base: reader.base.clone(),
+        token: reader.token.clone(),
+    };
+    BRANCHES
+        .get(
+            reader.group(),
+            repository.to_ascii_lowercase(),
+            may_refresh,
+            move || async move { read_branches(&read, url).await },
+            UNREACHABLE,
+        )
+        .await
+}
+
+async fn read_branches(
+    reader: &Reader,
+    url: reqwest::Url,
+) -> Result<(Vec<Branch>, bool), &'static str> {
+    let (mut branches, mut more): (Vec<Branch>, bool) = metadata(reader, url).await?;
     if branches.len() > 100 {
         return Err("That repository has too many branches to list.");
     }
@@ -925,4 +1082,9 @@ async fn public_branches(repository: &str) -> Result<(Vec<Branch>, bool), &'stat
     });
     more |= branches.len() != original;
     Ok((branches, more))
+}
+
+#[cfg(test)]
+pub(crate) fn age_branch_lists(by: Duration) {
+    BRANCHES.age_where(by, |_| true);
 }

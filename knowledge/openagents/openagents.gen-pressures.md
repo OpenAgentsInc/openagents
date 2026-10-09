@@ -1,6 +1,6 @@
 ---
 id: openagents.gen-pressures
-version: 1
+version: 2
 kind: product
 title: "The six pressures answered by composition"
 summary: >-
@@ -13,7 +13,7 @@ applies_when: >-
   execution, cost, evaluation, or authority.
 answer: >-
   The essay answers each pressure by putting specialization in members and
-  discipline in the admission rule. Execution: the front delegates work that
+  discipline in the rule for bringing members in. Execution: the front delegates work that
   needs a computer to Coder, and reliability is how the composition checks
   results. Local knowledge: supplied as members and context. Evaluation:
   capability claims, reproduced and validated. Cost: spend judgment before
@@ -27,11 +27,12 @@ provenance:
     - docs/essays/2026-10-01-the-return-of-the-general-agent.md
 evidence:
   - "2026-10-01: written from the essay The Return of the General Agent and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-The essay answers each pressure by putting specialization in members and discipline in the admission rule. Execution: the front delegates work that needs a computer to Coder, and reliability is how the composition checks results. Local knowledge: supplied as members and context. Evaluation: capability claims, reproduced and validated. Cost: spend judgment before thinking. A buyer: members presented as jobs. Authority: describing an operation grants nothing, and a grant is a separate record.
+The essay answers each pressure by putting specialization in members and discipline in the rule for bringing members in. Execution: the front delegates work that needs a computer to Coder, and reliability is how the composition checks results. Local knowledge: supplied as members and context. Evaluation: capability claims, reproduced and validated. Cost: spend judgment before thinking. A buyer: members presented as jobs. Authority: describing an operation grants nothing, and a grant is a separate record.
 
 ## Details
 

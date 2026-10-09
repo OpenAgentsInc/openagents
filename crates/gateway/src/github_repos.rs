@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, delete, get, post};
 use oa_auth::repos::Call;
 use serde_json::Value;
@@ -25,7 +25,25 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/github/token", post(token)),
         ("/v1/account/projects", post(add)),
         ("/v1/account/projects/{id}", delete(remove)),
+        ("/v1/account/github/app/grant", post(app_grant)),
+        ("/v1/account/github/app/refresh", post(app_refresh)),
+        ("/v1/account/github/broker", post(broker_ticket)),
+        (oa_auth::repos::broker::PATH, post(git_credential)),
     ]
+}
+
+/// The configured GitHub App, read from its private files on use; its
+/// installation tokens stay in the process's shared cache. `None` when
+/// this service has no GitHub App or it can't be read.
+fn app(state: &ServeState) -> Option<oa_auth::AppClient> {
+    let config = state.config.accounts.as_ref()?.github_app.as_ref()?;
+    oa_auth::AppCredentials::load(
+        &config.credentials,
+        &config.redirect_url,
+        oa_auth::Endpoints::default(),
+    )
+    .and_then(oa_auth::AppClient::new)
+    .ok()
 }
 
 /// The configured GitHub OAuth client, read from its private file on use;
@@ -51,7 +69,10 @@ async fn run(state: &ServeState, headers: &HeaderMap, call: Call) -> Response {
         Err(response) => return response,
     };
     let github = github(state);
-    let (status, body) = oa_auth::repos::answer(&state.dir, github.as_ref(), &account, call).await;
+    let app = app(state);
+    let (status, body) =
+        oa_auth::repos::answer_with(&state.dir, github.as_ref(), app.as_ref(), &account, call)
+            .await;
     answered(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
         body,
@@ -85,8 +106,22 @@ async fn disconnect(State(state): State<Arc<ServeState>>, headers: HeaderMap) ->
     run(&state, &headers, Call::Disconnect).await
 }
 
-async fn repositories(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
-    run(&state, &headers, Call::Repositories).await
+#[derive(serde::Deserialize)]
+struct RepositoryPage {
+    page: Option<u32>,
+}
+
+async fn repositories(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<RepositoryPage>,
+) -> Response {
+    run(
+        &state,
+        &headers,
+        Call::Repositories(query.page.unwrap_or(1)),
+    )
+    .await
 }
 
 async fn token(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
@@ -112,6 +147,61 @@ async fn remove(
     run(&state, &headers, Call::RemoveProject(id)).await
 }
 
+async fn app_grant(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    match serde_json::from_value::<oa_auth::service::CodeRequest>(body) {
+        Ok(request) => run(&state, &headers, Call::AppGrant(request)).await,
+        Err(_) => invalid(),
+    }
+}
+
+async fn app_refresh(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    run(&state, &headers, Call::AppRefresh).await
+}
+
+async fn broker_ticket(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    match body["repository"].as_str() {
+        Some(repository) => {
+            run(
+                &state,
+                &headers,
+                Call::BrokerTicket {
+                    repository: repository.into(),
+                    seconds: body["seconds"].as_u64().unwrap_or(0),
+                },
+            )
+            .await
+        }
+        None => invalid(),
+    }
+}
+
+/// The credential broker: no session; the ticket is in the form body.
+/// The answer is Git's credential format, never logged.
+async fn git_credential(State(state): State<Arc<ServeState>>, body: axum::body::Bytes) -> Response {
+    let app = app(&state);
+    let (status, text) = oa_auth::repos::broker::credential(&state.dir, app.as_ref(), &body).await;
+    (
+        StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            ),
+            (axum::http::header::CACHE_CONTROL, "no-store"),
+        ],
+        text,
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -126,6 +216,10 @@ mod tests {
                 "/v1/account/github/token",
                 "/v1/account/projects",
                 "/v1/account/projects/{id}",
+                "/v1/account/github/app/grant",
+                "/v1/account/github/app/refresh",
+                "/v1/account/github/broker",
+                "/v1/github/git-credential",
             ]
         );
     }

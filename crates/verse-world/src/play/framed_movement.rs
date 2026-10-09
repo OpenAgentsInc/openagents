@@ -46,6 +46,22 @@ impl Game {
         }
         Ok(())
     }
+    /// Committed poses of loose blocking props: the colliders whose motion
+    /// a client cannot predict between scene snapshots (#10559).
+    pub(crate) fn dynamic_poses(&self) -> Vec<crate::service::wire::ColliderPose> {
+        self.spells
+            .props
+            .iter()
+            .filter(|p| !p.removed && !p.spec.secured)
+            .filter_map(|p| {
+                let key = p.query_key();
+                Some(crate::service::wire::ColliderPose {
+                    key,
+                    pose: self.query_scene.pose(key)?,
+                })
+            })
+            .collect()
+    }
     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
         let Some(admission) = self.player_admission(life.actor) else {
             return Vec::new();
@@ -575,5 +591,50 @@ mod tests {
         assert!(g.primary.casting.is_none());
         assert!(g.snapshot().player.mana >= mana);
         assert!(g.movement_baseline(life).unwrap().unwrap().applied_sequence >= 2);
+    }
+
+    #[test]
+    fn an_obstructed_spawn_respawns_at_the_nearest_clear_cell() {
+        // Battle soak run 2: the frontline player's respawn was refused while
+        // others stood on its spawn, and it stayed dead for minutes (#10559).
+        let mut g = world();
+        let spawn = Vec3::new(5., 0., -22.);
+        let life = g.add_player(Controller(10), spawn).unwrap();
+        ticks(&mut g, 1);
+        g.hostile_hit_player(life, 10_000).unwrap();
+        ticks(&mut g, 1);
+        // Another body's corpse box lies across the spawn.
+        let mut blockers = g.blockers.clone();
+        let at = spawn.as_dvec3();
+        blockers
+            .upsert(
+                physics::queries::Life {
+                    instance: life.instance,
+                    entity: 900_000,
+                    generation: 0,
+                },
+                at - glam::DVec3::new(0.35, 0., 0.8),
+                at + glam::DVec3::new(0.35, 0.24, 0.8),
+            )
+            .unwrap();
+        g.replace_blockers(blockers).unwrap();
+        let next = g.respawn_controlled_player(Controller(10), life).unwrap();
+        let p = &g.additional_players[&next.actor];
+        let feet = p.character.feet;
+        let away = glam::DVec2::new(feet.x - f64::from(spawn.x), feet.z - f64::from(spawn.z));
+        assert!(
+            away.length() > 0.5 && away.length() <= super::super::multiplayer::RESPAWN_RADIUS,
+            "{feet:?}"
+        );
+        assert_eq!(p.player, feet.as_vec3());
+        assert_eq!(p.spawn, spawn);
+        assert_eq!(g.player_snapshot(next).unwrap().player.hp, 200);
+        ticks(&mut g, 2);
+        assert!(
+            g.additional_players[&next.actor]
+                .character
+                .support
+                .is_some()
+        );
     }
 }

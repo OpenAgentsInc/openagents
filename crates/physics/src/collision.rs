@@ -726,7 +726,7 @@ impl World {
         &mut self,
         base: f64,
         reaches: &[f64],
-        margin: &dyn Fn(usize, usize) -> f64,
+        margin: &(dyn Fn(usize, usize) -> f64 + Sync),
     ) -> Result<(Vec<Manifold>, DetectionStats), String> {
         #[cfg(test)]
         if self.exhaustive_detection {
@@ -770,62 +770,83 @@ impl World {
             .collect();
         for (i, &bounds) in bounds.iter().enumerate() {
             let collider = &self.colliders()[i];
-            let present = collider.filter != Filter::NONE;
-            let responds = self[collider.body].responds();
-            if present {
+            if collider.filter != Filter::NONE {
                 stats.index_updates += usize::from(self.collision_index.set(i, bounds));
             } else {
                 stats.index_updates += usize::from(self.collision_index.remove(i));
             }
-            if present && responds {
-                stats.index_updates += usize::from(self.responding_index.set(i, bounds));
-            } else {
-                stats.index_updates += usize::from(self.responding_index.remove(i));
-            }
         }
-        let mut manifolds = Vec::new();
-        for (i, &bounds) in bounds.iter().enumerate() {
-            let a = &self.colliders()[i];
-            if a.filter == Filter::NONE {
-                continue;
+        // Only colliders that respond look for partners, in the tree of
+        // every present collider: a pair needs one that responds, so a
+        // fixed, kinematic, or sleeping collider is found by its partner
+        // and never queries itself. A rubble pile frozen at rest so costs
+        // no queries. Pairs are then visited in the exhaustive order, lower
+        // collider first, so the contacts are the same as checking every
+        // pair.
+        // The queries read the tree only, so they too split over threads.
+        let askers: Vec<usize> = (0..bounds.len())
+            .filter(|&i| {
+                let a = &self.colliders()[i];
+                a.filter != Filter::NONE && self[a.body].responds()
+            })
+            .collect();
+        let this = &*self;
+        let found = crate::parallel::map(&askers, 64, |&i| {
+            let mut visits = 0;
+            let mut out = Vec::new();
+            for j in this.collision_index.query(bounds[i], &mut visits) {
+                if j == i {
+                    continue;
+                }
+                let other_responds = this[this.colliders()[j].body].responds();
+                // Two that respond: the lower one's query keeps the pair.
+                if other_responds && j < i {
+                    continue;
+                }
+                out.push((i.min(j), i.max(j)));
             }
-            let responds = self[a.body].responds();
-            let tree = if responds {
-                &self.collision_index
-            } else {
-                &self.responding_index
-            };
-            for j in tree
-                .query(bounds, &mut stats.scene_nodes)
-                .into_iter()
-                .filter(|&j| j > i)
+            (out, visits)
+        });
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
+        for (out, visits) in found {
+            stats.scene_nodes += visits;
+            pairs.extend(out);
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+        // Each pair's test is its own, so the pairs split over threads
+        // (`crate::parallel`) and come back in order: the same manifolds
+        // as one thread finds.
+        let this = &*self;
+        let tested = crate::parallel::map(&pairs, 128, |&(i, j)| {
+            let (a, b) = (&this.colliders()[i], &this.colliders()[j]);
+            if a.body == b.body
+                || !a.filter.allows(b.filter)
+                || (!this[a.body].responds() && !this[b.body].responds())
             {
-                stats.candidate_pairs += 1;
-                let b = &self.colliders()[j];
-                if a.body == b.body
-                    || !a.filter.allows(b.filter)
-                    || (!responds && !self[b.body].responds())
-                {
-                    continue;
-                }
-                stats.filtered_pairs += 1;
-                let m = margin(i, j);
-                stats.bound_tests += 1;
-                let (pa, ca, ra) = placed[i];
-                let (pb, cb, rb) = placed[j];
-                if ca.distance(cb) > ra + rb + m {
-                    continue;
-                }
-                stats.narrow_phase += 1;
-                let points = contact(pa, pb, m);
-                if !points.is_empty() {
-                    manifolds.push(Manifold {
-                        a: ColliderId(i as u32),
-                        b: ColliderId(j as u32),
-                        points,
-                    });
-                }
+                return (0_u8, None);
             }
+            let m = margin(i, j);
+            let (pa, ca, ra) = placed[i];
+            let (pb, cb, rb) = placed[j];
+            if ca.distance(cb) > ra + rb + m {
+                return (1, None);
+            }
+            let points = contact(pa, pb, m);
+            let manifold = (!points.is_empty()).then(|| Manifold {
+                a: ColliderId(i as u32),
+                b: ColliderId(j as u32),
+                points,
+            });
+            (2, manifold)
+        });
+        stats.candidate_pairs += pairs.len();
+        let mut manifolds = Vec::new();
+        for (stage, manifold) in tested {
+            stats.filtered_pairs += usize::from(stage >= 1);
+            stats.bound_tests += usize::from(stage >= 1);
+            stats.narrow_phase += usize::from(stage == 2);
+            manifolds.extend(manifold);
         }
         Ok((manifolds, stats))
     }

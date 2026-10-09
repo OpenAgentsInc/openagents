@@ -30,6 +30,7 @@ pub struct Timing {
     horizon_pauses: u64,
     separating_steps: u64,
     stale_crowd_steps: u64,
+    unsupported_confirmations: u64,
     last_embedding: Option<String>,
     render_floor: u64,
     deferred_steps: Vec<u64>,
@@ -97,6 +98,11 @@ pub struct Local {
     fraction: f64,
     character: Option<physics::character::Character>,
     yaw: f32,
+    /// The walking yaw of the last retired movement input. Framed authority
+    /// moves each step by its interval segment's yaw; a confirmation's `yaw`
+    /// is the character's facing, which a cast turns toward its target.
+    carried_yaw: Option<f32>,
+    unsupported_confirmations: u64,
     dirty: bool,
     moving: bool,
     motion_time: f32,
@@ -136,6 +142,8 @@ impl Local {
             fraction: 0.,
             character: None,
             yaw: 0.,
+            carried_yaw: None,
+            unsupported_confirmations: 0,
             dirty: false,
             moving: false,
             motion_time: 0.,
@@ -150,9 +158,18 @@ impl Local {
         self.estimates.clear();
         self.inputs.clear();
         self.character = None;
+        self.carried_yaw = None;
         self.fraction = 0.;
         self.motion_time = 0.;
         self.moving = false;
+    }
+    /// The yaw that drives steps no retained input covers.
+    pub(super) fn movement_yaw(&self, baseline: &Baseline) -> f32 {
+        if baseline.profile == movement::Profile::Frames {
+            self.carried_yaw.unwrap_or(baseline.yaw)
+        } else {
+            baseline.yaw
+        }
     }
     /// Counts frames that waited at the correction horizon for authority.
     pub fn horizon_pauses(&self) -> u64 {
@@ -169,6 +186,7 @@ impl Local {
             horizon_pauses: self.horizon_pauses,
             separating_steps: self.separating_steps,
             stale_crowd_steps: self.stale_crowd_steps,
+            unsupported_confirmations: self.unsupported_confirmations,
             last_embedding: self.last_embedding.clone(),
             render_floor: self.render_floor,
             deferred_steps: self.deferred_steps.iter().copied().collect(),
@@ -210,6 +228,10 @@ impl Local {
     pub fn stale_crowd_steps(&self) -> u64 {
         self.stale_crowd_steps
     }
+    /// Counts applied confirmations that waited for their support's shape.
+    pub fn unsupported_confirmations(&self) -> u64 {
+        self.unsupported_confirmations
+    }
     pub fn last_embedding(&self) -> Option<&str> {
         self.last_embedding.as_deref()
     }
@@ -246,8 +268,34 @@ impl Local {
         {
             return Ok(false);
         }
+        // A confirmation can stand the character on a shape the client's
+        // scene has not received yet, such as a fresh corpse. Replaying from
+        // it would drop or carry the character by a support it cannot see, so
+        // it waits for the snapshot that brings the shape (#10559).
+        if baseline
+            .character
+            .support
+            .is_some_and(|support| self.collision.scene().pose(support).is_none())
+        {
+            self.unsupported_confirmations = self.unsupported_confirmations.saturating_add(1);
+            return Ok(false);
+        }
         self.observe_inner(baseline, None, tick, observation)?;
         Ok(true)
+    }
+    /// Moves loose props to the committed poses a movement confirmation
+    /// carries, before it replays (#10559). Their shapes stay as the last
+    /// scene snapshot admitted them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message for an invalid pose.
+    pub fn observe_dynamic_poses(
+        &mut self,
+        poses: &[crate::service::wire::ColliderPose],
+    ) -> Result<usize, String> {
+        let poses: Vec<_> = poses.iter().map(|p| (p.key, p.pose)).collect();
+        self.collision.set_poses(&poses)
     }
     pub fn confirmed(&self) -> Option<Baseline> {
         self.baseline
@@ -361,6 +409,26 @@ impl Local {
             }
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
+        // Inputs this confirmation retires leave their walking yaw to the steps
+        // after it; the confirmation's own yaw is only the facing (#10559).
+        let carried_yaw = if reset {
+            None
+        } else {
+            self.inputs
+                .iter()
+                .filter(|i| i.sequence.is_some_and(|s| s <= baseline.applied_sequence))
+                .filter_map(|i| match i.intent {
+                    Intent::Move { yaw, .. } => Some(yaw),
+                    _ => None,
+                })
+                .last()
+                .or(self.carried_yaw)
+        };
+        let walking_yaw = if baseline.profile == movement::Profile::Frames {
+            carried_yaw.unwrap_or(baseline.yaw)
+        } else {
+            baseline.yaw
+        };
         let blocking_geometry_matches =
             geometry.is_none_or(|scene| self.movement_geometry_matches(scene, Some(baseline)));
         let mut reconciliation = Reconciliation {
@@ -403,7 +471,7 @@ impl Local {
                     && reference.policy == baseline.policy
                     && reference.held.axes(baseline.physics_step)
                         == baseline.held.axes(baseline.physics_step)
-                    && reference.yaw == baseline.yaw
+                    && reference.yaw == walking_yaw
                 {
                     let mut filter = Filter::blocking(baseline.life.instance);
                     filter.ignore = Some(Life {
@@ -607,13 +675,14 @@ impl Local {
             self.yaw = baseline.yaw;
             self.estimates.clear();
         }
+        self.carried_yaw = carried_yaw;
         if baseline.profile == movement::Profile::Frames {
             self.estimates.insert(
                 baseline.physics_step,
                 Estimate {
                     character: baseline.character,
                     held: baseline.held,
-                    yaw: baseline.yaw,
+                    yaw: walking_yaw,
                     policy: baseline.policy,
                 },
             );
@@ -990,7 +1059,7 @@ impl Local {
             // own clock; it cannot make the held pending time move retroactively.
             let previous = character.feet;
             let mut held = baseline.held;
-            let mut yaw = baseline.yaw;
+            let mut yaw = self.movement_yaw(&baseline);
             let mut jump = false;
             for input in &self.inputs {
                 let at = input.step.max(baseline.physics_step);
@@ -3225,5 +3294,400 @@ mod tests {
         }
         assert!(local.advance(0.1).is_err());
         assert!(local.pose().is_none());
+    }
+
+    #[test]
+    fn a_corpse_support_never_carries_by_the_living_capsule_pose() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        // Retained 600-second battle (run 1, player 15, actor 241): the applied
+        // confirmation stood the player 0.24 m up on actor 240's corpse, whose
+        // box has an identity pose. The client's scene still held that life's
+        // living capsule, posed at the actor. Replaying from the baseline then
+        // carried the player by the actor's whole position (3.47 m, no input).
+        let (mut local, mut baseline, source) = setup();
+        let dead = Life {
+            instance: 7,
+            entity: 240,
+            generation: 1,
+        };
+        let actor_feet = glam::DVec3::new(-0.42, 0., 3.47);
+        let feet = glam::DVec3::new(-0.157, 0., 4.139);
+        // The client's last geometry: the actor alive, its capsule at its body.
+        let mut client = source.clone();
+        let settings = physics::character::Settings::default();
+        client.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: dead,
+                shape: 0,
+            },
+            layers: 2,
+            usage: Usage::Blocking,
+            pose: Pose {
+                position: actor_feet + glam::DVec3::Y * 0.9,
+                rotation: glam::DQuat::IDENTITY,
+            },
+            geometry: GeometrySnapshot::Capsule {
+                a: glam::DVec3::Y * (0.35 - 0.9),
+                b: glam::DVec3::Y * (0.9 - 0.35),
+                radius: 0.35,
+            },
+        });
+        // Authority: the actor died, and its corpse is a navigation blocker.
+        let mut blockers = physics::walkable::Blockers::new(7);
+        blockers
+            .upsert(
+                dead,
+                actor_feet + glam::DVec3::new(-0.35, 0., -0.8),
+                actor_feet + glam::DVec3::new(0.35, 0.24, 0.8),
+            )
+            .unwrap();
+        let mut authority = source.compile(7).unwrap();
+        for collider in blockers.colliders().unwrap() {
+            authority.insert(collider).unwrap();
+        }
+        let mut on_ground = physics::character::Character::new(feet);
+        on_ground
+            .step(
+                &client.compile(7).unwrap(),
+                Filter::blocking(7),
+                settings,
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert!(on_ground.support.is_some_and(|s| s.life.entity == 0));
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.character = on_ground;
+        local.observe(baseline, &client, 2, 2).unwrap();
+        local.advance(4. / 120.).unwrap();
+        let mut on_corpse = physics::character::Character::new(feet + glam::DVec3::Y * 0.24);
+        on_corpse
+            .step(
+                &authority,
+                Filter::blocking(7),
+                settings,
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert_eq!(on_corpse.support.map(|s| s.life), Some(dead));
+        let mut confirmed = baseline;
+        confirmed.character = on_corpse;
+        confirmed.physics_step = 4;
+        confirmed.world_step = 4;
+        confirmed.applied_sequence = 1;
+        // The client's scene has no corpse yet: the confirmation waits for it.
+        assert!(!local.observe_applied(confirmed, 3, 3).unwrap());
+        local
+            .observe(confirmed, &authority.snapshot(7).unwrap(), 4, 4)
+            .unwrap();
+        local.advance(1. / 120.).unwrap();
+        let moved = local.pose().unwrap().position.as_dvec3() - on_corpse.feet;
+        assert!(
+            glam::DVec2::new(moved.x, moved.z).length() < 0.01,
+            "Prediction carried the player {moved:?} with no input"
+        );
+    }
+
+    #[test]
+    fn confirmed_loose_prop_poses_replace_a_stale_snapshot_pose() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        // Retained 600-second battle (run 2, player 1): the loose ritual
+        // crate stood in the client's last snapshot where the authority had
+        // already pushed it away, and the prediction climbed it while the
+        // authority walked the ground.
+        let crate_key = ColliderKey {
+            life: Life {
+                instance: 7,
+                entity: crate::spells::PROP_ENTITY_BASE,
+                generation: 0,
+            },
+            shape: 0,
+        };
+        let walk = |refresh: bool| {
+            let (mut local, mut baseline, mut source) = setup();
+            // Find the walking direction, then stand a 1.2 m box 1.5 m along it.
+            let mut probe = Local::new(7);
+            probe.observe(baseline, &source, 1, 1).unwrap();
+            probe.queue(1, movement()).unwrap();
+            probe.advance(0.1).unwrap();
+            let direction = probe.pose().unwrap().position.as_dvec3().normalize();
+            source.colliders.push(ShapeSnapshot {
+                key: crate_key,
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose {
+                    position: direction * 1.5 + glam::DVec3::Y * 0.6,
+                    rotation: glam::DQuat::IDENTITY,
+                },
+                geometry: GeometrySnapshot::Box {
+                    min: glam::DVec3::splat(-0.6),
+                    max: glam::DVec3::splat(0.6),
+                },
+            });
+            baseline.epoch += 1;
+            baseline.profile = movement::Profile::Frames;
+            local.observe(baseline, &source, 2, 2).unwrap();
+            if refresh {
+                let moved = local
+                    .observe_dynamic_poses(&[crate::service::wire::ColliderPose {
+                        key: crate_key,
+                        pose: Pose {
+                            position: glam::DVec3::new(15., 0.6, 15.),
+                            rotation: glam::DQuat::IDENTITY,
+                        },
+                    }])
+                    .unwrap();
+                assert_eq!(moved, 1);
+            }
+            local.queue(1, movement()).unwrap();
+            for _ in 0..6 {
+                local.advance(0.1).unwrap();
+            }
+            local.pose().unwrap().position
+        };
+        let stale = walk(false);
+        let fresh = walk(true);
+        assert!(fresh.y.abs() < 1e-4, "{fresh:?}");
+        assert!(fresh.length() > 1.5, "{fresh:?}");
+        assert!(
+            stale.y > 0.3 || stale.length() < 1.0,
+            "the crate never mattered: {stale:?}"
+        );
+    }
+
+    #[test]
+    fn a_confirmation_on_an_unseen_support_waits_for_its_shape() {
+        // Retained ten-minute soak (fixes run, run 2, 1.22 m): an applied
+        // confirmation stood the player on a corpse box that the client's last
+        // scene snapshot did not have yet.
+        let (mut local, mut baseline, source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(8. / 120.).unwrap();
+        let mut frame = local.movement_frame(0, 8).unwrap();
+        frame.sequence = 1;
+        local.bind_movement_frame(&frame).unwrap();
+        let predicted = local.pose().unwrap().position;
+        let dead = Life {
+            instance: 7,
+            entity: 240,
+            generation: 0,
+        };
+        let walked = local.estimates[&4].character;
+        let mut blockers = physics::walkable::Blockers::new(7);
+        blockers
+            .upsert(
+                dead,
+                walked.feet + glam::DVec3::new(-0.35, 0., -0.8),
+                walked.feet + glam::DVec3::new(0.35, 0.24, 0.8),
+            )
+            .unwrap();
+        let mut authority = source.compile(7).unwrap();
+        for collider in blockers.colliders().unwrap() {
+            authority.insert(collider).unwrap();
+        }
+        let mut on_corpse = physics::character::Character::new(walked.feet + glam::DVec3::Y * 0.24);
+        on_corpse
+            .step(
+                &authority,
+                Filter::blocking(7),
+                physics::character::Settings::default(),
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert_eq!(on_corpse.support.map(|s| s.life), Some(dead));
+        let mut confirmed = baseline;
+        confirmed.world_step = 4;
+        confirmed.physics_step = 4;
+        confirmed.applied_sequence = 0;
+        confirmed.character = on_corpse;
+        confirmed.held = local.estimates[&4].held;
+        assert!(!local.observe_applied(confirmed, 3, 3).unwrap());
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, predicted);
+        assert_eq!(local.unsupported_confirmations(), 1);
+        assert_eq!(local.pending(), 1);
+        // The snapshot that carries the corpse applies the same confirmation.
+        let mut with_corpse = source.clone();
+        with_corpse.colliders.extend(
+            authority
+                .snapshot(7)
+                .unwrap()
+                .colliders
+                .into_iter()
+                .filter(|shape| shape.key.life == dead),
+        );
+        local.observe(confirmed, &with_corpse, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.confirmed(), Some(confirmed));
+        assert!(local.pose().unwrap().position.y > 0.2);
+    }
+
+    /// The ten-minute soak's last single corrections over 1 m (#10559).
+    /// Retained trace: run 2, player 14, 223.2 s, 1.067 m with five pending
+    /// inputs, walking along the north wall (z = 16.15) on open ground. The
+    /// confirmation's character equals the estimate at its step exactly; it
+    /// differs only in `yaw`, which a cast had turned toward its target.
+    /// Framed authority moves by each segment's own yaw, so that facing
+    /// cannot change travel, yet it sent the client down the replay path,
+    /// which re-ran twenty processed steps against the newest crowd scene: a
+    /// remote capsule the client learned of after walking past that spot.
+    /// All five retained corrections over 1 m have this cast-facing yaw.
+    #[test]
+    fn a_cast_facing_yaw_never_replays_confirmed_travel_against_a_later_crowd() {
+        use physics::queries::{GeometrySnapshot, Pose, ShapeSnapshot};
+        let key = |entity, shape| ColliderKey {
+            life: Life {
+                instance: 7,
+                entity,
+                generation: 0,
+            },
+            shape,
+        };
+        let scene = SceneSnapshot {
+            instance: 7,
+            colliders: vec![
+                ShapeSnapshot {
+                    key: key(0, 0),
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Box {
+                        min: glam::DVec3::new(-20., -1., -20.),
+                        max: glam::DVec3::new(20., 0., 20.),
+                    },
+                },
+                // The arena's north wall: capsule feet stop at z = 16.15.
+                ShapeSnapshot {
+                    key: key(0, 1),
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Box {
+                        min: glam::DVec3::new(-20., 0., 16.5),
+                        max: glam::DVec3::new(20., 4., 17.),
+                    },
+                },
+            ],
+        };
+        let settings = physics::character::Settings::default();
+        let mut start = physics::character::Character::new(glam::DVec3::new(2.9991, 0., 16.15));
+        start
+            .step(
+                &scene.compile(7).unwrap(),
+                Filter::blocking(7),
+                settings,
+                glam::DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap();
+        assert!(start.support.is_some());
+        let baseline = Baseline {
+            profile: movement::Profile::Frames,
+            world_step: 0,
+            life: LifeId {
+                instance: 7,
+                actor: 14,
+                generation: 0,
+            },
+            epoch: 2,
+            applied_sequence: 0,
+            physics_step: 0,
+            held: Default::default(),
+            policy: Default::default(),
+            character: start,
+            yaw: std::f32::consts::PI,
+        };
+        let replay = |facing: f32| {
+            let mut local = Local::new(7);
+            local.observe(baseline, &scene, 1, 1).unwrap();
+            let walk = Intent::Move {
+                axes: [1., 0.],
+                yaw: std::f32::consts::PI,
+            };
+            // Inputs as retained: one every four to six steps, all walking -x.
+            local.queue(1, walk.clone()).unwrap();
+            local.advance(4. / 120.).unwrap();
+            local.queue(2, walk.clone()).unwrap();
+            local.advance(6. / 120.).unwrap();
+            local.queue(3, walk.clone()).unwrap();
+            local.advance(7. / 120.).unwrap();
+            local.advance(7. / 120.).unwrap();
+            local
+                .grant_world_credit(baseline.life, baseline.epoch, 24)
+                .unwrap();
+            for (sequence, start, steps) in
+                [(1, 0, 4), (2, 4, 4), (3, 8, 2), (4, 10, 12), (5, 22, 2)]
+            {
+                let mut frame = local.movement_frame(start, steps).unwrap();
+                frame.sequence = sequence;
+                local.bind_movement_frame(&frame).unwrap();
+            }
+            let walked = local.estimates[&4].character;
+            assert!((walked.feet.x - (2.9991 - 0.21336)).abs() < 1e-4);
+            // The newest snapshot: another actor now stands just west of the
+            // spot this character passed four steps after its confirmation.
+            let mut crowd = scene.clone();
+            let capsule = settings.capsule(walked.feet - glam::DVec3::X * 0.70001);
+            crowd.colliders.push(ShapeSnapshot {
+                key: key(236, 0),
+                layers: 2,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Capsule {
+                    a: capsule.a,
+                    b: capsule.b,
+                    radius: capsule.radius,
+                },
+            });
+            let mut unchanged = baseline;
+            unchanged.world_step = 8;
+            local.observe(unchanged, &crowd, 2, 2).unwrap();
+            assert_eq!(local.last_reconciliation.unwrap().path, "same_travel");
+            local.advance(0.).unwrap();
+            let before = local.pose().unwrap().position;
+            // Authority confirms the first interval exactly as estimated; a
+            // cast in the same tick turned the character's facing.
+            let mut confirmed = baseline;
+            confirmed.world_step = 20;
+            confirmed.physics_step = 4;
+            confirmed.applied_sequence = 1;
+            confirmed.character = walked;
+            confirmed.held = local.estimates[&4].held;
+            confirmed.yaw = facing;
+            assert!(local.observe_applied(confirmed, 3, 3).unwrap());
+            local.advance(0.).unwrap();
+            let after = local.pose().unwrap().position;
+            let path = local.last_reconciliation.unwrap().path;
+            // Interval 2 ends at step 8, mid-way through input 2's hold. Once
+            // it is confirmed, steps 8 and 9 carry input 2's walking yaw: the
+            // interval sent for them, and their replay, never use the facing.
+            let mut second = confirmed;
+            second.world_step = 24;
+            second.physics_step = 8;
+            second.applied_sequence = 2;
+            second.character = local.estimates[&8].character;
+            second.held = local.estimates[&8].held;
+            assert!(local.observe_applied(second, 4, 4).unwrap());
+            local.advance(0.).unwrap();
+            let next = local.movement_frame(8, 2).unwrap();
+            assert_eq!(next.segments[0].yaw, std::f32::consts::PI);
+            let carried = local.pose().unwrap().position;
+            (before.distance(after).max(before.distance(carried)), path)
+        };
+        let (walking, path) = replay(std::f32::consts::PI);
+        assert!(walking < 1e-5, "{walking} via {path}");
+        // The retained facing (0.069 rad) must leave the same travel in place.
+        let (facing, path) = replay(0.069);
+        assert!(facing < 1e-5, "cast facing corrected {facing} m via {path}");
     }
 }

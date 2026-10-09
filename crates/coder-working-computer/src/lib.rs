@@ -33,6 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub mod boat;
 pub mod decide;
 pub mod driver;
+pub mod gce;
 pub mod provider;
 pub mod store;
 pub mod transition;
@@ -46,6 +47,20 @@ pub const MAX_CHECKPOINTS: usize = 4096;
 pub const MAX_CREATES: usize = 64;
 pub const MAX_SERVICES: usize = 16;
 pub const MAX_REASON_BYTES: usize = 1024;
+/// How often a turn's owner says it is alive ([`Command::Heartbeat`]).
+pub const HEARTBEAT_EVERY_MS: u64 = 30_000;
+/// A turn whose owner has not said it is alive for this long (three missed
+/// beats) is silent: its process is gone or hung, and the computer stops
+/// ([`StopReason::Stale`]). This judges a dead owner, never a long turn: a
+/// live owner keeps beating however long the turn runs.
+pub const STALE_AFTER_MS: u64 = 90_000;
+/// Failed boots within [`BREAKER_WINDOW_MS`] that stop new boots until the
+/// window passes, so a broken image or a provider outage does not create
+/// machines in a loop.
+pub const BREAKER_FAILURES: usize = 3;
+pub const BREAKER_WINDOW_MS: u64 = 5 * 60_000;
+/// Boot failure times retained per computer.
+const MAX_BOOT_FAILURES: usize = 8;
 
 /// Credentials OpenAgents never accepts, stores, or injects: a user's
 /// Claude.ai sign-in lives only inside that user's computer
@@ -206,6 +221,8 @@ pub enum StopReason {
     Absolute,
     FailedBoot,
     Owner,
+    /// The running turn's owner stopped saying it is alive.
+    Stale,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,6 +308,10 @@ pub struct TurnFence {
     pub dispatched: u64,
     /// Last generation whose turn completed.
     pub completed: u64,
+    /// When the running turn's owner last said it is alive (its start
+    /// counts). Zero for a record from before heartbeats: never judged.
+    #[serde(default)]
+    pub heartbeat_ms: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -359,6 +380,20 @@ pub struct Computer {
     pub checkpoints: Vec<Checkpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deletion: Option<Fact>,
+    /// How long a running turn may go without a heartbeat before it is
+    /// silent ([`STALE_AFTER_MS`] for chat and setup computers, whose turn
+    /// owner beats). Zero never judges: builders and verifiers, whose job
+    /// owners follow each command's own exit, and records from before
+    /// heartbeats.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub stale_ms: u64,
+    /// When recent boots failed, newest last (at most a few).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boot_failures: Vec<u64>,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 /// What a new computer is asked to be.
@@ -484,6 +519,8 @@ impl Computer {
             boots: vec![],
             checkpoints: vec![],
             deletion: None,
+            stale_ms: STALE_AFTER_MS,
+            boot_failures: vec![],
         };
         c.validate()?;
         Ok(c)
@@ -506,6 +543,7 @@ impl Computer {
             environment: environment.into(),
             build: build.into(),
         };
+        c.stale_ms = 0;
         c.validate()?;
         Ok(c)
     }
@@ -524,6 +562,7 @@ impl Computer {
         }
         let mut c = Self::new(spec, now_ms)?;
         c.purpose = purpose;
+        c.stale_ms = 0;
         c.validate()?;
         Ok(c)
     }
@@ -660,6 +699,31 @@ impl Computer {
     }
 
     /// The live provider resource, if one was created and not deleted.
+    /// Whether the running turn has gone silent at `now_ms`.
+    pub fn turn_silent(&self, now_ms: u64) -> bool {
+        matches!(self.phase, Phase::Turn { .. })
+            && self.stale_ms > 0
+            && self.turn.heartbeat_ms > 0
+            && now_ms >= self.turn.heartbeat_ms.saturating_add(self.stale_ms)
+    }
+
+    /// While [`BREAKER_FAILURES`] boots failed within the last
+    /// [`BREAKER_WINDOW_MS`], when a new boot may be tried again.
+    pub fn breaker_open_until(&self, now_ms: u64) -> Option<u64> {
+        let recent: Vec<u64> = self
+            .boot_failures
+            .iter()
+            .copied()
+            .filter(|t| now_ms < t.saturating_add(BREAKER_WINDOW_MS))
+            .collect();
+        if recent.len() < BREAKER_FAILURES {
+            return None;
+        }
+        // The window closes when enough of these failures age out.
+        let pivot = recent[recent.len() - BREAKER_FAILURES];
+        Some(pivot.saturating_add(BREAKER_WINDOW_MS))
+    }
+
     pub fn resource(&self) -> Option<&str> {
         self.creates
             .iter()

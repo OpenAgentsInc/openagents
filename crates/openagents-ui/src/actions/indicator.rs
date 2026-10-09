@@ -1,5 +1,10 @@
 //! LoadingIndicator, LoadingDots and CircularProgress, ported from Apps SDK
-//! UI `src/components/Indicator` (MIT). Styles: `static/components/indicator.css`.
+//! UI `src/components/Indicator` (MIT), and [`Busy`]: a spinner with its
+//! words in one row. Styles: `static/components/indicator.css`.
+//!
+//! Every indicator renders as inline `<span>`s, never a `<div>`: a `<div>`
+//! inside a `<p>` makes the browser close the paragraph, which pushed the
+//! words under the spinner ("Working", "Loading your repositories").
 //!
 //! Sizes come from the inherited `--indicator-size` and
 //! `--circular-progress-size` tokens (Button and Badge set them per size),
@@ -50,7 +55,7 @@ impl_attrs!(LoadingIndicator);
 impl Render for LoadingIndicator {
     fn render(&self) -> Markup {
         status(
-            Tag::new("div", "oa-loading-indicator", &self.attrs),
+            Tag::new("span", "oa-loading-indicator", &self.attrs),
             &self.label,
         )
         .extra(&self.attrs)
@@ -101,12 +106,12 @@ impl_attrs!(LoadingDots);
 
 impl Render for LoadingDots {
     fn render(&self) -> Markup {
-        status(Tag::new("div", "oa-loading-dots", &self.attrs), &self.label)
+        status(Tag::new("span", "oa-loading-dots", &self.attrs), &self.label)
             .extra(&self.attrs)
             .close(html! {
-                div class="oa-loading-dots-dot" {}
-                div class="oa-loading-dots-dot" {}
-                div class="oa-loading-dots-dot" {}
+                span class="oa-loading-dots-dot" {}
+                span class="oa-loading-dots-dot" {}
+                span class="oa-loading-dots-dot" {}
             })
     }
 }
@@ -153,7 +158,7 @@ impl Render for CircularProgress {
         let offset = 50.0 - 50.0 * (self.progress / 100.0);
         let offset = format!("{}", (offset * 100.0).round() / 100.0);
         let now = format!("{}", self.progress.round());
-        let tag = Tag::new("div", "oa-circular-progress", &self.attrs);
+        let tag = Tag::new("span", "oa-circular-progress", &self.attrs);
         let tag = match &self.label {
             Some(label) => tag
                 .attr("role", "progressbar")
@@ -171,5 +176,39 @@ impl Render for CircularProgress {
                 circle cx="10" cy="10" r="8" fill="none" stroke-dashoffset=(offset) {}
             }
         })
+    }
+}
+
+/// A spinner and its words on one line, for "Working" or "Loading your
+/// repositories". Inline (`<span>`), so it is valid inside a paragraph, a
+/// button, or a list item, and the words never wrap under the spinner.
+///
+/// ```
+/// use maud::Render;
+/// use openagents_ui::actions::Busy;
+/// let html = Busy::new("Working").render().into_string();
+/// assert!(html.starts_with(r#"<span class="oa-busy" role="status""#));
+/// assert!(html.contains(">Working</span>"));
+/// assert!(!html.contains("<div"));
+/// ```
+#[derive(Clone, Debug)]
+pub struct Busy {
+    text: String,
+}
+
+impl Busy {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl Render for Busy {
+    fn render(&self) -> Markup {
+        html! {
+            span class="oa-busy" role="status" {
+                (LoadingIndicator::new().decorative())
+                span class="oa-busy-text" { (self.text) }
+            }
+        }
     }
 }

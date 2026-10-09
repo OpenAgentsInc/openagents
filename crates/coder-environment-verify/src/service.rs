@@ -306,6 +306,11 @@ impl<P: Commands + Images> Verifier<P> {
                 "The builder and the attempt disagree on the image identity.",
             ));
         }
+        if image.provider != self.computers.provider.kind() {
+            return Err(VerifyError::Refused(
+                "The image belongs to another provider than this verifier's.",
+            ));
+        }
         // The provider still holds exactly that immutable snapshot.
         match self.computers.provider.read_image(&image.image_id).await {
             Outcome::Done { value: Some(r) }
@@ -374,8 +379,9 @@ impl<P: Commands + Images> Verifier<P> {
                 image: image.image_id.clone(),
                 role,
             };
-            let computer =
+            let mut computer =
                 Computer::for_verify(spec, purpose, now_ms).map_err(VerifyError::Refused)?;
+            computer.provider = self.computers.provider.kind();
             match self.computers.store.read(&computer_id) {
                 Ok(existing) if existing.purpose == computer.purpose => {}
                 Ok(_) => {

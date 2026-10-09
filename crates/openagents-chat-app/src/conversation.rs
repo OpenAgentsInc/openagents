@@ -65,8 +65,15 @@ const TOOL_BYTES: usize = 1_500;
 const COMPACT_TOOL_BYTES: usize = 300;
 const DETAIL_CHARS: usize = 100;
 
-const WHITE: Color = Color::rgb(255, 255, 255);
-const GRAY: Color = Color::rgb(153, 153, 153);
+/// Primary text, from the theme seam ([`crate::visual::inks`]).
+fn white() -> Color {
+    crate::visual::inks().text
+}
+
+/// Receded text, from the theme seam.
+fn gray() -> Color {
+    crate::visual::inks().quiet
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1197,7 +1204,7 @@ fn system<I>(key: &str, text: &str) -> Node<I> {
             children: vec![Node {
                 key: format!("{key}-text"),
                 style: Style {
-                    foreground: Some(GRAY),
+                    foreground: Some(gray()),
                     ..Style::default()
                 },
                 element: Element::Text {
@@ -1227,7 +1234,7 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
             children: vec![Node {
                 key: format!("{}-md", pending.key),
                 style: Style {
-                    foreground: Some(WHITE),
+                    foreground: Some(white()),
                     ..Style::default()
                 },
                 element: Element::Markdown {
@@ -1282,12 +1289,12 @@ fn draw<I>(
                                 bounded(text, bytes)
                             ),
                             TextRole::Body,
-                            WHITE,
+                            white(),
                         ),
                         Entry::Tool { name, detail, .. } => (
                             bounded(&format!("{name} {detail}"), bytes),
                             TextRole::Code,
-                            GRAY,
+                            gray(),
                         ),
                         Entry::Delegate { .. } => return None,
                     };
@@ -1335,7 +1342,7 @@ fn draw<I>(
                     children: vec![Node {
                         key: format!("{key}-md"),
                         style: Style {
-                            foreground: Some(WHITE),
+                            foreground: Some(white()),
                             ..Style::default()
                         },
                         element: Element::Markdown {
@@ -1362,7 +1369,7 @@ fn draw<I>(
                 .map(|body| Node {
                     key: format!("{key}-body"),
                     style: Style {
-                        foreground: Some(GRAY),
+                        foreground: Some(gray()),
                         ..Style::default()
                     },
                     element: Element::Text {

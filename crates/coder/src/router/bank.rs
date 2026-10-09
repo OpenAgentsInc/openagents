@@ -74,6 +74,13 @@ pub const HERE_SUFFIX: &str = ".here";
 /// can open the desktop's own screen (#10085).
 pub const DESKTOP_SUFFIX: &str = ".desktop";
 
+/// The id suffix of an entry's variant for the website's chat: the entry
+/// `meta.who` answers in the apps and `meta.who.website` on openagents.com,
+/// where nothing sends Coder to a computer and Coder is the terminal agent
+/// a person installs. On the website a base with a `.website` variant is never
+/// shown or offered; the variant is.
+pub const WEB_SUFFIX: &str = ".website";
+
 /// Where an entry may be shown (#10077).
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +100,9 @@ pub enum Place {
     Desktop,
     /// Anywhere but the desktop app: the base of a `.desktop` variant.
     OffDesktop,
+    /// Only in the website's chat (the request's `context.surface` is
+    /// `web`): a `.website` variant ([`WEB_SUFFIX`]).
+    Web,
 }
 
 impl Place {
@@ -107,12 +117,20 @@ impl Place {
     /// not, on a computer, and is, or is not, in the desktop app.
     #[must_use]
     pub fn admits_in(self, on_computer: bool, desktop: bool) -> bool {
+        self.admits_on(on_computer, desktop, false)
+    }
+
+    /// Whether an entry with this place may show in a chat that is, or is
+    /// not, on a computer, in the desktop app, and on the website.
+    #[must_use]
+    pub fn admits_on(self, on_computer: bool, desktop: bool, web: bool) -> bool {
         match self {
             Place::Any => true,
             Place::Here => on_computer,
             Place::Away => !on_computer,
             Place::Desktop => desktop,
             Place::OffDesktop => !desktop,
+            Place::Web => web,
         }
     }
 }
@@ -223,6 +241,10 @@ pub struct Entry {
     /// `id.here` ([`HERE_SUFFIX`]).
     #[serde(default)]
     pub place: Place,
+    /// The bank has this entry's `.website` variant, so the website shows that
+    /// instead ([`Bank::parse`] sets it; never written in the file).
+    #[serde(skip)]
+    pub web_variant: bool,
 }
 
 impl Entry {
@@ -270,7 +292,9 @@ impl Entry {
     /// place, with every slot filled.
     #[must_use]
     pub fn eligible(&self, facts: &Facts) -> bool {
-        self.place.admits_in(facts.on_computer, facts.desktop)
+        self.place
+            .admits_on(facts.on_computer, facts.desktop, facts.web)
+            && !(facts.web && self.web_variant)
             && (self.render(facts).is_some() || self.stem(facts).is_some())
     }
 
@@ -339,10 +363,18 @@ impl Bank {
         let file: File = toml::from_str(source).map_err(|error| format!("{PATH}: {error}"))?;
         let digest = Sha256::digest(source.as_bytes());
         let digest: String = digest.iter().take(6).map(|b| format!("{b:02x}")).collect();
+        let mut answers = file.answer;
+        let varied: Vec<String> = answers
+            .iter()
+            .filter_map(|entry| entry.id.strip_suffix(WEB_SUFFIX).map(str::to_string))
+            .collect();
+        for entry in &mut answers {
+            entry.web_variant = varied.contains(&entry.id);
+        }
         Ok(Self {
             name: file.bank,
             digest,
-            answers: file.answer,
+            answers,
             openers: file.opener,
         })
     }
@@ -376,9 +408,15 @@ impl Bank {
     #[must_use]
     pub fn placed(&self, id: &str, facts: &Facts) -> Option<&Entry> {
         facts
-            .desktop
-            .then(|| self.entry(&format!("{id}{DESKTOP_SUFFIX}")))
+            .web
+            .then(|| self.entry(&format!("{id}{WEB_SUFFIX}")))
             .flatten()
+            .or_else(|| {
+                facts
+                    .desktop
+                    .then(|| self.entry(&format!("{id}{DESKTOP_SUFFIX}")))
+                    .flatten()
+            })
             .or_else(|| {
                 facts
                     .on_computer
@@ -419,6 +457,9 @@ pub struct Facts {
     /// The chat is in the desktop app, so `desktop` entries are shown and
     /// `off_desktop` ones are not.
     desktop: bool,
+    /// The chat is on the website, so `web` entries are shown and an entry
+    /// with a `.website` variant is not.
+    web: bool,
 }
 
 impl Facts {
@@ -435,6 +476,19 @@ impl Facts {
     pub fn on_desktop(mut self, desktop: bool) -> Self {
         self.desktop = desktop;
         self
+    }
+
+    /// The same facts for a chat that is, or is not, on the website.
+    #[must_use]
+    pub fn on_web(mut self, web: bool) -> Self {
+        self.web = web;
+        self
+    }
+
+    /// Whether these facts are for a chat on the website.
+    #[must_use]
+    pub fn is_on_web(&self) -> bool {
+        self.web
     }
 
     /// Whether these facts are for a chat in the desktop app.
@@ -569,6 +623,20 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                 }
             }
         }
+        // No machine talk in anything a person reads (#11031).
+        let read = shown
+            .iter()
+            .copied()
+            .chain(entry.chip.as_deref())
+            .chain(entry.offer.as_ref().map(|offer| offer.label.as_str()));
+        for text in read {
+            for hit in oa_copy::violations(text, &[]) {
+                push(
+                    id,
+                    format!("machine talk ({:?} in \"{}\")", hit.term, hit.context),
+                );
+            }
+        }
         for slot in entry.facts.keys() {
             if !shown
                 .iter()
@@ -667,6 +735,18 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                 Some(_) => {}
             }
         }
+        // A `.website` variant is shown only on the website, in place of its
+        // base, which keeps its own place everywhere else.
+        if let Some(base) = id.strip_suffix(WEB_SUFFIX) {
+            if entry.place != Place::Web {
+                push(id, "a .website variant needs place = \"web\"".into());
+            }
+            if bank.entry(base).is_none() {
+                push(id, format!("varies the unknown entry {base}"));
+            }
+        } else if entry.place == Place::Web {
+            push(id, "place = \"web\" is for a .website variant".into());
+        }
         if entry.facts.values().any(|key| key.starts_with("chat.")) && entry.place == Place::Any {
             push(id, "a chat.* slot needs a place".into());
         }
@@ -703,6 +783,12 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         if !singular(&opener.text).is_empty() {
             push(id, "speaks in the singular".into());
         }
+        for hit in oa_copy::violations(&opener.text, &[]) {
+            push(
+                id,
+                format!("machine talk ({:?} in \"{}\")", hit.term, hit.context),
+            );
+        }
         // An opener says something true and useful; a bare
         // acknowledgement is filler.
         if opener.text.split_whitespace().count() < 3 {
@@ -738,10 +824,10 @@ mod tests {
         // The chat-answers-v1 entries that shipped in coder::first are
         // here, at the versions that shipped, so logged tags still resolve.
         for (id, version) in [
-            ("meta.who", 1),
+            ("meta.who", 2),
             ("meta.model", 1),
             ("meta.capabilities", 3),
-            ("meta.limits_chat", 2),
+            ("meta.limits_chat", 3),
             ("meta.coder", 3),
             ("meta.github", 2),
             ("meta.open_source", 1),
@@ -769,7 +855,7 @@ id = "meta.bad"
 version = 1
 routes = ["meta", "weather"]
 when = "anything"
-text = "I can help. Tap Run Coder. {price} {model}"
+text = "I can help. Tap Run Coder. {price} {model} It was retained."
 facts = { model = "worker.nope", unused = "worker.lane.display" }
 sources = ["no/such/file.md"]
 followups = ["meta.missing", "meta.nochip"]
@@ -803,6 +889,7 @@ when = "x"
             "a stem needs a generic_end",
             "meta.nochip: cites no sources",
             "ok: is filler",
+            "machine talk (\"retained\"",
         ] {
             assert!(
                 problems.contains(expected),
@@ -842,6 +929,44 @@ when = "x"
             .map(|(id, _)| id)
             .collect();
         assert_eq!(chips, ["meta.capabilities", "meta.pricing"]);
+    }
+
+    /// An entry whose words would be wrong on openagents.com (Coder sent
+    /// to "a computer you connect") has a `.website` variant: on the website
+    /// the variant is shown and offered instead, and elsewhere the base.
+    #[test]
+    fn web_variants_show_only_on_the_website() {
+        let bank = Bank::builtin();
+        let away = Facts::default();
+        let web = Facts::default().on_web(true);
+        for id in [
+            "meta.who",
+            "meta.capabilities",
+            "meta.tools",
+            "meta.limits_chat",
+            "meta.coder",
+            "meta.github",
+        ] {
+            let base = bank.entry(id).unwrap();
+            let variant = bank.entry(&format!("{id}{WEB_SUFFIX}")).unwrap();
+            assert!(base.eligible(&away) && !base.eligible(&web), "{id}");
+            assert!(variant.eligible(&web) && !variant.eligible(&away), "{id}");
+            assert!(variant.selectable(&web) && !base.selectable(&web), "{id}");
+            assert_eq!(bank.placed(id, &web), Some(variant));
+            assert_eq!(bank.placed(id, &away), Some(base));
+            // The website sends Coder nowhere: Coder is the terminal agent
+            // a person gets from the download page.
+            let text = variant.render(&web).unwrap();
+            assert!(text.contains("openagents.com/download"), "{id}: {text}");
+            assert!(!text.contains("computer you"), "{id}: {text}");
+        }
+        // Followups follow the place too.
+        let who = bank.entry("meta.who.website").unwrap();
+        let chips = bank.followups(who, &web);
+        assert!(
+            chips.iter().any(|(id, _)| id == "meta.github.website"),
+            "{chips:?}"
+        );
     }
 
     /// An entry whose words assume the chat is not on a computer has a

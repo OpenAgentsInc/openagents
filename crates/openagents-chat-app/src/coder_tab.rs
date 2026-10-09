@@ -3365,7 +3365,7 @@ impl CoderTab {
                     "coder-start-title",
                     &title,
                     TextRole::Body,
-                    WHITE,
+                    white(),
                     true,
                 )]
                 .into_iter()
@@ -3414,11 +3414,11 @@ impl CoderTab {
                 working_label: "Working…",
                 failed_key: "talk-failed",
                 status_style: Style {
-                    foreground: Some(GRAY),
+                    foreground: Some(gray()),
                     ..Style::default()
                 },
                 markdown_style: Style {
-                    foreground: Some(WHITE),
+                    foreground: Some(white()),
                     ..Style::default()
                 },
             },
@@ -3604,11 +3604,11 @@ impl CoderTab {
                     working_label,
                     failed_key: "thread-failed",
                     status_style: Style {
-                        foreground: Some(GRAY),
+                        foreground: Some(gray()),
                         ..Style::default()
                     },
                     markdown_style: Style {
-                        foreground: Some(WHITE),
+                        foreground: Some(white()),
                         ..Style::default()
                     },
                 },
@@ -3782,7 +3782,7 @@ impl CoderTab {
                 &format!("{key}-command"),
                 &Offer::command_line(argv),
                 TextRole::Code,
-                WHITE,
+                white(),
                 false,
             ),
             status(&format!("{key}-where"), &place),
@@ -4106,8 +4106,8 @@ fn changes_view(open: &Open, allowed: bool) -> Vec<Node<Intent>> {
     }
     for note in &card.notes {
         let color = match note.tone {
-            crate::changes::Tone::Warning => Color::rgb(229, 192, 123),
-            crate::changes::Tone::Plain => GRAY,
+            crate::changes::Tone::Warning => crate::visual::inks().warning,
+            crate::changes::Tone::Plain => gray(),
         };
         lines.push(text(
             &format!("coder-changes-note-{}", note.key),
@@ -4152,10 +4152,10 @@ fn changes_view(open: &Open, allowed: bool) -> Vec<Node<Intent>> {
     {
         for (index, line) in document.lines().iter().take(CHANGE_LINES).enumerate() {
             let color = match line.kind {
-                crate::changes::Kind::Add => Color::rgb(163, 190, 140),
-                crate::changes::Kind::Remove => Color::rgb(191, 120, 120),
-                crate::changes::Kind::Hunk | crate::changes::Kind::Meta => GRAY,
-                crate::changes::Kind::File | crate::changes::Kind::Context => WHITE,
+                crate::changes::Kind::Add => crate::visual::inks().added,
+                crate::changes::Kind::Remove => crate::visual::inks().removed,
+                crate::changes::Kind::Hunk | crate::changes::Kind::Meta => gray(),
+                crate::changes::Kind::File | crate::changes::Kind::Context => white(),
             };
             // A long line is cut for the phone's view bound.
             let clipped: String = line.text.chars().take(240).collect();
@@ -4805,8 +4805,15 @@ fn host_state(host: &HostRecord, now: u64) -> &'static str {
     }
 }
 
-const WHITE: Color = Color::rgb(255, 255, 255);
-const GRAY: Color = Color::rgb(153, 153, 153);
+/// Primary text, from the theme seam ([`crate::visual::inks`]).
+fn white() -> Color {
+    crate::visual::inks().text
+}
+
+/// Receded text, from the theme seam.
+fn gray() -> Color {
+    crate::visual::inks().quiet
+}
 
 fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
     Node {
@@ -4827,7 +4834,7 @@ fn cli_output_row(argv: &[String], lines: &[String]) -> Node<Intent> {
             children: vec![Node {
                 key: "coder-cli-out-md".into(),
                 style: Style {
-                    foreground: Some(GRAY),
+                    foreground: Some(gray()),
                     ..Style::default()
                 },
                 element: Element::Markdown {
@@ -4933,11 +4940,11 @@ fn text(key: &str, value: &str, role: TextRole, foreground: Color, bold: bool) -
 }
 
 fn heading(key: &str, value: &str) -> Node<Intent> {
-    text(key, value, TextRole::Heading, WHITE, true)
+    text(key, value, TextRole::Heading, white(), true)
 }
 
 fn body(key: &str, value: &str) -> Node<Intent> {
-    text(key, value, TextRole::Body, WHITE, false)
+    text(key, value, TextRole::Body, white(), false)
 }
 
 /// What a phone says about Coder work a computer's thread ran outside that
@@ -4959,7 +4966,7 @@ fn outside_words(computer: &str, project: Option<&str>) -> String {
 }
 
 fn status(key: &str, value: &str) -> Node<Intent> {
-    text(key, value, TextRole::Status, GRAY, false)
+    text(key, value, TextRole::Status, gray(), false)
 }
 
 /// A button that draws `glyph`: in a circle when `circular`, with the label
@@ -5053,7 +5060,7 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     Node {
         key: key.into(),
         style: Style {
-            foreground: Some(WHITE),
+            foreground: Some(white()),
             ..Style::default()
         },
         element: Element::Button {

@@ -307,6 +307,8 @@ async fn idle_and_absolute_bounds_extend_while_observed() {
     assert_eq!(generation(&s), 2);
     let absolute = read(&d).boot().unwrap().absolute_deadline_ms;
     assert_eq!(absolute, 8_200_000);
+    // The turn's owner is alive throughout (#11059).
+    d.heartbeat("computer-1", 2, absolute - 1).await.unwrap();
     d.tick("computer-1", true, absolute - 1).await.unwrap();
     assert_eq!(read(&d).boot().unwrap().idle_deadline_ms, absolute);
     let s = d.tick("computer-1", true, absolute).await.unwrap();
@@ -540,4 +542,125 @@ fn decisions_are_pure_over_retained_state() {
     let mut bad = c.clone();
     bad.bounds.idle_ms = bad.bounds.absolute_ms + 1;
     assert!(bad.validate().is_err());
+}
+
+/// #11059: a turn whose owner stops beating ends as stale and the machine
+/// stops (its files stay with it); a live owner's long turn runs on.
+#[tokio::test]
+async fn a_silent_turn_stops_and_a_beating_one_runs_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = setup(&dir, false, vec![]);
+    let g = generation(&d.prompt("computer-1", 0).await.unwrap());
+    assert_eq!(read(&d).turn.heartbeat_ms, 0, "a turn started at 0");
+
+    // A live owner beats every 30 s; an hour of turn is never stale.
+    let mut now = 0;
+    while now < 3_600_000 {
+        now += HEARTBEAT_EVERY_MS;
+        d.heartbeat("computer-1", g, now).await.unwrap();
+        let s = d.tick("computer-1", false, now + 1).await.unwrap();
+        assert_eq!(s.computer().phase, Phase::Turn { generation: g }, "{now}");
+    }
+    // A heartbeat for another generation is refused.
+    assert!(d.heartbeat("computer-1", g + 1, now).await.is_err());
+
+    // Silent for less than the window: still running.
+    let s = d
+        .tick("computer-1", false, now + STALE_AFTER_MS - 1)
+        .await
+        .unwrap();
+    assert_eq!(s.computer().phase, Phase::Turn { generation: g });
+    // Recovered: a late beat keeps it.
+    d.heartbeat("computer-1", g, now + STALE_AFTER_MS - 1)
+        .await
+        .unwrap();
+    now += STALE_AFTER_MS - 1;
+    // Silent past the window: stopped as stale through the stop path.
+    let s = d
+        .tick("computer-1", false, now + STALE_AFTER_MS)
+        .await
+        .unwrap();
+    let c = s.computer();
+    assert_eq!(c.phase, Phase::Stopped, "{c:?}");
+    let b = c.boot().unwrap();
+    assert_eq!(b.stop_reason, Some(StopReason::Stale));
+    assert!(b.resource_stop.as_ref().is_some_and(Fact::is_done));
+    assert!(!d.provider.machine(c.resource().unwrap()).unwrap().running);
+    // Never announced as a finished turn, and the next prompt restores.
+    assert_eq!(c.turn.completed, 0);
+    let s = d
+        .prompt("computer-1", now + STALE_AFTER_MS + 1)
+        .await
+        .unwrap();
+    assert_eq!(generation(&s), g + 1);
+}
+
+/// A record from before heartbeats (no beat recorded) is never judged.
+#[tokio::test]
+async fn a_turn_with_no_recorded_heartbeat_is_not_judged() {
+    let mut c = Computer::new(spec(vec![]), 0).unwrap();
+    c.phase = Phase::Turn { generation: 1 };
+    c.turn.heartbeat_ms = 0;
+    assert!(!c.turn_silent(u64::MAX / 2));
+    c.turn.heartbeat_ms = 10;
+    assert!(c.turn_silent(10 + STALE_AFTER_MS));
+    c.stale_ms = 0;
+    assert!(!c.turn_silent(u64::MAX / 2));
+}
+
+/// Three failed boots in five minutes refuse a fourth with a plain
+/// message until the window passes; then a prompt boots again.
+#[tokio::test]
+async fn repeated_boot_failures_open_and_close_the_breaker() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = setup(&dir, false, vec![]);
+    for at in [0, 60_000, 120_000] {
+        d.provider.inject("create", Inject::Failed);
+        let s = d.prompt("computer-1", at).await.unwrap();
+        assert!(matches!(s.computer().phase, Phase::Failed { .. }), "{s:?}");
+    }
+    let creates = d.provider.calls().iter().filter(|c| *c == "create").count();
+    let s = d.prompt("computer-1", 180_000).await.unwrap();
+    let Settled::Refused(message, _) = &s else {
+        panic!("expected the breaker, got {s:?}");
+    };
+    assert!(message.contains("failed to start 3 times"), "{message}");
+    assert!(message.contains("in 2 minutes"), "{message}");
+    assert!(oa_copy_free(message), "{message}");
+    // Refused: no new machine was asked for.
+    assert_eq!(
+        d.provider.calls().iter().filter(|c| *c == "create").count(),
+        creates
+    );
+    // The window passes (the first failure ages out): it boots again.
+    let s = d.prompt("computer-1", 300_000).await.unwrap();
+    assert_eq!(generation(&s), 1, "{s:?}");
+    assert_eq!(read(&d).boot_failures.len(), 3);
+}
+
+/// A failed restore counts too, and the breaker refuses the next restore.
+#[tokio::test]
+async fn failed_restores_count_toward_the_breaker() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = setup(&dir, true, vec![]);
+    let g = generation(&d.prompt("computer-1", 0).await.unwrap());
+    d.turn_finished("computer-1", g, 1).await.unwrap();
+    for at in [10, 20, 30] {
+        d.provider.inject("restore", Inject::Failed);
+        let s = d.prompt("computer-1", at).await.unwrap();
+        assert_eq!(s.computer().phase, Phase::Stopped, "{s:?}");
+    }
+    let s = d.prompt("computer-1", 40).await.unwrap();
+    assert!(matches!(s, Settled::Refused(_, _)), "{s:?}");
+    let s = d
+        .prompt("computer-1", 10 + BREAKER_WINDOW_MS)
+        .await
+        .unwrap();
+    assert_eq!(generation(&s), g + 1, "{s:?}");
+}
+
+fn oa_copy_free(text: &str) -> bool {
+    !["circuit", "breaker", "provision", "reconcile"]
+        .iter()
+        .any(|w| text.to_lowercase().contains(w))
 }

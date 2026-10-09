@@ -301,7 +301,7 @@ fn key_path() -> PathBuf {
 }
 
 /// The pool's ssh key on this computer, made once. Returns the public key.
-fn ensure_key() -> Result<String, String> {
+pub fn ensure_key() -> Result<String, String> {
     let key = key_path();
     if !key.exists() {
         if let Some(dir) = key.parent() {

@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "everglade-kit-bake-phone",
+  "description": "The phone tier's kit town light layers (#10908): the pinned layers with two of the four suns (8:00 and 15:30), derived by verse-bake --phone-layers from the pinned layer file in the private bakes directory, outside the repository. Only its digest and length are pinned, in everglade_pack/kit_bake.rs. It never bakes.",
+  "regenerate": "cargo run --release -p verse-bake --features everglade -- --phone-layers --out \"$HOME/.openagents/verse/private/medieval-town/bakes\"",
+  "check": "cargo run --release -p verse-bake --features everglade -- --phone-layers --check --out \"$HOME/.openagents/verse/private/medieval-town/bakes\"",
+  "build_lease": true,
+  "pinned": [],
+  "pin": {
+    "file": "crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs",
+    "lines": [
+      "pub const KIT_BAKE_PHONE_SHA256: &str = ",
+      "pub const KIT_BAKE_PHONE_BYTES: u64 = "
+    ]
+  },
+  "message": "Repin the Everglade phone light layers with {changes}"
+}

@@ -957,9 +957,10 @@ fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
 /// something only the OpenAgents app does (#10106).
 pub const WEB_NOTE: &str = "This chat is on the openagents.com website, which only answers \
 questions about OpenAgents. The visitor asked for something the website cannot do (work on \
-code or a computer, a command, a screen, the wallet, an account, or the Gym). Say in one or two \
-sentences that the OpenAgents app does that, and that they can download it at \
-openagents.com/download; answer any question in the message about OpenAgents itself.";
+code or a computer, a command, a screen, the wallet, or the Gym). Say in one or two sentences \
+that Coder, our coding agent, does work on code in their terminal on their own computer, and \
+that they can get it at openagents.com/download; for the wallet, the Gym, or a screen, say \
+our OpenAgents apps have it. Answer any question in the message about OpenAgents itself.";
 
 /// The bank entry the website answers `eval.run` with: which plugins there
 /// are, as cards (`docs/web/plugin-card.md`), since nothing on the website
@@ -990,7 +991,10 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
 /// The website's tiers (#10106): refusals, knowledge, the model, and
 /// prepared answers on the answer routes, each without an offer. Work,
 /// commands, screens, the Gym, decks, and capabilities become the model
-/// told [`WEB_NOTE`], since nothing on the website can act on them.
+/// told [`WEB_NOTE`], since nothing on the website can act on them. An
+/// account question reads the product knowledge: the website has
+/// accounts (GitHub sign-in, Settings, the Claude key, Coder's sign-in),
+/// so "the app does that" would be wrong there.
 #[must_use]
 pub fn for_web(routing: &Routing, tier: Tier) -> Tier {
     let answers = matches!(
@@ -1003,6 +1007,10 @@ pub fn for_web(routing: &Routing, tier: Tier) -> Tier {
     };
     match tier {
         Tier::Refuse { .. } => tier,
+        _ if routing.route == RouteId::Account => Tier::Grounded {
+            corpus: Corpus::Product,
+            lead: None,
+        },
         _ if !answers => web_model(),
         Tier::Grounded { .. } | Tier::Model { .. } => tier,
         Tier::CannedFinal { answer, text, .. } if !dispatches(&answer) => Tier::CannedFinal {
@@ -1400,7 +1408,12 @@ fn answered(routing: &Routing) -> Tier {
 /// (an [`RouteFamily::Answers`] route) and the reply needs none of the
 /// user's particulars, the message is clear enough that the entry answers
 /// it: "what is this?" on the website reads as asking who we are.
-fn clarify_or_answer(routing: &Routing, _bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+fn clarify_or_answer(
+    routing: &Routing,
+    _bank: &Bank,
+    facts: &Facts,
+    situation: &Situation,
+) -> Tier {
     if let Some((entry, p)) = &routing.answer
         && {
             let (name, at) = answer_confidence(routing);
@@ -1636,6 +1649,17 @@ mod tests {
                 ..
             }
         ));
+        // The website has accounts: an account question reads the product
+        // notes, never "the app does that".
+        let account = routed(RouteId::Account, 0.95, "account.computers", 0.9, 0.1);
+        assert_eq!(
+            decided(&account, &web(), false),
+            Tier::Grounded {
+                corpus: Corpus::Product,
+                lead: None
+            }
+        );
+        assert!(!WEB_NOTE.contains("an account"));
         let kb = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
         assert!(matches!(
             decided(&kb, &web(), false),
@@ -1874,7 +1898,10 @@ mod tests {
         assert!(matches!(router(&close), Tier::Model { note: Some(_), .. }));
         assert!(matches!(
             decided(&close, &Context::default(), true),
-            Tier::Model { note: Some(CLARIFY_NOTE), .. }
+            Tier::Model {
+                note: Some(CLARIFY_NOTE),
+                ..
+            }
         ));
     }
 
@@ -1972,12 +1999,18 @@ mod tests {
         let unsure = routed(RouteId::Clarify, 0.72, "meta.who", 0.6, 0.22);
         assert!(matches!(
             decided(&unsure, &Context::default(), true),
-            Tier::Model { note: Some(CLARIFY_NOTE), .. }
+            Tier::Model {
+                note: Some(CLARIFY_NOTE),
+                ..
+            }
         ));
         let particular = routed(RouteId::Clarify, 0.72, "meta.who", 0.93, 0.5);
         assert!(matches!(
             decided(&particular, &Context::default(), true),
-            Tier::Model { note: Some(CLARIFY_NOTE), .. }
+            Tier::Model {
+                note: Some(CLARIFY_NOTE),
+                ..
+            }
         ));
     }
 

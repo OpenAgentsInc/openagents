@@ -103,6 +103,9 @@ impl Config {
             return Err("The environments state directory must be absolute.".into());
         }
         self.machines.validate()?;
+        if self.machines.provider != crate::ProviderKind::Boat {
+            return Err("Environments set up here run on Boat.".into());
+        }
         if !coder_environment::valid_id(&self.owner.workspace)
             || !coder_environment::valid_id(&self.owner.principal)
         {
@@ -645,14 +648,26 @@ impl Studio {
             .map_err(|e| plain(&e, "Saving didn't go through. Try again."))
     }
 
-    /// Start a Claude Code run on the environment's saved version.
-    pub fn run_claude(&self, id: &str, prompt: &str) -> Result<String, String> {
+    /// Start a Claude Code run on the environment's saved version. `own`
+    /// is the signed-in person's own Claude credential, released for this
+    /// run; without one, the run uses the key this server's environment
+    /// names ([`Config::claude_key`]).
+    pub fn run_claude(
+        &self,
+        id: &str,
+        prompt: &str,
+        own: Option<claude::Key>,
+    ) -> Result<String, String> {
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
         }
-        let key = Config::secret(&self.config.claude_key)
-            .ok_or("Add your Anthropic API key to run Claude Code here.")?;
+        let key = match own {
+            Some(key) => key,
+            None => Config::secret(&self.config.claude_key)
+                .and_then(|value| claude::Key::new(coder_cloud::claude::API_KEY, value).ok())
+                .ok_or("Add your Claude key in Settings to run Claude Code here.")?,
+        };
         self.runs
             .start(
                 &env,
@@ -904,10 +919,19 @@ async fn serve<P, T>(
             Work::Save(id, candidate, reply) => {
                 let store = records(&owners);
                 let result = save(&config, &owners, &store, &id, &candidate);
+                let saved = result.is_ok();
                 if let Ok(number) = &result {
                     let _ = logs.push(&id, Entry::Saved { number: *number }, now_ms());
                 }
                 let _ = reply.send(result);
+                if saved {
+                    // Images older checks left unsaved go now.
+                    let owners = owners.clone();
+                    let root = root.clone();
+                    tokio::task::spawn_local(async move {
+                        crate::images::sweep(&owners, &root, &id).await;
+                    });
+                }
             }
         }
     }
@@ -999,7 +1023,7 @@ impl State {
         self.verify_job = None;
         self.summary = None;
         self.input.push(user_message(&format!(
-            "{text}\n\n(You are on a new setup computer with the same commit checked out. The recipe draft and declared checks are kept.)"
+            "{text}\n\n(You are on a new setup computer with the same commit checked out. Any recipe draft and declared checks are kept.)"
         )));
     }
 }

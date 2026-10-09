@@ -58,6 +58,7 @@ pub const TERMS: &[&str] = &[
     "cursor",
     "dispatch",
     "dispatched",
+    "dispatching",
     "redispatch",
     "intermediate",
     "upstream",
@@ -443,6 +444,19 @@ fn unescape(text: &str) -> String {
 /// (scenario drivers, protocol tables); give each entry a reason.
 #[must_use]
 pub fn scan_dir(dir: &std::path::Path, skip: &[&str], allow: &[&str]) -> Vec<String> {
+    scan_dir_allowing(dir, skip, allow, &[])
+}
+
+/// [`scan_dir`], with terms allowed only in some files: each `allow_in`
+/// entry is a path prefix relative to `dir` and the terms its files may
+/// show (a product named Cursor, a URL's `?cursor=`). Give each a reason.
+#[must_use]
+pub fn scan_dir_allowing(
+    dir: &std::path::Path,
+    skip: &[&str],
+    allow: &[&str],
+    allow_in: &[(&str, &[&str])],
+) -> Vec<String> {
     let mut files = Vec::new();
     collect_rs(dir, &mut files);
     files.sort();
@@ -455,7 +469,13 @@ pub fn scan_dir(dir: &std::path::Path, skip: &[&str], allow: &[&str]) -> Vec<Str
         let Ok(src) = std::fs::read_to_string(&file) else {
             continue;
         };
-        for (line, v) in source_violations(&src, allow) {
+        let mut allowed: Vec<&str> = allow.to_vec();
+        for (prefix, terms) in allow_in {
+            if rel.starts_with(prefix) {
+                allowed.extend_from_slice(terms);
+            }
+        }
+        for (line, v) in source_violations(&src, &allowed) {
             out.push(format!(
                 "{}:{line}: {:?} in {:?}",
                 file.display(),

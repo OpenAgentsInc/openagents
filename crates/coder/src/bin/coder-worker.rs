@@ -599,21 +599,39 @@ async fn serve(options: &Options) -> Result<(), String> {
     if let Ok(text) = env::var(coder::generate::PROVIDER_PRIVACY_VAR) {
         coder::generate::ProviderPrivacy::parse(&text)?;
     }
-    let mut door = Door::from_env()?;
-    if let Some(model) = model_from_env(WORKER_MODEL_VAR) {
-        door = door
-            .serving(&model)
-            .map_err(|why| format!("{WORKER_MODEL_VAR}: {why}"))?;
-    }
-    // The primary goes in front of that door (#10109): every turn asks
-    // OpenRouter's primary first, and one it does not start answering
-    // goes to the door above. Unset, the primary is Space Bunny Alpha
-    // whenever OpenRouter's key is here.
-    let door = Arc::new(ordered(
-        door,
-        env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
-        env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
-    )?);
+    // The inference gateway (#11064): with its service key here, every
+    // model call goes through it and its router picks the model and
+    // upstream, so no provider key is needed. `CODER_WORKER_INFERENCE=direct`
+    // keeps the provider doors below.
+    let gateway = coder::generate::inference_door_from_env()?;
+    let door = match gateway {
+        Some(gateway) => {
+            eprintln!(
+                "inference gateway {} ({}; {}=direct for the provider doors)",
+                gateway.url,
+                gateway.model,
+                coder::generate::INFERENCE_MODE_VAR
+            );
+            Arc::new(Door::Live(gateway))
+        }
+        None => {
+            let mut door = Door::from_env()?;
+            if let Some(model) = model_from_env(WORKER_MODEL_VAR) {
+                door = door
+                    .serving(&model)
+                    .map_err(|why| format!("{WORKER_MODEL_VAR}: {why}"))?;
+            }
+            // The primary goes in front of that door (#10109): every turn
+            // asks OpenRouter's primary first, and one it does not start
+            // answering goes to the door above. Unset, the primary is Space
+            // Bunny Alpha whenever OpenRouter's key is here.
+            Arc::new(ordered(
+                door,
+                env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
+                env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
+            )?)
+        }
+    };
     let jobs = jobs_bound(&door)?;
     // The judge that answers first: one System One call per admitted
     // conversation turn, run beside the model call (see `coder::first`).
@@ -780,7 +798,15 @@ async fn serve(options: &Options) -> Result<(), String> {
             .clone()
             .map(|j| j as Arc<dyn coder::product_kb::Judge>),
     );
-    let news = gym_news_model_from_env();
+    // Through the inference gateway the news lane asks for the `fast`
+    // class unless a model is named: the gateway serves no model the
+    // direct lane's default names.
+    let news = match env::var(GYM_NEWS_MODEL_VAR) {
+        Err(_) if door.gateway().is_some_and(ResponsesDoor::is_gateway) => {
+            Some("openagents/fast".to_string())
+        }
+        _ => gym_news_model_from_env(),
+    };
     let jev_fallbacks: Vec<&str> = fallbacks
         .iter()
         .filter(|fallback| fallback.on)
@@ -1239,6 +1265,7 @@ impl Worker<'_> {
         let job = Job {
             identity: self.identity.clone(),
             answered: Default::default(),
+            upstream: Default::default(),
             door: self.door.clone(),
             judge: self.judge.clone(),
             decline: self.options.decline.clone(),
@@ -1277,6 +1304,10 @@ fn their_door(
             ordered.primary.model.clone(),
             ordered.fallback.model.clone(),
         ),
+        Door::Live(live) if live.is_gateway() => {
+            let model = model_named(coder::generate::DEFAULT_LANE.name()).to_string();
+            (model.clone(), model)
+        }
         Door::Live(live) => (live.model.clone(), live.model.clone()),
         _ => return Err("this worker can't answer on your keys".to_string()),
     };
@@ -1475,6 +1506,9 @@ struct Job {
     /// The model the door named as having written this job's reply, when
     /// it named one ([`start_model`]).
     answered: std::sync::Mutex<Option<String>>,
+    /// The upstream the inference gateway named for this job's reply, when
+    /// the door is the gateway ([`Meta::Upstream`]).
+    upstream: std::sync::Mutex<Option<String>>,
     /// The System One client for the first response and rankings.
     judge: Option<Arc<jev::Client>>,
     decline: Option<String>,
@@ -1905,11 +1939,19 @@ impl Job {
             let observed = observed
                 .into_inner()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let upstream = self.upstream.lock().ok().and_then(|named| named.clone());
             let door = observed
                 .record
                 .model
                 .as_deref()
-                .map(|model| answering_door(&self.door, model));
+                .map(|model| match &upstream {
+                    // The gateway's choice: the upstream account that
+                    // answered, and the gateway it went through.
+                    Some(upstream) if !model.starts_with("bank:") => {
+                        format!("{upstream} via {}", answering_door(&self.door, model))
+                    }
+                    _ => answering_door(&self.door, model),
+                });
             let elapsed = u64::try_from(arrived.elapsed().as_millis()).unwrap_or(u64::MAX);
             if let Err(why) = log.append(&observed.finish(elapsed, door)) {
                 eprintln!("usage: not recorded: {why}");
@@ -3393,7 +3435,17 @@ impl Job {
                     // The model that wrote the reply, when the door named
                     // one: the result names it rather than the door's
                     // first choice (#10109).
-                    if let Some(model) = said.lock().ok().and_then(|mut named| named.take()) {
+                    let (named_model, named_upstream) = said
+                        .lock()
+                        .ok()
+                        .map(|mut named| (named.model.take(), named.upstream.take()))
+                        .unwrap_or_default();
+                    if let Some(upstream) = named_upstream
+                        && let Ok(mut slot) = self.upstream.lock()
+                    {
+                        *slot = Some(upstream);
+                    }
+                    if let Some(model) = named_model {
                         if let Some(record) = &mut served
                             && record.model.is_some()
                         {
@@ -3533,10 +3585,12 @@ fn start_model(
             let _ = deltas.send(delta.to_string());
         };
         door.generate(&instructions, &input, &mut sink, &mut |meta| {
-            if let Meta::Model(model) = meta
-                && let Ok(mut named) = naming.lock()
-            {
-                *named = Some(model);
+            if let Ok(mut named) = naming.lock() {
+                match meta {
+                    Meta::Model(model) => named.model = Some(model),
+                    Meta::Upstream(upstream) => named.upstream = Some(upstream),
+                    _ => {}
+                }
             }
         })
         .await
@@ -3544,8 +3598,16 @@ fn start_model(
     (Box::pin(generating), incoming, said)
 }
 
-/// The model a running generation's door named as its writer.
-type Said = Arc<std::sync::Mutex<Option<String>>>;
+/// The model a running generation's door named as its writer, and the
+/// upstream when the door is the inference gateway.
+type Said = Arc<std::sync::Mutex<Named>>;
+
+/// What a door named about the answer it wrote.
+#[derive(Default)]
+struct Named {
+    model: Option<String>,
+    upstream: Option<String>,
+}
 
 /// `generation`, answering only once `gate` is open: a model call that
 /// finishes while its words are held keeps its reply until they are not.
@@ -3941,6 +4003,7 @@ mod tests {
             let job = Job {
                 routing,
                 answered: Default::default(),
+                upstream: Default::default(),
                 identity: Arc::new(worker),
                 door: Arc::new(door),
                 judge: None,
@@ -4900,6 +4963,7 @@ mod tests {
             door: Arc::new(door),
             judge,
             answered: Default::default(),
+            upstream: Default::default(),
             decline: None,
             allow: None,
             ledger: None,
@@ -5017,7 +5081,7 @@ mod tests {
         assert_eq!(bodies[0]["status"], "processing");
         assert_eq!(bodies[1]["type"], "judgment");
         assert_eq!(bodies[1]["tier"], "canned");
-        assert_eq!(bodies[1]["answer"], "meta.who@1");
+        assert_eq!(bodies[1]["answer"], "meta.who@2");
         assert!(bodies[1]["opener"].is_null());
         assert_eq!(bodies[2]["type"], "partial");
         assert_eq!(bodies[2]["seq"], 0);
@@ -5028,7 +5092,7 @@ mod tests {
         assert_eq!(result["type"], "result");
         assert_eq!(result["text"], text);
         assert_eq!(result["model"], "bank:chat-answers-v1");
-        assert_eq!(result["answer"], "meta.who@1");
+        assert_eq!(result["answer"], "meta.who@2");
         assert_eq!(result["tier"], "canned");
         // The reply is done long before the model would have begun.
         assert!(*at < Duration::from_millis(1_000), "{at:?}");

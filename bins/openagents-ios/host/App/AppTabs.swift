@@ -92,10 +92,13 @@ struct AppTabs: View {
         TabView(selection: $tab) {
             CoderTab(bridge: bridge)
                 .tabIcon(.coder)
+            // The Verse and the Wallet are dark only for now (#11028).
             VerseTab(app: bridge, selected: tab == .verse, studioComputer: bridge.studioComputer,
                      connectStudio: bridge.studioConnect) { bridge.gymTrain() }
+                .environment(\.colorScheme, .dark)
                 .tabIcon(.verse)
             WalletTab(bridge: bridge)
+                .environment(\.colorScheme, .dark)
                 .tabIcon(.wallet)
             AccountTab(bridge: bridge)
                 .tabIcon(.account)
@@ -192,6 +195,7 @@ private extension View {
 /// Settings and the screens that used to be tabs.
 struct AccountTab: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @State private var path = AppTabLaunch.route
     @EnvironmentObject private var place: PlaytestPlace
     @EnvironmentObject private var reporter: ReportCoordinator
@@ -210,7 +214,7 @@ struct AccountTab: View {
                     } label: {
                         Label("Train Coder", systemImage: "dumbbell")
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(appColors.primary)
                     .accessibilityIdentifier("account-train")
                     // Profile: Rust shows it as a sheet on the Chat tab.
                     Button {
@@ -218,7 +222,7 @@ struct AccountTab: View {
                     } label: {
                         Label("Profile", systemImage: "person.circle")
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(appColors.primary)
                     .accessibilityIdentifier("account-profile")
                 }
                 Section {
@@ -231,12 +235,21 @@ struct AccountTab: View {
                     } label: {
                         Label("Report a problem", systemImage: "exclamationmark.bubble")
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(appColors.primary)
                     .accessibilityIdentifier("account-report")
                 }
                 Section {
                     NavigationLink("Computers", value: AccountRoute.computers)
                     NavigationLink("Tailnet", value: AccountRoute.tailnet)
+                }
+                Section {
+                    // System follows the phone; Rust saves the choice.
+                    Picker("Appearance", selection: Binding(
+                        get: { bridge.packet?.appearance?.choice ?? "dark" },
+                        set: { bridge.chooseTheme($0) })) {
+                        ForEach(bridge.packet?.appearance?.choices ?? []) { Text($0.label).tag($0.id) }
+                    }
+                    .accessibilityIdentifier("account-appearance")
                 }
                 Section {
                     NavigationLink("Your keys", value: AccountRoute.keys)
@@ -253,12 +266,12 @@ struct AccountTab: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Color.black.ignoresSafeArea())
+            .background(appColors.background.ignoresSafeArea())
             .navigationTitle("Account")
             .navigationDestination(for: AccountRoute.self) { route in
                 destination(route)
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(Color.black, for: .navigationBar)
+                    .toolbarBackground(appColors.background, for: .navigationBar)
             }
         }
         .onChange(of: bridge.computersRequested) { _, _ in path = [.computers] }
@@ -286,14 +299,16 @@ struct AccountTab: View {
         case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")
         case .device: AboutDeviceScreen(bridge: bridge).navigationTitle("About this device")
         case .changelog: ChangelogScreen(bridge: bridge).navigationTitle("Changelog")
-        case .playtest: PlaytestScreen(bridge: bridge).navigationTitle("Playtest")
-        case .reports: MyReportsScreen(bridge: bridge).navigationTitle("My reports")
+        // Playtest and My reports are dark only for now (#11028).
+        case .playtest: PlaytestScreen(bridge: bridge).navigationTitle("Playtest").environment(\.colorScheme, .dark)
+        case .reports: MyReportsScreen(bridge: bridge).navigationTitle("My reports").environment(\.colorScheme, .dark)
         }
     }
 }
 
 /// A row that opens a web page in the browser.
 private struct ExternalLink: View {
+    @Environment(\.appColors) private var appColors
     let title: String
     let symbol: String
     let url: String
@@ -307,7 +322,7 @@ private struct ExternalLink: View {
                     Image(systemName: "arrow.up.right").font(.paper(.footnote)).foregroundStyle(.secondary)
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(appColors.primary)
         }
     }
 }

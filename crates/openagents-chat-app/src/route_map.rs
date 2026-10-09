@@ -111,22 +111,22 @@ impl Kind {
         }
     }
 
-    /// The kind's color on the dark canvas
-    /// ([`crate::visual::map`]).
+    /// The kind's color in the scheme the app paints with
+    /// ([`crate::visual::map::current`]).
     #[must_use]
     pub fn color(self) -> rust_native::style::Color {
-        use crate::visual::map;
+        let map = crate::visual::map::current();
         match self {
-            Kind::Front => map::FRONT,
-            Kind::Family => map::FAMILY,
-            Kind::Route => map::ROUTE,
-            Kind::Answer => map::ANSWER,
-            Kind::Knowledge => map::KNOWLEDGE,
-            Kind::Model => map::MODEL,
-            Kind::Coder => map::CODER,
-            Kind::Engine => map::ENGINE,
-            Kind::Plugin => map::PLUGIN,
-            Kind::Screen => map::SCREEN,
+            Kind::Front => map.front,
+            Kind::Family => map.family,
+            Kind::Route => map.route,
+            Kind::Answer => map.answer,
+            Kind::Knowledge => map.knowledge,
+            Kind::Model => map.model,
+            Kind::Coder => map.coder,
+            Kind::Engine => map.engine,
+            Kind::Plugin => map.plugin,
+            Kind::Screen => map.screen,
         }
     }
 

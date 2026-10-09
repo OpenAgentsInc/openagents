@@ -894,7 +894,7 @@ mod tests {
         let agent = agent(agent_dir.path(), &replay::blocks(replay::GROK_TURN));
         let task = run_turn(&store, &grant, admitted, agent).await;
         let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
-        assert_eq!(result.ending, "cancelled_or_host_refusal");
+        assert_eq!(result.ending, coder::task::adapter::HOST_FAULT);
         assert_ne!(result.exit_code, Some(0));
         let sent = replay::received(agent_dir.path());
         assert!(sent.iter().all(|line| line["method"] != "session/prompt"));

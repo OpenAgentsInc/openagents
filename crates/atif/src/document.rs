@@ -604,6 +604,36 @@ fn question_ids(questions: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Add `step` to the end of an exported `document`, numbered after its
+/// last step, keeping `final_metrics.total_steps` current. Refused when the
+/// document has no steps array.
+pub fn append(document: &mut Value, step: &Step) -> Result<(), String> {
+    let model = document
+        .pointer("/agent/model_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let steps = document
+        .get_mut("steps")
+        .and_then(Value::as_array_mut)
+        .ok_or("The trajectory has no steps array.")?;
+    let ordinal = steps
+        .last()
+        .and_then(|last| last.get("step_id"))
+        .and_then(Value::as_u64)
+        .map_or(steps.len(), |id| id as usize)
+        + 1;
+    steps.push(step.value(ordinal, &model));
+    let total = steps.len();
+    if let Some(metrics) = document
+        .get_mut("final_metrics")
+        .and_then(Value::as_object_mut)
+    {
+        metrics.insert("total_steps".to_string(), json!(total));
+    }
+    Ok(())
+}
+
 /// The whole session as one ATIF document.
 #[must_use]
 pub fn document(session: &Session, steps: &[Step]) -> Value {
@@ -998,6 +1028,22 @@ mod tests {
             purpose: Some("look".to_string()),
             extra: Map::new(),
         }
+    }
+
+    #[test]
+    fn an_appended_step_follows_the_last_and_keeps_the_document_valid() {
+        let mut doc = document(&a_session(), &[Step::said(Source::User, "Fix it")]);
+        append(&mut doc, &Step::said(Source::User, "Go on")).unwrap();
+        append(&mut doc, &Step::said(Source::Agent, "Done.")).unwrap();
+        assert_eq!(doc["steps"][2]["step_id"], 3);
+        assert_eq!(doc["steps"][2]["model_name"], "a-model");
+        assert_eq!(doc["final_metrics"]["total_steps"], 3);
+        assert!(
+            crate::validate(&doc).is_empty(),
+            "{:?}",
+            crate::validate(&doc)
+        );
+        assert!(append(&mut json!({}), &Step::said(Source::User, "x")).is_err());
     }
 
     #[test]

@@ -37,6 +37,7 @@ use super::environment::{SkyInputs, SkyLightGpu};
 use super::instanced::{self, GpuVertex, Instance, Prepared};
 use super::output::{self, Look, Output, OutputTargets};
 use super::screen::{self as screen_space, ScreenGpu, ScreenTargets, ScreenUniform};
+use super::taa::{Taa, TaaTargets};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
 use verse_engine::lighting::{
@@ -537,6 +538,19 @@ pub struct TexturedGpu {
     /// How many times a cell has changed level; part of the static casters'
     /// identity, so a cached shadow redraws with the cells' new levels.
     pub levels: u64,
+    /// For uploaded [`textured::Instances`]: each mesh's first vertex, its
+    /// vertex count, and its primitives' index ranges and materials. Empty
+    /// for a scene or a figure.
+    meshes: Vec<InstancedMesh>,
+}
+
+/// One mesh of uploaded [`textured::Instances`].
+#[derive(Clone, Debug, Default)]
+struct InstancedMesh {
+    start: u32,
+    vertices: u32,
+    /// Each primitive's first index, index count, and material.
+    parts: Vec<(u32, u32, usize)>,
 }
 
 impl TexturedGpu {
@@ -708,6 +722,8 @@ pub struct PhotoTargets {
     guide_groups: [wgpu::BindGroup; 2],
     /// The high tier's prepass depth and screen-space terms.
     screen: Option<ScreenTargets>,
+    /// The temporal histories, where anti-aliasing runs.
+    taa: Option<TaaTargets>,
     /// The resolved scene, kept to copy from when it has one sample.
     scene_texture: wgpu::Texture,
     /// Medium and High: the water's scene copies and planar mirror
@@ -803,6 +819,9 @@ pub struct Photo {
     /// The high tier's depth prepass and screen-space passes.
     prepass: Option<Prepass>,
     screen: Option<ScreenGpu>,
+    /// Temporal anti-aliasing where the depth prepass runs and the scene
+    /// has a float target ([`super::taa`]).
+    taa: Option<Taa>,
     /// The screen-space terms on tiers that do not trace them: one white
     /// texel, so lit surfaces multiply their light by exactly one.
     screen_white: wgpu::TextureView,
@@ -1591,6 +1610,8 @@ impl Photo {
         let screen = plan
             .runs(PhotoPass::ScreenTrace)
             .then(|| ScreenGpu::new(device));
+        let taa = (screen.is_some() && capability.hdr.is_some() && super::taa::enabled())
+            .then(|| Taa::new(device, scene_format));
         // Every fx sheet as one layer of a texture array (group 3), so all
         // particles draw in one pipeline. Group 2 is the textured
         // material's slot in this shader module, so it stays empty here.
@@ -2087,6 +2108,7 @@ impl Photo {
             textured_sampler,
             post,
             prepass,
+            taa,
             screen,
             screen_white: white_terms(device, queue),
             stars: star_buffer,
@@ -2481,9 +2503,152 @@ impl Photo {
             fallback_groups: std::collections::BTreeSet::new(),
             placed: false,
             levels: 0,
+            meshes: Vec::new(),
         };
         gpu.write_lights(queue, prepared.lights.iter().copied());
         gpu
+    }
+
+    /// Uploads [`textured::Instances`]' images, materials, and meshes once,
+    /// in mesh space; [`Self::write_instances`] writes each frame's records
+    /// and light.
+    pub fn upload_instances(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        instances: &textured::Instances,
+    ) -> TexturedGpu {
+        let scene = &instances.scene;
+        let mut prepared = Prepared {
+            instances: vec![Instance::MERGED],
+            ..Prepared::default()
+        };
+        let mut meshes = Vec::with_capacity(scene.meshes.len());
+        for mesh in &scene.meshes {
+            let start = prepared.vertices.len() as u32;
+            let mut parts = Vec::new();
+            for p in &mesh.primitives {
+                let base = prepared.vertices.len() as u32;
+                prepared
+                    .vertices
+                    .extend(p.vertices.iter().map(GpuVertex::pack));
+                let first = prepared.indices.len() as u32;
+                prepared
+                    .indices
+                    .extend(p.indices.chunks_exact(3).flatten().map(|i| i + base));
+                let count = prepared.indices.len() as u32 - first;
+                if count >= 3 {
+                    parts.push((first, count, p.material));
+                }
+            }
+            meshes.push(InstancedMesh {
+                start,
+                vertices: prepared.vertices.len() as u32 - start,
+                parts,
+            });
+        }
+        let mut gpu = self.upload_textured_with(device, queue, scene, &prepared, true);
+        gpu.meshes = meshes;
+        gpu
+    }
+
+    /// Writes this frame's records and light of [`textured::Instances`]
+    /// uploaded by [`Self::upload_instances`]: the records grouped by mesh,
+    /// one run a mesh's primitive, each record's light where the caller
+    /// laid it out. The record buffer and the light texture grow as needed.
+    pub fn write_instances(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        gpu: &mut TexturedGpu,
+        instances: &textured::Instances,
+    ) {
+        let records = instances.records.as_slice();
+        let lights = instances.lights.as_slice();
+        // Where each record's light starts, in the caller's order.
+        let mut offsets = Vec::with_capacity(records.len());
+        let mut next = 0u64;
+        for record in records {
+            let Some(mesh) = gpu.meshes.get(record.mesh as usize) else {
+                gpu.batches.clear();
+                gpu.near.clear();
+                return;
+            };
+            offsets.push(next as u32);
+            next += u64::from(mesh.vertices);
+        }
+        if next != lights.len() as u64 || next > u64::from(u32::MAX) {
+            gpu.batches.clear();
+            gpu.near.clear();
+            return;
+        }
+        let mut order: Vec<usize> = (0..records.len()).collect();
+        order.sort_by_key(|&i| records[i].mesh);
+        let mut out = Vec::with_capacity(records.len() + 1);
+        out.push(Instance::MERGED);
+        let mut batches = Vec::new();
+        let mut i = 0;
+        while i < order.len() {
+            let mesh = records[order[i]].mesh as usize;
+            let first = out.len() as u32;
+            let start = gpu.meshes[mesh].start;
+            while i < order.len() && records[order[i]].mesh as usize == mesh {
+                let k = order[i];
+                out.push(Instance::new(
+                    records[k].transform,
+                    offsets[k].wrapping_sub(start),
+                ));
+                i += 1;
+            }
+            let run = instanced::Run {
+                first,
+                count: out.len() as u32 - first,
+            };
+            for &(first, count, material) in &gpu.meshes[mesh].parts {
+                batches.push(textured::Batch {
+                    material,
+                    first,
+                    count,
+                    min: Vec3::splat(f32::NEG_INFINITY),
+                    max: Vec3::splat(f32::INFINITY),
+                    level: textured::Level::Always,
+                    run: Some(run),
+                });
+            }
+        }
+        let bytes: &[u8] = bytemuck::cast_slice(&out);
+        if gpu.instances.size() < bytes.len() as u64 {
+            let size = (bytes.len() as u64).next_power_of_two();
+            gpu.instances = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("verse instance records"),
+                size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        queue.write_buffer(&gpu.instances, 0, bytes);
+        let size = gpu.light.size();
+        let room =
+            u64::from(size.width) * u64::from(size.height) * u64::from(size.depth_or_array_layers);
+        if (lights.len() as u64) > room {
+            // Half again for what comes next.
+            let (rows, layers) = instanced::light_extent(lights.len() + lights.len() / 2);
+            gpu.light = light_texture(
+                device,
+                "verse instance light",
+                instanced::LIGHT_WIDTH,
+                rows,
+                layers,
+            );
+            gpu.light_rows = rows;
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps);
+        }
+        gpu.texels = lights.len();
+        if !lights.is_empty() {
+            gpu.write_lights(queue, lights.iter().copied());
+        }
+        gpu.near = vec![true; batches.len()];
+        gpu.batches = batches;
     }
 
     /// A figure's batches in drawing order, never culled.
@@ -2670,6 +2835,12 @@ impl Photo {
             .screen
             .as_ref()
             .map(|screen| screen.targets(device, width, height));
+        let taa = match (&self.taa, &screen) {
+            (Some(taa), Some(screen)) if self.post.is_some() => {
+                Some(taa.targets(device, scene_format, &scene, &screen.depth, [width, height]))
+            }
+            _ => None,
+        };
         let terms = screen
             .as_ref()
             .map_or(&self.screen_white, |screen| &screen.occlusion);
@@ -2743,6 +2914,7 @@ impl Photo {
             water_effects: self.water_policy.effects(),
             guide_groups,
             screen,
+            taa,
             size: [width, height],
             msaa,
             scene,
@@ -2975,6 +3147,7 @@ impl Photo {
         self.encode_screen(queue, encoder, targets, &frame, Some(sun), &world);
         let order = Self::textured_order(world.textured, view, f32::INFINITY);
         let figure_order = Self::figure_order(world.figure, view);
+        let instance_orders = world.instances.map(|gpu| Self::figure_order(gpu, view));
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -3041,6 +3214,9 @@ impl Photo {
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(&mut pass, world.textured, &order, which);
                 self.draw_textured(&mut pass, world.figure, &figure_order, which);
+                for (gpu, order) in world.instances.iter().zip(&instance_orders) {
+                    self.draw_textured(&mut pass, *gpu, order, which);
+                }
             }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some((source, globals)) = world.streamed {
@@ -3057,6 +3233,9 @@ impl Photo {
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
             self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
+            for (gpu, order) in world.instances.iter().zip(&instance_orders) {
+                self.draw_textured(&mut pass, *gpu, order, Pass::Blended);
+            }
             pass.set_pipeline(&self.pipelines.wide);
             for (buffer, count) in world.lines {
                 if count >= 2 {
@@ -3184,6 +3363,7 @@ impl Photo {
                 [world.lit, dynamic]
             };
             let figure = world.figure.filter(|_| !cascade.cached);
+            let [moving, settled] = world.instances.map(|gpu| gpu.filter(|_| !cascade.cached));
             let casters = [
                 &self.pipelines.shadow,
                 &self.pipelines.textured_shadow,
@@ -3192,7 +3372,13 @@ impl Photo {
             // A cell outside the cascade's sides casts nothing into its map.
             let matrix = cascade.matrix;
             let keep = |b: &textured::Batch| textured::in_slab(b.min, b.max, matrix);
-            self.draw_casters(&mut pass, casters, lit, [world.textured, figure], &keep);
+            self.draw_casters(
+                &mut pass,
+                casters,
+                lit,
+                [world.textured, figure, moving, settled],
+                &keep,
+            );
         }
     }
 
@@ -3248,7 +3434,7 @@ impl Photo {
                 &self.pipelines.textured_shadow_masked,
             ],
             [world.lit, (&self.dynamic_lit.buffer, 0)],
-            [world.textured, None],
+            [world.textured, None, None, None],
             &keep,
         );
     }
@@ -3261,7 +3447,7 @@ impl Photo {
         pass: &mut wgpu::RenderPass<'_>,
         pipelines: [&wgpu::RenderPipeline; 3],
         lit: [(&wgpu::Buffer, u32); 2],
-        textured: [Option<&TexturedGpu>; 2],
+        textured: [Option<&TexturedGpu>; 4],
         keep: &dyn Fn(&textured::Batch) -> bool,
     ) {
         let [lit_pipeline, opaque_pipeline, masked_pipeline] = pipelines;
@@ -3354,7 +3540,12 @@ impl Photo {
                 &mut pass,
                 [&prepass.lit, &prepass.textured, &prepass.masked],
                 [world.lit, dynamic],
-                [world.textured, world.figure],
+                [
+                    world.textured,
+                    world.figure,
+                    world.instances[0],
+                    world.instances[1],
+                ],
                 &|_| true,
             );
         }
@@ -3385,6 +3576,13 @@ impl Photo {
     ) {
         let [width, height] = targets.size;
         let reversed = reversed_depth() * view.view_proj;
+        // With temporal anti-aliasing the frame draws a sub-pixel off,
+        // differently each frame; culling and the shadows' cascades keep
+        // the steady camera.
+        let drawn = match (&self.taa, &targets.taa, neon.key) {
+            (Some(taa), Some(_), Some(_)) => taa.jitter(reversed, targets.size).0,
+            _ => reversed,
+        };
         let frame = |view_proj: Mat4, width_px: f32, mode: f32| Frame {
             view_proj: view_proj.to_cols_array_2d(),
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
@@ -3423,7 +3621,7 @@ impl Photo {
             water_control: self.water_control(),
             ..Frame::zeroed()
         };
-        let mut uniform = frame(reversed, neon.line_width, 1.0);
+        let mut uniform = frame(drawn, neon.line_width, 1.0);
         uniform.set_particle_controls(neon);
         let daylight = neon.daylight.filter(super::Daylight::valid);
         if let Some(day) = &daylight {
@@ -3451,6 +3649,7 @@ impl Photo {
                 || self.dynamic_lit.count > 0
                 || world.textured.is_some()
                 || world.figure.is_some()
+                || world.instances.iter().any(Option::is_some)
         });
         let mut shadow = None;
         if let Some(key) = &lit {
@@ -3677,10 +3876,13 @@ impl Photo {
             let toward = key.dir.normalize_or(Vec3::Y);
             self.encode_screen(queue, encoder, targets, &uniform, Some(toward), &world);
         }
-        let figure_order = if lit.is_some() {
-            Self::figure_order(world.figure, view)
+        let (figure_order, instance_orders) = if lit.is_some() {
+            (
+                Self::figure_order(world.figure, view),
+                world.instances.map(|gpu| Self::figure_order(gpu, view)),
+            )
         } else {
-            Vec::new()
+            (Vec::new(), [Vec::new(), Vec::new()])
         };
         // Fog is total at the stage's fog end, so no cell beyond it shows.
         let far = if neon.fog_end > 0.0 {
@@ -3704,6 +3906,7 @@ impl Photo {
             world: &world,
             order: &order,
             figure_order: &figure_order,
+            instance_orders: &instance_orders,
             daylight: daylight.is_some(),
             lit: lit.is_some(),
         };
@@ -3962,6 +4165,15 @@ impl Photo {
                 worker_ms: self.water_measurements.worker_ms,
             });
         }
+        // The jittered scene settles into its history before bloom and the
+        // output transform read it.
+        if let (Some(taa), Some(taa_targets)) = (&mut self.taa, &mut targets.taa) {
+            if lit.is_some() {
+                taa.encode(queue, encoder, taa_targets, &targets.scene, reversed);
+            } else {
+                taa.reset();
+            }
+        }
         self.post_chain(
             queue,
             encoder,
@@ -4021,6 +4233,9 @@ impl Photo {
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(pass, world.textured, opaque.order, which);
                 self.draw_textured(pass, world.figure, opaque.figure_order, which);
+                for (gpu, order) in world.instances.iter().zip(opaque.instance_orders) {
+                    self.draw_textured(pass, *gpu, order, which);
+                }
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -4098,6 +4313,9 @@ impl Photo {
         pass.set_bind_group(1, &targets.guide_groups[0], &[]);
         self.draw_textured(pass, world.textured, opaque.order, Pass::Blended);
         self.draw_textured(pass, world.figure, opaque.figure_order, Pass::Blended);
+        for (gpu, order) in world.instances.iter().zip(opaque.instance_orders) {
+            self.draw_textured(pass, *gpu, order, Pass::Blended);
+        }
         pass.set_pipeline(&self.pipelines.wide);
         for (buffer, count) in world.lines {
             if count >= 2 {
@@ -4180,6 +4398,9 @@ impl Photo {
                     which,
                     &pipelines.textured,
                 );
+                for (gpu, order) in world.instances.iter().zip(opaque.instance_orders) {
+                    self.draw_textured_with(&mut pass, *gpu, order, which, &pipelines.textured);
+                }
             }
         }
         pass.set_pipeline(&pipelines.legacy);
@@ -4214,6 +4435,7 @@ struct Opaque<'w, 'a> {
     world: &'w Batches<'a>,
     order: &'w [usize],
     figure_order: &'w [usize],
+    instance_orders: &'w [Vec<usize>; 2],
     daylight: bool,
     lit: bool,
 }
@@ -4358,6 +4580,9 @@ pub struct Batches<'a> {
     pub textured: Option<&'a TexturedGpu>,
     /// The dynamic mesh's figure, its vertices written for this frame.
     pub figure: Option<&'a TexturedGpu>,
+    /// The dynamic mesh's instances, their records and light written for
+    /// this frame ([`textured::Instances`]): what moves, then what rests.
+    pub instances: [Option<&'a TexturedGpu>; 2],
     /// The world's water surface ([`super::water`]), drawn on a lit neon
     /// stage that carries [`Neon::water`].
     pub water: Option<&'a WaterGpu>,

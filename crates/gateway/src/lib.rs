@@ -53,6 +53,8 @@ pub mod earnings;
 pub mod feedback;
 pub mod funding;
 mod github_repos;
+pub mod inference_routes;
+pub mod inference_status;
 pub mod jobs;
 pub mod money;
 pub mod open_quota;
@@ -65,6 +67,7 @@ mod shared_spend;
 #[allow(clippy::result_large_err)]
 pub mod skills;
 pub mod sso;
+pub mod subscriptions;
 #[allow(clippy::result_large_err)]
 pub mod updates;
 #[allow(clippy::result_large_err)]

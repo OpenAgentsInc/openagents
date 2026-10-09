@@ -889,6 +889,30 @@ impl Client {
         }
         self.call(json!({"op":"cancel","execution":execution}))
     }
+    /// Offer one saved environment (`docs/cloud/retail-environment-contract.md`).
+    /// The service refuses until the owner opens environments.
+    pub fn environment_offer(
+        &self,
+        idempotency: &str,
+        request: &retail_cloud::environment::EnvironmentRequest,
+    ) -> Result<Value> {
+        self.authority(true)?;
+        self.call(json!({"op":"environment_offer","idempotency":idempotency,"request":request}))
+    }
+    /// Confirm the displayed environment offer: the setup runs on the
+    /// month's included hours.
+    pub fn environment_confirm(&self, purchase: &str, digest: &Digest) -> Result<Value> {
+        self.authority(true)?;
+        self.call(json!({"op":"environment_confirm","purchase":purchase,"digest":digest}))
+    }
+    pub fn environment(&self, purchase: &str) -> Result<Value> {
+        self.call(json!({"op":"environment","purchase":purchase}))
+    }
+    /// Delete a saved environment version to free its storage.
+    pub fn environment_delete(&self, purchase: &str) -> Result<Value> {
+        self.mutable()?;
+        self.call(json!({"op":"environment_delete","purchase":purchase}))
+    }
     pub fn artifact(&self, execution: &str, name: &str) -> Result<Value> {
         self.call(json!({"op":"artifact","execution":execution,"name":name}))
     }

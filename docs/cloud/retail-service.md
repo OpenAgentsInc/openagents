@@ -48,6 +48,7 @@ Legacy funding keeps its original native account without a retroactive mapping.
 | `executions`, `execution`, `progress` | Account-scoped bounded discovery, retained recovery/hold state, and progress cursor |
 | `cancel` | Durable stop request; acknowledgment, deletion, final usage, and settlement remain separate |
 | `artifact`, `receipt` | Logical retained artifact, retention/deletion, cancellation, and actual settlement records |
+| `environment_offer`, `environment_confirm`, `environment`, `environment_delete` | Saved customer environments on the Pro subscription ([contract](retail-environment-contract.md)); "not available" until the configuration's `environments` launch opens |
 
 The listener admits at most 32 in-flight requests before reading bodies;
 excess requests receive `429 busy`. The request body limit is 32 KiB.

@@ -244,6 +244,9 @@ fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversati
         archived_unix: None,
         project: project.map(str::to_string),
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
     }
 }
 
@@ -301,11 +304,14 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     assert_eq!(finished.location(), PAGE);
     assert!(!browser.0.contains_key("oa_auth_flow"));
 
-    // The repositories, private ones included; add one.
-    let page = browser.get(&world, PAGE).await;
+    // The page shows at once; the repositories (private ones included)
+    // load after it, one page at a time. Add one.
+    let shell = browser.get(&world, PAGE).await;
+    assert!(shell.body.contains("Disconnect GitHub"), "{}", shell.body);
+    assert!(shell.body.contains("/projects/repositories?page=1"));
+    let page = browser.get(&world, "/projects/repositories?page=1").await;
     assert!(page.body.contains("acme/storefront"), "{}", page.body);
     assert!(page.body.contains("octo-local/secret-plans"));
-    assert!(page.body.contains("Disconnect GitHub"));
     let csrf = hidden(
         &page.body,
         r#"<form method="post" action="/projects">"#,
@@ -429,6 +435,8 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
 
     // Revoked on GitHub: projects stay and say Reconnect GitHub.
     world.fake.revoke("octo-local");
+    let list = browser.get(&world, "/projects/repositories?page=1").await;
+    assert!(list.body.contains("GitHub access ended"), "{}", list.body);
     let page = browser.get(&world, PAGE).await;
     assert!(page.body.contains("GitHub access ended"), "{}", page.body);
     assert!(page.body.contains("storefront"));
@@ -494,7 +502,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         access: Access::None,
         projects: Vec::new(),
     };
-    let html = view(&status, None, "t", "", None).into_string();
+    let html = view(&status, "t", "", None, false).into_string();
     crate::copy_guard::assert_plain(PAGE, &html);
     let status = Status {
         access: Access::Connected {
@@ -503,16 +511,212 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         },
         projects: Vec::new(),
     };
-    let listed = Ok(vec![Repository {
-        id: 1,
-        full_name: "octo/hello".into(),
+    // The page shows at once; the list loads after it.
+    let html = view(&status, "t", "", None, false).into_string();
+    assert!(html.contains("Include private repositories"), "{html}");
+    assert!(
+        html.contains(r#"hx-get="/projects/repositories?page=1""#),
+        "{html}"
+    );
+    assert!(html.contains("Loading your repositories"));
+    crate::copy_guard::assert_plain(PAGE, &html);
+    let repo = |id: u64| Repository {
+        id,
+        full_name: format!("octo/repo-{id}"),
         default_branch: "main".into(),
         private: false,
-    }]);
-    let html = view(&status, Some(&listed), "t", "", None).into_string();
-    assert!(html.contains("Include private repositories"), "{html}");
-    assert!(html.contains("octo/hello"));
+        archived: id == 2,
+        installation: None,
+    };
+    let listing = |repositories: Vec<Repository>, more: bool| {
+        Ok(Listing {
+            repositories,
+            more,
+            sso_hidden: false,
+        })
+    };
+    // One page, newest first, with Show more when GitHub has more.
+    let page: Vec<Repository> = (1..=30).map(repo).collect();
+    let html = repos_page(&status, listing(page.clone(), true), "t", "", 1).into_string();
+    assert!(html.contains("octo/repo-1") && html.contains("octo/repo-30"));
+    assert!(
+        html.contains(r#"hx-get="/projects/repositories?page=2""#),
+        "{html}"
+    );
+    assert!(html.contains("Show more"));
+    assert!(html.contains("Archived"));
+    assert!(!html.contains("single sign-on"));
     crate::copy_guard::assert_plain(PAGE, &html);
-    let html = view(&status, Some(&listed), "t", "zzz", None).into_string();
+    let html = repos_page(&status, listing(page.clone(), false), "t", "", 2).into_string();
+    assert!(!html.contains("Show more"));
+    let html = repos_page(&status, listing(page.clone(), false), "t", "zzz", 1).into_string();
     assert!(html.contains("No repositories match."));
+    let html = repos_page(&status, listing(vec![repo(1)], true), "t", "my app", 1).into_string();
+    assert!(html.contains("page=2&amp;q=my+app"), "{html}");
+    // A repository not on the pages can be added by owner/name; one that
+    // is listed is not offered twice.
+    let html = repos_page(
+        &status,
+        listing(page.clone(), true),
+        "t",
+        "acme/far-away",
+        1,
+    )
+    .into_string();
+    assert!(html.contains("Add acme/far-away"), "{html}");
+    assert!(!html.contains("No repositories match."));
+    crate::copy_guard::assert_plain(PAGE, &html);
+    let html =
+        repos_page(&status, listing(page.clone(), true), "t", "octo/repo-3", 1).into_string();
+    assert!(!html.contains("Add octo/repo-3"));
+    // Single sign-on hiding repositories is said once.
+    let hidden = Ok(Listing {
+        repositories: page,
+        more: false,
+        sso_hidden: true,
+    });
+    let html = repos_page(&status, hidden, "t", "", 1).into_string();
+    assert!(html.contains("single sign-on"), "{html}");
+    crate::copy_guard::assert_plain(PAGE, &html);
+    // A rate limit says so, not that GitHub isn't answering.
+    let limited = Err(RepoCallError::Repo(RepoError::RateLimited));
+    let html = repos_page(&status, limited, "t", "", 1).into_string();
+    assert!(
+        html.contains("limiting") && !html.contains("answering"),
+        "{html}"
+    );
 }
+
+/// Connect GitHub (public repositories) for a signed-in browser.
+async fn connect_public(browser: &mut Browser, world: &World, login: &str) {
+    let callback = browser
+        .through_github(world, "/auth/github/repos?access=public", login)
+        .await;
+    assert_eq!(callback.status, StatusCode::OK, "{}", callback.body);
+    let next = callback.body[callback.body.find(FINISH).unwrap()..]
+        .split('"')
+        .next()
+        .unwrap()
+        .replace("&amp;", "&");
+    let finished = browser.get(world, &next).await;
+    assert_eq!(finished.status, StatusCode::SEE_OTHER, "{}", finished.body);
+}
+
+/// The sealed composer selection after a pick (`#composer-state`).
+fn composer_state(html: &str) -> String {
+    let from = html
+        .find(r#"id="composer-state""#)
+        .unwrap_or_else(|| panic!("no composer state: {html}"));
+    let rest = &html[from..];
+    let at = rest.find(r#"value=""#).unwrap() + 7;
+    rest[at..at + rest[at..].find('"').unwrap()].to_string()
+}
+
+/// Pick `repository` in the composer: the panel's form, then its post.
+async fn pick(browser: &mut Browser, world: &World, repository: &str) -> Answer {
+    let panel = browser.get(world, "/composer/repository").await;
+    assert_eq!(panel.status, StatusCode::OK, "{}", panel.body);
+    let marker = r#"<form action="/composer/repository""#;
+    let selection = hidden(&panel.body, marker, "selection");
+    let csrf = hidden(&panel.body, marker, "csrf");
+    browser
+        .post(
+            world,
+            "/composer/repository",
+            &[
+                ("selection", &selection),
+                ("csrf", &csrf),
+                ("value", repository),
+            ],
+        )
+        .await
+}
+
+/// The composer reads GitHub as the signed-in person when they connected
+/// it, and without a token otherwise. Reads without a token share one
+/// small hourly limit for the whole server; past it, those visitors are
+/// told so plainly, while connected people are unaffected. Branch lists
+/// are kept, so opening the panel again doesn't read GitHub.
+#[tokio::test]
+async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
+    let world = world().await;
+    let mut visitor = Browser::default();
+    visitor.get(&world, "/").await;
+    let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains("Selection updated."),
+        "{}",
+        picked.body
+    );
+    assert_eq!(world.fake.anonymous_calls(), 2, "repository and branch");
+    let state = composer_state(&picked.body);
+    let branches = format!(
+        "/composer/branch?selection={}",
+        url::form_urlencoded::byte_serialize(state.as_bytes()).collect::<String>()
+    );
+    for _ in 0..5 {
+        let panel = visitor.get(&world, &branches).await;
+        assert!(panel.body.contains(">main<"), "{}", panel.body);
+    }
+    assert_eq!(world.fake.anonymous_calls(), 3, "one branch list read");
+
+    // Spend the shared limit; then visitors without a connection hear why.
+    let mut limited = None;
+    for _ in 0..40 {
+        let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
+        if picked.body.contains(crate::composer::LIMITED_ANONYMOUS) {
+            limited = Some(picked.body);
+            break;
+        }
+    }
+    let limited = limited.expect("the anonymous limit was reached");
+    assert!(!limited.contains("busy"), "{limited}");
+    crate::copy_guard::assert_plain("/composer/repository", &limited);
+    assert!(world.fake.anonymous_calls() > oa_auth::fake::ANONYMOUS_LIMIT);
+    // The kept branch list is still served, stale ones too.
+    let panel = visitor.get(&world, &branches).await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+    crate::composer::age_branch_lists(oa_auth::cache::FRESH);
+    let panel = visitor.get(&world, &branches).await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+
+    // Signed in without GitHub connected: still without a token.
+    let mut quiet = Browser::default();
+    quiet.sign_in(&world, "quiet-local").await;
+    let picked = pick(&mut quiet, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains(crate::composer::LIMITED_ANONYMOUS),
+        "{}",
+        picked.body
+    );
+
+    // Connected: GitHub is read with the person's own access.
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    connect_public(&mut browser, &world, "octo-local").await;
+    let anonymous = world.fake.anonymous_calls();
+    let picked = pick(&mut browser, &world, "octo-local/hello-world").await;
+    assert!(
+        picked.body.contains("Selection updated."),
+        "{}",
+        picked.body
+    );
+    let state = composer_state(&picked.body);
+    let panel = browser
+        .get(
+            &world,
+            &format!(
+                "/composer/branch?selection={}",
+                url::form_urlencoded::byte_serialize(state.as_bytes()).collect::<String>()
+            ),
+        )
+        .await;
+    assert!(panel.body.contains(">main<"), "{}", panel.body);
+    assert_eq!(
+        world.fake.anonymous_calls(),
+        anonymous,
+        "none without a token"
+    );
+}
+
+mod app;

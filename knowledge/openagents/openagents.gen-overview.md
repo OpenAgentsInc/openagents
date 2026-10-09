@@ -1,6 +1,6 @@
 ---
 id: openagents.gen-overview
-version: 2
+version: 3
 kind: product
 title: "Our essay The Return of the General Agent"
 summary: >-
@@ -17,7 +17,7 @@ answer: >-
   Our thesis on general agents: general agents did not fail; the monolithic
   general agent did. A general agent is a composition: a general front that
   decides cheaply and in typed form what each request needs, and a growing set
-  of specialized members, admitted per request on the strength of a measured
+  of specialized members, brought in per request on the strength of a measured
   claim. Specialization lives in the members and generality in the
   composition. We have shown the parts and one plugin's path from claim to
   adoption, not independent contributors at scale.
@@ -30,11 +30,12 @@ provenance:
 evidence:
   - "2026-10-01: written from the essay The Return of the General Agent and checked against its text (#10099); the answer text awaits the owner's copy review."
   - "2026-10-01: covers asking about, summarizing, or comparing our two essays together, so a request for both essays finds both overviews (#10102); the answer is unchanged."
+  - "2026-10-09: version 3 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-Our thesis on general agents: general agents did not fail; the monolithic general agent did. A general agent is a composition: a general front that decides cheaply and in typed form what each request needs, and a growing set of specialized members, admitted per request on the strength of a measured claim. Specialization lives in the members and generality in the composition. We have shown the parts and one plugin's path from claim to adoption, not independent contributors at scale.
+Our thesis on general agents: general agents did not fail; the monolithic general agent did. A general agent is a composition: a general front that decides cheaply and in typed form what each request needs, and a growing set of specialized members, brought in per request on the strength of a measured claim. Specialization lives in the members and generality in the composition. We have shown the parts and one plugin's path from claim to adoption, not independent contributors at scale.
 
 ## Details
 

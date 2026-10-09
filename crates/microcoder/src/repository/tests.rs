@@ -304,6 +304,71 @@ async fn a_full_disk_is_waited_out_or_recorded_never_left_to_the_settler() {
     assert!(trace.contains("kept after the wait") && !trace.contains("\"lost\""));
 }
 
+/// #10993: a long run's transcript reaching its size bound once ended the
+/// run as a fault, and the fault read as "Stopped, as you asked". Past the
+/// bound, bulky records are left out and the run goes on to finish.
+#[tokio::test]
+async fn a_full_transcript_leaves_records_out_and_the_run_goes_on() {
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    host.fill_trace();
+    let bulky = "b".repeat(200 * 1024);
+    host.append(&atif::Step::said(atif::Source::System, &bulky))
+        .unwrap();
+    host.append(&atif::Step::said(atif::Source::System, "small, still kept"))
+        .unwrap();
+    assert!(!host.cancelled() && host.fault().is_none() && !host.stop_asked());
+    let task = host.finish("model_finished", true, json!({})).unwrap();
+    let result = task.run.as_ref().unwrap().result.clone().unwrap();
+    assert_eq!(result.ending, "model_finished");
+    assert!(!result.stop_requested && result.output_incomplete);
+    assert_eq!(task.execution, task::Execution::Finished);
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("evidence_capped") && trace.contains("small, still kept"));
+    assert!(!trace.contains(&bulky));
+}
+
+/// #10993: a fault of the host's own ends the turn as `host_fault`, a
+/// failure that names the fault, never as a stop the person asked for.
+#[tokio::test]
+async fn a_host_fault_is_a_named_failure_not_a_stop_the_person_asked_for() {
+    use openagents_chat::coder_events::{self, CoderEvent, Mapper};
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    host.fail("task evidence could not be retained: fixture fault");
+    assert!(host.cancelled() && !host.stop_asked());
+    let task = host
+        .finish("cancelled_or_host_refusal", false, json!({}))
+        .unwrap();
+    let run = task.run.as_ref().unwrap();
+    let result = run.result.as_ref().unwrap();
+    assert_eq!(result.ending, coder::task::adapter::HOST_FAULT);
+    assert!(!result.stop_requested);
+    assert_eq!(task.execution, task::Execution::Failed);
+    let steps = atif::log::read(&store.join(&run.admission.trace_file))
+        .unwrap()
+        .document()["steps"]
+        .as_array()
+        .cloned()
+        .unwrap();
+    let mut mapper = Mapper::new(1, None);
+    for step in &steps {
+        mapper.step(step);
+    }
+    match mapper.end(&result.ending, Vec::new(), "", "", None) {
+        CoderEvent::Failure(failed) => {
+            assert!(
+                failed.message.contains("fixture fault"),
+                "{}",
+                failed.message
+            );
+            assert!(failed.message.contains("Nobody stopped the task"));
+            assert_ne!(failed.message, coder_events::STOPPED_AS_ASKED);
+        }
+        other => panic!("expected a failure, got {}", other.name()),
+    }
+}
+
 /// Why a run has no Jev, as a step's judgment says it.
 const NO_JEV: &str = "Jev is unreachable: the fixture has no service";
 
@@ -595,16 +660,17 @@ async fn interrupted_model_request_keeps_unknown_cost_and_starts_no_command() {
 }
 
 #[tokio::test]
-async fn evidence_cap_stops_future_effects_but_keeps_final_disposition() {
+async fn evidence_cap_leaves_records_out_but_never_stops_the_run() {
     let (_root, store, grant) = fixture();
     let host = Host::admit(&store, &grant).await.unwrap();
-    assert!(
-        host.append(&Step::said(Source::Agent, &"x".repeat(8 * 1024 * 1024)))
-            .is_err()
-    );
-    assert!(host.effect("generation", json!({})).is_err());
+    // An oversized record is left out; the run goes on (#10993).
+    host.append(&Step::said(Source::Agent, &"x".repeat(8 * 1024 * 1024)))
+        .unwrap();
+    assert!(host.effect("generation", json!({})).is_ok());
+    assert!(!host.cancelled());
     let task = host.finish("evidence_limit", false, json!({})).unwrap();
-    assert!(task.run.unwrap().result.unwrap().output_incomplete);
+    let result = task.run.unwrap().result.unwrap();
+    assert!(result.output_incomplete && !result.stop_requested);
     let view = task::view::read(&store, "fixture", None, 200).unwrap();
     assert_eq!(view.evidence.state, "sealed");
     assert!(
@@ -2765,11 +2831,15 @@ mod local_run {
             };
             let issue = failure.issue.as_ref().unwrap();
             assert_eq!((issue.number, issue.outcome.as_str()), (8, "failed"));
+            // The red change is kept on a stranded branch, never on main
+            // (#10993).
+            let branch = format!("coder/stranded-{}", &task[..8]);
             assert!(
-                failure.message.contains("Nothing was pushed"),
+                failure.message.contains(&format!("kept on `{branch}`")),
                 "{}",
                 failure.message
             );
+            assert!(comments[1].contains(&branch), "{}", comments[1]);
 
             // A different repository's issue is refused plainly.
             let elsewhere = Reference {
@@ -2901,10 +2971,13 @@ mod local_run {
             assert_eq!(flow.link.outcome, "failed", "{flow:#?}");
             assert_eq!(turns(&runner, &task), 1, "no continuation");
             assert_eq!(main_of(&top, &origin), before, "nothing pushed");
-            // Steps 2 to 9 were judged stuck; step 9 never ran.
+            // Steps 2 to 9 were judged stuck; step 9 never ran. The work
+            // is kept on its stranded branch (#10993), and the worktree,
+            // with nothing unsaved, is retired.
+            let _ = worktree;
+            let branch = format!("coder/stranded-{}", &task[..8]);
             assert_eq!(
-                std::fs::read_to_string(worktree.join("helper.py"))
-                    .unwrap()
+                git(&origin, &["show", &format!("{branch}:helper.py")])
                     .lines()
                     .count(),
                 crate::run::STUCK_STEPS

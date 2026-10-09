@@ -96,7 +96,6 @@ fn context(account: &str, workspace: &str, key: &str) -> Value {
         can_invoke: true,
         commercial: None,
         team_policy: None,
-        team_reports: None,
     })
     .unwrap()
 }

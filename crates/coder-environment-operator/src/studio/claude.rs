@@ -10,11 +10,12 @@
 //! and the engine evidence (engine, pinned version, credential type) are
 //! the operator's.
 //!
-//! The run uses the person's own Anthropic API key when one is configured
-//! (BYO-04/05: applied fresh at the turn, never stored in the record or the
-//! image). Without one, it runs on the Claude login inside the computer,
-//! which a fresh computer from a saved image does not have, so the web
-//! offers runs only when a key is available.
+//! The run uses a Claude credential ([`Key`]): the one the signed-in
+//! person saved in Settings, released for this run only, else the key this
+//! server's environment names (BYO-04/05: applied fresh at the turn, never
+//! stored in the record or the image). A fresh computer from a saved image
+//! has no Claude login inside it, so the web offers runs only when a
+//! credential is available.
 
 use coder_cloud::runtime::Credentials;
 use coder_cloud::{Mode, Placement, Record, Spec, State, Store};
@@ -27,6 +28,57 @@ use std::time::Duration;
 /// The longest one run may take.
 pub const RUN_SECONDS: u64 = 3600;
 pub const MAX_PROMPT: usize = 16 * 1024;
+
+/// A Claude credential for one run: its name (`ANTHROPIC_API_KEY`, or the
+/// Bedrock, Vertex, or Foundry name) and value. It never prints, and its
+/// bytes are zeroed when it drops.
+pub struct Key {
+    name: String,
+    value: String,
+}
+
+impl Key {
+    /// A credential named `name` (one of [`coder_cloud::claude`]'s own
+    /// credential names) holding `value`.
+    pub fn new(name: &str, value: String) -> Result<Self, String> {
+        let key = Self {
+            name: name.to_owned(),
+            value,
+        };
+        if coder_cloud::claude::OwnCredential::from_name(name).is_none()
+            || key.value.trim().is_empty()
+        {
+            return Err("That Claude credential can't be used.".into());
+        }
+        Ok(key)
+    }
+
+    /// The credential's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Runtime credentials holding a copy of the value, which redact it
+    /// from traces.
+    fn credentials(&self) -> Result<Credentials, String> {
+        Credentials::from_names(std::slice::from_ref(&self.name), |_| {
+            Some(self.value.clone())
+        })
+    }
+}
+
+impl Drop for Key {
+    fn drop(&mut self) {
+        let mut bytes = std::mem::take(&mut self.value).into_bytes();
+        bytes.fill(0);
+    }
+}
+
+impl std::fmt::Debug for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Key({}, redacted)", self.name)
+    }
+}
 
 /// One run as the web shows it.
 #[derive(Clone, Debug, PartialEq)]
@@ -96,15 +148,15 @@ impl Runs {
     }
 
     /// Record a new run of `prompt` on the environment's selected version
-    /// and start it on its own thread. `key` is the person's Anthropic API
-    /// key, if any.
+    /// and start it on its own thread. `key` is the Claude credential, if
+    /// any; it lives in memory for the run only.
     pub fn start(
         &self,
         env: &Environment,
         prompt: &str,
         workdir: &str,
         size: &str,
-        key: Option<String>,
+        key: Option<Key>,
     ) -> Result<String, String> {
         let pin = env
             .pin()
@@ -116,11 +168,7 @@ impl Runs {
         let store = self.store(&env.id);
         let n = store.list().map(|l| l.len()).unwrap_or(0) + 1;
         let id = format!("claude-{}-{n}", env.id);
-        let names: Vec<String> = if key.is_some() {
-            vec![coder_cloud::claude::API_KEY.into()]
-        } else {
-            vec![]
-        };
+        let names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
         let spec = Spec {
             placement: Placement::Boat,
             mode: Mode::Coder,
@@ -132,7 +180,7 @@ impl Runs {
             timeout_seconds: RUN_SECONDS,
             size: size.into(),
             template: None,
-            credential_names: names.clone(),
+            credential_names: names,
         };
         let lease = store.lease(&id)?;
         if lease.exists() {
@@ -144,7 +192,7 @@ impl Runs {
         lease.save(&record)?;
         std::thread::Builder::new()
             .name(format!("claude-{n}"))
-            .spawn(move || drive(lease, record, names, key))
+            .spawn(move || drive(lease, record, key))
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
     }
@@ -156,18 +204,22 @@ pub fn task(prompt: &str, workdir: &str) -> String {
     format!("{prompt}\n\nThe repository is checked out at {workdir}; work there.")
 }
 
-fn drive(lease: coder_cloud::Lease, mut record: Record, names: Vec<String>, key: Option<String>) {
+fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>) {
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     else {
         return;
     };
+    // The runtime credentials hold the only copy from here on; the key's
+    // own bytes are zeroed now.
+    let credentials = key.as_ref().map(Key::credentials).transpose();
+    drop(key);
     let result = runtime.block_on(async {
+        let credentials = credentials?.unwrap_or_default();
         let client = boat::Client::from_env()
             .await
             .map_err(|e| format!("Boat is unavailable: {e}"))?;
-        let credentials = Credentials::from_names(&names, |_| key.clone())?;
         let backend = coder_cloud::boat_backend::Boat {
             client,
             credentials,
@@ -277,6 +329,22 @@ pub fn root(state: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_key_names_its_class_never_prints_and_carries_into_the_run() {
+        // Assembled at run time so no key-shaped literal sits here.
+        let value = format!("sk-ant-api03-{}", "a1".repeat(24));
+        let key = Key::new(coder_cloud::claude::API_KEY, value.clone()).unwrap();
+        assert_eq!(key.name(), coder_cloud::claude::API_KEY);
+        assert!(!format!("{key:?}").contains(&value));
+        let credentials = key.credentials().unwrap();
+        assert_eq!(
+            credentials.environment()[coder_cloud::claude::API_KEY],
+            value
+        );
+        assert!(Key::new("GITHUB_TOKEN", value.clone()).is_err());
+        assert!(Key::new(coder_cloud::claude::API_KEY, " ".into()).is_err());
+    }
 
     #[test]
     fn transcripts_join_words_and_list_steps() {

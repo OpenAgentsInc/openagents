@@ -330,6 +330,54 @@ impl AmbientProbes {
         sum.max(Vec3::ZERO)
     }
 
+    /// The grid's light at `p`, blended once, for many normals there: what
+    /// a small moving object, such as a chunk of rubble, samples once a
+    /// frame rather than once a vertex.
+    #[must_use]
+    pub fn at(&self, p: Vec3) -> LocalLight {
+        let g = &self.grid;
+        let mut sum = [0.0f32; 12];
+        if g.data.is_empty() || g.cell <= 0.0 {
+            return LocalLight {
+                sh: None,
+                light: self.light,
+            };
+        }
+        let q = (p - g.origin) / g.cell;
+        let max = Vec3::new(
+            (g.dims[0] - 1) as f32,
+            (g.dims[1] - 1) as f32,
+            (g.dims[2] - 1) as f32,
+        );
+        let q = q.clamp(Vec3::ZERO, max);
+        let base = q.floor().min(max - 1.0).max(Vec3::ZERO);
+        let t = q - base;
+        for corner in 0..8u32 {
+            let offset = Vec3::new(
+                (corner & 1) as f32,
+                ((corner >> 1) & 1) as f32,
+                ((corner >> 2) & 1) as f32,
+            );
+            let at = base + offset;
+            let weight = (Vec3::ONE - offset + (offset * 2.0 - 1.0) * t).element_product();
+            if weight <= 0.0 {
+                continue;
+            }
+            let index = at.x as usize
+                + at.y as usize * g.dims[0] as usize
+                + at.z as usize * (g.dims[0] * g.dims[1]) as usize;
+            if let Some(probe) = g.data.get(index) {
+                for (s, v) in sum.iter_mut().zip(probe) {
+                    *s += v * weight;
+                }
+            }
+        }
+        LocalLight {
+            sh: Some(sum),
+            light: self.light,
+        }
+    }
+
     /// The diffuse multiplier at `p` facing `n`: baked irradiance over the
     /// open sky's.
     #[must_use]
@@ -352,6 +400,41 @@ impl AmbientProbes {
             let open = ((m.x + m.y + m.z) / 3.0).clamp(0.0, 1.0);
             v.light = encode(m, open);
         }
+    }
+}
+
+/// The probe grid's light blended at one point ([`AmbientProbes::at`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocalLight {
+    /// Order-one irradiance per channel, as a probe holds it; `None`
+    /// without a grid, which leaves the open sky.
+    sh: Option<[f32; 12]>,
+    light: BakeLight,
+}
+
+impl LocalLight {
+    /// The diffuse multiplier facing `n`, as [`AmbientProbes::multiplier`]
+    /// gives it at this point.
+    #[must_use]
+    pub fn multiplier(&self, n: Vec3) -> Vec3 {
+        let Some(sh) = self.sh else {
+            return Vec3::ONE;
+        };
+        let open = self.light.ambient(n);
+        if open <= 0.0 {
+            return Vec3::ONE;
+        }
+        let channel =
+            |c: usize| sh[c * 4] + sh[c * 4 + 1] * n.x + sh[c * 4 + 2] * n.y + sh[c * 4 + 3] * n.z;
+        (Vec3::new(channel(0), channel(1), channel(2)).max(Vec3::ZERO) / open)
+            .clamp(Vec3::ZERO, Vec3::splat(MAX_AMBIENT))
+    }
+
+    /// The light channel facing `n`, as [`AmbientProbes::shade`] fills it.
+    #[must_use]
+    pub fn encoded(&self, n: Vec3) -> [u8; 4] {
+        let m = self.multiplier(n);
+        encode(m, ((m.x + m.y + m.z) / 3.0).clamp(0.0, 1.0))
     }
 }
 
@@ -1372,6 +1455,24 @@ mod tests {
         let clear = decode(figure[1].light).0;
         assert!(figure.iter().all(|v| v.light[3] > 0));
         assert!(under.x < clear.x, "{under} against {clear}");
+        // Light blended once at a point gives each normal what sampling
+        // there per normal does: half a cell out along that normal.
+        for n in [
+            Vec3::Y,
+            Vec3::X,
+            -Vec3::Z,
+            Vec3::new(0.3, 0.8, -0.5).normalize(),
+        ] {
+            for p in [Vec3::new(-2.0, 1.0, 0.0), Vec3::new(4.3, 1.2, -0.4)] {
+                let blended = probes.at(p + n * probes.grid.cell * 0.5).multiplier(n);
+                let sampled = probes.multiplier(p, n);
+                assert!(
+                    (blended - sampled).abs().max_element() < 1e-4,
+                    "{blended} {sampled}"
+                );
+            }
+        }
+        assert_eq!(probes.at(Vec3::ZERO).encoded(Vec3::Y)[3] > 0, true);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1481,6 +1582,7 @@ mod tests {
                 scene: target.clone(),
                 bake_key: Some("target-recipe".into()),
             }],
+            derived: Vec::new(),
         };
         assert!(record.accepts(&layers, &target, Some("target-recipe")));
         assert!(!record.accepts(&layers, &target, Some("other-recipe")));

@@ -358,6 +358,9 @@ async fn a_failed_attempt_retries_on_a_new_session_with_the_conversation() {
     let a = agent(dir.path(), &provider, transport);
     let state = a.run(&brief(), State::new("env-1")).await;
     assert!(matches!(state.phase, Phase::Failed { .. }), "{state:?}");
+    // A stopped setup keeps no machine: its session is cancelled.
+    let first = a.owners.setup.sessions().read("env-1-s1").unwrap();
+    assert!(first.state.terminal(), "{:?}", first.state);
     let mut state = state;
     state.retry();
     assert_eq!(state.attempt, 2);

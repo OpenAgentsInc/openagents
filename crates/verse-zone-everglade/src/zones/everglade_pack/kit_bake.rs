@@ -33,6 +33,22 @@ pub const KIT_BAKE_SHA256: &str = "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e57104
 pub const KIT_BAKE_BYTES: u64 = 51684139;
 // Retain previous reviewed digests here when changing KIT_BAKE_SHA256.
 const KIT_BAKE_HISTORY: &[&str] = &[KIT_BAKE_SHA256];
+/// Exact content identity of the phone tier's light layers, the pinned
+/// layers with only [`PHONE_SUNS`] (`verse-bake --phone-layers`), or empty
+/// while none is published.
+#[rustfmt::skip]
+pub const KIT_BAKE_PHONE_SHA256: &str = "a55d55e1e948bd425e17a0ad5b17d059464514cf8c38874e6c71453c80baf351";
+/// Transfer size of the phone tier's light layers; zero while none is
+/// published.
+pub const KIT_BAKE_PHONE_BYTES: u64 = 34206277;
+/// The phone tier's light-layer transfer budget.
+pub const KIT_BAKE_PHONE_BUDGET: u64 = 40 * 1024 * 1024;
+// Retain previous reviewed digests here when changing KIT_BAKE_PHONE_SHA256.
+const KIT_BAKE_PHONE_HISTORY: &[&str] = &[KIT_BAKE_PHONE_SHA256];
+/// The suns the phone tier keeps, of the four baked (8:00, 12:00, 15:30,
+/// and 17:30): 8:00 and 15:30, so mornings and afternoons each keep a sun
+/// on their side and noon blends the two.
+pub const PHONE_SUNS: [usize; 2] = [0, 2];
 /// Environment variable naming a local layer file for offline tools, such
 /// as `everglade_capture`.
 pub const LOCAL_ENV: &str = "VERSE_KIT_BAKE";
@@ -50,6 +66,33 @@ pub fn pinned() -> PinnedFile {
         temp_prefix: ".everglade-kit-bake-",
         history: KIT_BAKE_HISTORY,
     }
+}
+
+/// The layers a client `tier` fetches: the phone layers when the tier is
+/// phone and they are published, the full layers otherwise.
+#[must_use]
+pub fn pinned_for(tier: super::kit::Tier) -> PinnedFile {
+    if tier == super::kit::Tier::Phone && KIT_BAKE_PHONE_BYTES > 0 {
+        return PinnedFile {
+            label: "Everglade phone light layers",
+            sha256: KIT_BAKE_PHONE_SHA256,
+            bytes: KIT_BAKE_PHONE_BYTES,
+            url: format!("{KIT_ORIGIN}/bake/{KIT_BAKE_PHONE_SHA256}.vlay"),
+            extension: "vlay",
+            temp_prefix: ".everglade-kit-bake-phone-",
+            history: KIT_BAKE_PHONE_HISTORY,
+        };
+    }
+    pinned()
+}
+
+/// The phone tier's layers derived from the full layers `full`.
+///
+/// # Errors
+///
+/// Returns a message when `full` lacks a phone sun.
+pub fn phone_layers(full: &Layers) -> Result<Layers, String> {
+    full.with_suns(&PHONE_SUNS)
 }
 
 static OFFERED: Mutex<Option<Arc<Layers>>> = Mutex::new(None);
@@ -89,15 +132,33 @@ pub fn decode_pinned(bytes: &[u8]) -> Result<Layers, String> {
 /// Returns a message when none are published, the cache holds none and
 /// downloading is off, or the transfer or decoding fails.
 pub fn fetch(cache: &Path, download: bool, cancel: &AtomicBool) -> Result<Layers, String> {
-    let file = pinned();
+    fetch_tier(cache, download, cancel, super::kit::Tier::Full)
+}
+
+/// [`fetch`] for a client `tier` ([`pinned_for`]).
+///
+/// # Errors
+///
+/// As [`fetch`].
+pub fn fetch_tier(
+    cache: &Path,
+    download: bool,
+    cancel: &AtomicBool,
+    tier: super::kit::Tier,
+) -> Result<Layers, String> {
+    let file = pinned_for(tier);
     if file.bytes == 0 {
         return Err("No kit light layers are published".into());
     }
+    let decode = |bytes: &[u8]| {
+        file.verify(bytes)?;
+        Layers::decode(bytes)
+    };
     if download {
-        return file.fetch(cache, cancel, &mut |_, _| (), decode_pinned);
+        return file.fetch(cache, cancel, &mut |_, _| (), decode);
     }
     let bytes = file.read_bounded(&cache.join(file.cache_name()))?;
-    decode_pinned(&bytes)
+    decode(&bytes)
 }
 
 /// Layers from a local file, for offline tools: the pinned layers, or,
@@ -124,12 +185,22 @@ pub fn compatibility() -> Arc<verse_pbr::pbr::baked_layers::SceneCompatibility> 
         std::sync::OnceLock::new();
     RECORD
         .get_or_init(|| {
-            Arc::new(
+            let mut record: verse_pbr::pbr::baked_layers::SceneCompatibility =
                 serde_json::from_str(include_str!(
                     "../../../../../assets/verse/everglade-layer-compatibility.json"
                 ))
-                .expect("the checked-in layer compatibility record is valid"),
-            )
+                .expect("the checked-in layer compatibility record is valid");
+            // The phone layers are derived from the reviewed artifact, so
+            // the scenes that accept it accept them.
+            if KIT_BAKE_PHONE_BYTES > 0 && record.artifact_sha256 == KIT_BAKE_SHA256 {
+                record
+                    .derived
+                    .push(verse_pbr::pbr::baked_layers::DerivedArtifact {
+                        artifact_sha256: KIT_BAKE_PHONE_SHA256.into(),
+                        artifact_bytes: KIT_BAKE_PHONE_BYTES,
+                    });
+            }
+            Arc::new(record)
         })
         .clone()
 }

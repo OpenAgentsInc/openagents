@@ -437,7 +437,7 @@ fn brainstorm_settings(frame: &mut Frame, area: Rect, app: &App) {
         lines.push(detail("House key", &discovery.house.pubkey, area.width));
         lines.push(detail(
             "Discovered",
-            &format!("{} ms since Unix epoch", discovery.house.discovered_at_ms),
+            &format!("{} ms (Unix time)", discovery.house.discovered_at_ms),
             area.width,
         ));
         lines.push(Line::from(span(

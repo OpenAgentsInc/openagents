@@ -36,6 +36,9 @@
 //! - **Ephemeral Git auth** ([`git_auth_env`]): Git reads a credential
 //!   helper from per-process `GIT_CONFIG_*` variables that name the
 //!   credential variable, so no token reaches `.git/config` or any file.
+//!   With [`GIT_BROKER`], no GitHub token reaches the machine's
+//!   environment either: the helper asks the account service's broker
+//!   for a one-repository token each time.
 
 use coder_cloud::operator::{Adapter, Profile};
 use coder_environment::{
@@ -59,8 +62,15 @@ pub use transition::{
 pub const SCHEMA: &str = "openagents.environment.setup.v1";
 /// The engine admitted for setup sessions in this slice.
 pub const SETUP_ENGINE: &str = "codex";
-/// Credentials the session may use for ephemeral Git auth.
-pub const GIT_CREDENTIALS: &[&str] = &["GH_TOKEN", "GITHUB_TOKEN"];
+/// The credential whose value is the account service's credential broker
+/// and a ticket for one repository (`<broker URL> <ticket>`, from
+/// `oa_auth::repos::broker::credential_value`), not a GitHub token: Git
+/// asks the broker for a short-lived token on every fetch or push
+/// ([`git_auth_env`]).
+pub const GIT_BROKER: &str = "OPENAGENTS_GIT_BROKER";
+/// Credentials the session may use for ephemeral Git auth, the broker
+/// first.
+pub const GIT_CREDENTIALS: &[&str] = &[GIT_BROKER, "GH_TOKEN", "GITHUB_TOKEN"];
 pub const MAX_COMMANDS: usize = 512;
 pub const MAX_STEERING: usize = 256;
 pub const MAX_REQUESTS: usize = 1024;
@@ -217,8 +227,21 @@ impl Admission {
 /// Per-process Git configuration for ephemeral auth. The helper answers
 /// `get` with the value of the credential *variable* at run time; neither
 /// this map nor any file Git writes holds the token. The empty first helper
-/// clears any helper a repository or user config would add.
+/// clears any helper a repository or user config would add. It answers only
+/// for `https://github.com`: setup commands also fetch Git dependencies and
+/// submodules from other hosts, and those must never be handed the token.
+///
+/// With [`GIT_BROKER`] the helper holds no token at all: for an
+/// `https://github.com/<owner>/<name>` request (Git sends the path, by
+/// `credential.useHttpPath`) it posts the ticket and the path to the
+/// broker with `curl`, the ticket on standard input so no process list
+/// shows it, and passes on what the broker answers (a token for that one
+/// repository with its expiry). When the broker refuses or can't be
+/// reached, Git gets nothing; there is no older token to fall back to.
 pub fn git_auth_env(credential: &str) -> BTreeMap<String, String> {
+    if credential == GIT_BROKER {
+        return broker_env();
+    }
     BTreeMap::from([
         ("GIT_CONFIG_COUNT".into(), "2".into()),
         ("GIT_CONFIG_KEY_0".into(), "credential.helper".into()),
@@ -227,9 +250,34 @@ pub fn git_auth_env(credential: &str) -> BTreeMap<String, String> {
         (
             "GIT_CONFIG_VALUE_1".into(),
             format!(
-                "!f() {{ test \"$1\" = get || exit 0; echo username=x-access-token; echo \"password=${{{credential}}}\"; }}; f"
+                "!f() {{ test \"$1\" = get || exit 0; p=; h=; while IFS='=' read -r k v; do case \"$k\" in protocol) p=$v;; host) h=$v;; esac; done; test \"$p\" = https && test \"$h\" = github.com || exit 0; echo username=x-access-token; echo \"password=${{{credential}}}\"; }}; f"
             ),
         ),
+        ("GIT_TERMINAL_PROMPT".into(), "0".into()),
+    ])
+}
+
+fn broker_env() -> BTreeMap<String, String> {
+    BTreeMap::from([
+        ("GIT_CONFIG_COUNT".into(), "3".into()),
+        ("GIT_CONFIG_KEY_0".into(), "credential.helper".into()),
+        ("GIT_CONFIG_VALUE_0".into(), String::new()),
+        ("GIT_CONFIG_KEY_1".into(), "credential.helper".into()),
+        (
+            "GIT_CONFIG_VALUE_1".into(),
+            format!(
+                "!f() {{ test \"$1\" = get || exit 0; p=; h=; q=; while IFS='=' read -r k v; do case \"$k\" in protocol) p=$v;; host) h=$v;; path) q=$v;; esac; done; \
+test \"$p\" = https && test \"$h\" = github.com && test -n \"$q\" || exit 0; case \"$q\" in *[!A-Za-z0-9._/-]*) exit 0;; esac; \
+v=${{{GIT_BROKER}}}; u=${{v%% *}}; t=${{v#* }}; test -n \"$t\" && test \"$u\" != \"$v\" || exit 0; \
+case \"$u\" in https://*|http://127.0.0.1:*|http://localhost:*) ;; *) exit 0;; esac; \
+printf 'ticket=%s&protocol=https&host=github.com&path=%s' \"$t\" \"$q\" | curl -fsS --max-time 20 --proto =https,http -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- \"$u\"; }}; f"
+            ),
+        ),
+        (
+            "GIT_CONFIG_KEY_2".into(),
+            "credential.https://github.com.useHttpPath".into(),
+        ),
+        ("GIT_CONFIG_VALUE_2".into(), "true".into()),
         ("GIT_TERMINAL_PROMPT".into(), "0".into()),
     ])
 }

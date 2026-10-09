@@ -588,9 +588,9 @@ impl Grid {
                 middle = column("grid-board", board);
                 middle.style.background = Some(Color {
                     alpha: 235,
-                    ..openagents_chat_app::visual::CANVAS
+                    ..openagents_chat_app::visual::current().canvas
                 });
-                middle.style.border = Some(openagents_chat_app::visual::BORDER);
+                middle.style.border = Some(openagents_chat_app::visual::current().border);
                 middle.style.radius = Some(10);
                 middle.style.padding_points = Some([12, 14, 12, 14]);
                 middle.style.viewport = Some(rust_native::style::Viewport {
@@ -626,7 +626,7 @@ fn chip(key: &str, value: impl Into<String>, strength: f32) -> Node<Intent> {
     line.style.line_height = Some(16);
     line.style.foreground = Some(Color {
         alpha: (255.0 * strength.clamp(0.0, 1.0)).round() as u8,
-        ..openagents_chat_app::visual::TEXT
+        ..openagents_chat_app::visual::current().text
     });
     // A vertical stack is as wide as its text, where a row would take
     // the whole line.
@@ -641,7 +641,10 @@ fn chip(key: &str, value: impl Into<String>, strength: f32) -> Node<Intent> {
     chip.style.intrinsic_width = Some(true);
     chip.style.background = Some(Color {
         alpha: (150.0 * strength.clamp(0.0, 1.0)).round().max(90.0) as u8,
-        ..Color::rgb(10, 10, 10)
+        ..openagents_chat_app::visual::pick(
+            Color::rgb(10, 10, 10),
+            openagents_chat_app::visual::current().canvas,
+        )
     });
     chip.style.radius = Some(6);
     chip.style.padding_points = Some([5, 10, 5, 10]);
@@ -657,17 +660,26 @@ fn chip_button(key: &str, label: &str, on: bool) -> Node<Intent> {
     button.style.radius = Some(6);
     button.style.weight = Some(TextWeight::Medium);
     if on {
-        button.style.background = Some(openagents_chat_app::visual::TEXT);
-        button.style.foreground = Some(Color::rgb(20, 20, 20));
+        button.style.background = Some(openagents_chat_app::visual::current().text);
+        button.style.foreground = Some(openagents_chat_app::visual::pick(
+            Color::rgb(20, 20, 20),
+            openagents_chat_app::visual::current().on_text,
+        ));
     } else {
         button.style.background = Some(Color {
             alpha: 170,
-            ..Color::rgb(10, 10, 10)
+            ..openagents_chat_app::visual::pick(
+                Color::rgb(10, 10, 10),
+                openagents_chat_app::visual::current().canvas,
+            )
         });
-        button.style.foreground = Some(openagents_chat_app::visual::TEXT);
+        button.style.foreground = Some(openagents_chat_app::visual::current().text);
         button.style.hover_background = Some(Color {
             alpha: 220,
-            ..Color::rgb(40, 40, 40)
+            ..openagents_chat_app::visual::pick(
+                Color::rgb(40, 40, 40),
+                openagents_chat_app::visual::current().selected,
+            )
         });
     }
     button

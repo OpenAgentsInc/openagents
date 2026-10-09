@@ -724,6 +724,58 @@ the deployment, source, and custody record, is the owner-only ENV-08
 qualification entry in the workspace `NEEDS_OWNER.md`. Until it passes,
 environment onboarding is not available on a deployed origin.
 
+ENV-09 is the optional dedicated GCE adapter in
+[`coder_working_computer::gce`](../../../crates/coder-working-computer/src/gce.rs),
+packaged by `"provider": "gce"` in the owners' config
+([`coder-environment-operator/src/gce.rs`](../../../crates/coder-environment-operator/src/gce.rs)).
+Every setup, builder, and verifier computer is its own GCE instance, named
+from its create operation so a lost reply finds the same one. Instances
+carry `openagents-managed=coder-environment`, never the pool's label, have
+no service account or API scopes and no external address, and a chat
+computer is refused. Setup and builder instances boot the configured base
+by exact name; the boot disk must report the pinned numeric image ID, and
+drift deletes the instance and fails. A builder recipe must pin that same
+base (`Provider::admits_base`); a recipe pinned to another provider is
+refused before any allocation. Output images are GCE images made from a
+stopped builder's boot disk. The numeric image ID is the snapshot identity,
+the logical name is kept in the image description, and a name is read
+first and never replaced. A verifier boots exactly that image, and its
+restore readiness requires the boot disk to report the sealed ID and the
+guest to answer. Commands use the same identified at-most-once wrapper as
+Boat over SSH, so evidence has the same shape. Credential values go over
+standard input to a tmpfs file per boot, which no image captures. Delete
+removes the instance with its disks and confirms it is gone. The janitor
+lists owned instances and images before reading the records, deletes owned
+instances no record or retained create intent holds, and retains a report
+of disks, image bytes, run times, and unreferenced images
+(`environment-gce/reconciliation.json`). Images are deleted only through
+`retire_image` with their expected ID. The tests run the adapter against an
+in-memory GCE whose scripts run under local `sh`; no test calls GCE. Saved
+versions sealed on GCE are not yet selectable for operator Cloud jobs,
+which start on Boat. A real GCE build and verification is the owner-only
+ENV-09 entry in `NEEDS_OWNER.md`.
+
+ENV-10 is the customer contract
+[`retail-environment-contract.md`](../retail-environment-contract.md)
+(`openagents.cloud.retail-environment.v2`) and its metered lifecycle in
+[`retail_cloud::environment`](../../../crates/retail-cloud/src/environment.rs).
+Environments are part of the $20/month Pro subscription: 100 machine-hours
+a month on a 2 vCPU, 8 GB machine, 2 machines at once, and 20 GB of saved
+images (10 versions), with no run-length limit of ours. Setups count
+against the month's hours; extra hours at $0.18 each come from credits only
+when the person turns them on, up to their own monthly cap. Saved images
+stay while the account is subscribed and 30 days after. Only the account
+that made a version may select it. The person's own model key is the only
+credential, and there is no terminal or publication. Customers reach it
+through the authenticated retail transport (`environment_offer`,
+`environment_confirm`, `environment`, `environment_delete` on `/v1/retail`,
+and the native client), and the website's Settings shows the plan and the
+month. The retail worker's tick recovers it after a restart. It is closed
+until the owner publishes the plan by digest and records a funded
+qualification; the checked-in plan is `proposed`. The step that runs a paid
+setup's machines through the ENV-03 to ENV-05 owners on a retail grant is
+part of that qualification. The tests here use fake billing only.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

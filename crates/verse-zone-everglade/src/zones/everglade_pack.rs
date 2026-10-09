@@ -210,6 +210,7 @@ pub struct Loader {
     cache: PathBuf,
     worker: Option<Worker>,
     download_kit: bool,
+    kit_tier: kit::Tier,
 }
 
 impl Loader {
@@ -219,12 +220,17 @@ impl Loader {
             cache: cache_path,
             worker: None,
             download_kit: false,
+            kit_tier: kit::Tier::Full,
         }
     }
 
     /// Whether an entry downloads the pinned kit pack when the cache lacks
     /// it. Off by default, so tests and tools never reach the network; the
     /// kit in the cache is used either way.
+    /// Which kit and light files this client fetches (#10908).
+    pub fn kit_tier(&mut self, tier: kit::Tier) {
+        self.kit_tier = tier;
+    }
     pub fn download_kit(&mut self, download: bool) {
         self.download_kit = download;
     }
@@ -244,6 +250,7 @@ impl Loader {
         }
         let cache = self.cache.clone();
         let download_kit = self.download_kit;
+        let tier = self.kit_tier;
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = cancel.clone();
         let (tx, events) = mpsc::channel();
@@ -263,13 +270,29 @@ impl Loader {
                     )
                     .map(|mut pack| {
                         // The licensed kit when it is cached or published;
-                        // its committed proxies otherwise.
-                        if let Ok(pieces) = kit::fetch(&cache, download_kit, &worker_cancel) {
+                        // its committed proxies otherwise. A tier whose
+                        // files are not served takes the full files.
+                        let full = kit::Tier::Full;
+                        let fetched = kit::fetch_tier(&cache, download_kit, &worker_cancel, tier)
+                            .map(|pieces| (pieces, tier))
+                            .or_else(|_| {
+                                kit::fetch_tier(&cache, download_kit, &worker_cancel, full)
+                                    .map(|pieces| (pieces, full))
+                            });
+                        if let Ok((pieces, tier)) = fetched {
                             kit::install(&mut pack, Some(&pieces));
                             // The kit town's baked light, when published;
                             // the town bakes at load otherwise.
                             if let Ok(layers) =
-                                kit_bake::fetch(&cache, download_kit, &worker_cancel)
+                                kit_bake::fetch_tier(&cache, download_kit, &worker_cancel, tier)
+                                    .or_else(|_| {
+                                        kit_bake::fetch_tier(
+                                            &cache,
+                                            download_kit,
+                                            &worker_cancel,
+                                            full,
+                                        )
+                                    })
                             {
                                 kit_bake::offer(layers);
                             }

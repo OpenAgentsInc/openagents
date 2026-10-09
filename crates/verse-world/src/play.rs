@@ -3429,14 +3429,15 @@ impl Game {
             .iter()
             .find(|a| a.model == "adventurer")
             .ok_or("Missing adventurer spawn")?;
-        let spawn = authored.position;
         let yaw = authored.yaw;
-        let mut character = physics::character::Character::new(spawn.as_dvec3());
+        let feet = self.respawn_feet(self.player_life(), authored.position.as_dvec3())?;
+        let spawn = feet.as_vec3();
+        let mut character = physics::character::Character::new(feet);
         character.teleport(
             &self.query_scene,
             self.actor_filter(self.player_life()),
             physics::character::Settings::default(),
-            spawn.as_dvec3(),
+            feet,
         )?;
         let old = self.player_life();
         let physical = physics::queries::Life {
@@ -4765,10 +4766,7 @@ mod body_lifetime_tests {
         );
         assert!(
             g.query_scene
-                .pose(physics::queries::ColliderKey {
-                    life: physical,
-                    shape: 0
-                })
+                .pose(physics::walkable::blocker_key(physical))
                 .is_some()
         );
         assert!(
@@ -4813,10 +4811,7 @@ mod body_lifetime_tests {
         );
         assert!(
             g.query_scene
-                .pose(physics::queries::ColliderKey {
-                    life: physical,
-                    shape: 0
-                })
+                .pose(physics::walkable::blocker_key(physical))
                 .is_none()
         );
         assert!(!g.bodies.remove(physical));
@@ -5032,10 +5027,13 @@ mod player_respawn_tests {
             entity: 999,
             generation: 0,
         };
+        // A respawn may stand on the nearest clear cell within
+        // RESPAWN_RADIUS of its spawn, so obstruct that whole disc.
+        let reach = multiplayer::RESPAWN_RADIUS + 1.;
         g.set_navigation_blocker(
             prop,
-            spawn - glam::DVec3::splat(1.),
-            spawn + glam::DVec3::splat(2.),
+            spawn - glam::DVec3::new(reach, 1., reach),
+            spawn + glam::DVec3::new(reach, 2., reach),
         )
         .unwrap();
         let before = g.checkpoint().unwrap();

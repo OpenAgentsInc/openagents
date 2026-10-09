@@ -280,6 +280,8 @@ async fn deploy_tuned(
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
+        team_reports: None,
+        inference: None,
     };
     tune(&mut config);
     let state = ServeState::open(config).unwrap();
@@ -2510,6 +2512,8 @@ async fn deploy_money(
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
+        team_reports: None,
+        inference: None,
     };
     let state = ServeState::open(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

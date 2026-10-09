@@ -212,8 +212,18 @@ pub(crate) fn plugin_cards(slugs: &[String]) -> Markup {
 /// answered request's reply carried. None while it streams or for any
 /// other message.
 pub(crate) fn message_plugins<'a>(chat: &'a Conversation, message: &Message) -> &'a [String] {
+    message_reply(chat, message)
+        .map(|reply| reply.plugins.as_slice())
+        .unwrap_or_default()
+}
+
+/// What the worker said about the reply a stored assistant `message`
+/// shows: the parts the chips and cards read, and how it was served (its
+/// tier, route, and prepared answer). None while it streams or for any
+/// other message.
+pub(crate) fn message_reply<'a>(chat: &'a Conversation, message: &Message) -> Option<&'a Meta> {
     if message.role != Role::Assistant {
-        return &[];
+        return None;
     }
     message
         .request_id
@@ -221,8 +231,6 @@ pub(crate) fn message_plugins<'a>(chat: &'a Conversation, message: &Message) -> 
         .and_then(|id| chat.requests.iter().find(|request| request.id == id))
         .filter(|request| request.outcome == Outcome::Answered)
         .and_then(|request| request.reply.as_ref())
-        .map(|reply| reply.plugins.as_slice())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -264,6 +272,9 @@ mod tests {
             archived_unix: None,
             project: None,
             terminal: None,
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
         }
     }
 
@@ -334,7 +345,10 @@ mod tests {
         let slugs = message_plugins(&answered, &answered.messages[1]);
         assert_eq!(slugs, ["project-map", "nope", "code-finder"]);
         let html = plugin_cards(slugs).into_string();
-        assert_eq!(html.matches(r#"<article class="oa-plugin-card""#).count(), 2);
+        assert_eq!(
+            html.matches(r#"<article class="oa-plugin-card""#).count(),
+            2
+        );
         let map = coder::gym_kb::catalog_plugin("project-map").expect("in the catalog");
         assert!(html.contains(&maud::html! { (map.name) }.into_string()));
         assert!(html.contains(&maud::html! { (map.summary) }.into_string()));

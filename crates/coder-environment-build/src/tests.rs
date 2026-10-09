@@ -380,6 +380,28 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
 }
 
 #[tokio::test]
+async fn a_base_pinned_to_another_provider_never_allocates() {
+    let mut r = recipe(SCRIPT, &["GH_TOKEN"]);
+    r.base.provider = Provider::Gce;
+    let h = harness_with(r);
+    let refused = h.builder.start(&request("req-1", 1), 1_000).await;
+    assert!(
+        matches!(refused, Err(BuildError::Refused(_))),
+        "{refused:?}"
+    );
+    assert_eq!(count(&h, "create"), 0);
+}
+
+#[tokio::test]
+async fn the_image_identity_names_the_builders_provider() {
+    let h = harness();
+    let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();
+    assert_eq!(job.image.unwrap().provider, Provider::Boat);
+    let c = h.builder.computers.store.read(&job.computer).unwrap();
+    assert_eq!(c.provider, Provider::Boat);
+}
+
+#[tokio::test]
 async fn a_recipe_edit_marks_earlier_builds_stale() {
     let h = harness();
     let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();
@@ -718,4 +740,39 @@ async fn a_checkout_that_is_not_the_pin_fails_before_the_install() {
     assert_eq!(source.spec.env["GIT_CONFIG_KEY_1"], "credential.helper");
     assert!(source.spec.command.contains(&pin().revision));
     assert_eq!(env_build(&h, "build-1").state, BuildState::Failed);
+}
+
+#[test]
+fn a_snapshot_exclusion_file_is_removed_so_installed_toolchains_are_captured() {
+    let plan = Plan::new(&CapturePolicy::default(), "/tmp/oa-commands/sanitize");
+    assert!(plan.exclude.iter().any(|p| p == "~/.boxignore"));
+    let with_recipe = Plan::new(&capture_policy(), "/tmp/oa-commands/sanitize");
+    assert!(with_recipe.exclude.iter().any(|p| p == "secrets.env"));
+    assert!(with_recipe.exclude.iter().any(|p| p == "~/.boxignore"));
+
+    // Run the real script against a scratch home and root.
+    let dir = tempfile::tempdir().unwrap();
+    let (home, root, work) = (
+        dir.path().join("home"),
+        dir.path().join("root"),
+        dir.path().join("work"),
+    );
+    for d in [&home, &root, &work, &home.join(".cargo/bin")] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::write(home.join(".boxignore"), ".cache/\n.cargo/\n.rustup/\n").unwrap();
+    std::fs::write(home.join(".cargo/bin/cargo"), "").unwrap();
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(crate::sanitize::script(&plan))
+        .current_dir(&work)
+        .env("HOME", &home)
+        .env("OA_ROOT", &root)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    assert!(stdout.contains("removed ~/.boxignore"), "{stdout}");
+    assert!(!home.join(".boxignore").exists());
+    assert!(home.join(".cargo/bin/cargo").exists());
 }

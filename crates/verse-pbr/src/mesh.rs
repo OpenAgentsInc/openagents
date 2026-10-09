@@ -49,6 +49,11 @@ pub struct Mesh {
     /// An animated textured model, read from a frame's dynamic mesh only
     /// and drawn in physical frames (see [`crate::pbr::textured::Figure`]).
     pub figure: Option<crate::pbr::textured::Figure>,
+    /// Copies of meshes drawn as GPU instances, read from a frame's dynamic
+    /// mesh only (see [`crate::pbr::textured::Instances`]): at most
+    /// [`crate::pbr::textured::INSTANCE_SETS`] sets, such as a town's
+    /// moving chunks and its settled rubble.
+    pub instances: Vec<crate::pbr::textured::Instances>,
     /// A zone's water at rest, read from its world mesh only: the renderer
     /// uploads it once and draws it when the frame's stage carries
     /// [`crate::pbr::Neon::water`] (see [`crate::pbr::water`]).
@@ -173,6 +178,7 @@ impl Mesh {
         if other.figure.is_some() {
             self.figure.clone_from(&other.figure);
         }
+        self.instances.extend_from_slice(&other.instances);
         if other.water.is_some() {
             self.water.clone_from(&other.water);
         }

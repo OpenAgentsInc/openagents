@@ -81,7 +81,7 @@ impl Local {
             return Err("Movement proposal is outside the confirmed prediction interval".into());
         }
         let mut held = baseline.held;
-        let mut yaw = baseline.yaw;
+        let mut yaw = self.movement_yaw(&baseline);
         for input in self.inputs.iter().filter(|i| i.step < start) {
             if let Intent::Move { axes, yaw: next } = input.intent {
                 held.refresh(axes, input.step)?;

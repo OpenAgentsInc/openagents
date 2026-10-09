@@ -293,6 +293,11 @@ uses, and marks which are implemented and which are only specified.
   identities, a typed outcome, timing, and digests of the request and
   result rather than their content. An attributable claim, never remote
   attestation.
+- `crates/inference` — the inference gateway library
+  (`docs/inference/gateway.md`): Open Responses request, response, item,
+  event, and error types, the SSE codec, stream checks, the Chat
+  Completions translation both ways (its README has the mapping table),
+  and `meter` (attempt records, live rates, credit ledger).
 - `crates/gateway` — the keyed HTTP front of the serving half: one
   admission path for `POST /v1/systemone` — authenticate the bearer key,
   authorize the door against `tenancy`'s registry, bound the door's

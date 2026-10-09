@@ -21,5 +21,8 @@ url = "2"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
 
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
 [lints]
 workspace = true

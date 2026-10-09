@@ -509,7 +509,8 @@ async fn host(arguments: &[String]) -> u8 {
             std::env::var_os("HOME")
                 .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
         });
-    // The packaged environment owners' Boat providers, built before the
+    // The packaged environment owners' providers (Boat, or the optional
+    // dedicated GCE adapter), built before the
     // host opens its owners (ENV-08). Their loop starts and stops with the
     // cloud operator they are composed with.
     #[cfg(unix)]
@@ -522,8 +523,15 @@ async fn host(arguments: &[String]) -> u8 {
                     return EXIT_FAILURE;
                 }
             };
-            match coder_environment_operator::boat::providers(&config).await {
-                Ok(providers) => Some((config, providers)),
+            let janitor = match coder_environment_operator::gce::janitor_for(&config) {
+                Ok(j) => j,
+                Err(why) => {
+                    eprintln!("openagents host: {why}");
+                    return EXIT_FAILURE;
+                }
+            };
+            match coder_environment_operator::gce::providers(&config).await {
+                Ok(providers) => Some((config, providers, janitor)),
                 Err(why) => {
                     eprintln!("openagents host: {why}");
                     return EXIT_FAILURE;
@@ -557,12 +565,13 @@ async fn host(arguments: &[String]) -> u8 {
                 .map_err(|_| "operator cloud authority is unavailable")?;
                 let state = root.join("cloud-operator");
                 let mut operator = coder_cloud::operator::Operator::load(path, &state, authority)?;
-                if let Some((config, providers)) = environment {
+                if let Some((config, providers, janitor)) = environment {
                     let owners = coder_environment_operator::Owners::open(
                         &state,
                         providers,
                         coder_environment_operator::environment_custody(),
-                    )?;
+                    )?
+                    .with_janitor(janitor);
                     // The service handle lives in the composed operator.
                     operator = coder_environment_operator::attach(
                         std::sync::Arc::new(owners),

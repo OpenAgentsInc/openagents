@@ -23,16 +23,18 @@
 #   --key-id ID   The key's ID in the app's TRUSTED_KEYS
 #                 (default desktop-update-2026-09).
 #   --prefix P    The bucket folder (default desktop/windows). A test of
-#                 the updater, or an unsigned build that is not a release,
-#                 uses another, such as desktop/windows-test, and points
+#                 the updater uses another,
+#                 such as desktop/windows-test, and points
 #                 the app at it with OPENAGENTS_UPDATE_MANIFEST_URL.
 #   --upload      Copy the packages and signatures to
 #                 gs://openagentsgemini-oa-updates/PREFIX/VERSION/, then the
 #                 manifest to PREFIX/manifest.json.
 #
-# The release prefix (desktop/windows) takes only Authenticode-signed
-# packages: BUILDINFO must say "signed yes" (package-windows.sh writes
-# it). An unsigned build goes to a test prefix.
+# Unsigned packages may be released (owner, 2026-10-09): Windows runs them
+# after SmartScreen's "More info, Run anyway". The update manifest is still
+# signed with our own key, so updates stay verified. This script says
+# whether the packages carry an Authenticode signature (BUILDINFO
+# "signed yes", written by package-windows.sh).
 #
 # Published, per release, under PREFIX/VERSION/: the MSI, the .zip,
 # SHA256SUMS, SHA256SUMS.sig (the raw 64-byte Ed25519 signature over
@@ -143,10 +145,11 @@ done
 [[ "$(od -An -tx1 -N8 "$msi" | tr -d ' \n')" == d0cf11e0a1b11ae1 ]] || die "$msi is not an MSI"
 [[ "$(od -An -tx1 -N4 "$zipfile" | tr -d ' \n')" == 504b0304 ]] || die "$zipfile is not a zip archive"
 
-# Only Authenticode-signed packages are a release.
-if [[ "$prefix" == desktop/windows ]]; then
-  grep -qx 'signed yes' "$dir/BUILDINFO" 2>/dev/null ||
-    die "the packages in $dir are not Authenticode-signed; publish them to a test prefix (--prefix desktop/windows-test)"
+# Unsigned packages are allowed in a release; say which this is.
+if grep -qx 'signed yes' "$dir/BUILDINFO" 2>/dev/null; then
+  echo "packages are Authenticode-signed"
+else
+  echo "packages are not Authenticode-signed: SmartScreen will ask people to confirm (More info, Run anyway)" >&2
 fi
 
 entry() {

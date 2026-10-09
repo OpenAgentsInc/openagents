@@ -1093,6 +1093,7 @@ mod tests {
             epoch: 1,
             accepted_sequence: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();
@@ -1290,6 +1291,7 @@ mod tests {
             epoch: 1,
             accepted_sequence: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();
@@ -1401,6 +1403,7 @@ mod tests {
             epoch: 1,
             accepted_sequence: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();

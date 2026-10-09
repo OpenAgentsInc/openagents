@@ -172,7 +172,14 @@ pub struct Setup<P> {
     root: PathBuf,
     custody: Custody,
     live: Mutex<BTreeMap<String, Recorder>>,
+    /// Sessions this owner process has visited: the first visit after a
+    /// start counts as a heartbeat, so a restart is not a silent turn.
+    visited: Mutex<BTreeSet<String>>,
 }
+
+/// What a setup whose turn went silent says while it waits (#11059).
+pub const STALLED: &str = "The setup stopped responding, so its computer was stopped. \
+Its files are kept. Send a message to pick up where it left off.";
 
 fn fingerprint(value: &Value) -> String {
     digest(&serde_json::to_vec(value).expect("request encodes"))
@@ -195,6 +202,7 @@ impl<P: Commands> Setup<P> {
             root: root.into(),
             custody,
             live: Mutex::new(BTreeMap::new()),
+            visited: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -250,8 +258,9 @@ impl<P: Commands> Setup<P> {
                 absolute_ms: window,
             },
         };
-        let computer = Computer::for_setup(spec, &env.id, now_ms)
+        let mut computer = Computer::for_setup(spec, &env.id, now_ms)
             .map_err(|m| SetupError::Refused(Refusal::Invalid(m)))?;
+        computer.provider = self.computers.provider.kind();
         match self.computers.store.read(&computer_id) {
             Ok(existing)
                 if existing.purpose == computer.purpose && existing.chat == computer.chat => {}
@@ -1076,8 +1085,50 @@ impl<P: Commands> Setup<P> {
         Ok(s)
     }
 
+    /// The turn's owner (the setup agent) is alive. Nothing to do when no
+    /// turn runs; a busy computer record is skipped until the next beat.
+    pub async fn heartbeat(&self, id: &str, now_ms: u64) -> Result<()> {
+        let s = self.sessions.read(id)?;
+        if s.state.terminal() {
+            return Ok(());
+        }
+        let Some(generation) = s.generation else {
+            return Ok(());
+        };
+        match self
+            .computers
+            .heartbeat(&s.computer, generation, now_ms)
+            .await
+        {
+            Ok(())
+            | Err(coder_working_computer::store::StoreError::Refused(_))
+            | Err(coder_working_computer::store::StoreError::Busy) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// A turn whose owner went silent: stop its command, stop the computer
+    /// (its files stay with it), and wait for the person with a plain
+    /// message. Nothing is announced as done.
+    async fn stalled(&self, id: &str, now_ms: u64) -> Result<SetupSession> {
+        let s = self.sessions.read(id)?;
+        if let Some(c) = s.active_command() {
+            let command = c.id.clone();
+            let _ = self.stop(id, &command, now_ms).await;
+        }
+        self.computers.tick(&s.computer, false, now_ms).await?;
+        let lease = self.sessions.lease(id)?;
+        Ok(lease.apply(
+            &Op::Paused {
+                question: STALLED.into(),
+            },
+            now_ms,
+        )?)
+    }
+
     /// A timer visit: past the session deadline the setup is cancelled;
-    /// a command past its own deadline is stopped.
+    /// a turn whose owner went silent ends ([`STALLED`]); a command past
+    /// its own deadline is stopped.
     pub async fn tick(&self, id: &str, now_ms: u64) -> Result<SetupSession> {
         let s = self.sessions.read(id)?;
         if s.state.terminal() {
@@ -1094,6 +1145,12 @@ impl<P: Commands> Setup<P> {
                     now_ms,
                 )
                 .await;
+        }
+        let first = self.visited.lock().expect("visited").insert(id.to_owned());
+        if first {
+            self.heartbeat(id, now_ms).await?;
+        } else if self.computers.store.read(&s.computer)?.turn_silent(now_ms) {
+            return self.stalled(id, now_ms).await;
         }
         if let Some(c) = s.active_command()
             && now_ms >= c.deadline_ms

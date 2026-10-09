@@ -117,6 +117,24 @@ fn decode<T: for<'de> Deserialize<'de>>(raw: &RawResponse) -> Result<T> {
     })
 }
 
+/// The `url` an answer carries: an https address only.
+fn hosted_url(raw: &RawResponse) -> Result<String> {
+    #[derive(Deserialize)]
+    struct Wire {
+        url: String,
+    }
+    let wire: Wire = decode(raw)?;
+    if !wire.url.starts_with("https://") || wire.url.len() > 8192 {
+        return Err(Error::ResponseValidation {
+            status: raw.status,
+            field_path: "url".into(),
+            body: None,
+            request_id: None,
+        });
+    }
+    Ok(wire.url)
+}
+
 impl Account<'_> {
     /// Sign in using this client's existing account API key. A session token
     /// or an unbound key receives the gateway's explicit refusal.
@@ -400,6 +418,42 @@ impl Account<'_> {
             )
             .await?;
         Ok(())
+    }
+
+    /// Open the payment page for `plan` on `workspace` (the owner only):
+    /// the hosted checkout address to send the browser to. The plan starts
+    /// only when the payment provider confirms it to the gateway.
+    pub async fn plan_checkout(&self, workspace: &str, plan: &str) -> Result<String> {
+        identifier(workspace)?;
+        identifier(plan)?;
+        let body = serde_json::to_vec(&serde_json::json!({ "plan": plan }))
+            .map_err(|_| Error::Config("Invalid plan.".into()))?;
+        let raw = self
+            .client
+            .request_private_bounded(
+                Method::POST,
+                &format!("/v1/workspaces/{workspace}/billing/checkout"),
+                Some(body),
+                64 * 1024,
+            )
+            .await?;
+        hosted_url(&raw)
+    }
+
+    /// Open the billing page for `workspace`'s subscription, where the owner
+    /// changes their card or cancels.
+    pub async fn billing_portal(&self, workspace: &str) -> Result<String> {
+        identifier(workspace)?;
+        let raw = self
+            .client
+            .request_private_bounded(
+                Method::POST,
+                &format!("/v1/workspaces/{workspace}/billing/portal"),
+                Some(b"{}".to_vec()),
+                64 * 1024,
+            )
+            .await?;
+        hosted_url(&raw)
     }
 
     /// End the current session once; uncertainty never causes a replay.

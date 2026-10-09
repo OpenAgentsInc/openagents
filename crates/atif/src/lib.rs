@@ -68,7 +68,7 @@ pub use content::{
 };
 pub use document::{
     AGENT_NAME, Attempt, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, REQUEST_BOUND,
-    SCHEMA_VERSION, STATE_EXCERPT, Session, Source, Step, Usage, digest, document, document_at,
-    intent, iso, now_ms, stamp,
+    SCHEMA_VERSION, STATE_EXCERPT, Session, Source, Step, Usage, append, digest, document,
+    document_at, intent, iso, now_ms, stamp,
 };
 pub use log::{Fault, FaultKind, Log, Recording};

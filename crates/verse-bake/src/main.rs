@@ -27,6 +27,11 @@
 //! it fails unless a layer file in `DIR` is the pinned one and was baked
 //! for the scene the sources build now.
 //!
+//! `--phone-layers [--check]` bakes nothing either: it derives the phone
+//! tier's layers (`kit_bake::PHONE_SUNS`, #10908) from the pinned layer file
+//! in `DIR`, writes `DIR/phone/<sha256>.vlay`, and prints the two
+//! `KIT_BAKE_PHONE_` pin lines (`artifacts/everglade-kit-bake-phone.json`).
+//!
 //! The CPU backend uses four workers unless `--threads` asks for more.
 //! The GPU backend needs the `gpu` feature and a Vulkan adapter.
 
@@ -44,7 +49,8 @@ use verse_pbr::pbr::textured::TexturedScene;
 
 const USAGE: &str = "usage: verse-bake [--fixture | --scene FILE.glb | --everglade PACK.vtp] \
 [--backend cpu|gpu] [--compare] [--threads N] [--out DIR] [--vertex-rays N] \
-[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick] [--layers [--check | --reuse-only]]";
+[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick] [--layers [--check | --reuse-only]] \
+| --phone-layers [--check] [--out DIR]";
 
 /// CPU workers unless `--threads` asks for more, so a bake leaves a shared
 /// machine room for builds and its window server.
@@ -80,6 +86,7 @@ struct Options {
     layers: bool,
     check: bool,
     reuse_only: bool,
+    phone_layers: bool,
 }
 
 enum Source {
@@ -104,6 +111,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
         layers: false,
         check: false,
         reuse_only: false,
+        phone_layers: false,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -139,6 +147,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
             "--layers" => options.layers = true,
             "--check" => options.check = true,
             "--reuse-only" => options.reuse_only = true,
+            "--phone-layers" => options.phone_layers = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
@@ -344,8 +353,64 @@ fn outliers(scene: &Scene, a: &Products, b: &Products) -> serde_json::Value {
     })
 }
 
+/// Derives the phone tier's layers from the pinned layer file in `dir`.
+#[cfg(feature = "everglade")]
+fn phone_layers(dir: &Path, check: bool) -> Result<(), String> {
+    use verse_zone_everglade::zones::everglade_pack::kit_bake;
+    if kit_bake::KIT_BAKE_BYTES == 0 {
+        return Err("no kit light layers are pinned".into());
+    }
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let full = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|e| e == "vlay"))
+        .find_map(|path| {
+            let bytes = std::fs::read(&path).ok()?;
+            kit_bake::decode_pinned(&bytes).ok()
+        })
+        .ok_or_else(|| format!("no pinned layer file in {}", dir.display()))?;
+    let bytes = kit_bake::phone_layers(&full)?.encode();
+    let digest = verse_bake::hex(&sha2::Sha256::digest(&bytes));
+    if check {
+        if digest != kit_bake::KIT_BAKE_PHONE_SHA256
+            || bytes.len() as u64 != kit_bake::KIT_BAKE_PHONE_BYTES
+        {
+            return Err(format!(
+                "the phone layers derive to {digest} ({} bytes), not the pinned {} ({} bytes)",
+                bytes.len(),
+                kit_bake::KIT_BAKE_PHONE_SHA256,
+                kit_bake::KIT_BAKE_PHONE_BYTES
+            ));
+        }
+        eprintln!("verse-bake: the pinned layers derive to the pinned phone layers");
+        return Ok(());
+    }
+    private_write(&dir.join("phone").join(format!("{digest}.vlay")), &bytes)?;
+    println!("pub const KIT_BAKE_PHONE_SHA256: &str = \"{digest}\";");
+    println!("pub const KIT_BAKE_PHONE_BYTES: u64 = {};", bytes.len());
+    Ok(())
+}
+
+#[cfg(not(feature = "everglade"))]
+fn phone_layers(_: &Path, _: bool) -> Result<(), String> {
+    Err("--phone-layers needs the everglade feature".into())
+}
+
 fn main() -> ExitCode {
-    match parse(std::env::args().skip(1)).and_then(|options| execute(&options)) {
+    let parsed = parse(std::env::args().skip(1));
+    if let Ok(options) = &parsed {
+        if options.phone_layers {
+            return match phone_layers(&options.out, options.check) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("verse-bake: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+    }
+    match parsed.and_then(|options| execute(&options)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("verse-bake: {error}");

@@ -1,6 +1,7 @@
 # Web sidebar: chats, projects, and live status
 
-Status: design, 2026-10-08. Phases 1, 2, and 4 are built; 3 and 5 are design.
+Status: design, 2026-10-08. Phases 1, 2, and 4 are built; 3 is built for
+answers and Claude Code runs; 5 is built for Claude Code runs.
 
 The web app's left panel today has **New chat** (⌃N), the recent chats list
 (`openagents_ui::shell::ChatList`, filled by `pages::chat::chat_list`),
@@ -65,9 +66,24 @@ acme/storefront · fix-login · Node 20 v3
 - A Coder chat synced from a terminal (#11046, #11047,
   `crates/openagents-web/src/coder_sync.rs`) says "Terminal · <computer>"
   on line 2, shows Working while Coder's heartbeat says it is replying,
-  and opens read-only at `/chat/{id}` with "This chat runs in Coder on
-  <computer>." in place of the composer. Deleting it on the web deletes it
-  in Coder the next time Coder checks.
+  and opens at `/chat/{id}`. While Coder on that computer has checked in
+  within the last minute (sync on), the page has a composer ("Reply to
+  Coder on <computer>"): the reply waits on the chat ("Waiting for Coder
+  on <computer>.") until Coder takes it, runs the turn there, and syncs the
+  answer back (#11048). Otherwise "This chat runs in Coder on <computer>.
+  To reply here, open Coder there with /sync on." stands in place of the
+  composer. When the chat is in a project whose repository has a saved
+  environment (local address, environments set up, and a Claude key saved
+  in Settings or set on the server, like #11037), the offline note adds
+  **Continue on a Cloud computer**
+  (`/chat/{id}/continue`, #11050, `pages/chat_continued.rs`): the person's
+  message joins the chat, Claude Code runs in that environment's saved
+  version with the chat so far in its prompt, the thread shows a "Cloud
+  computer" task row, and the run's answer joins the chat when it is done.
+  Coder's uploads keep those messages after its own transcript until
+  Coder, back online, takes them into its own copy with its next take
+  (#11052); each is then shown once, where Coder put it.
+  Deleting it on the web deletes it in Coder the next time Coder checks.
 - Long-running tasks (phase 3) add a thin progress line under the row only
   when the task reports steps ("3 of 7"); never a fake percentage.
 - Collapsed to the rail (or the closed narrow panel), rows hide like other
@@ -193,17 +209,42 @@ menu need no hover: the `…` is always visible on touch.
 3. **Live status**: the sidebar event stream; Cloud job and Coder task
    statuses (Waiting for you, Paused until, Done) on rows. The stream is
    built for answers (#11035, `pages/chat_live.rs`): Working and Failed
-   change on their own. Task statuses wait for chats to record the tasks
-   they start (phase 5): today no chat names a Cloud job or a Coder task
+   change on their own. Claude Code runs started from a chat (phase 5)
+   make its row Working and Failed too, and Done when a run that took over
+   a minute finished and the chat wasn't opened since (the chat keeps the
+   task's `finished_unix` and, only while that Done waits, `opened_unix`).
+   Synced Coder chats are Working while Coder says it is replying. Still
+   without a source: no chat names a Coder task on a connected computer
    (`Pending::job_id` is always empty and running a chat on a computer is
-   gone), so there is nothing real to show yet, and Done waits for a
-   last-opened time per chat.
+   gone), and chat runs neither ask anything nor pause for a usage limit
+   (they run on the person's API key, without the operator that records
+   sign-in prompts and limit pauses), so no Waiting for you or Paused until.
 4. **Organize** (built, #11036): pin, rename, archive, search, keyboard.
    `chat_store` keeps `pinned_unix` and `archived_unix`; the routes are
    `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the
    field), `GET /chat/list?q=` (search), and `GET /chat/archived`
    (`pages/chat_sidebar.rs`). The parts are `openagents_ui::shell`'s
    `RowMenu`, `RowRename`, and `ChatSearch`.
-5. **Environment and task links**: a chat records the environment and the
-   tasks it started; line 2 shows the environment and version; a long task
-   shows its steps.
+5. **Environment and task links** (built for Claude Code runs, #11037,
+   `pages/chat_work.rs`): a chat about a repository with a saved
+   environment (its project's repository, else the composer's) offers
+   **Run Claude Code** in the header, on the local address only (like
+   `/environments`; the site guard keeps `/chat/{id}/claude` local and
+   sets `x-openagents-local` for pages that link it). Starting a run
+   records `environment` (id, repository, version) and a `tasks` entry
+   (run id, title, state, the message count it followed) on the chat.
+   The header's breadcrumb names the environment and version and links
+   it; the thread shows each task as a compact `openagents_ui::shell::TaskRow`
+   after the message it followed, with Working / Paused / Done / Failed /
+   Stopped and a link to the run; line 2 ends with "Environment v3"; the
+   row is Working while a task runs and Failed when the newest task failed
+   until a new message. The run's own record holds its state; a watcher
+   while it runs, every chat load, and the sidebar stream's Working checks
+   write a change into the chat (`work::sync`), and the chat store's change
+   announcement carries it to open pages. An environment that no longer
+   exists is marked removed when the chat opens ("Environment removed";
+   the chat stays readable). Not built, for lack of a source: Coder tasks
+   on connected computers (nothing starts them from a chat), steps ("3 of
+   7"; runs report none), Waiting for you and Paused until (runs ask
+   nothing and don't pause), and an environment's setup conversation as a chat
+   (it lives in the environments studio, not the chat store).

@@ -27,7 +27,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
-use oa_auth::repos::{Access, Project, RepoError, Repository, Status};
+use oa_auth::repos::{Access, Listing, Project, RepoError, Repository, Status};
 use openagents_ui::actions::{
     Alert, Badge, Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize,
 };
@@ -47,19 +47,28 @@ pub(crate) const PAGE: &str = "/projects";
 pub(crate) const CONNECT: &str = "/auth/github/repos";
 /// The same-site step after GitHub's callback.
 pub(crate) const FINISH: &str = "/auth/github/repos/finish";
+/// Installing the GitHub App on repositories (when this server has one).
+pub(crate) const INSTALL: &str = "/auth/github/install";
+/// Where GitHub's install page sends the person back (the App's setup URL).
+pub(crate) const SETUP: &str = "/auth/github/setup";
+/// Connecting GitHub again after it stopped accepting the access.
+pub(crate) const RECONNECT: &str = "/auth/github/reconnect";
 /// The cookie `shell.js` keeps the closed project groups in.
 const CLOSED_COOKIE: &str = "oa_project_groups";
 const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
-const SHOWN: usize = 100;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PAGE, get(page).post(add))
+        .route(REPOS, get(repositories))
         .route("/projects/{id}/remove", post(remove))
         .route("/projects/disconnect", post(disconnect))
         .route(CONNECT, get(connect))
         .route(FINISH, get(finish))
+        .route(INSTALL, get(install))
+        .route(SETUP, get(setup))
+        .route(RECONNECT, get(reconnect))
 }
 
 /// The signed-in person's projects for the left panel, and the groups they
@@ -214,7 +223,16 @@ async fn page(
         Ok(found) => found,
         Err(response) => return response,
     };
-    render(service, &viewer, &headers, &query.q, None, StatusCode::OK).await
+    render(
+        service,
+        &viewer,
+        &headers,
+        &query.q,
+        None,
+        StatusCode::OK,
+        app.config.github_install.is_some(),
+    )
+    .await
 }
 
 /// The page, with `problem` shown on top when an action didn't work.
@@ -225,6 +243,7 @@ async fn render(
     q: &str,
     problem: Option<String>,
     status: StatusCode,
+    install: bool,
 ) -> Response {
     let state = match service.github_status(headers).await {
         Ok(state) => state,
@@ -233,39 +252,182 @@ async fn render(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let listed = match state.access {
-        Access::Connected { .. } => Some(service.github_repositories(headers).await),
-        _ => None,
-    };
-    // A token GitHub stopped accepting shows up while listing.
-    let state = match &listed {
-        Some(Err(RepoCallError::Repo(RepoError::Reconnect))) => {
-            service.github_status(headers).await.unwrap_or(state)
-        }
-        _ => state,
-    };
-    let body = view(&state, listed.as_ref(), &token, q, problem.as_deref());
+    let body = view(&state, &token, q, problem.as_deref(), install);
     protect(
         UiPage::new("Projects")
             .path(PAGE)
             .section(PAGE)
             .status(status)
+            .head(htmx_head())
             .content(PageColumn::new(body))
             .respond(headers),
     )
 }
 
-/// The page body (separate from I/O for tests).
-fn view(
+/// HTMX for the list that loads after the page shows.
+fn htmx_head() -> Markup {
+    html! {
+        meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
+        script src="/static/htmx.min.js" defer {}
+    }
+}
+
+/// Where one page of repositories loads from.
+const REPOS: &str = "/projects/repositories";
+
+fn repos_href(page: u32, q: &str) -> String {
+    let mut href = format!("{REPOS}?page={page}");
+    if !q.is_empty() {
+        href.push_str("&q=");
+        href.push_str(&url::form_urlencoded::byte_serialize(q.as_bytes()).collect::<String>());
+    }
+    href
+}
+
+#[derive(Deserialize)]
+struct ReposQuery {
+    #[serde(default)]
+    page: Option<u32>,
+    #[serde(default)]
+    q: String,
+}
+
+/// One page of repositories to add, and a Show more button for the next.
+async fn repositories(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<ReposQuery>,
+) -> Response {
+    let (service, viewer) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let page = query.page.unwrap_or(1).clamp(1, oa_auth::repos::MAX_PAGE);
+    let state = match service.github_status(&headers).await {
+        Ok(state) => state,
+        Err(error) => return fragment(html! { p role="alert" { (error.to_string()) } }),
+    };
+    let csrf = service
+        .csrf(&headers, &viewer, CSRF_SCOPE, "")
+        .unwrap_or_default();
+    let listed = service.github_repositories(&headers, page).await;
+    fragment(repos_page(&state, listed, &csrf, query.q.trim(), page))
+}
+
+fn fragment(body: Markup) -> Response {
+    protect(body.into_response())
+}
+
+/// The rows of one page (filtered by `q`, without repositories already
+/// added), and the button that loads the next page in its place.
+fn repos_page(
     state: &Status,
-    listed: Option<&Result<Vec<Repository>, RepoCallError>>,
+    listed: Result<Listing, RepoCallError>,
     csrf: &str,
     q: &str,
-    problem: Option<&str>,
+    page: u32,
 ) -> Markup {
+    let Listing {
+        repositories,
+        more,
+        sso_hidden,
+    } = match listed {
+        Ok(found) => found,
+        Err(RepoCallError::Repo(RepoError::Reconnect)) => {
+            return html! {
+                (Alert::new()
+                    .color(Color::Warning)
+                    .title("GitHub access ended")
+                    .description("Your projects are still here. Reconnect GitHub to add repositories again.")
+                    .actions(ButtonLink::new("Reconnect GitHub", RECONNECT)))
+            };
+        }
+        Err(error) => {
+            return html! {
+                div #projects-repos {
+                    p role="alert" { (error.to_string()) }
+                    (ButtonLink::new("Try again", repos_href(page, q))
+                        .size(ControlSize::Sm)
+                        .variant(ButtonVariant::Soft)
+                        .color(Color::Secondary)
+                        .attr("hx-get", repos_href(page, q))
+                        .attr("hx-target", "#projects-repos")
+                        .attr("hx-swap", "outerHTML"))
+                }
+            };
+        }
+    };
     let have: BTreeSet<u64> = state.projects.iter().map(|p| p.repository_id).collect();
-    let q = q.trim();
     let needle = q.to_lowercase();
+    let shown: Vec<&Repository> = repositories
+        .iter()
+        .filter(|r| !have.contains(&r.id))
+        .filter(|r| needle.is_empty() || r.full_name.to_lowercase().contains(&needle))
+        .collect();
+    // A repository not on these pages can still be added by owner/name.
+    let by_name = page == 1
+        && oa_auth::repos::full_name(q)
+        && !repositories
+            .iter()
+            .any(|r| r.full_name.eq_ignore_ascii_case(q));
+    let next = format!("projects-repos-{}", page + 1);
+    html! {
+        @if !shown.is_empty() {
+            ul.oa-chat-archive-list role="list" {
+                @for repository in shown {
+                    li.oa-chat-archive-row {
+                        span {
+                            (repository.full_name)
+                            @if repository.private { " " (Badge::new("Private")) }
+                            @if repository.archived { " " (Badge::new("Archived")) }
+                        }
+                        form method="post" action=(PAGE) {
+                            input type="hidden" name="csrf" value=(csrf);
+                            input type="hidden" name="repository" value=(repository.full_name);
+                            (Button::new("Add")
+                                .kind(ButtonType::Submit)
+                                .size(ControlSize::Sm)
+                                .variant(ButtonVariant::Soft)
+                                .color(Color::Secondary))
+                        }
+                    }
+                }
+            }
+        } @else if !more && page == 1 && !by_name {
+            p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
+        }
+        @if by_name {
+            form method="post" action=(PAGE) {
+                input type="hidden" name="csrf" value=(csrf);
+                input type="hidden" name="repository" value=(q);
+                (Button::new(format!("Add {q}"))
+                    .kind(ButtonType::Submit)
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary))
+            }
+        }
+        @if sso_hidden && page == 1 {
+            p.oa-page-meta { "Some organization repositories are hidden until you authorize OpenAgents for that organization's single sign-on on GitHub." }
+        }
+        @if more {
+            div id=(next) {
+                (ButtonLink::new("Show more", repos_href(page + 1, q))
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary)
+                    .attr("hx-get", repos_href(page + 1, q))
+                    .attr("hx-target", format!("#{next}"))
+                    .attr("hx-swap", "outerHTML"))
+            }
+        }
+    }
+}
+
+/// The page body (separate from I/O for tests). `install`: this server
+/// adds repositories through its GitHub App.
+fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: bool) -> Markup {
+    let q = q.trim();
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Projects" }
@@ -279,7 +441,7 @@ fn view(
                 .color(Color::Warning)
                 .title("GitHub access ended")
                 .description("Your projects are still here. Reconnect GitHub to add repositories again.")
-                .actions(ButtonLink::new("Reconnect GitHub", format!("{CONNECT}?access=private"))))
+                .actions(ButtonLink::new("Reconnect GitHub", RECONNECT)))
         }
         @if !state.projects.is_empty() {
             section aria-labelledby="projects-yours" {
@@ -313,47 +475,59 @@ fn view(
         section aria-labelledby="projects-add" {
             (MarkdownRoot::new(html! { h2 #projects-add { "Add a repository" } }))
             @match &state.access {
+                Access::Installed { login, installations } => {
+                    p { "Connected to GitHub as " strong { (login) } "." }
+                    @if installations.is_empty() {
+                        p { "Choose the repositories OpenAgents can use on GitHub." }
+                        div.oa-page-actions {
+                            (ButtonLink::new("Choose repositories", INSTALL))
+                        }
+                    } @else {
+                        form method="get" action=(PAGE) role="search" {
+                            (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
+                        }
+                        div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                            p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                        }
+                        p {
+                            "Missing one? "
+                            a href=(INSTALL) { "Choose repositories on GitHub" }
+                        }
+                    }
+                    form method="post" action="/projects/disconnect" {
+                        input type="hidden" name="csrf" value=(csrf);
+                        (Button::new("Disconnect GitHub")
+                            .kind(ButtonType::Submit)
+                            .size(ControlSize::Sm)
+                            .variant(ButtonVariant::Ghost)
+                            .color(Color::Secondary))
+                    }
+                }
+                Access::None if install => {
+                    p { "Install OpenAgents on the GitHub repositories you want to use." }
+                    div.oa-page-actions {
+                        (ButtonLink::new("Install on repositories", INSTALL))
+                    }
+                    p.oa-page-meta {
+                        "OpenAgents can read and change code only in the repositories you pick, and you can change them on GitHub at any time."
+                    }
+                }
                 Access::Connected { login, private } => {
                     p { "Connected to GitHub as " strong { (login) } "." }
-                    @match listed {
-                        Some(Ok(repositories)) => {
-                            form method="get" action=(PAGE) role="search" {
-                                (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
-                            }
-                            @let shown: Vec<&Repository> = repositories
-                                .iter()
-                                .filter(|r| !have.contains(&r.id))
-                                .filter(|r| needle.is_empty() || r.full_name.to_lowercase().contains(&needle))
-                                .take(SHOWN)
-                                .collect();
-                            @if shown.is_empty() {
-                                p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
-                            } @else {
-                                ul.oa-chat-archive-list role="list" {
-                                    @for repository in shown {
-                                        li.oa-chat-archive-row {
-                                            span {
-                                                (repository.full_name)
-                                                @if repository.private { " " (Badge::new("Private")) }
-                                            }
-                                            form method="post" action=(PAGE) {
-                                                input type="hidden" name="csrf" value=(csrf);
-                                                input type="hidden" name="repository" value=(repository.full_name);
-                                                (Button::new("Add")
-                                                    .kind(ButtonType::Submit)
-                                                    .size(ControlSize::Sm)
-                                                    .variant(ButtonVariant::Soft)
-                                                    .color(Color::Secondary))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Some(Err(error)) => { p role="alert" { (error.to_string()) } }
-                        None => {}
+                    form method="get" action=(PAGE) role="search" {
+                        (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
                     }
-                    @if !private {
+                    // The list loads after the page shows (one GitHub call
+                    // per page of repositories), most recently pushed first.
+                    div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                        p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                    }
+                    @if install {
+                        p {
+                            a href=(INSTALL) { "Install OpenAgents on your repositories" }
+                            " to pick exactly which ones it can use."
+                        }
+                    } @else if !private {
                         p {
                             "Only public repositories are shown. "
                             a href=(format!("{CONNECT}?access=private")) { "Include private repositories" }
@@ -438,6 +612,7 @@ async fn add(State(app): State<App>, headers: HeaderMap, Form(form): Form<AddFor
                 "",
                 Some(error.to_string()),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
+                app.config.github_install.is_some(),
             )
             .await
         }
@@ -549,12 +724,15 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
         Ok(found) => found,
         Err(response) => return response,
     };
+    let install = app.config.github_install.is_some();
     let flow = crate::auth::flow_cookie(headers).filter(|flow| {
-        matches!(flow.purpose, oa_auth::Purpose::Repos { .. })
-            && query
-                .state
-                .as_deref()
-                .is_some_and(|state| flow.matches(state))
+        matches!(
+            flow.purpose,
+            oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+        ) && query
+            .state
+            .as_deref()
+            .is_some_and(|state| flow.matches(state))
     });
     let (Some(flow), Some(code)) = (flow, query.code.as_deref()) else {
         return render(
@@ -564,10 +742,27 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
             "",
             Some("That GitHub connection expired. Start again from this browser.".into()),
             StatusCode::BAD_REQUEST,
+            install,
         )
         .await;
     };
-    match service.github_grant(headers, code, flow.verifier()).await {
+    let granted = if flow.purpose == oa_auth::Purpose::Install {
+        service
+            .github_app_grant(headers, code, flow.verifier())
+            .await
+    } else {
+        service.github_grant(headers, code, flow.verifier()).await
+    };
+    match granted {
+        // Authorized but installed nowhere yet: on to GitHub's page for
+        // picking repositories.
+        Ok(Status {
+            access: Access::Installed { installations, .. },
+            ..
+        }) if installations.is_empty() => match app.config.github_install.as_deref() {
+            Some(found) => protect(Redirect::to(&found.install_url()).into_response()),
+            None => protect(Redirect::to(&flow.return_to).into_response()),
+        },
         Ok(_) => protect(Redirect::to(&flow.return_to).into_response()),
         Err(RepoCallError::Repo(error)) => {
             render(
@@ -577,11 +772,69 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
                 "",
                 Some(error.to_string()),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
+                install,
             )
             .await
         }
         Err(error) => failed(headers, &error),
     }
+}
+
+/// "Install on repositories": a person who authorized the GitHub App goes
+/// straight to GitHub's page for picking repositories; anyone else
+/// authorizes it first (which comes back here through [`finish`]).
+async fn install(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (service, _) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let Some(found) = app.config.github_install.as_deref() else {
+        return protect(Redirect::to(PAGE).into_response());
+    };
+    match service.github_status(&headers).await {
+        Ok(Status {
+            access: Access::Installed { .. },
+            ..
+        }) => protect(Redirect::to(&found.install_url()).into_response()),
+        Ok(_) => crate::auth::begin(&app, &headers, Some(PAGE), oa_auth::Purpose::Install),
+        Err(error) => failed(&headers, &error),
+    }
+}
+
+/// GitHub's install page sends the person back here (the App's setup URL,
+/// with an `installation_id` this server never trusts): the account
+/// service finds the person's installations again with their own token.
+async fn setup(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (service, _) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    if app.config.github_install.is_none() {
+        return protect(Redirect::to(PAGE).into_response());
+    }
+    match service.github_app_refresh(&headers).await {
+        Ok(_) => protect(Redirect::to(PAGE).into_response()),
+        // Installed from GitHub without authorizing here yet, or the
+        // authorization ended: authorize, then back to the projects page.
+        Err(RepoCallError::Repo(RepoError::NotConnected | RepoError::Reconnect)) => {
+            crate::auth::begin(&app, &headers, Some(PAGE), oa_auth::Purpose::Install)
+        }
+        Err(error) => failed(&headers, &error),
+    }
+}
+
+/// Reconnect GitHub: through the GitHub App when this server has one,
+/// else the OAuth App with private repositories.
+async fn reconnect(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Err(response) = viewer(&app, &headers).await {
+        return response;
+    }
+    let purpose = if app.config.github_install.is_some() {
+        oa_auth::Purpose::Install
+    } else {
+        oa_auth::Purpose::Repos { private: true }
+    };
+    crate::auth::begin(&app, &headers, Some(PAGE), purpose)
 }
 
 #[cfg(test)]

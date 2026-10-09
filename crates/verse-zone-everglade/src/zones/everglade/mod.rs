@@ -361,7 +361,9 @@ impl Everglade {
             bake: None,
             probes: None,
             baked: None,
-            relights: false,
+            // Desktops relight what breaks; a phone keeps its baked light
+            // rather than hold a second copy of the town's geometry.
+            relights: !cfg!(any(target_os = "ios", target_os = "android")),
             relight_from: None,
             relight: None,
             extra_blocks: Vec::new(),
@@ -461,7 +463,29 @@ impl Everglade {
         placements: &[layout::Placement],
         scene: Arc<TexturedScene>,
     ) -> Result<(), String> {
-        let mut town = demolition::town::Town::standalone(pack, placements, scene)?;
+        self.start_wreckage_with_houses(pack, placements, scene, None)
+    }
+
+    /// As [`Everglade::start_wreckage`], with the zone's own kit houses
+    /// claiming their lots in place of Everglade's town houses
+    /// ([`demolition::town::Town::standalone_with_houses`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn start_wreckage_with_houses(
+        &mut self,
+        pack: &ZonePack,
+        placements: &[layout::Placement],
+        scene: Arc<TexturedScene>,
+        houses: Option<&[layout::kit_house::KitHouse]>,
+    ) -> Result<(), String> {
+        let mut town = match houses {
+            Some(houses) => {
+                demolition::town::Town::standalone_with_houses(pack, placements, scene, houses)?
+            }
+            None => demolition::town::Town::standalone(pack, placements, scene)?,
+        };
         town.set_track(
             self.cast
                 .as_ref()
@@ -496,6 +520,16 @@ impl Everglade {
             Some(town) => town.figure(figure, self.probes.as_deref()),
             None => figure,
         }
+    }
+
+    /// The town's broken chunks as GPU instances, lit by the probes, when
+    /// the town draws them so ([`demolition::town::Town::set_instanced`]).
+    #[must_use]
+    pub fn town_instances(&self) -> Vec<crate::pbr::textured::Instances> {
+        self.town
+            .as_ref()
+            .map(|town| town.instances(self.probes.as_deref()))
+            .unwrap_or_default()
     }
 
     /// The town's destructible buildings to act on, once started.
@@ -764,9 +798,9 @@ impl Everglade {
     /// probes near the gaps are traced again without the broken pieces, so
     /// no baked shade floats where a wall stood and rubble takes the light
     /// of the open lot, and when they are restored the baked light returns.
-    /// Call it before [`Self::bake_light`]. The Meteor Showcase does
-    /// (issue #10938); the town waits for its bake's destruction fallback
-    /// (#10907).
+    /// Call it before [`Self::bake_light`]. Desktops relight by default,
+    /// the town over its offline-baked layers too (#10907); the Meteor
+    /// Showcase asks explicitly (#10938).
     pub fn relight_destruction(&mut self) {
         self.relights = true;
     }
@@ -1472,6 +1506,9 @@ impl Everglade {
             yard.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
         }
         self.poll_bake();
+        if let Some(town) = &mut self.town {
+            town.settle_rubble(self.probes.as_deref());
+        }
     }
 
     /// Takes a finished light bake's probes, and follows the key light with
@@ -1507,9 +1544,17 @@ impl Everglade {
             self.probes = Some(Arc::new(probes));
         }
         if self.bake.is_none()
-            && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
+            && let Some(combined) = self.baked.as_mut().and_then(|b| b.update(&self.light))
         {
-            self.probes = Some(Arc::new(probes));
+            // What destruction opened stays relit over the new hour's light
+            // (#10907); without a relight the light goes straight to the
+            // renderer.
+            if let Some(relight) = &mut self.relight {
+                relight.rebase(Arc::new(combined.lights), combined.probes.clone());
+            } else if let Some(baked) = &self.baked {
+                baked.scene.baked.deliver_lights(combined.lights);
+            }
+            self.probes = Some(Arc::new(combined.probes));
         }
     }
 
@@ -1800,6 +1845,14 @@ impl Everglade {
             }
         }
         self.poll_bake();
+        // The baked layers combined for this hour, then relit over.
+        for _ in 0..3_000 {
+            if self.baked.as_ref().is_none_or(|b| b.settled(&self.light)) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            self.poll_bake();
+        }
         if let Some(probes) = self.relight.as_mut().and_then(relight::Relight::settle) {
             self.probes = Some(Arc::new(probes));
         }
@@ -1862,6 +1915,7 @@ impl Everglade {
                 }
                 Mesh {
                     figure: Some(figure),
+                    instances: self.town_instances(),
                     ..Mesh::default()
                 }
             }
@@ -1877,6 +1931,7 @@ impl Everglade {
                 if let Some(town) = &self.town {
                     mesh.figure = town.own_figure();
                 }
+                mesh.instances = self.town_instances();
                 mesh
             }
         }

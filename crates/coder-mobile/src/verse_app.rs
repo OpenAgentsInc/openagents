@@ -1039,6 +1039,7 @@ impl Scene {
             // The medieval kit pack downloads from the web origin once and
             // stays in the cache by its digest.
             world.download_zone_kit(true);
+            world.zone_kit_phone_tier();
         }
         // The bare world's only text is players' tags over the world, so
         // its font is rasterized at the screen's pixel scale. Everglade's

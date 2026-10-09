@@ -220,6 +220,7 @@ impl Fixture {
             qualification: Some(receipt),
             supported_plan: plan.digest(),
             plan_starts_left: Some(20),
+            environments: None,
         };
         crate::store::private_file_fixture(&config.ledger);
         let mut ledger = pay_ledger::Ledger::open(&config.ledger).unwrap();
@@ -2117,3 +2118,139 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
 
 #[path = "tests/shared.rs"]
 mod shared;
+
+fn environment_request() -> Value {
+    json!({"source":{"repository":"https://github.com/OpenAgentsInc/example","commit":"c".repeat(40)},"objective":"Build and test the workspace.","profile":"rust-library","checks":["cargo test -p parser"],"max_seconds":null})
+}
+
+#[test]
+fn saved_environments_use_the_retail_transport_and_stay_closed_by_default() {
+    let mut f = Fixture::new();
+    // Closed: no owner launch in the configuration.
+    let closed = f.open();
+    assert!(matches!(
+        call(
+            &closed,
+            "alice",
+            json!({"op":"environment_offer","idempotency":"e1","request":environment_request()}),
+        ),
+        Err(Error::Unavailable(_))
+    ));
+    drop(closed);
+    // A synthetic owner launch: a published copy of the proposed plan.
+    // It is a fixture, not a published plan or a funded qualification.
+    let mut plan = retail_cloud::environment::plan();
+    plan.status = retail_cloud::environment::PlanStatus::Published;
+    f.config.environments = Some(types::EnvironmentLaunch {
+        gate: retail_cloud::environment::Gate {
+            contract_reviewed: true,
+            plan: Some(plan.digest()),
+            qualification: Some("synthetic-qualification-fixture".into()),
+        },
+        plan,
+    });
+    let s = f.open();
+    // Without a subscription month, nothing is offered.
+    assert!(matches!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"environment_offer","idempotency":"e1","request":environment_request()}),
+        ),
+        Err(Error::Lifecycle(retail_cloud::Error::Environment(
+            retail_cloud::environment::Refusal::NoPlan
+        )))
+    ));
+    {
+        let mut store = s.lock().unwrap();
+        retail_cloud::environment::record_period(
+            &mut store.journal,
+            &retail_cloud::environment::Period {
+                account: "alice".into(),
+                plan: retail_cloud::environment::plan().version,
+                start: NOW - 60,
+                end: NOW + 30 * 86_400,
+            },
+        )
+        .unwrap();
+    }
+    let offer = call(
+        &s,
+        "alice",
+        json!({"op":"environment_offer","idempotency":"e1","request":environment_request()}),
+    )
+    .unwrap()["result"]
+        .clone();
+    assert_eq!(offer["terms"]["included_machine_hours"], 100);
+    assert_eq!(offer["terms"]["max_seconds"], Value::Null);
+    let purchase = offer["purchase"].as_str().unwrap().to_owned();
+    // Another customer cannot read or confirm it; a reader cannot spend.
+    assert!(matches!(
+        call(&s, "bob", json!({"op":"environment","purchase":purchase})),
+        Err(Error::Lifecycle(retail_cloud::Error::Environment(_)))
+    ));
+    let confirm = json!({"op":"environment_confirm","purchase":purchase,"digest":offer["digest"]});
+    assert!(matches!(
+        call(&s, "bob", confirm.clone()),
+        Err(Error::Lifecycle(retail_cloud::Error::Environment(_)))
+    ));
+    assert!(matches!(
+        s.call(
+            "reader",
+            "reader",
+            serde_json::from_value(confirm.clone()).unwrap(),
+            NOW
+        ),
+        Err(Error::Denied)
+    ));
+    // Confirm holds nothing: the setup runs on the month's hours.
+    let before = balance(&s, "alice");
+    let confirmed = call(&s, "alice", confirm.clone()).unwrap()["result"].clone();
+    assert_eq!(confirmed["phase"]["phase"], "confirmed");
+    call(&s, "alice", confirm).unwrap();
+    assert_eq!(balance(&s, "alice"), before);
+    // The runner records a saved version; the worker settles it once.
+    {
+        let mut store = s.lock().unwrap();
+        let store = &mut *store;
+        retail_cloud::environment::end(
+            &mut store.journal,
+            &retail_cloud::environment::plan(),
+            &purchase,
+            retail_cloud::environment::Ending::Saved,
+            Some(retail_cloud::environment::Usage {
+                machine_seconds: 1000,
+                image_gb: Some(5),
+            }),
+            Some(retail_cloud::environment::Saved {
+                environment: "env-1".into(),
+                version: "env-1-v1".into(),
+                image_id: "oaenv-build-1-abc".into(),
+            }),
+            NOW + 1,
+        )
+        .unwrap();
+    }
+    s.tick(NOW + 2).unwrap();
+    s.tick(NOW + 3).unwrap();
+    let read =
+        call(&s, "alice", json!({"op":"environment","purchase":purchase})).unwrap()["result"]
+            .clone();
+    assert_eq!(read["phase"]["phase"], "settled");
+    assert_eq!(read["phase"]["receipt"]["included_seconds"], 1000);
+    assert_eq!(read["selectable"], true);
+    assert_eq!(
+        balance(&s, "alice"),
+        before,
+        "included hours charge nothing"
+    );
+    // Deleting the saved version frees it and it is no longer selectable.
+    let deleted = call(
+        &s,
+        "alice",
+        json!({"op":"environment_delete","purchase":purchase}),
+    )
+    .unwrap()["result"]
+        .clone();
+    assert_eq!(deleted["selectable"], false);
+}

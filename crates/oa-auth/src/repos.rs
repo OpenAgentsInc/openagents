@@ -17,10 +17,21 @@
 //!
 //! One small file per account under `github-access/` beside the account
 //! stores, written whole with a rename under a per-account lock. The
-//! account service's routes call [`answer`].
+//! account service's routes call [`answer_with`].
+//!
+//! When the service has a GitHub App ([`crate::app`]), a person can
+//! install it on the repositories they pick instead ([`installed`]): the
+//! App's user token (sealed the same way, refreshed when it expires) finds
+//! their installations and lists the repositories in them, and Git gets
+//! one-hour installation tokens for one repository at a time through the
+//! credential broker ([`broker`]). An account with the App installed uses
+//! it; one with only the OAuth grant keeps working as before.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
@@ -34,16 +45,21 @@ use tenancy::Accounts;
 use tenancy::accounts::identities::github_principal;
 
 use crate::AuthError;
-use crate::github::{Github, Secret};
+use crate::app::AppClient;
+use crate::cache::Lists;
+use crate::github::{Api, ApiFault, Github, Secret, Sso};
 use crate::service::CodeRequest;
+
+pub mod broker;
+mod installed;
+
+pub use installed::Installation;
 
 /// The directory beside `accounts.json` the per-account files live in.
 pub const STORE_DIR: &str = "github-access";
 const SCHEMA: &str = "openagents.github-access.v1";
 /// The most projects one account keeps.
 pub const MAX_PROJECTS: usize = 200;
-/// The most repositories one listing returns (three GitHub pages).
-const MAX_LISTED: usize = 300;
 const FILE_MAX: u64 = 1024 * 1024;
 
 /// An account's project: one connected GitHub repository.
@@ -61,6 +77,10 @@ pub struct Project {
     pub default_branch: String,
     pub private: bool,
     pub created_unix: u64,
+    /// The GitHub App installation that reaches the repository, for a
+    /// project added through the App.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installation_id: Option<u64>,
 }
 
 /// One repository the person can connect.
@@ -70,6 +90,25 @@ pub struct Repository {
     pub full_name: String,
     pub default_branch: String,
     pub private: bool,
+    /// Read-only on GitHub: it can be read, not pushed to.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archived: bool,
+    /// The GitHub App installation it was listed through.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installation: Option<u64>,
+}
+
+/// One page of the repositories the person can connect.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Listing {
+    pub repositories: Vec<Repository>,
+    /// GitHub names a next page (`Link: rel="next"`).
+    #[serde(default)]
+    pub more: bool,
+    /// GitHub left out repositories of organizations that use single
+    /// sign-on until the person authorizes OpenAgents for them.
+    #[serde(default)]
+    pub sso_hidden: bool,
 }
 
 /// Where the account's GitHub repository access stands.
@@ -82,6 +121,12 @@ pub enum Access {
     Connected { login: String, private: bool },
     /// GitHub stopped accepting the token: connect again.
     Reconnect { login: String },
+    /// The GitHub App is authorized as `login` and installed on these
+    /// accounts (none yet when the person hasn't picked repositories).
+    Installed {
+        login: String,
+        installations: Vec<Installation>,
+    },
 }
 
 /// The account's access and projects.
@@ -101,6 +146,10 @@ impl Status {
                 json!({"state": "connected", "login": login, "private": private})
             }
             Access::Reconnect { login } => json!({"state": "reconnect", "login": login}),
+            Access::Installed {
+                login,
+                installations,
+            } => json!({"state": "installed", "login": login, "installations": installations}),
         };
         json!({"github": github, "projects": self.projects})
     }
@@ -117,6 +166,10 @@ impl Status {
                 private: github["private"].as_bool().unwrap_or(false),
             },
             "reconnect" => Access::Reconnect { login: login()? },
+            "installed" => Access::Installed {
+                login: login()?,
+                installations: serde_json::from_value(github["installations"].clone()).ok()?,
+            },
             _ => return None,
         };
         let projects: Vec<Project> = serde_json::from_value(body["projects"].clone()).ok()?;
@@ -126,7 +179,8 @@ impl Status {
 }
 
 /// Why a repository call did not complete. Carries no token or provider
-/// detail.
+/// detail. Each says what actually went wrong: "isn't answering" is only
+/// for GitHub not answering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RepoError {
     /// No repository access yet.
@@ -144,11 +198,52 @@ pub enum RepoError {
     Denied,
     /// A malformed request.
     Invalid,
-    /// GitHub, the key, or the store could not be reached.
+    /// GitHub could not be reached or didn't answer in time.
     Unavailable,
+    /// GitHub is over a rate limit for this token (403 or 429).
+    RateLimited,
+    /// The repository's organization requires single sign-on and the
+    /// token isn't authorized for it.
+    SsoRequired,
+    /// GitHub refused access for another reason (an organization's
+    /// OAuth App access restrictions, a disabled repository).
+    Forbidden,
+    /// GitHub answered with an error of its own (5xx).
+    GithubError,
+    /// GitHub's answer wasn't what its API sends, or was too large.
+    BadAnswer,
+    /// This server has no GitHub App or token key set up.
+    NotConfigured,
+    /// The saved access on this server couldn't be read or written.
+    Storage,
+    /// The GitHub App isn't installed on that repository (or its account
+    /// removed it).
+    NotInstalled,
+    /// The GitHub App's installation on that account is suspended.
+    Suspended,
 }
 
 impl RepoError {
+    const ALL: [Self; 17] = [
+        Self::NotConnected,
+        Self::Reconnect,
+        Self::OtherGithub,
+        Self::NotFound,
+        Self::Full,
+        Self::Denied,
+        Self::Invalid,
+        Self::Unavailable,
+        Self::RateLimited,
+        Self::SsoRequired,
+        Self::Forbidden,
+        Self::GithubError,
+        Self::BadAnswer,
+        Self::NotConfigured,
+        Self::Storage,
+        Self::NotInstalled,
+        Self::Suspended,
+    ];
+
     /// A stable code for the HTTP error envelope.
     #[must_use]
     pub fn code(self) -> &'static str {
@@ -161,6 +256,15 @@ impl RepoError {
             Self::Denied => "github_denied",
             Self::Invalid => "invalid_request",
             Self::Unavailable => "github_unavailable",
+            Self::RateLimited => "github_rate_limited",
+            Self::SsoRequired => "github_sso_required",
+            Self::Forbidden => "github_forbidden",
+            Self::GithubError => "github_error",
+            Self::BadAnswer => "github_bad_answer",
+            Self::NotConfigured => "github_not_configured",
+            Self::Storage => "github_access_storage",
+            Self::NotInstalled => "github_app_not_installed",
+            Self::Suspended => "github_app_suspended",
         }
     }
 
@@ -169,28 +273,21 @@ impl RepoError {
     pub fn status(self) -> u16 {
         match self {
             Self::NotConnected | Self::Reconnect | Self::OtherGithub | Self::Full => 409,
-            Self::NotFound => 404,
+            Self::NotFound | Self::NotInstalled => 404,
             Self::Denied => 401,
             Self::Invalid => 400,
-            Self::Unavailable => 503,
+            Self::SsoRequired | Self::Forbidden | Self::Suspended => 403,
+            Self::RateLimited => 429,
+            Self::GithubError | Self::BadAnswer => 502,
+            Self::Unavailable | Self::NotConfigured => 503,
+            Self::Storage => 500,
         }
     }
 
     /// Read back from an account-service error code.
     #[must_use]
     pub fn from_code(code: &str) -> Option<Self> {
-        [
-            Self::NotConnected,
-            Self::Reconnect,
-            Self::OtherGithub,
-            Self::NotFound,
-            Self::Full,
-            Self::Denied,
-            Self::Invalid,
-            Self::Unavailable,
-        ]
-        .into_iter()
-        .find(|error| error.code() == code)
+        Self::ALL.into_iter().find(|error| error.code() == code)
     }
 }
 
@@ -205,6 +302,25 @@ impl std::fmt::Display for RepoError {
             Self::Denied => "GitHub didn't connect. Try again.",
             Self::Invalid => "That didn't work. Try again.",
             Self::Unavailable => "GitHub isn't answering right now. Try again in a minute.",
+            Self::RateLimited => {
+                "GitHub is limiting how often OpenAgents can read your repositories. Try again in a few minutes."
+            }
+            Self::SsoRequired => {
+                "That organization uses single sign-on. On GitHub, authorize OpenAgents for the organization, then try again."
+            }
+            Self::Forbidden => {
+                "GitHub didn't allow access to that repository. An organization owner may need to approve OpenAgents on GitHub."
+            }
+            Self::GithubError => "GitHub had a problem answering. Try again in a minute.",
+            Self::BadAnswer => "GitHub sent an answer OpenAgents couldn't read. Try again in a minute.",
+            Self::NotConfigured => "GitHub repositories aren't set up on this server.",
+            Self::Storage => "Your saved GitHub access couldn't be read. Try again in a minute.",
+            Self::NotInstalled => {
+                "OpenAgents isn't installed on that repository. Choose it on GitHub, then try again."
+            }
+            Self::Suspended => {
+                "OpenAgents is suspended on that GitHub account. An owner can turn it back on in the account's GitHub settings."
+            }
         })
     }
 }
@@ -221,6 +337,15 @@ impl From<AuthError> for RepoError {
     }
 }
 
+impl From<ApiFault> for RepoError {
+    fn from(fault: ApiFault) -> Self {
+        match fault {
+            ApiFault::Unreachable => Self::Unavailable,
+            ApiFault::TooLarge => Self::BadAnswer,
+        }
+    }
+}
+
 /// One account-service call.
 #[derive(Debug)]
 pub enum Call {
@@ -230,8 +355,9 @@ pub enum Call {
     Grant(CodeRequest),
     /// `DELETE /v1/account/github/grant`
     Disconnect,
-    /// `GET /v1/account/github/repositories`
-    Repositories,
+    /// `GET /v1/account/github/repositories?page=N`: one page, most
+    /// recently pushed first.
+    Repositories(u32),
     /// `POST /v1/account/github/token`: the token, for this deployment's
     /// own web server to read GitHub as the person.
     Token,
@@ -239,33 +365,80 @@ pub enum Call {
     AddProject(String),
     /// `DELETE /v1/account/projects/{id}`
     RemoveProject(String),
+    /// `POST /v1/account/github/app/grant` `{code, code_verifier}`: the
+    /// GitHub App's user authorization; finds the person's installations.
+    AppGrant(CodeRequest),
+    /// `POST /v1/account/github/app/refresh`: find the installations again
+    /// (after the person installed the App or changed its repositories).
+    AppRefresh,
+    /// `POST /v1/account/github/broker` `{repository, seconds}`: a ticket
+    /// that lets one machine fetch and push one project's repository
+    /// through the credential broker ([`broker`]).
+    BrokerTicket { repository: String, seconds: u64 },
 }
 
-/// Answer `call` for `account`: an HTTP status and a JSON body (an error
-/// envelope on failure). `github` is `None` when the service has no
-/// GitHub App; only [`Call::Status`] and removals work then.
+/// Answer `call` for `account` with the OAuth App only (see
+/// [`answer_with`]).
 pub async fn answer(
     dir: &Path,
     github: Option<&Github>,
     account: &str,
     call: Call,
 ) -> (u16, Value) {
+    answer_with(dir, github, None, account, call).await
+}
+
+/// Answer `call` for `account`: an HTTP status and a JSON body (an error
+/// envelope on failure). `github` is the OAuth App, `app` the GitHub App;
+/// either may be missing. An account that installed the GitHub App uses
+/// it when the service has it.
+pub async fn answer_with(
+    dir: &Path,
+    github: Option<&Github>,
+    app: Option<&AppClient>,
+    account: &str,
+    call: Call,
+) -> (u16, Value) {
     let result = async {
-        let github = || github.ok_or(RepoError::Unavailable);
+        let github = || github.ok_or(RepoError::NotConfigured);
+        let app_ready = || app.ok_or(RepoError::NotConfigured);
+        let via_app = match app {
+            Some(app) if installed::uses_app(dir, account)? => Some(app),
+            _ => None,
+        };
         Ok::<Value, RepoError>(match call {
             Call::Status => status(dir, account)?.body(),
             Call::Grant(request) => grant(dir, github()?, account, &request).await?.body(),
             Call::Disconnect => disconnect(dir, account)?.body(),
-            Call::Repositories => {
-                json!({"repositories": repositories(dir, github()?, account).await?})
+            Call::Repositories(page) => {
+                let listing = match via_app {
+                    Some(app) => installed::repositories(dir, app, account, page).await?,
+                    None => repositories(dir, github()?, account, page).await?,
+                };
+                serde_json::to_value(listing).map_err(|_| RepoError::BadAnswer)?
             }
             Call::Token => {
-                let (token, private) = token(dir, github()?, account)?;
+                let (token, private) = match via_app {
+                    Some(app) => (installed::user_token(dir, app, account).await?, true),
+                    None => token(dir, github()?, account)?,
+                };
                 json!({"token": token.as_str(), "private": private})
             }
             Call::AddProject(repository) => {
-                json!({"project": add_project(dir, github()?, account, &repository).await?})
+                let project = match via_app {
+                    Some(app) => installed::add_project(dir, app, account, &repository).await?,
+                    None => add_project(dir, github()?, account, &repository).await?,
+                };
+                json!({"project": project})
             }
+            Call::AppGrant(request) => installed::grant(dir, app_ready()?, account, &request)
+                .await?
+                .body(),
+            Call::AppRefresh => installed::refresh(dir, app_ready()?, account).await?.body(),
+            Call::BrokerTicket {
+                repository,
+                seconds,
+            } => broker::ticket(dir, app_ready()?, account, &repository, seconds)?,
             Call::RemoveProject(id) => {
                 remove_project(dir, account, &id)?;
                 json!({"removed": id})
@@ -301,10 +474,13 @@ pub async fn grant(
         .exchange(&request.code, &request.code_verifier)
         .await?;
     let user = github.api(token.as_str(), "/user").await?;
-    if user.status != 200 {
-        return Err(RepoError::Unavailable);
-    }
-    let github_id = user.body["id"].as_u64().ok_or(RepoError::Unavailable)?;
+    let user = match user.status {
+        // The token was just issued: GitHub refusing it is a failed
+        // connect, not a stored token to mark revoked.
+        401 => return Err(RepoError::Denied),
+        _ => answered(user)?,
+    };
+    let github_id = user.body["id"].as_u64().ok_or(RepoError::BadAnswer)?;
     let login = user.body["login"]
         .as_str()
         .filter(|login| {
@@ -314,7 +490,7 @@ pub async fn grant(
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         })
-        .ok_or(RepoError::Unavailable)?
+        .ok_or(RepoError::BadAnswer)?
         .to_string();
     same_person(dir, account, github_id)?;
     let scopes = user.scopes.unwrap_or_default();
@@ -330,44 +506,147 @@ pub async fn grant(
         });
         Ok(())
     })?;
+    forget(dir, account);
     status(dir, account)
 }
 
-/// Forget the stored token. Projects stay.
+/// Forget the stored tokens (the OAuth grant, the GitHub App's user
+/// token, and every broker ticket). Projects stay.
 pub fn disconnect(dir: &Path, account: &str) -> Result<Status, RepoError> {
     mutate(dir, account, |record| {
         record.grant = None;
+        record.app = None;
+        record.tickets.clear();
         Ok(())
     })?;
+    forget(dir, account);
     status(dir, account)
 }
 
-/// The repositories the person can connect, most recently pushed first.
+/// Repositories listed per page: one quick GitHub call.
+pub const PAGE_SIZE: usize = 30;
+
+/// The last page offered ([`PAGE_SIZE`] × this many repositories in all).
+pub const MAX_PAGE: u32 = 20;
+
+/// One page (1-based) of the repositories the person can connect, most
+/// recently pushed first, and whether GitHub names a page after it (its
+/// `Link: rel="next"`). One call to GitHub, so the page shows quickly; the
+/// next page loads on request.
+///
+/// Pages are cached per account and grant ([`crate::cache`]: fresh for 5
+/// minutes, kept for an hour and served while one read refreshes them).
+/// Connecting, disconnecting, adding or removing a project, and a GitHub
+/// 401 drop the account's pages. While the token's hourly budget is nearly
+/// spent, kept pages are served without reading GitHub again.
 pub async fn repositories(
     dir: &Path,
     github: &Github,
     account: &str,
-) -> Result<Vec<Repository>, RepoError> {
+    page: u32,
+) -> Result<Listing, RepoError> {
+    let page = page.clamp(1, MAX_PAGE);
+    let grant = current(dir, account)?;
+    let group = (dir.to_path_buf(), account.to_string());
+    let item = (grant.github_id, grant.granted_unix, page);
+    let may_refresh = !budget_low(dir, account);
+    let (github, dir, account) = (github.clone(), dir.to_path_buf(), account.to_string());
+    LISTS
+        .get(
+            group,
+            item,
+            may_refresh,
+            move || async move { read_page(&dir, &github, &account, page).await },
+            RepoError::Unavailable,
+        )
+        .await
+}
+
+/// One page straight from GitHub (no cache).
+async fn read_page(
+    dir: &Path,
+    github: &Github,
+    account: &str,
+    page: u32,
+) -> Result<Listing, RepoError> {
     let (token, _) = token(dir, github, account)?;
-    let mut found = Vec::new();
-    for page in 1..=MAX_LISTED / 100 {
-        let answer = github
-            .api(
-                token.as_str(),
-                &format!(
-                    "/user/repos?per_page=100&page={page}&sort=pushed&affiliation=owner,collaborator,organization_member"
-                ),
-            )
-            .await?;
-        let list = checked(dir, account, answer.status, answer.body)?;
-        let rows = list.as_array().map_or(&[][..], Vec::as_slice);
-        found.extend(rows.iter().filter_map(listed));
-        if rows.len() < 100 {
-            break;
+    let answer = github
+        .api(
+            token.as_str(),
+            &format!(
+                "/user/repos?per_page={PAGE_SIZE}&page={page}&sort=pushed&affiliation=owner,collaborator,organization_member"
+            ),
+        )
+        .await?;
+    note_budget(dir, account, &answer);
+    let answer = checked(dir, account, answer)?;
+    let rows = answer.body.as_array().ok_or(RepoError::BadAnswer)?;
+    Ok(Listing {
+        repositories: rows.iter().filter_map(listed).collect(),
+        more: answer.next.is_some() && page < MAX_PAGE,
+        sso_hidden: answer.sso == Some(Sso::Partial),
+    })
+}
+
+/// Pages by account (the stores directory and account id), then by grant
+/// (GitHub user id and when it was granted) and page.
+type PageCache = Lists<(PathBuf, String), (u64, u64, u32), Listing>;
+
+static LISTS: LazyLock<PageCache> = LazyLock::new(Lists::new);
+
+/// Below this many reads left in the hour, kept pages are served instead
+/// of reading GitHub again.
+const LOW_BUDGET: u64 = 100;
+
+/// The last `x-ratelimit-remaining` and `x-ratelimit-reset` per account.
+static BUDGETS: LazyLock<Mutex<HashMap<(PathBuf, String), (u64, u64)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn budgets() -> std::sync::MutexGuard<'static, HashMap<(PathBuf, String), (u64, u64)>> {
+    BUDGETS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn note_budget(dir: &Path, account: &str, answer: &Api) {
+    if let (Some(remaining), Some(reset)) = (answer.remaining, answer.reset) {
+        let mut budgets = budgets();
+        if budgets.len() >= 4096 {
+            let now = now();
+            budgets.retain(|_, (_, reset)| *reset > now);
         }
+        budgets.insert((dir.to_path_buf(), account.to_string()), (remaining, reset));
     }
-    found.truncate(MAX_LISTED);
-    Ok(found)
+}
+
+fn budget_low(dir: &Path, account: &str) -> bool {
+    budgets()
+        .get(&(dir.to_path_buf(), account.to_string()))
+        .is_some_and(|(remaining, reset)| *remaining < LOW_BUDGET && *reset > now())
+}
+
+/// Drop the account's cached pages.
+fn forget(dir: &Path, account: &str) {
+    LISTS.remove(&(dir.to_path_buf(), account.to_string()));
+}
+
+/// Make the account's cached pages `by` older (tests: step past the
+/// freshness window or the hour they are kept without waiting).
+#[doc(hidden)]
+pub fn age_cached_lists(dir: &Path, account: Option<&str>, by: Duration) {
+    LISTS.age_where(by, |(stores, owner)| {
+        stores == dir && account.is_none_or(|account| owner == account)
+    });
+}
+
+/// The account's grant, when it is connected and not revoked.
+fn current(dir: &Path, account: &str) -> Result<Grant, RepoError> {
+    let record = load(dir, account)?;
+    let grant = record.grant.ok_or(RepoError::NotConnected)?;
+    if grant.revoked_unix.is_some() {
+        return Err(RepoError::Reconnect);
+    }
+    Ok(grant)
 }
 
 /// The stored token and whether it reaches private repositories.
@@ -376,11 +655,7 @@ pub(crate) fn token(
     github: &Github,
     account: &str,
 ) -> Result<(Secret, bool), RepoError> {
-    let record = load(dir, account)?;
-    let grant = record.grant.as_ref().ok_or(RepoError::NotConnected)?;
-    if grant.revoked_unix.is_some() {
-        return Err(RepoError::Reconnect);
-    }
+    let grant = current(dir, account)?;
     let token = open(github, account, grant.github_id, &grant.sealed)?;
     Ok((token, grant.private()))
 }
@@ -400,8 +675,22 @@ pub async fn add_project(
     let answer = github
         .api(token.as_str(), &format!("/repos/{repository}"))
         .await?;
-    let found = listed(&checked(dir, account, answer.status, answer.body)?)
-        .ok_or(RepoError::Unavailable)?;
+    let body = checked(dir, account, answer)?.body;
+    if body["disabled"].as_bool() == Some(true) {
+        return Err(RepoError::Forbidden);
+    }
+    let found = listed(&body).ok_or(RepoError::BadAnswer)?;
+    keep_project(dir, account, &found, None)
+}
+
+/// Keep `found` as a project (through `installation` when the GitHub App
+/// reaches it), or update the project that already holds it.
+fn keep_project(
+    dir: &Path,
+    account: &str,
+    found: &Repository,
+    installation: Option<u64>,
+) -> Result<Project, RepoError> {
     let mut id = [0u8; 8];
     OsRng.fill_bytes(&mut id);
     let fresh = Project {
@@ -416,7 +705,9 @@ pub async fn add_project(
         default_branch: found.default_branch.clone(),
         private: found.private,
         created_unix: now(),
+        installation_id: installation,
     };
+    forget(dir, account);
     mutate(dir, account, |record| {
         if let Some(existing) = record
             .projects
@@ -428,6 +719,9 @@ pub async fn add_project(
             existing.name.clone_from(&fresh.name);
             existing.default_branch.clone_from(&fresh.default_branch);
             existing.private = fresh.private;
+            if installation.is_some() {
+                existing.installation_id = installation;
+            }
             return Ok(existing.clone());
         }
         if record.projects.len() >= MAX_PROJECTS {
@@ -443,6 +737,7 @@ pub fn remove_project(dir: &Path, account: &str, id: &str) -> Result<(), RepoErr
     if !project_id(id) {
         return Err(RepoError::Invalid);
     }
+    forget(dir, account);
     mutate(dir, account, |record| {
         record.projects.retain(|p| p.id != id);
         Ok(())
@@ -473,28 +768,49 @@ pub fn full_name(value: &str) -> bool {
     part(owner) && part(name)
 }
 
-/// A GitHub answer's body, or the error it means. A 401 marks the stored
-/// token revoked.
-fn checked(dir: &Path, account: &str, status: u16, body: Value) -> Result<Value, RepoError> {
-    match status {
-        200..=299 => Ok(body),
-        401 => {
-            mutate(dir, account, |record| {
-                if let Some(grant) = record.grant.as_mut()
-                    && grant.revoked_unix.is_none()
-                {
-                    grant.revoked_unix = Some(now());
-                }
-                Ok(())
-            })?;
-            Err(RepoError::Reconnect)
-        }
+/// A GitHub answer with a 2xx status, or the error it means. A 401 marks
+/// the stored token revoked.
+fn checked(dir: &Path, account: &str, answer: Api) -> Result<Api, RepoError> {
+    if answer.status == 401 {
+        mutate(dir, account, |record| {
+            if let Some(grant) = record.grant.as_mut()
+                && grant.revoked_unix.is_none()
+            {
+                grant.revoked_unix = Some(now());
+            }
+            Ok(())
+        })?;
+        forget(dir, account);
+        return Err(RepoError::Reconnect);
+    }
+    answered(answer)
+}
+
+/// What a GitHub status means, for any status but 401 (which depends on
+/// whose token it was). Rate limits and single sign-on come first: GitHub
+/// answers both with 403.
+pub(crate) fn answered(answer: Api) -> Result<Api, RepoError> {
+    if answer.rate_limited {
+        return Err(RepoError::RateLimited);
+    }
+    match answer.status {
+        200..=299 if answer.body.is_null() => Err(RepoError::BadAnswer),
+        200..=299 => Ok(answer),
+        403 if answer.sso == Some(Sso::Required) => Err(RepoError::SsoRequired),
+        403 | 451 => Err(RepoError::Forbidden),
         404 => Err(RepoError::NotFound),
-        _ => Err(RepoError::Unavailable),
+        500..=599 => Err(RepoError::GithubError),
+        _ => Err(RepoError::BadAnswer),
     }
 }
 
+/// A repository from GitHub's JSON. Disabled repositories (GitHub blocks
+/// every read of them) are left out; `default_branch` falls back to
+/// `main` when GitHub has none to name.
 fn listed(value: &Value) -> Option<Repository> {
+    if value["disabled"].as_bool() == Some(true) {
+        return None;
+    }
     let full_name = value["full_name"].as_str().filter(|n| full_name(n))?;
     Some(Repository {
         id: value["id"].as_u64()?,
@@ -505,16 +821,18 @@ fn listed(value: &Value) -> Option<Repository> {
             .unwrap_or("main")
             .to_string(),
         private: value["private"].as_bool().unwrap_or(false),
+        archived: value["archived"].as_bool().unwrap_or(false),
+        installation: None,
     })
 }
 
 /// The GitHub user who granted access must be the one this account signs
 /// in with, when it signs in with GitHub at all.
 fn same_person(dir: &Path, account: &str, github_id: u64) -> Result<(), RepoError> {
-    let accounts = Accounts::open(dir).map_err(|_| RepoError::Unavailable)?;
+    let accounts = Accounts::open(dir).map_err(|_| RepoError::Storage)?;
     if let Some(identity) = accounts
         .github_identity(github_id)
-        .map_err(|_| RepoError::Unavailable)?
+        .map_err(|_| RepoError::Storage)?
     {
         return if identity.account == account {
             Ok(())
@@ -522,7 +840,7 @@ fn same_person(dir: &Path, account: &str, github_id: u64) -> Result<(), RepoErro
             Err(RepoError::OtherGithub)
         };
     }
-    let store = accounts.store().map_err(|_| RepoError::Unavailable)?;
+    let store = accounts.store().map_err(|_| RepoError::Storage)?;
     let record = store.accounts.get(account).ok_or(RepoError::Invalid)?;
     let principal = github_principal(github_id);
     if record
@@ -564,6 +882,12 @@ struct Record {
     account: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grant: Option<Grant>,
+    /// The GitHub App's user authorization and installations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    app: Option<installed::AppGrant>,
+    /// Credential-broker tickets, by digest ([`broker`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tickets: Vec<broker::Ticket>,
     #[serde(default)]
     projects: Vec<Project>,
 }
@@ -574,11 +898,29 @@ impl Record {
             v: SCHEMA.into(),
             account: account.into(),
             grant: None,
+            app: None,
+            tickets: Vec::new(),
             projects: Vec::new(),
         }
     }
 
     fn status(&self) -> Status {
+        if let Some(app) = &self.app {
+            let access = if app.revoked_unix.is_some() {
+                Access::Reconnect {
+                    login: app.login.clone(),
+                }
+            } else {
+                Access::Installed {
+                    login: app.login.clone(),
+                    installations: app.installations.clone(),
+                }
+            };
+            return Status {
+                access,
+                projects: self.projects.clone(),
+            };
+        }
         let access = match &self.grant {
             None => Access::None,
             Some(grant) if grant.revoked_unix.is_some() => Access::Reconnect {
@@ -603,7 +945,7 @@ fn associated(account: &str, github_id: u64) -> String {
 fn cipher(github: &Github) -> Result<Aes256Gcm, RepoError> {
     let credentials = github.credentials();
     if !credentials.has_token_key() {
-        return Err(RepoError::Unavailable);
+        return Err(RepoError::NotConfigured);
     }
     Ok(Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(
         credentials.token_key(),
@@ -611,8 +953,12 @@ fn cipher(github: &Github) -> Result<Aes256Gcm, RepoError> {
 }
 
 fn seal(github: &Github, account: &str, github_id: u64, token: &str) -> Result<String, RepoError> {
+    seal_bound(github, &associated(account, github_id), token)
+}
+
+/// Seal `token` under the App file's key, bound to `aad`.
+fn seal_bound(github: &Github, aad: &str, token: &str) -> Result<String, RepoError> {
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let aad = associated(account, github_id);
     let sealed = cipher(github)?
         .encrypt(
             &nonce,
@@ -621,20 +967,23 @@ fn seal(github: &Github, account: &str, github_id: u64, token: &str) -> Result<S
                 aad: aad.as_bytes(),
             },
         )
-        .map_err(|_| RepoError::Unavailable)?;
+        .map_err(|_| RepoError::Storage)?;
     let mut bytes = nonce.to_vec();
     bytes.extend_from_slice(&sealed);
     Ok(format!("v1.{}", STANDARD.encode(bytes)))
 }
 
 fn open(github: &Github, account: &str, github_id: u64, sealed: &str) -> Result<Secret, RepoError> {
+    open_bound(github, &associated(account, github_id), sealed)
+}
+
+fn open_bound(github: &Github, aad: &str, sealed: &str) -> Result<Secret, RepoError> {
     let bytes = sealed
         .strip_prefix("v1.")
         .and_then(|b64| STANDARD.decode(b64).ok())
         .filter(|bytes| bytes.len() > 12 + 16)
-        .ok_or(RepoError::Unavailable)?;
+        .ok_or(RepoError::Storage)?;
     let (nonce, body) = bytes.split_at(12);
-    let aad = associated(account, github_id);
     let plain = cipher(github)?
         .decrypt(
             Nonce::from_slice(nonce),
@@ -643,10 +992,10 @@ fn open(github: &Github, account: &str, github_id: u64, sealed: &str) -> Result<
                 aad: aad.as_bytes(),
             },
         )
-        .map_err(|_| RepoError::Unavailable)?;
+        .map_err(|_| RepoError::Storage)?;
     String::from_utf8(plain)
         .map(Secret::new)
-        .map_err(|_| RepoError::Unavailable)
+        .map_err(|_| RepoError::Storage)
 }
 
 fn check_account(account: &str) -> Result<(), RepoError> {
@@ -667,23 +1016,43 @@ fn file(dir: &Path, account: &str, extension: &str) -> PathBuf {
 
 fn load(dir: &Path, account: &str) -> Result<Record, RepoError> {
     check_account(account)?;
-    let path = file(dir, account, "json");
+    let record = read_record(&file(dir, account, "json"))?.unwrap_or_else(|| Record::new(account));
+    if record.account != account {
+        return Err(RepoError::Storage);
+    }
+    Ok(record)
+}
+
+/// The record in the file named by its account's digest (a broker ticket
+/// carries the digest, not the account).
+fn load_by_digest(dir: &Path, digest: &str) -> Result<Option<Record>, RepoError> {
+    if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(None);
+    }
+    let path = dir.join(STORE_DIR).join(format!("{digest}.json"));
+    Ok(read_record(&path)?.filter(|record| {
+        hex(&Sha256::digest(record.account.as_bytes())) == digest.to_ascii_lowercase()
+    }))
+}
+
+fn read_record(path: &Path) -> Result<Option<Record>, RepoError> {
+    let path = path.to_path_buf();
     let meta = match std::fs::symlink_metadata(&path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(Record::new(account));
+            return Ok(None);
         }
-        Err(_) => return Err(RepoError::Unavailable),
+        Err(_) => return Err(RepoError::Storage),
     };
     if !meta.is_file() || meta.len() > FILE_MAX {
-        return Err(RepoError::Unavailable);
+        return Err(RepoError::Storage);
     }
-    let bytes = std::fs::read(&path).map_err(|_| RepoError::Unavailable)?;
-    let record: Record = serde_json::from_slice(&bytes).map_err(|_| RepoError::Unavailable)?;
-    if record.v != SCHEMA || record.account != account || record.projects.len() > MAX_PROJECTS {
-        return Err(RepoError::Unavailable);
+    let bytes = std::fs::read(&path).map_err(|_| RepoError::Storage)?;
+    let record: Record = serde_json::from_slice(&bytes).map_err(|_| RepoError::Storage)?;
+    if record.v != SCHEMA || record.projects.len() > MAX_PROJECTS {
+        return Err(RepoError::Storage);
     }
-    Ok(record)
+    Ok(Some(record))
 }
 
 /// Run `change` on the account's record under its lock and write it back.
@@ -698,7 +1067,7 @@ fn mutate<T>(
     let _lock = Lock::acquire(&file(dir, account, "lock"))?;
     let mut record = load(dir, account)?;
     let out = change(&mut record)?;
-    let text = serde_json::to_vec_pretty(&record).map_err(|_| RepoError::Unavailable)?;
+    let text = serde_json::to_vec_pretty(&record).map_err(|_| RepoError::Storage)?;
     let temporary = file(dir, account, "tmp");
     std::fs::remove_file(&temporary).ok();
     let mut options = std::fs::OpenOptions::new();
@@ -708,14 +1077,12 @@ fn mutate<T>(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut handle = options
-        .open(&temporary)
-        .map_err(|_| RepoError::Unavailable)?;
+    let mut handle = options.open(&temporary).map_err(|_| RepoError::Storage)?;
     handle
         .write_all(&text)
         .and_then(|()| handle.sync_all())
-        .map_err(|_| RepoError::Unavailable)?;
-    std::fs::rename(&temporary, file(dir, account, "json")).map_err(|_| RepoError::Unavailable)?;
+        .map_err(|_| RepoError::Storage)?;
+    std::fs::rename(&temporary, file(dir, account, "json")).map_err(|_| RepoError::Storage)?;
     Ok(out)
 }
 
@@ -730,7 +1097,7 @@ fn create_private_dir(path: &Path) -> Result<(), RepoError> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.create(path).map_err(|_| RepoError::Unavailable)
+    builder.create(path).map_err(|_| RepoError::Storage)
 }
 
 /// A per-account writer lock: `create_new` takes it, dropping removes it.
@@ -759,10 +1126,10 @@ impl Lock {
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
-                Err(_) => return Err(RepoError::Unavailable),
+                Err(_) => return Err(RepoError::Storage),
             }
         }
-        Err(RepoError::Unavailable)
+        Err(RepoError::Storage)
     }
 }
 

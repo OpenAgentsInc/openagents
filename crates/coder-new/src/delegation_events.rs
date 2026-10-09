@@ -417,8 +417,21 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
     #[test]
     fn channel_rejects_wrong_tokens_and_closes_unfinished_redacted_children() {
         let mut bridge = Bridge::new().unwrap();
-        let mut events = Vec::new();
-        let sink = RefCell::new(|event| events.push(event));
+        let events = RefCell::new(Vec::new());
+        let sink = RefCell::new(|event| events.borrow_mut().push(event));
+        // Loopback delivery is asynchronous: poll the bridge until a condition
+        // holds instead of assuming one drain sees bytes written just before.
+        let wait = |bridge: &mut Bridge, done: &dyn Fn(&Bridge) -> bool| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while !done(bridge) {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "bridge never delivered"
+                );
+                bridge.drain(&sink, &[model_access::ApiKey::new("credential")]);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
         let mut value = json!({"event":"delegation","id":"fixture","name":"Codex","task":"credential","update":{"event":"tool","name":"acp_subagent","input":{},"output":null,"running":true}});
         let wrong = bridge.endpoint().replace(&bridge.token, &"0".repeat(64));
         Publisher::connect(Some(&wrong)).send(&value);
@@ -428,8 +441,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
         publisher.send(&value);
         value["event"] = json!("tool");
         publisher.send(&value);
+        wait(&mut bridge, &|bridge| !bridge.active.is_empty());
         bridge.finish(&sink, &[model_access::ApiKey::new("credential")]);
         drop(sink);
+        let events = events.into_inner();
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], RuntimeEvent::Delegation {task,..} if task == "[redacted]"));
         assert!(

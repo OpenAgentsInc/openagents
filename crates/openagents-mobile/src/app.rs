@@ -565,6 +565,17 @@ pub enum Request {
     AmountFormat {
         format: String,
     },
+    /// The phone's appearance (UITraitCollection's user interface style,
+    /// or the night bits of Android's uiMode), at launch and whenever it
+    /// changes. System follows it.
+    SystemAppearance {
+        dark: bool,
+    },
+    /// Account > Appearance: `system`, `light`, or `dark`. The choice is
+    /// saved.
+    Theme {
+        theme: String,
+    },
 }
 
 /// The direct reply to [`Request::WalletWords`] and
@@ -726,6 +737,9 @@ pub struct Packet {
     pub wallet_link: crate::wallet_link::View,
     /// How amounts show and are typed, app-wide.
     pub amounts: crate::amounts::AmountsView,
+    /// The theme: the choice, the resolved scheme (the host's color
+    /// scheme and status bar), and the palette for the host's own chrome.
+    pub appearance: crate::appearance::View,
     /// Push wake status (`Wakes on`, `Wakes off`, or why not), once the
     /// build is configured for push or a push request arrived.
     pub push: Option<String>,
@@ -814,6 +828,8 @@ pub struct App {
     playtest: crate::playtest::Playtest,
     /// The amount format, applied to every surface that shows bitcoin.
     amounts: crate::amounts::Amounts,
+    /// The theme: the person's choice and the phone's appearance.
+    appearance: crate::appearance::Appearance,
     /// Push wakes, when this build is configured for them.
     push: Option<coder_mobile::Push>,
     push_status: Option<String>,
@@ -980,6 +996,9 @@ impl App {
         // held only signet test coins; remove it. Its Keychain item goes too.
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
         let amounts = crate::amounts::Amounts::open(&config.state_dir);
+        // The theme seam: sets the shared views' scheme before any view
+        // is built.
+        let appearance = crate::appearance::Appearance::open(&config.state_dir);
         spend.set_format(amounts.format());
         // The recorded Gym keeps its chats and runs apart, so its fixture
         // numbers never show in the real app's results.
@@ -1127,6 +1146,7 @@ impl App {
                 Cache::open(&config.state_dir.join("playtest"), &secret).ok(),
             ),
             amounts,
+            appearance,
             push,
             push_status,
             notices,
@@ -1622,6 +1642,14 @@ impl App {
                     self.wallet.set_format(format);
                     self.spend.set_format(format);
                 }
+            }
+            // The packet below rebuilds every Rust Native view in the
+            // resolved scheme.
+            Request::SystemAppearance { dark } => {
+                self.appearance.set_system(dark);
+            }
+            Request::Theme { theme } => {
+                self.appearance.choose(&theme);
             }
             // `respond` answers these directly; the app packet never
             // carries recovery words or a seed.
@@ -2164,6 +2192,7 @@ impl App {
             wallet_link: self.wallet_link.view(),
             push: self.push_status.clone(),
             amounts: self.amounts.view(),
+            appearance: self.appearance.view(),
             gym,
             provider_keys: self.provider_keys.view(),
         }
@@ -2269,8 +2298,11 @@ fn without(mut view: serde_json::Value, keys: &[&str]) -> serde_json::Value {
 }
 
 /// Draw Coder's shared screens in OpenAgents' neutral palette: each color
-/// keeps its brightness (the red channel of Coder's amber) as a gray.
+/// keeps its brightness (the red channel of Coder's amber) as a gray. In
+/// the light look the gray is inverted, so light ink on a dark fill becomes
+/// dark ink on a light fill (#11028).
 fn neutral(mut view: serde_json::Value) -> serde_json::Value {
+    let light = crate::appearance::light();
     let mut pending = vec![&mut view];
     while let Some(value) = pending.pop() {
         match value {
@@ -2278,10 +2310,12 @@ fn neutral(mut view: serde_json::Value) -> serde_json::Value {
                 if let Some(serde_json::Value::Object(style)) = object.get_mut("style") {
                     for field in ["foreground", "background"] {
                         if let Some(serde_json::Value::Object(color)) = style.get_mut(field)
-                            && let Some(red) = color.get("red").cloned()
+                            && let Some(red) = color.get("red").and_then(serde_json::Value::as_u64)
                         {
-                            color.insert("green".into(), red.clone());
-                            color.insert("blue".into(), red);
+                            let gray = if light { 255 - red.min(255) } else { red };
+                            for channel in ["red", "green", "blue"] {
+                                color.insert(channel.into(), gray.into());
+                            }
                         }
                     }
                 }

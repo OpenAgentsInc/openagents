@@ -16,9 +16,19 @@ mod nearby;
 pub const CODE_SURFACE: &str = "pairing-code";
 
 /// A card's fill.
-const CARD: Color = Color::rgb(24, 24, 24);
+fn card_fill() -> Color {
+    openagents_chat_app::visual::pick(
+        Color::rgb(24, 24, 24),
+        openagents_chat_app::visual::current().selected,
+    )
+}
 /// A quiet button's fill.
-const QUIET: Color = Color::rgb(44, 44, 44);
+fn quiet_fill() -> Color {
+    openagents_chat_app::visual::pick(
+        Color::rgb(44, 44, 44),
+        openagents_chat_app::visual::current().selected,
+    )
+}
 
 fn node(key: &str, style: Style, element: Element<Intent>) -> Node<Intent> {
     Node {
@@ -66,8 +76,11 @@ fn button(key: &str, label: &str, intent: Intent, enabled: bool) -> Node<Intent>
 
 fn quiet(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     let mut node = button(key, label, intent, true);
-    node.style.background = Some(QUIET);
-    node.style.foreground = Some(Color::rgb(245, 245, 245));
+    node.style.background = Some(quiet_fill());
+    node.style.foreground = Some(openagents_chat_app::visual::pick(
+        Color::rgb(245, 245, 245),
+        openagents_chat_app::visual::current().text,
+    ));
     node
 }
 
@@ -113,7 +126,7 @@ fn stack(key: &str, axis: Axis, gap: Space, children: Vec<Node<Intent>>) -> Node
 
 fn card(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
     let mut node = stack(key, Axis::Vertical, Space::Sm, children);
-    node.style.background = Some(CARD);
+    node.style.background = Some(card_fill());
     node.style.padding_top = Some(Space::Md);
     node.style.padding_bottom = Some(Space::Md);
     node.style.padding_start = Some(Space::Md);
@@ -361,7 +374,10 @@ fn signed_in(key: &str, name: &str, on: bool) -> Node<Intent> {
     let state = if on { "signed in" } else { "not signed in" };
     let mut line = text(key, format!("{mark}  {name} · {state}"), TextRole::Body);
     if !on {
-        line.style.foreground = Some(Color::rgb(150, 150, 150));
+        line.style.foreground = Some(openagents_chat_app::visual::pick(
+            Color::rgb(150, 150, 150),
+            openagents_chat_app::visual::current().muted,
+        ));
     }
     line
 }

@@ -120,6 +120,7 @@ fn the_config_is_explicit_and_bounded() {
         schema: SCHEMA.into(),
         provider: ProviderKind::Boat,
         workdir: "/workspace/repo".into(),
+        gce: None,
         template: None,
         credential_names: ["GH_TOKEN".to_string()].into(),
         tick_seconds: 15,
@@ -150,12 +151,43 @@ fn the_config_is_explicit_and_bounded() {
     ] {
         assert!(bad.validate().is_err(), "{bad:?}");
     }
-    assert!(
-        serde_json::from_str::<Config>(
-            r#"{"schema":"openagents.environment.owners.v1","provider":"gce","workdir":"/w"}"#
-        )
-        .is_err()
-    );
+    // The GCE adapter needs its own section, and only with its provider.
+    let gce: Config = serde_json::from_str(
+        r#"{"schema":"openagents.environment.owners.v1","provider":"gce","workdir":"/w"}"#,
+    )
+    .unwrap();
+    assert!(gce.validate().is_err());
+    let section = coder_working_computer::gce::GceConfig {
+        project: "oa-test".into(),
+        zone: "us-central1-a".into(),
+        machine: "c3-standard-8".into(),
+        disk_gb: 100,
+        base: coder_working_computer::gce::GceImage {
+            project: "oa-test".into(),
+            name: "oa-coder-host-1".into(),
+            id: "42".into(),
+        },
+    };
+    let gce = Config {
+        provider: ProviderKind::Gce,
+        gce: Some(section.clone()),
+        ..good.clone()
+    };
+    gce.validate().unwrap();
+    let back: Config = serde_json::from_str(&serde_json::to_string(&gce).unwrap()).unwrap();
+    assert_eq!(back, gce);
+    for bad in [
+        Config {
+            gce: Some(section.clone()),
+            ..good.clone()
+        },
+        Config {
+            template: Some("oa-coder-runtime-1".into()),
+            ..gce.clone()
+        },
+    ] {
+        assert!(bad.validate().is_err(), "{bad:?}");
+    }
 }
 
 #[tokio::test]
@@ -242,4 +274,48 @@ async fn a_restarted_owner_recovers_a_build_mid_install() {
     // A settled build is not visited again.
     let r = owners.recover(3_000).await;
     assert!(r.builds.is_empty() && r.verifications.is_empty() && r.setup.is_empty());
+}
+
+#[path = "gce_tests.rs"]
+mod gce_tests;
+
+/// What a silent setup and a machine that keeps failing to start tell the
+/// person is plain (#11059).
+#[test]
+fn liveness_and_breaker_messages_are_plain() {
+    let stalled = coder_environment_setup::service::STALLED;
+    assert!(oa_copy::violations(stalled, &[]).is_empty(), "{stalled}");
+    let mut c = coder_working_computer::Computer::new(
+        coder_working_computer::Spec {
+            id: "computer-1".into(),
+            owner: Principal {
+                workspace: "ws-1".into(),
+                principal: "user-1".into(),
+            },
+            chat: "chat-1".into(),
+            project: coder_environment::ProjectLink {
+                workspace: "ws-1".into(),
+                project: "proj-1".into(),
+            },
+            source: coder_environment::SourcePin {
+                repository: Some("example/repo".into()),
+                revision: "a".repeat(40),
+                digest: "b".repeat(64),
+            },
+            base: None,
+            size: "small".into(),
+            credential_names: Default::default(),
+            services: vec![],
+            bounds: coder_working_computer::Bounds {
+                idle_ms: 600_000,
+                observed_extension_ms: 0,
+                absolute_ms: 3_600_000,
+            },
+        },
+        0,
+    )
+    .unwrap();
+    c.boot_failures = vec![0, 1_000, 2_000];
+    let message = coder_working_computer::decide::breaker_message(&c, 3_000).unwrap();
+    assert!(oa_copy::violations(&message, &[]).is_empty(), "{message}");
 }

@@ -47,8 +47,6 @@ pub const DENIED: &str = "Denied.";
 pub const ALWAYS: &str = "Always allow";
 /// What a page the person passed over answers.
 const NO_ANSWER: &str = "No answer.";
-/// The panel's card color, the transcript's card.
-const CARD: Color = Color::rgb(26, 29, 34);
 
 /// What the waiting task asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,13 +76,16 @@ impl Risk {
         }
     }
 
-    /// The chip's color.
+    /// The chip's color, in the scheme the app paints with
+    /// ([`crate::visual::pick`]): deep on the dark look, and lighter in
+    /// Coder Light so the chip's dark label reads.
     #[must_use]
-    pub const fn color(self) -> Color {
+    pub fn color(self) -> Color {
+        let inks = crate::visual::inks();
         match self {
-            Self::Low => Color::rgb(46, 92, 64),
-            Self::Medium => Color::rgb(122, 92, 28),
-            Self::High => Color::rgb(128, 40, 40),
+            Self::Low => inks.risk_low,
+            Self::Medium => inks.risk_medium,
+            Self::High => inks.risk_high,
         }
     }
 }
@@ -546,7 +547,7 @@ impl Flow {
             node: Node {
                 key,
                 style: Style {
-                    background: Some(CARD),
+                    background: Some(crate::visual::inks().card),
                     padding_top: Some(Space::Md),
                     padding_bottom: Some(Space::Md),
                     padding_start: Some(Space::Md),

@@ -2,10 +2,11 @@
 
 ## What does it cost?
 
-We haven't published pricing. Chatting with OpenAgents is free right now,
-and we don't count your messages. Coder runs on your own computer with the
-coding agents you already use there, so it doesn't bill you through us;
-each agent's own provider bills you as it normally does.
+Chatting with OpenAgents is free, and we don't count your messages. Coder
+runs on your own computer with the coding agents you already use there, so
+it doesn't bill you through us; each agent's own provider bills you as it
+normally does. Pro, for cloud environments, will be $20 a month with 100
+machine-hours; it isn't on sale yet. See [Pricing](/docs/pricing).
 
 ## Do I need a computer?
 

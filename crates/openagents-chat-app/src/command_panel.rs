@@ -41,25 +41,39 @@ pub const RULE_FOOTER: &str = "glyph:command-rule-footer";
 /// The palette's search field placeholder.
 pub const QUERY_PLACEHOLDER: &str = "Search commands and chats…";
 
-/// The fill of every command rule.
-pub const RULE_COLOR: Color = Color {
-    red: 255,
-    green: 255,
-    blue: 255,
-    alpha: 15,
-};
-/// The fill behind a key cap and the palette's shortcut badge.
-pub const KEYCAP_FILL: Color = Color {
-    red: 255,
-    green: 255,
-    blue: 255,
-    alpha: 13,
-};
+/// The fill of every command rule, in the scheme the app paints with
+/// (`visual::current`): a faint wash of the scheme's ink.
+#[must_use]
+pub fn rule_color() -> Color {
+    let look = visual::current();
+    match look.scheme {
+        visual::Scheme::Dark => Color {
+            alpha: 15,
+            ..look.ink
+        },
+        visual::Scheme::Light => look.border,
+    }
+}
+/// The fill behind a key cap and the palette's shortcut badge, in the
+/// scheme the app paints with.
+#[must_use]
+pub fn keycap_fill() -> Color {
+    let look = visual::current();
+    match look.scheme {
+        visual::Scheme::Dark => Color {
+            alpha: 13,
+            ..look.ink
+        },
+        visual::Scheme::Light => look.selected,
+    }
+}
 /// The corner radius of a key cap, in points.
 pub const KEYCAP_RADIUS: f32 = 5.0;
 /// The line height of the badge's text, in points.
 pub const KEYCAP_LINE_HEIGHT: f32 = 14.0;
-const PANEL_BACKGROUND: Color = Color::rgb(16, 16, 16);
+fn panel_background() -> Color {
+    visual::current().panel
+}
 
 /// The open overlay's entries from a registry. The palette keeps every
 /// action and at most [`HISTORY_LIMIT`] matching conversations, limited
@@ -389,12 +403,12 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
             row.style.button_detail = Some(ButtonDetail {
                 text_size: 11,
                 line_height: 16,
-                color: visual::MUTED,
+                color: visual::current().muted,
                 leading: true,
             });
         }
         row.style.weight = Some(TextWeight::Normal);
-        row.style.glyph_color = Some(visual::MUTED);
+        row.style.glyph_color = Some(visual::current().muted);
         row.style.glyph_size = Some(16);
         row.style.glyph_gap = Some(10);
         row.style.align = Some(TextAlign::Start);
@@ -419,15 +433,15 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
         row.style.foreground = Some(if history.is_none() && !selected {
             Color {
                 alpha: 230,
-                ..visual::TEXT
+                ..visual::current().text
             }
         } else {
-            visual::TEXT
+            visual::current().text
         });
         row.style.background = Some(if selected {
-            visual::SELECTED
+            visual::current().selected
         } else {
-            PANEL_BACKGROUND
+            panel_background()
         });
         // Pointer motion and keys choose one row; a resting pointer does
         // not add a second highlight after keyboard navigation.
@@ -438,7 +452,7 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
     results.style.padding_points = Some(if palette { [8; 4] } else { [4; 4] });
     results.style.gap_points = Some(2);
     if palette {
-        results.style.background = Some(PANEL_BACKGROUND);
+        results.style.background = Some(panel_background());
         results.style.viewport = Some(Viewport {
             max_height: panel.results_height as u16,
             offset: panel.offset.round() as u16,
@@ -466,8 +480,8 @@ pub fn view<I>(panel: Panel<'_>, intent: impl Fn(&str) -> I) -> (Node<I>, BTreeM
         rows.push(hint);
     }
     let mut node = stack("command-panel", Axis::Vertical, rows);
-    node.style.background = Some(PANEL_BACKGROUND);
-    node.style.border = Some(visual::BORDER);
+    node.style.background = Some(panel_background());
+    node.style.border = Some(visual::current().border);
     node.style.radius = Some(if palette { 16 } else { 12 });
     node.style.gap = Some(Space::None);
     (node, indices)
@@ -497,11 +511,11 @@ fn key_hint<I>(key: &str, keys: &str, label: &str) -> Node<I> {
     let mut keys = text(&format!("command-{key}-keys"), keys, TextRole::Code);
     keys.style.text_size = Some(10);
     keys.style.line_height = Some(14);
-    keys.style.foreground = Some(visual::MUTED);
+    keys.style.foreground = Some(visual::current().muted);
     let mut cap = stack(&format!("command-{key}-cap"), Axis::Vertical, vec![keys]);
     cap.style.padding_points = Some([1, 5, 1, 5]);
     cap.style.intrinsic_width = Some(true);
-    cap.style.background = Some(KEYCAP_FILL);
+    cap.style.background = Some(keycap_fill());
     cap.style.radius = Some(5);
     let mut hint = stack(
         &format!("command-{key}-hint"),

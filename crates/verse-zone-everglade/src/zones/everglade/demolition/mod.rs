@@ -28,6 +28,7 @@ pub mod chunks;
 pub mod cottage;
 pub mod hammer;
 pub mod hotbar;
+pub mod instanced;
 pub mod kit;
 pub mod meteor;
 pub mod site;

@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.cloud.environment-plan.v1",
+  "version": "env-plan-2026-10-09.0",
+  "status": "proposed",
+  "plan": "pro",
+  "name": "Pro",
+  "price_usd_micros": 20000000,
+  "machine": { "class": "retail-env-standard-v1", "vcpus": 2, "memory_gb": 8 },
+  "included_machine_hours": 100,
+  "machines_at_once": 2,
+  "storage_gb": 20,
+  "saved_versions": 10,
+  "extra_hour_usd_micros": 180000,
+  "rollover": false,
+  "model": "bring_your_own"
+}

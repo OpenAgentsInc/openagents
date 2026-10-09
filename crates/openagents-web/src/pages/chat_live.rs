@@ -18,8 +18,14 @@
 //!   the stream resumes after it.
 //!
 //! Only the owner's chats are read (every read is keyed by the cookie's
-//! owner), so only the owner's rows are ever sent. Cloud jobs and Coder tasks
-//! are not linked to chats yet, so their statuses have no source here.
+//! owner), so only the owner's rows are ever sent.
+//!
+//! Tasks started from a chat (Claude Code runs in its environment, #11037,
+//! [`super::work`]) count too: a running task draws the row as Working, and
+//! a Working chat's check first writes any change in its tasks' states
+//! ([`super::work::sync`]), so the row goes to nothing (or Failed) when the
+//! run ends. Coder tasks on connected computers are not linked to chats, so
+//! they have no source here.
 
 use std::collections::{HashMap, HashSet};
 
@@ -286,7 +292,12 @@ impl Watch {
         let mut ids = ids.into_iter();
         while let Some(id) = ids.next() {
             match store.load(&self.owner, &id).await {
-                Ok(Some(loaded)) => slots.push_str(&self.slot(&loaded.conversation)),
+                // A running task's new state is written first (its write
+                // wakes this stream again, and then nothing differs).
+                Ok(Some(loaded)) => {
+                    let loaded = work::sync(&self.app, loaded).await;
+                    slots.push_str(&self.slot(&loaded.conversation));
+                }
                 // A deleted chat's row is gone with it.
                 Ok(None) => {
                     self.shown.remove(&id);
@@ -392,6 +403,9 @@ mod tests {
             id: id.into(),
             owner: owner.into(),
             project: None,
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
             revision: 1,
             title: "A chat".into(),
             messages: vec![

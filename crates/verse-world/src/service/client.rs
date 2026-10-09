@@ -1325,6 +1325,7 @@ mod tests {
                 world_step: 0,
                 credit_step: 0,
                 applied_movement: None,
+                dynamic: Vec::new(),
             }),
             next_request: 2,
             logged_in: true,
@@ -2998,6 +2999,7 @@ mod tests {
             epoch: 2,
             accepted_sequence: 3,
             applied_movement: None,
+            dynamic: Vec::new(),
         };
         let client = Client {
             public_key: [1; 32],

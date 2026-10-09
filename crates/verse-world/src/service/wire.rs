@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 33;
+pub const VERSION: u16 = 34;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -419,6 +419,18 @@ pub struct Control {
     /// never supplies this confirmation; it cannot exceed the envelope prefix.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_movement: Option<crate::movement::Baseline>,
+    /// Poses of loose props near the confirmed character at the same
+    /// committed state, so the owner replays the confirmation against where
+    /// they are now instead of its last scene snapshot (#10559).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic: Vec<ColliderPose>,
+}
+/// One collider's committed pose.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ColliderPose {
+    pub key: physics::queries::ColliderKey,
+    pub pose: physics::queries::Pose,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -669,6 +681,7 @@ impl Gateway {
             epoch: a.epoch(),
             accepted_sequence: a.accepted_sequence(),
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         let response = Response {
             version: VERSION,
@@ -803,6 +816,7 @@ impl Gateway {
             epoch: a.epoch(),
             accepted_sequence: a.accepted_sequence(),
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         let tick = self.game().authority_tick;
         let instance = self.game().player_life().instance;
@@ -1797,6 +1811,7 @@ mod tests {
             epoch: 1,
             accepted_sequence: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         let inventory = Inventory {
             life,

@@ -78,7 +78,9 @@ pub(super) async fn render_working(
     };
     let working = rows
         .iter()
-        .filter(|chat| chat.archived_unix.is_none() && chat.working())
+        .filter(|chat| {
+            chat.archived_unix.is_none() && row_status(chat) == Some(ChatStatus::Working)
+        })
         .map(|chat| chat.id.clone())
         .collect();
     let projects = crate::projects::sidebar(app).await;
@@ -223,19 +225,10 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavIte
     let mut item = NavItem::new(chat.title.clone(), format!("/chat/{id}"))
         .current(view.current == Some(id.as_str()))
         .row_id(format!("chat-row-{id}"));
-    let detail = if grouped {
-        chat.selection
-            .as_ref()
-            .and_then(|selection| selection.repository.as_ref())
-            .map(|source| source.branch.clone())
-            .filter(|branch| !branch.is_empty())
-    } else {
-        row_detail(chat)
-    };
-    if let Some(detail) = detail {
+    if let Some(detail) = line_two(chat, !grouped) {
         item = item.detail(detail);
     }
-    let working = chat.working();
+    let working = row_status(chat) == Some(ChatStatus::Working);
     item = item.trailing(row_status_slot(chat, false));
     if view.hx {
         item = item.hx(HxGet::new(format!("/chat/{id}/workspace"))
@@ -359,7 +352,7 @@ fn hx(headers: &HeaderMap) -> bool {
 
 /// Applies `change` to the chat, retrying when an answer wrote it at the
 /// same moment. `change` returns false when there is nothing to do.
-async fn update(
+pub(super) async fn update(
     app: &App,
     owner: &str,
     id: &str,
@@ -521,9 +514,10 @@ async fn rename(
         Ok(chat) => {
             // The open chat's header and tab follow its new name.
             let extra = if current(&form.current) == Some(id.as_str()) {
+                let offer = work::offer(&app, &headers, &chat).await;
                 html! {
                     title { (chat.title) " · OpenAgents" }
-                    (Breadcrumb::new(chat.title.clone()).swap_oob(true))
+                    (work::breadcrumb(&chat, offer.as_ref()).swap_oob(true))
                 }
             } else {
                 html! {}

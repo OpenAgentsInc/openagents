@@ -98,6 +98,17 @@ impl Rich {
         })
     }
 
+    /// Paints with `colors` in place of the default transcript palette,
+    /// such as an app's light look.
+    pub fn set_palette(&mut self, colors: &[(ColorRole, Color)]) {
+        self.transcript.set_palette(colors);
+    }
+
+    /// Paints code in `palette` in place of the default syntax colors.
+    pub fn set_syntax_palette(&mut self, palette: rust_native::syntax::Palette) {
+        self.transcript.set_syntax_palette(palette);
+    }
+
     /// The width the node was laid out at, in points.
     pub fn width(&self) -> f32 {
         self.width

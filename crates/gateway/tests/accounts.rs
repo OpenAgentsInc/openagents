@@ -49,6 +49,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,
+        github_app: None,
         anonymous,
     }
 }
@@ -96,6 +97,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         require_workspace_membership: require_membership,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts,
         money: None,
         max_body_bytes: 1_048_576,
@@ -1770,6 +1772,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             session_ttl_secs: 28_800,
             recovery_ttl_secs: 3_600,
             github: None,
+            github_app: None,
             anonymous: None,
         }),
         false,
@@ -1839,10 +1842,12 @@ async fn stores_install_under_accounts_config_and_validate() {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,
             github: None,
+            github_app: None,
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),

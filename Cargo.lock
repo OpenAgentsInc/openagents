@@ -2776,6 +2776,7 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-transport",
+ "oa-copy",
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
@@ -3389,6 +3390,7 @@ dependencies = [
  "microcoder-loop",
  "model-access",
  "nostr",
+ "oa-copy",
  "openagents-login",
  "openrouter",
  "ratatui",
@@ -3562,6 +3564,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "nostr",
+ "oa-copy",
  "oa-tokens",
  "pulldown-cmark",
  "rust-native",
@@ -5908,6 +5911,7 @@ dependencies = [
  "gym",
  "hex",
  "hmac 0.12.1",
+ "inference",
  "jev",
  "libc",
  "nostr",
@@ -5917,6 +5921,7 @@ dependencies = [
  "pay-ledger",
  "receipts",
  "reqwest 0.12.28",
+ "retail-cloud",
  "ring",
  "secp256k1 0.31.1",
  "serde",
@@ -7207,6 +7212,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "inference"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "openrouter",
+ "reqwest 0.12.28",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -9679,6 +9698,7 @@ dependencies = [
  "oa-auth",
  "oauth2",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",

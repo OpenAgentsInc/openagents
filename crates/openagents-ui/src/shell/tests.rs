@@ -232,6 +232,37 @@ fn chat_rows_carry_a_detail_line_and_a_plain_status() {
 }
 
 #[test]
+fn task_rows_link_their_task_and_say_where_it_stands() {
+    let working = TaskRow::new("Claude Code", TaskStatus::Working)
+        .detail("Fix <the> build")
+        .href("/environments/e/runs/r")
+        .id("chat-task-r")
+        .render()
+        .into_string();
+    assert!(
+        working.starts_with(r#"<a class="oa-task-row" href="/environments/e/runs/r" id="chat-task-r" data-status="working""#),
+        "{working}"
+    );
+    assert!(working.contains("oa-loading-indicator") && working.contains(">Working<"));
+    assert!(working.contains("Fix &lt;the&gt; build"));
+    let done = TaskRow::new("Claude Code", TaskStatus::Failed)
+        .render()
+        .into_string();
+    assert!(done.starts_with(r#"<div class="oa-task-row""#), "{done}");
+    assert!(!done.contains("oa-loading-indicator") && done.contains(">Failed<"));
+    assert!(!done.contains("oa-task-row-detail"));
+    for class in [
+        ".oa-task-row",
+        ".oa-task-row-icon",
+        ".oa-task-row-title",
+        ".oa-task-row-detail",
+        ".oa-task-row-status",
+    ] {
+        assert!(THREAD_CSS.contains(class), "{class}");
+    }
+}
+
+#[test]
 fn legal_links_are_quiet_and_mark_external_links() {
     let html = LegalLinks::new()
         .link("Terms", "/terms")
@@ -514,6 +545,23 @@ fn scroll_to_bottom_is_an_icon_button_hidden_until_the_script_shows_it() {
     let css = crate::stylesheet();
     assert!(css.contains(".oa-scroll-bottom[hidden]"));
     assert!(THREAD_CSS.contains(".oa-thread-view {\n  position: relative;"));
+    let follow = ScrollToBottom::new("#env-thread")
+        .follow()
+        .render()
+        .into_string();
+    assert!(
+        follow.contains(&format!(r#"{SCROLL_FOLLOW_ATTR}="""#)),
+        "{follow}"
+    );
+    assert!(script.contains("data-oa-scroll-follow"));
+}
+
+#[test]
+fn a_quiet_status_keeps_its_heading_for_screen_readers_only() {
+    let loud = Message::status("Stopped").render().into_string();
+    assert!(loud.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
+    let quiet = Message::status("Working…").quiet().render().into_string();
+    assert!(quiet.contains(r#"<h2 class="oa-message-author oa-visually-hidden">Status</h2>"#));
 }
 
 #[test]

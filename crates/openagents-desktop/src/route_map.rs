@@ -839,7 +839,7 @@ impl MapPage {
             self.fitted = true;
         }
         let clip = frame.clip_to(rect);
-        frame.fill(rect, 0.0, visual::CANVAS);
+        frame.fill(rect, 0.0, visual::current().canvas);
         let (w, h) = self.size;
         let camera = self.camera;
         let px = |p: Point| {
@@ -872,7 +872,7 @@ impl MapPage {
                 continue;
             }
             let bright = lit.contains(&a) && lit.contains(&b);
-            let mut color = visual::map::EDGE;
+            let mut color = visual::map::current().edge;
             color.alpha = match (edge.kind, bright, shown) {
                 (_, _, false) => 10,
                 (_, true, true) => 140,
@@ -926,10 +926,10 @@ impl MapPage {
                         grow(disc, 2.5 * unit),
                         r + 2.5 * unit,
                         2.0 * unit,
-                        visual::map::WEAK,
+                        visual::map::current().weak,
                     ),
                     Health::Unmeasured => {
-                        dashed_ring(frame, center, r + 2.5 * unit, unit, visual::MUTED)
+                        dashed_ring(frame, center, r + 2.5 * unit, unit, visual::current().muted)
                     }
                 }
             }
@@ -938,14 +938,14 @@ impl MapPage {
                     grow(disc, 5.0 * unit),
                     r + 5.0 * unit,
                     2.0 * unit,
-                    visual::TEXT,
+                    visual::current().text,
                 );
             } else if Some(index) == self.hover {
                 frame.stroke(
                     grow(disc, 4.0 * unit),
                     r + 4.0 * unit,
                     1.0 * unit,
-                    visual::MUTED,
+                    visual::current().muted,
                 );
             }
             if shown && !node.gaps.is_empty() {
@@ -959,7 +959,7 @@ impl MapPage {
                         h: 2.0 * m,
                     },
                     m,
-                    visual::map::GAP,
+                    visual::map::current().gap,
                 );
             }
         }
@@ -1132,11 +1132,11 @@ impl MapPage {
             }
             placed.push(taken);
             let ink = if focus {
-                visual::TEXT
+                visual::current().text
             } else {
                 Color {
                     alpha: 225,
-                    ..visual::TEXT
+                    ..visual::current().text
                 }
             };
             self.fonts.draw(frame, &name, x, y, width, align, 1.0, ink);
@@ -1149,7 +1149,7 @@ impl MapPage {
                     width,
                     align,
                     1.0,
-                    visual::MUTED,
+                    visual::current().muted,
                 );
             }
         }
@@ -1181,7 +1181,7 @@ impl MapPage {
             rect.w - 24.0 * unit,
             TextAlign::Start,
             1.0,
-            visual::FAINT,
+            visual::current().faint,
         );
         frame.restore_clip(clip);
     }
@@ -1199,7 +1199,7 @@ impl MapPage {
         }
         let target = *light.path.last().unwrap_or(&0);
         let tint = if light.missing {
-            visual::map::GAP
+            visual::map::current().gap
         } else {
             self.map.nodes[target].kind.color()
         };
@@ -1267,7 +1267,7 @@ impl MapPage {
                 r,
                 Color {
                     alpha: (170.0 * glow * fade) as u8,
-                    ..visual::CANVAS
+                    ..visual::current().canvas
                 },
             );
             for (grow_by, a) in [(6.0, 255.0), (14.0, 150.0), (23.0, 80.0)] {
@@ -1315,7 +1315,7 @@ impl MapPage {
                 let color = if a >= 255.0 {
                     Color {
                         alpha: (255.0 * fade) as u8,
-                        ..visual::TEXT
+                        ..visual::current().text
                     }
                 } else {
                     alpha(a)
@@ -1352,7 +1352,7 @@ impl MapPage {
                 inspector.title.clone(),
                 15.0,
                 Weight::Semibold,
-                visual::TEXT,
+                visual::current().text,
             ),
             (
                 inspector.kind.label().to_string(),
@@ -1360,17 +1360,22 @@ impl MapPage {
                 Weight::Medium,
                 inspector.kind.color(),
             ),
-            (inspector.line.clone(), 12.0, Weight::Regular, visual::MUTED),
+            (
+                inspector.line.clone(),
+                12.0,
+                Weight::Regular,
+                visual::current().muted,
+            ),
         ];
         if let Some(why) = &inspector.why {
-            lines.push((why.clone(), 12.0, Weight::Regular, visual::MUTED));
+            lines.push((why.clone(), 12.0, Weight::Regular, visual::current().muted));
         }
         for field in inspector.fields.iter().take(6) {
             lines.push((
                 format!("{}  {}", field.label, field.value),
                 11.5,
                 Weight::Regular,
-                visual::TEXT,
+                visual::current().text,
             ));
         }
         let mut paragraphs = Vec::new();
@@ -1396,10 +1401,10 @@ impl MapPage {
             10.0 * unit,
             Color {
                 alpha: 235,
-                ..visual::SIDEBAR
+                ..visual::current().sidebar
             },
         );
-        frame.stroke(card, 10.0 * unit, unit, visual::BORDER);
+        frame.stroke(card, 10.0 * unit, unit, visual::current().border);
         let mut y = card.y + pad;
         for (paragraph, color) in paragraphs {
             self.fonts.draw(
@@ -1421,9 +1426,9 @@ impl MapPage {
             .iter()
             .map(|k| (k.color(), k.label(), false))
             .chain([
-                (visual::map::WEAK, "Ring: weak", true),
-                (visual::MUTED, "Dashed: not measured", true),
-                (visual::map::GAP, "Red dot: a gap", false),
+                (visual::map::current().weak, "Ring: weak", true),
+                (visual::current().muted, "Dashed: not measured", true),
+                (visual::map::current().gap, "Red dot: a gap", false),
             ])
             .collect();
         let line = 16.0 * unit;
@@ -1445,10 +1450,10 @@ impl MapPage {
             8.0 * unit,
             Color {
                 alpha: 230,
-                ..visual::SIDEBAR
+                ..visual::current().sidebar
             },
         );
-        frame.stroke(panel, 8.0 * unit, unit, visual::BORDER);
+        frame.stroke(panel, 8.0 * unit, unit, visual::current().border);
         for (row, (color, label, ring)) in rows.into_iter().enumerate() {
             let cy = panel.y + 7.0 * unit + line * (row % per) as f32 + line / 2.0;
             let cx = panel.x + 14.0 * unit + column * (row / per) as f32;
@@ -1483,7 +1488,7 @@ impl MapPage {
                 column - 26.0 * unit,
                 TextAlign::Start,
                 1.0,
-                visual::MUTED,
+                visual::current().muted,
             );
         }
     }
@@ -2032,8 +2037,8 @@ fn text(key: &str, value: &str, role: TextRole) -> Node<Intent> {
         _ => 17,
     });
     node.style.foreground = Some(match role {
-        TextRole::Status => visual::MUTED,
-        _ => visual::TEXT,
+        TextRole::Status => visual::current().muted,
+        _ => visual::current().text,
     });
     node
 }
@@ -2052,13 +2057,17 @@ fn button(key: &str, label: &str, action: Action, on: bool) -> Node<Intent> {
         },
     };
     node.style.background = Some(if on {
-        visual::SELECTED
+        visual::current().selected
     } else {
-        Color::rgb(20, 20, 20)
+        visual::pick(Color::rgb(20, 20, 20), visual::current().sidebar)
     });
-    node.style.foreground = Some(if on { visual::TEXT } else { visual::MUTED });
-    node.style.hover_background = Some(visual::SELECTED);
-    node.style.hover_foreground = Some(visual::TEXT);
+    node.style.foreground = Some(if on {
+        visual::current().text
+    } else {
+        visual::current().muted
+    });
+    node.style.hover_background = Some(visual::current().selected);
+    node.style.hover_foreground = Some(visual::current().text);
     node.style.radius = Some(6);
     node.style.text_size = Some(12);
     node.style.line_height = Some(16);
@@ -2074,9 +2083,9 @@ fn link(key: &str, label: &str, action: Action) -> Node<Intent> {
     node.style.align = Some(TextAlign::Start);
     node.style.background = Some(Color {
         alpha: 0,
-        ..visual::CANVAS
+        ..visual::current().canvas
     });
-    node.style.foreground = Some(visual::TEXT);
+    node.style.foreground = Some(visual::current().text);
     node.style.weight = Some(TextWeight::Normal);
     node
 }

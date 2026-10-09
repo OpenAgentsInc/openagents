@@ -61,6 +61,13 @@ pub enum Entry {
     },
     /// The checks a fresh machine must pass.
     Checks { checks: Vec<CheckLine> },
+    /// A check that failed on the fresh machine, with its output.
+    CheckFailed {
+        name: String,
+        command: String,
+        exit: Option<i64>,
+        output: String,
+    },
     /// The agent stopped to ask the person something.
     Question { text: String },
     /// The clean build started or moved on.
@@ -220,6 +227,17 @@ fn bounded(entry: Entry) -> Entry {
             output,
         } => Entry::Install {
             revision,
+            exit,
+            output: tail(&output),
+        },
+        Entry::CheckFailed {
+            name,
+            command,
+            exit,
+            output,
+        } => Entry::CheckFailed {
+            name,
+            command,
             exit,
             output: tail(&output),
         },

@@ -534,7 +534,7 @@ customer-ready offer. It includes no new live payment or deployment check.
 | --- | --- |
 | Coder | [Live bundled plugins and installed-login paths](../../crates/coder-new/README.md); customer account, top-up, and paid-call purchase controls still need integration |
 | Accounts | [`tenancy::accounts`](../../crates/tenancy/src/accounts.rs) and sessions; product-wide identity and billing mapping remain work |
-| Card billing | [Plans and checkout](../decision-models/service/billing.md) are implemented with a sandbox provider only |
+| Card billing | [Plans and checkout](../decision-models/service/billing.md) are implemented with a sandbox provider and Stripe subscriptions (test mode until the owner adds live keys) |
 | Cloud | [Balance](../cloud/compute-balance.md), retail lifecycle, and [fake/simulated qualification](../cloud/retail-qualification.md); customer service integration and funded launch remain gates |
 | Paid plugins | Signed releases and a deployed pay front; the [October 3 receipt](../payments/2026-10-03-end-to-end-demo.md) proves the challenge path, not funded execution and author payout |
 | Shared money | [Payment ledger and splits](../payments/README.md); compute funding, paid calls, and gateway accounting still require a unified customer path |

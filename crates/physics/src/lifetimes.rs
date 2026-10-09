@@ -267,7 +267,7 @@ impl Bodies {
                     return Err("Corpse hull is not a box".into());
                 };
                 Ok(MeshCollider {
-                    key: r.key(),
+                    key: crate::walkable::blocker_key(r.life),
                     layers: 1,
                     usage: Usage::Blocking,
                     mesh: Mesh::from_box(r.body.pos - half, r.body.pos + half)?,

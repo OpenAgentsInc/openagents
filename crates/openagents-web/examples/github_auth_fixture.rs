@@ -61,9 +61,14 @@ async fn main() -> Result<(), String> {
     if !directory.is_absolute() || listen.ip() != IpAddr::V4(Ipv4Addr::LOCALHOST) {
         return Err("fixture requires an absolute directory and a 127.0.0.1 listen address".into());
     }
-    std::fs::create_dir(&directory).map_err(|_| "fixture directory must be new")?;
-    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
-        .map_err(|_| "fixture directory permissions failed")?;
+    // A directory from an earlier run is reopened: its accounts, sessions,
+    // GitHub links, chats, and saved keys carry over a restart.
+    let reopened = directory.join("accounts").is_dir();
+    if !reopened {
+        std::fs::create_dir(&directory).map_err(|_| "fixture directory must be new or a fixture's own")?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| "fixture directory permissions failed")?;
+    }
     let directory = directory
         .canonicalize()
         .map_err(|_| "fixture path failed")?;
@@ -93,12 +98,12 @@ async fn main() -> Result<(), String> {
 
     // The account service over real stores.
     let stores = directory.join("accounts");
-    let service = LocalService::install(
-        &stores,
-        oa_auth::Github::new(credentials)?,
-        "local-signup",
-        8 * 3600,
-    )?;
+    let github = oa_auth::Github::new(credentials)?;
+    let service = if reopened {
+        LocalService::open(&stores, github, "local-signup")?
+    } else {
+        LocalService::install(&stores, github, "local-signup", 8 * 3600)?
+    };
     let account_service = service
         .spawn()
         .await
@@ -106,8 +111,11 @@ async fn main() -> Result<(), String> {
 
     // The web server, pointed at that account service.
     let secret = directory.join("csrf.key");
-    private_file(&secret, &secp256k1::rand::random::<[u8; 32]>())?;
+    if !secret.exists() {
+        private_file(&secret, &secp256k1::rand::random::<[u8; 32]>())?;
+    }
     let path = directory.join("cloud.json");
+    let _ = std::fs::remove_file(&path);
     private_file(
         &path,
         &serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":origin,"account_service":account_service,"csrf_secret":secret}))
@@ -126,8 +134,10 @@ async fn main() -> Result<(), String> {
     // A scratch keyring outside the store: saved credentials are encrypted
     // at rest under it (#11041). It lives and dies with this fixture.
     let keys = directory.join("byo-keys.json");
-    let (_, document) = oa_seal::Keyring::scratch("fixture")?;
-    private_file(&keys, document.as_bytes())?;
+    if !keys.exists() {
+        let (_, document) = oa_seal::Keyring::scratch("fixture")?;
+        private_file(&keys, document.as_bytes())?;
+    }
     config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
         &byo,
         oa_seal::Keyring::load(&keys)?,

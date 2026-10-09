@@ -279,23 +279,8 @@ async fn retired() -> Response {
     )
 }
 
-/// Frozen Coder-pilot offer copy. `/pilot` answers 404; this string is the
-/// archived page.
-#[allow(dead_code)]
-pub(crate) const ARCHIVED_OFFER: &str = "<h1>One checked repository change</h1><p>A bounded Coder pilot for a workflow owner who wants help turning one public-repository task into a checked patch and a repeatable setup.</p><h2>What the pilot covers</h2><p>You name the workflow owner and the person who accepts the result. For example, choose one small public-repository fix with checks that fail before the change and pass after it. The selected client is source-built Coder and its companion OpenAgents CLI on your macOS arm64 computer, with your own supported provider login. The exact clean installed revision needs private qualification before work starts.</p><p>You supply one public HTTPS GitHub repository, its full 40-character commit, a clean isolated worktree without submodules, a task of at most 16 KiB, and one to eight declared checks of at most 1,024 bytes each. You receive a patch, candidate digest, declared check results with bounded output, a run summary, a private trace reference, and a setup and repeat-workflow runbook. You apply or publish the patch.</p><p>A person other than the executor checks the candidate; you accept the checked patch and runbook. An agent reply, exit, or unchecked patch does not count as delivery.</p><h2>Proposed price and limits</h2><p>The proposed service fee is USD 250, invoiced after you accept the checked patch and runbook, due in seven calendar days. Your provider charges remain yours. The private scoped agreement confirms the price before any work; submitting a request creates no invoice, payment, product credits, or customer agreement. An unaccepted result earns no service fee.</p><p>One buyer, one repository, one change, at most one repair attempt, and seven calendar days with a dated review. Discovery, setup, delivery, and support share a three-hour operator cap. Each attempt stops at 30 minutes; each check stops at 15 minutes. These engagement limits are operated by the delivery person. Free discovery is one 30-minute conversation, with zero promotional credits and no provider subsidy.</p><h2>Support, data, and cancellation</h2><p>The private agreement names your delivery person, private support contact, and business hours. They acknowledge requests within one business day during those hours; support ends at the pilot review and stays inside the three-hour cap. There is no availability SLA or continuing maintenance promise.</p><p>Use public source without secrets or unrelated personal data. Approve the named providers and people before disclosure; keep your login on your computer and disable sponsored cloud fallback. Traces stay local unless you separately approve a redacted export. Operator-copied source and trace exports are deleted within 30 days after review under the agreement. Training, public examples, and marketing need separate permission.</p><p>You can stop before acceptance without a service invoice; provider charges remain yours. Unknown writes need inspection before retry. Later refunds or extensions need a new private agreement.</p><p>Paid plugins, hosted execution, subscriptions, and product-money conversion are unavailable through this offer. This page makes no savings, margin, or customer-result claim.</p>";
-
-/// Frozen installation-path copy. `/pilot/install` answers 404; this
-/// string is the archived page.
-#[allow(dead_code)]
-pub(crate) const ARCHIVED_INSTALL: &str = concat!(
-    "<h1>Selected pilot installation</h1><p>The selected pilot client is source-built Coder and its companion OpenAgents CLI on macOS arm64, from a recorded clean repository commit using <a href=\"",
-    "https://github.com/OpenAgentsInc/openagents/blob/main/scripts/install-coder.sh",
-    "\">scripts/install-coder.sh</a>. The delivery person records the full revision and qualifies this exact installed path before the pilot. After receiving that revision, check it out in a clean clone and run <code>./scripts/install-coder.sh</code>; the installer exit alone does not establish qualification.</p><p>Use your own supported provider login and keep its credentials local. For the selected initial path, set <code>CODER_CLOUD=off</code> and <code>OPENAGENTS_JEV_HOSTED=off</code>. These switches do not disable decision access enabled by existing <code>TYPESAFE_*</code> or <code>CODER_DECISION_*</code> settings, or a TypeSafe key in <code>~/.openagents/jev.json</code>. Disable that decision access in the selected pilot environment without deleting your saved configuration, or separately admit each exact decision recipient and payer before work.</p><p>The private setup covers your declared repository and checks. Review <a href=\"",
-    "https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/guides/headless.md",
-    "\">terminal and headless usage</a> and <a href=\"",
-    "https://github.com/OpenAgentsInc/openagents/blob/main/docs/sales/README.md#first-workflow-offer-v1",
-    "\">the frozen offer</a>. The <a href=\"/download\">general downloads</a> are available separately; a release download alone does not qualify this pilot path.</p><p>Qualification and a private scoped agreement precede work. The pilot request cannot install software, run a task, or grant execution authority.</p>"
-);
+#[cfg(test)]
+use archived::{ARCHIVED_INSTALL, ARCHIVED_OFFER};
 
 async fn submit(
     State(app): State<App>,
@@ -305,40 +290,37 @@ async fn submit(
     let Some(intake) = &app.config.pilot else {
         return failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Private intake is unavailable. No request was recorded.",
+            "We aren't taking requests right now. Nothing was sent.",
         );
     };
     if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(intake.origin.as_str())
         || headers.get(header::HOST).and_then(|v| v.to_str().ok())
             != intake.origin.split_once("://").map(|(_, h)| h)
     {
-        return failure(
-            StatusCode::FORBIDDEN,
-            "Submit only from the configured offer page.",
-        );
+        return failure(StatusCode::FORBIDDEN, "Send this form from our offer page.");
     }
     let Some(cookie) = visitor(&headers) else {
         return failure(
             StatusCode::BAD_REQUEST,
-            "Open the offer form with cookies enabled before submitting.",
+            "Turn on cookies, open the form again, and send it.",
         );
     };
     if !intake.allowed(&cookie, true) {
         return failure(
             StatusCode::TOO_MANY_REQUESTS,
-            "Too many submissions. Wait one minute, then retry the same form.",
+            "That's a lot of tries. Wait a minute, then send it again.",
         );
     }
     let Ok(Form(form)) = form else {
         return failure(
             StatusCode::BAD_REQUEST,
-            "The form is invalid or too large. No request was recorded. Review its bounded fields before retrying.",
+            "Something in the form is missing or too long. Check it and send it again.",
         );
     };
     let Ok(ticket) = intake.verify(&cookie, &form.ticket) else {
         return failure(
             StatusCode::BAD_REQUEST,
-            "The form has expired or changed. Open a new form; repeated contact for this offer creates no competing lead.",
+            "This form is too old. Open it again and send it.",
         );
     };
     if !form.website.is_empty()
@@ -353,7 +335,7 @@ async fn submit(
     {
         return failure(
             StatusCode::BAD_REQUEST,
-            "The form needs a valid email, bounded details, and explicit consent. No request was recorded.",
+            "Add a valid email, fill in each field, and tick the box that says we may write back. Nothing was sent.",
         );
     }
     let origin = headers
@@ -378,7 +360,7 @@ async fn submit(
     let Ok(permit) = intake.slots.clone().try_acquire_owned() else {
         return failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Private intake is busy. Retry the same form to recover its acknowledgment.",
+            "We're busy. Send the same form again in a moment.",
         );
     };
     let cloned = intake.clone();
@@ -396,7 +378,7 @@ async fn submit(
     let Ok(Ok(ack)) = result else {
         return failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "No confirmation is available. Retry the same unchanged form to recover its acknowledgment. If this persists, use the named support contact on the offer. Do not assume delivery or payment from this request.",
+            "We couldn't confirm we got your request. Send the same form again.",
         );
     };
     private(
@@ -404,12 +386,13 @@ async fn submit(
             .path("/")
             .scriptless()
             .content(prose(PreEscaped(format!(
-            "<h1>Pilot request received</h1><p>Your private request reference is <code>{}</code>. Keep this acknowledgment. A repeated request about this offer preserves the first private lead and its source.</p><p>This receipt confirms private intake only. Follow-up needs current recorded email permission and human review. This acknowledgment creates no qualification, invoice, purchase, or delivery commitment.</p><p><a href=\"/\">Home</a></p>",
+            "<h1>Pilot request received</h1><p>Thanks, we have your request. Its reference is <code>{}</code>; keep it in case you write to us about it.</p><p>A person reads every request and writes back by email if you said we may. Nothing is booked or billed yet.</p><p><a href=\"/\">Home</a></p>",
             escape(&ack.reference)
         ))))
             .respond(&headers),
     )
 }
 
+mod archived;
 #[cfg(test)]
 mod tests;

@@ -1,24 +1,25 @@
 ---
 id: openagents.chat-and-coder
-version: 1
+version: 3
 kind: product
-title: "Chatting with OpenAgents and dispatching Coder"
+title: "Chatting with OpenAgents and sending Coder"
 summary: >-
-  The Chat tab talks with OpenAgents, which can't reach your computer; Coder
-  is the coding agent we dispatch to a computer you've connected when a
-  message needs one.
+  We answer in the chat and can't reach a computer from it; Coder, our
+  coding agent, works on a computer: in the terminal from the download
+  page, or sent from the phone app to a paired computer.
 tags: [chat, coder, dispatch, computer, off-computer]
 applies_when: >-
   The user asks the difference between chatting with OpenAgents and Coder,
   what Coder is, or when Coder gets involved; not how to connect a computer,
   and not what model the chat uses.
 answer: >-
-  In the Chat tab you talk with us, OpenAgents. We answer questions and help
+  In this chat you talk with us, OpenAgents: we answer questions and help
   you plan, but from the chat we can't run code, read files, or reach your
-  computer. Coder is our coding agent: when a message needs a computer, such
-  as changing a repository or running commands, we dispatch Coder to a
-  computer you've connected, with the conversation as its task. Coder uses
-  that computer's own git and GitHub login.
+  computer. Coder is our coding agent, and it does that work on a
+  computer. From openagents.com, get Coder at openagents.com/download and
+  run it in your terminal. From the phone app, we send Coder to a computer
+  you've paired, with the conversation as its task. Coder uses that
+  computer's own git and GitHub login.
 status: admitted
 author: openagents
 provenance:
@@ -29,11 +30,13 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
+  - "2026-10-09: v3 (chat goldens): the web chat sends Coder nowhere (docs/web/cloud-reset.md); on openagents.com Coder is the terminal agent from the download page, so the answer says both ways."
 ---
 
 ## Answer
 
-In the Chat tab you talk with us, OpenAgents. We answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent: when a message needs a computer, such as changing a repository or running commands, we dispatch Coder to a computer you've connected, with the conversation as its task. Coder uses that computer's own git and GitHub login.
+In this chat you talk with us, OpenAgents: we answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent, and it does that work on a computer. From openagents.com, get Coder at openagents.com/download and run it in your terminal. From the phone app, we send Coder to a computer you've paired, with the conversation as its task. Coder uses that computer's own git and GitHub login.
 
 ## Details
 

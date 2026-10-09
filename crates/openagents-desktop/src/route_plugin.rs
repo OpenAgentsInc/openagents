@@ -41,7 +41,7 @@ use rust_native_desktop::text::{Fonts, font};
 use rust_native_desktop::{Frame, PxRect};
 
 use crate::route_chat::{self, Line, Who, smooth};
-use crate::route_future::{PAYMENT, REQUEST};
+use crate::route_future::{payment, request};
 use crate::route_map::{MapPage, Pulse, RouteLight};
 
 /// The map's id of the plugin the person makes, the one node not in the
@@ -456,14 +456,14 @@ impl RoutePlugin {
             if p < OUT {
                 out.push(Pulse {
                     at: along(layout, &path, p / OUT),
-                    color: REQUEST,
+                    color: request(),
                     radius: 2.6,
                     ring: false,
                 });
             } else if p > BACK {
                 out.push(Pulse {
                     at: along(layout, &path, 1.0 - (p - BACK) / (1.0 - BACK)),
-                    color: PAYMENT,
+                    color: payment(),
                     radius: 2.8,
                     ring: false,
                 });
@@ -531,7 +531,7 @@ impl RoutePlugin {
     /// The counters at the top of the column: the person's XP, with the
     /// latest award rising beside it, and the plugin's uses.
     fn paint_counters(&mut self, frame: &mut Frame, rect: PxRect, unit: f32, xp: f32, uses: u32) {
-        frame.fill(rect, 0.0, visual::SIDEBAR);
+        frame.fill(rect, 0.0, visual::current().sidebar);
         frame.fill(
             PxRect {
                 y: rect.y + rect.h - unit,
@@ -539,7 +539,7 @@ impl RoutePlugin {
                 ..rect
             },
             0.0,
-            visual::BORDER,
+            visual::current().border,
         );
         frame.fill(
             PxRect {
@@ -548,7 +548,7 @@ impl RoutePlugin {
                 ..rect
             },
             0.0,
-            visual::BORDER,
+            visual::current().border,
         );
         let pad = 16.0 * unit;
         let size = 13.0 * unit;
@@ -568,7 +568,7 @@ impl RoutePlugin {
                 xp_width + 2.0,
                 TextAlign::Start,
                 1.0,
-                visual::TEXT,
+                visual::current().text,
             );
         }
         if let Some((award, t)) = self.toast() {
@@ -587,7 +587,7 @@ impl RoutePlugin {
                 1.0,
                 Color {
                     alpha: (255.0 * opacity) as u8,
-                    ..PAYMENT
+                    ..payment()
                 },
             );
         }
@@ -604,7 +604,7 @@ impl RoutePlugin {
                 paragraph.width + 2.0,
                 TextAlign::Start,
                 1.0,
-                visual::MUTED,
+                visual::current().muted,
             );
         }
     }
@@ -773,8 +773,8 @@ mod tests {
         assert!(uses >= OTHERS.len() as u32, "{uses}");
         let (layout, _) = story.frame();
         let traffic = story.traffic(&layout);
-        assert!(traffic.iter().any(|p| p.color == PAYMENT));
-        assert!(traffic.iter().any(|p| p.color == REQUEST));
+        assert!(traffic.iter().any(|p| p.color == payment()));
+        assert!(traffic.iter().any(|p| p.color == request()));
         assert!(story.light().is_some(), "the way to it stays lit");
         // It holds there with the traffic still flowing.
         story.set_seconds(end() + 40.0);

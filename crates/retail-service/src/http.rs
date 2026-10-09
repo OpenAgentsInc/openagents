@@ -117,6 +117,11 @@ fn response(result: crate::Result<serde_json::Value>) -> axum::response::Respons
     let (status, value) = match result {
         Ok(value) => (StatusCode::OK, value),
         Err(error) => {
+            // Environment refusals carry the plain sentence a person reads.
+            let message = match &error {
+                Error::Lifecycle(retail_cloud::Error::Environment(r)) => Some(r.message()),
+                _ => None,
+            };
             let (status, code) = match error {
                 Error::Denied => (StatusCode::FORBIDDEN, "access_denied"),
                 Error::Invalid(_) | Error::Json(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
@@ -132,9 +137,32 @@ fn response(result: crate::Result<serde_json::Value>) -> axum::response::Respons
                 Error::Lifecycle(retail_cloud::Error::Conflict(_)) => {
                     (StatusCode::CONFLICT, "terms_conflict")
                 }
+                Error::Lifecycle(retail_cloud::Error::Environment(r)) => {
+                    use retail_cloud::environment::Refusal as R;
+                    match r {
+                        R::NotYours | R::NoSpendRight => (StatusCode::FORBIDDEN, "access_denied"),
+                        R::Changed | R::Phase | R::MachinesBusy { .. } => {
+                            (StatusCode::CONFLICT, "terms_conflict")
+                        }
+                        R::NoPlan | R::AllowanceUsed { .. } | R::CapReached { .. } => {
+                            (StatusCode::PAYMENT_REQUIRED, "allowance_used")
+                        }
+                        R::StorageFull { .. } | R::TooManyVersions { .. } => {
+                            (StatusCode::CONFLICT, "storage_full")
+                        }
+                        R::Unsupported { .. } | R::Malformed { .. } => {
+                            (StatusCode::BAD_REQUEST, "invalid_request")
+                        }
+                        R::Closed => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+                    }
+                }
                 _ => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
             };
-            (status, json!({"schema":SCHEMA,"error":code}))
+            let mut body = json!({"schema":SCHEMA,"error":code});
+            if let Some(message) = message {
+                body["message"] = json!(message);
+            }
+            (status, body)
         }
     };
     let mut response = (status, Json(value)).into_response();

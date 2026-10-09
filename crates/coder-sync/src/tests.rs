@@ -123,6 +123,7 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                     == Some(&format!("Bearer {TOKEN}"))
             };
             let (a, b, c, d) = (log.clone(), log.clone(), log.clone(), log.clone());
+            let (e, f) = (log.clone(), log.clone());
             let router = Router::new()
                 .route(
                     "/coder/sessions",
@@ -167,6 +168,40 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                             Json(json!({"chat": "x", "changed": true}))
                         },
                     ),
+                )
+                // Replies typed on the website (#11048): "s1" has one.
+                .route(
+                    "/coder/check-in",
+                    post(move |headers: HeaderMap, Json(body): Json<Value>| async move {
+                        assert!(authorized(&headers));
+                        e.lock()
+                            .unwrap()
+                            .push(format!("check-in {}", body["computer"]));
+                        Json(json!({"waiting": ["s1", "../bad"]}))
+                    }),
+                )
+                .route(
+                    "/coder/sessions/{session}/replies",
+                    post(move |UrlPath(session): UrlPath<String>| async move {
+                        f.lock().unwrap().push(format!("take {session}"));
+                        if session == "gone" {
+                            return (
+                                StatusCode::GONE,
+                                Json(json!({"error": {"code": "deleted"}})),
+                            );
+                        }
+                        (
+                            StatusCode::OK,
+                            Json(json!({"replies": [
+                                {"id": "r1", "text": " Now the tests "},
+                                {"id": "r2", "text": "  "},
+                            ], "continued": [
+                                {"role": "user", "text": "Go on"},
+                                {"role": "tool", "text": "ignored"},
+                                {"role": "assistant", "text": "Fixed on a Cloud computer."},
+                            ]})),
+                        )
+                    }),
                 );
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             ready
@@ -250,4 +285,76 @@ fn an_unreachable_site_is_retried_quietly() {
     std::thread::sleep(Duration::from_millis(300));
     assert!(worker.drain().is_empty());
     assert!(!delete_now(&saved("http://127.0.0.1:9"), "s1"));
+}
+
+#[test]
+fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
+    let (origin, seen) = site();
+    let worker = Worker::start(saved(&origin));
+    // The first round's delete check.
+    assert_eq!(wait_for(&worker, 1).len(), 1);
+    worker.send(Job::Listen {
+        computer: Some("Studio".into()),
+    });
+    // Only well-formed session ids come back.
+    assert_eq!(
+        wait_for(&worker, 1),
+        [Event::Waiting {
+            sessions: vec!["s1".into()]
+        }]
+    );
+    worker.send(Job::Take {
+        session: "s1".into(),
+    });
+    worker.send(Job::Take {
+        session: "gone".into(),
+    });
+    let mut events = wait_for(&worker, 2);
+    events.sort_by_key(|e| format!("{e:?}"));
+    assert_eq!(
+        events,
+        [
+            Event::Gone {
+                session: "gone".into()
+            },
+            Event::Replies {
+                session: "s1".into(),
+                replies: vec![Reply {
+                    id: "r1".into(),
+                    text: "Now the tests".into()
+                }],
+                added: vec![
+                    Added {
+                        user: true,
+                        text: "Go on".into()
+                    },
+                    Added {
+                        user: false,
+                        text: "Fixed on a Cloud computer.".into()
+                    },
+                ]
+            },
+        ]
+    );
+    // Stopped: no more check-ins.
+    worker.send(Job::Listen { computer: None });
+    std::thread::sleep(Duration::from_millis(200));
+    let checks = |log: &[String]| log.iter().filter(|l| l.starts_with("check-in")).count();
+    let before = checks(&seen.lock().unwrap());
+    assert!(before >= 1);
+    assert!(
+        seen.lock()
+            .unwrap()
+            .contains(&"check-in \"Studio\"".to_string())
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(checks(&seen.lock().unwrap()), before);
+}
+
+#[test]
+fn a_take_from_a_site_without_added_messages_brings_only_replies() {
+    assert_eq!(taken(&json!({"replies": []})), Taken::default());
+    let only = taken(&json!({"replies": [{"id": "r", "text": "Hi"}]}));
+    assert_eq!(only.replies.len(), 1);
+    assert!(only.added.is_empty());
 }

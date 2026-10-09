@@ -1883,12 +1883,7 @@ impl App for DesktopApp {
             return;
         }
         if let Some(percent) = parse_ring(resource) {
-            let track = Color::rgb(58, 64, 73);
-            let fill = if percent >= 90 {
-                Color::rgb(214, 168, 92)
-            } else {
-                Color::rgb(220, 225, 233)
-            };
+            let (track, fill) = meter_colors(percent);
             frame.usage_ring(rect, f32::from(percent) / 100.0, track, fill);
             return;
         }
@@ -1901,25 +1896,21 @@ impl App for DesktopApp {
                 w: rect.w,
                 h: (4.0 * scale).round().max(1.0),
             };
-            frame.fill(bar, bar.h / 2.0, Color::rgb(58, 64, 73));
+            let (track, fill) = meter_colors(percent);
+            frame.fill(bar, bar.h / 2.0, track);
             if percent > 0 {
                 let used = PxRect {
                     w: (bar.w * f32::from(percent) / 100.0).max(bar.h),
                     ..bar
-                };
-                let fill = if percent >= 90 {
-                    Color::rgb(214, 168, 92)
-                } else {
-                    Color::rgb(220, 225, 233)
                 };
                 frame.fill(used, bar.h / 2.0, fill);
             }
             return;
         }
         if resource == chrome::MARK {
-            frame.fill(rect, rect.w * 0.25, Color::rgb(29, 32, 38));
-            frame.stroke(rect, rect.w * 0.25, rect.w / 64.0, Color::rgb(58, 64, 73));
-            let color = Color::rgb(220, 225, 233);
+            let (tile, edge, color) = mark_colors();
+            frame.fill(rect, rect.w * 0.25, tile);
+            frame.stroke(rect, rect.w * 0.25, rect.w / 64.0, edge);
             let p = |x, y| (rect.x + rect.w * x, rect.y + rect.h * y);
             frame.stroke(
                 PxRect {
@@ -1961,6 +1952,46 @@ impl App for DesktopApp {
 /// The sidebar engine meter's width in points.
 const METER_WIDTH: f32 = 32.0;
 
+/// A usage ring's or meter's track and fill at `percent`, in the scheme the
+/// app paints with (#11028): gold from 90%.
+fn meter_colors(percent: u8) -> (Color, Color) {
+    use openagents_chat_app::visual::{self, Scheme};
+    let look = visual::current();
+    match look.scheme {
+        Scheme::Dark => (
+            Color::rgb(58, 64, 73),
+            if percent >= 90 {
+                Color::rgb(214, 168, 92)
+            } else {
+                Color::rgb(220, 225, 233)
+            },
+        ),
+        Scheme::Light => (
+            look.border,
+            if percent >= 90 {
+                look.warning
+            } else {
+                look.text
+            },
+        ),
+    }
+}
+
+/// The app mark's tile, its edge, and its letters, in the scheme the app
+/// paints with.
+fn mark_colors() -> (Color, Color, Color) {
+    use openagents_chat_app::visual::{self, Scheme};
+    let look = visual::current();
+    match look.scheme {
+        Scheme::Dark => (
+            Color::rgb(29, 32, 38),
+            Color::rgb(58, 64, 73),
+            Color::rgb(220, 225, 233),
+        ),
+        Scheme::Light => (look.selected, look.composer_border, look.text),
+    }
+}
+
 /// `engine-meter:{provider}:{percent}`, the sidebar's usage bar, with
 /// `percent` from 0 to 100.
 fn parse_meter(resource: &str) -> Option<u8> {
@@ -1979,11 +2010,17 @@ fn parse_ring(resource: &str) -> Option<u8> {
 }
 
 /// Paints `modules` black on a white rounded square filling `rect`, with
-/// the quiet zone, on whole pixels so every module is sharp.
+/// the quiet zone, on whole pixels so every module is sharp. Both schemes
+/// keep black on white for a scanner's contrast (#11028); on the light
+/// canvas a hairline marks the card's edge.
 pub fn paint_code(frame: &mut Frame, rect: PxRect, modules: &Modules) {
     let white = Color::rgb(255, 255, 255);
     let black = Color::rgb(0, 0, 0);
     frame.fill(rect, rect.w * 0.04, white);
+    let look = openagents_chat_app::visual::current();
+    if look.scheme == openagents_chat_app::visual::Scheme::Light {
+        frame.stroke(rect, rect.w * 0.04, (rect.w / 256.0).max(1.0), look.border);
+    }
     let count = modules.size + 2 * QUIET_ZONE;
     let module = (rect.w.min(rect.h) / count as f32).floor().max(1.0);
     let side = module * modules.size as f32;

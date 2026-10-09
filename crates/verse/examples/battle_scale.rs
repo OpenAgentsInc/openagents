@@ -269,6 +269,30 @@ fn rss_bytes() -> Option<u64> {
         })
         .map(|kb| kb * 1024)
 }
+/// Bytes the allocator holds for live allocations, separate from resident pages
+/// it keeps after frees (high water and fragmentation).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn heap_in_use_bytes() -> Option<u64> {
+    // SAFETY: mallinfo2 only reads allocator statistics.
+    let info = unsafe { libc::mallinfo2() };
+    Some((info.uordblks + info.hblkhd) as u64)
+}
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn heap_in_use_bytes() -> Option<u64> {
+    None
+}
+/// Twenty clients share this process's allocator, which a real client never
+/// does: one that reconnects returns its freed session to its own process.
+/// Without this, glibc keeps the freed pages of all twenty sessions resident
+/// when they reconnect together at the midpoint, a 26 MiB step in RSS while
+/// the allocator's in-use bytes stay flat (#10559).
+fn trim_allocator() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim only returns free allocator pages to the system.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
 async fn connect(
     address: std::net::SocketAddr,
     tls: Arc<ClientConfig>,
@@ -708,7 +732,9 @@ async fn run(
                 .await?;
                 let path = segment_directory
                     .join(format!("player-{index}-segment-{}.json", segments.len()));
-                match SegmentRecord::write(path, segment) {
+                let written = SegmentRecord::write(path, segment);
+                trim_allocator();
+                match written {
                     Ok(record) => segments.push(record),
                     Err(message) => {
                         error = Some(message);
@@ -737,7 +763,7 @@ async fn run(
             clock.tick().await;frame+=1;window_frames+=1;
             if window_frames>1800 {windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));window=FrameProfile::new(0);window_frames=1;}
             while let Ok(snapshot)=snapshots.try_recv() {native_frame=Some(snapshot.frame);projection_ms=snapshot.projection_ms;verified=Some(snapshot.applied_at);}
-            if frame%300==0 {rss.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"bytes":rss_bytes()}));}
+            if frame%300==0 {rss.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"bytes":rss_bytes(),"heap_in_use_bytes":heap_in_use_bytes()}));}
             if let Some(at)=verified {let age=at.elapsed().as_secs_f64()*1000.;profile.record(frame,"applied_snapshot_age_ms",age);window.record(frame,"applied_snapshot_age_ms",age);}
             if let Some(renderer)=renderer.as_mut() {
                 if let Some(scene)=native_frame.as_ref() {
@@ -777,7 +803,7 @@ async fn run(
     report["players"] = serde_json::json!(players);
     let _ = stop.send(());
     let exit = server.await.map_err(|e| e.to_string())?;
-    report["server"] = serde_json::json!({"failure":exit.failure,"ticks":exit.stats.ticks,"workload_ticks":workload_ticks.load(std::sync::atomic::Ordering::Relaxed),"dropped_seconds":exit.stats.dropped_seconds,"simulation":phases(&exit.stats.simulation_phases),"admission":exit.stats.admission,"movement_expiry":exit.gateway.game().movement_expiry,"capture":phases(&exit.stats.capture_phases),"commits":phases(&exit.stats.commit_phases),"commit_preparation":timing(&exit.stats.commit_preparation),"history_sync":timing(&exit.stats.history_sync),"journal_encoding":timing(&exit.stats.journal_encoding),"journal_write":timing(&exit.stats.journal_write),"journal_sync":timing(&exit.stats.journal_sync),"snapshot_compaction":timing(&exit.stats.snapshot_compaction),"checkpoint_copy":timing(&exit.stats.checkpoint_copy),"read_projection":timing(&exit.stats.read_projection),"movement_queue_wait":timing(&exit.stats.movement_queue_wait),"read_queue_wait":timing(&exit.stats.read_queue_wait),"checkpoint_bytes":exit.stats.checkpoint_bytes,"checkpoint_commits":exit.stats.checkpoint_commits,"writer_queue_peak":exit.stats.writer_queue_peak,"request_queue_peak":exit.stats.request_queue_peak,"held_reply_bytes_peak":exit.stats.held_reply_bytes_peak,"storage_refusals":exit.stats.storage_refusals,"storage_paused_seconds":exit.stats.storage_paused_seconds,"requests":exit.stats.requests,"replication":exit.stats.replication,"motor_recovery_blocks":exit.gateway.game().motor_recovery.blocks,"motor_recovery_diagnostic":exit.gateway.game().motor_recovery.last_diagnostic,"minimum_final_live_hostiles":hostile_count(exit.gateway.game()),"navigation_plans":exit.gateway.game().navigation_plans,"navigation_budget_refusals":exit.gateway.game().navigation_budget_refusals,"navigation_work":exit.gateway.game().navigation_work(),"query_profile":exit.gateway.game().query_profile()});
+    report["server"] = serde_json::json!({"failure":exit.failure,"ticks":exit.stats.ticks,"workload_ticks":workload_ticks.load(std::sync::atomic::Ordering::Relaxed),"dropped_seconds":exit.stats.dropped_seconds,"simulation":phases(&exit.stats.simulation_phases),"admission":exit.stats.admission,"movement_expiry":exit.gateway.game().movement_expiry,"capture":phases(&exit.stats.capture_phases),"commits":phases(&exit.stats.commit_phases),"commit_preparation":timing(&exit.stats.commit_preparation),"history_sync":timing(&exit.stats.history_sync),"history_slow_syncs":verse_world::service::persistence::slow_history_syncs(),"journal_encoding":timing(&exit.stats.journal_encoding),"journal_write":timing(&exit.stats.journal_write),"journal_sync":timing(&exit.stats.journal_sync),"snapshot_compaction":timing(&exit.stats.snapshot_compaction),"checkpoint_copy":timing(&exit.stats.checkpoint_copy),"read_projection":timing(&exit.stats.read_projection),"movement_queue_wait":timing(&exit.stats.movement_queue_wait),"read_queue_wait":timing(&exit.stats.read_queue_wait),"checkpoint_bytes":exit.stats.checkpoint_bytes,"checkpoint_commits":exit.stats.checkpoint_commits,"writer_queue_peak":exit.stats.writer_queue_peak,"request_queue_peak":exit.stats.request_queue_peak,"held_reply_bytes_peak":exit.stats.held_reply_bytes_peak,"storage_refusals":exit.stats.storage_refusals,"storage_paused_seconds":exit.stats.storage_paused_seconds,"requests":exit.stats.requests,"replication":exit.stats.replication,"motor_recovery_blocks":exit.gateway.game().motor_recovery.blocks,"motor_recovery_diagnostic":exit.gateway.game().motor_recovery.last_diagnostic,"minimum_final_live_hostiles":hostile_count(exit.gateway.game()),"navigation_plans":exit.gateway.game().navigation_plans,"navigation_budget_refusals":exit.gateway.game().navigation_budget_refusals,"navigation_work":exit.gateway.game().navigation_work(),"query_profile":exit.gateway.game().query_profile()});
     report["phase"] = serde_json::json!("durable_recovery");
     if !std::process::Command::new("kill")
         .args(["-TERM", &proxy.0.id().to_string()])

@@ -264,6 +264,33 @@ new credential flow for the phone. The relay door already authenticates by
 the device key, already streams, and already has a deployed worker and
 runbook, so OpenAgents chat reuses it.
 
+## Through the inference gateway
+
+Since #11064 the worker can send every model call through the OpenAgents
+inference gateway ([docs/inference/gateway.md](../inference/gateway.md))
+instead of calling OpenRouter and the Vercel AI Gateway itself. The
+gateway's router picks the model and upstream (prepaid Google credit on
+Vertex first for `openagents/chat`, then the Pro door, then OpenRouter),
+falls back before the first token, and records every attempt.
+
+| Variable | Meaning |
+| --- | --- |
+| `CODER_INFERENCE_KEY` | The gateway's `oak_` service key. Set, the switch is on. |
+| `CODER_INFERENCE_URL` | The gateway's base URL; default `http://127.0.0.1:8790`. |
+| `CODER_INFERENCE_MODEL` | Model id or task class to ask for; default `openagents/chat`. |
+| `CODER_WORKER_INFERENCE` | `gateway` or `direct`. Unset: `gateway` when the key is set. `direct` keeps the OpenRouter primary and the Vercel lane described above. |
+
+In gateway mode the worker needs no provider key for generation; Jev's
+doors, personalization, and product search still read theirs. The Gym news
+lane asks for `openagents/fast` unless `CODER_GYM_NEWS_MODEL` names a
+model. Each result names the model the gateway chose, and the usage log's
+`door` reads `<upstream> via <gateway host>`.
+
+Locally, `scripts/dev/inference-local.sh` starts the gateway, a worker from
+this checkout on a fresh key, and the website on `127.0.0.1:4300` pointed at
+it. The deployed worker keeps the direct doors until the gateway is
+deployed and its env file gets a service key.
+
 ## Admission: no usage limits
 
 The owner decided on 2026-10-01
@@ -1668,3 +1695,20 @@ the `chat` symlink from `16063d5024` (kept for rollback) and restarting
 The log names `router chat-router-v5@226865d8437b (Live)`, bank
 `chat-answers-v1@a4b2858f9f09` (75 answers) and the product KB at 106
 entries. Fresh-home `openagents chat send` runs returned the new wording.
+
+Release `42fe20c01b` (2026-10-09 UTC, web chat goldens): the website's
+`.website` answers, account questions read the product notes, `WEB_NOTE`
+names Coder and the download page, and the notes on sign-in, the Claude
+key, environments, Coder's sign-in and sync, and deleting chats. The
+release before it (`bbed5d89af`, 2026-10-03) was six days behind main: its
+bank still said "dispatch" and "a computer you've connected", and its notes
+offered a Mac `.dmg`. Built on this Mac with `cargo zigbuild --locked
+--release -p coder --bin coder-worker --target x86_64-unknown-linux-musl`
+at that commit, installed as `/opt/coder-worker/releases/42fe20c01b` with
+`knowledge/` from `git archive 42fe20c01b knowledge/` and `codebase-kb.gz`
+copied from `bbed5d89af` (kept for rollback), checked with `--check`, and
+put live by moving the `chat` symlink and restarting `coder-worker-chat`.
+The environment file and unit did not change. The log names bank
+`chat-answers-v1@aa9fa65069b4` (83 answers) and the product KB at 112
+entries. The web chat goldens through a local site against it: 67 of 97
+(from 25 of 97 on `bbed5d89af`); see `docs/web/chat-goldens.md`.

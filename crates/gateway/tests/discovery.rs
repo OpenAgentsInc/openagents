@@ -46,6 +46,7 @@ async fn deploy(tune: impl FnOnce(&mut Config)) -> Deployment {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: None,
         billing: None,
         funding: None,
@@ -559,6 +560,7 @@ async fn public_origin_validation_refuses_malformed_config() {
             require_workspace_membership: false,
             team_policy: None,
             team_reports: None,
+            inference: None,
             accounts: None,
             billing: None,
             funding: None,
@@ -589,4 +591,67 @@ async fn public_origin_validation_refuses_malformed_config() {
             "public_origin {origin} should refuse"
         );
     }
+}
+
+#[tokio::test]
+async fn the_inference_status_answers_only_the_admin_bearer() {
+    use inference::meter::{Attempt, Recorder, Tokens};
+    const ENV: &str = "GATEWAY_TEST_INFERENCE_ADMIN_TOKEN";
+    // SAFETY: this variable is read only by this test's gateway.
+    unsafe { std::env::set_var(ENV, "admin-secret") };
+    let inference = serde_json::from_value(json!({
+        "admin_token_env": ENV,
+        "rates": [{
+            "upstream": "zai", "model": "zai/glm-5.3-flash",
+            "input": 150_000, "output": 500_000, "margin_bps": 500
+        }],
+        "accounts": [{
+            "id": "zai", "upstream": "zai",
+            "granted": 1_300_000, "balance": 1_300_000
+        }]
+    }))
+    .unwrap();
+    let deployment = deploy(|config| config.inference = Some(inference)).await;
+    let url = format!("{}/v1/admin/inference/status", deployment.address);
+    let client = reqwest::Client::new();
+    let refused = client.get(&url).send().await.unwrap();
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    let wrong = client.get(&url).bearer_auth("nope").send().await.unwrap();
+    assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+    let meter = deployment.state.meter.clone().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    meter.record(Attempt {
+        account: Some("zai".into()),
+        first_token_ms: Some(250),
+        total_ms: 1_000,
+        tokens: Tokens {
+            input: 1_000_000,
+            output: 1_000_000,
+            ..Tokens::default()
+        },
+        ..Attempt::new("req", 1, "zai", "zai/glm-5.3-flash", now - 1_000)
+    });
+    let status: Value = client
+        .get(&url)
+        .bearer_auth("admin-secret")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["v"], "openagents.inference.status.v1");
+    assert_eq!(status["accounts"][0]["balance"], 650_000);
+    assert_eq!(status["rates"]["5m"][0]["ttft_p50_ms"], 250);
+    assert!(
+        status["alerts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["kind"] == "remaining" && a["threshold_pct"] == 50)
+    );
 }

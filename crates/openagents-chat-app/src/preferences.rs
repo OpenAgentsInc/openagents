@@ -133,10 +133,10 @@ impl Default for Preferences {
             reduce_motion: false,
             notifications: true,
             sounds: true,
-            // Dark until every desktop and phone surface paints from the
-            // theme seam (`visual::current`); then `ThemeChoice::System`
-            // (#11028).
-            theme: ThemeChoice::Dark,
+            // The system's appearance (#11028). A surface that never sets
+            // the theme seam (`visual::set_scheme`), the phones today,
+            // still paints dark.
+            theme: ThemeChoice::System,
         }
     }
 }
@@ -201,6 +201,7 @@ mod tests {
         let defaults = Preferences::default();
         assert!(defaults.notifications && defaults.sounds && !defaults.reduce_motion);
         assert_eq!(defaults.text_size, TextSize::Default);
+        assert_eq!(defaults.theme, ThemeChoice::System, "follows the system");
         for settings in [
             json!({}),
             json!({"schema": "openagents.settings.v1", "coder": {}}),
@@ -229,8 +230,8 @@ mod tests {
         assert!(!preferences.apply(Change::ReduceMotion(true)));
         assert!(preferences.apply(Change::Sounds(false)));
         assert!(!preferences.apply(Change::Sounds(false)));
-        assert!(preferences.apply(Change::Theme(ThemeChoice::System)));
-        assert!(!preferences.apply(Change::Theme(ThemeChoice::System)));
+        assert!(preferences.apply(Change::Theme(ThemeChoice::Light)));
+        assert!(!preferences.apply(Change::Theme(ThemeChoice::Light)));
         let settings =
             json!({ "schema": "openagents.settings.v1", SECTION: preferences.section() });
         assert_eq!(Preferences::from_settings(&settings), preferences);
@@ -241,7 +242,7 @@ mod tests {
                 "reduce_motion": true,
                 "notifications": false,
                 "sounds": false,
-                "theme": "system"
+                "theme": "light"
             })
         );
     }

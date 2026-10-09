@@ -1,10 +1,11 @@
-//! `/settings`: the signed-in account's profile and theme, and
-//! `/settings/claude`, where the customer adds or removes their own Claude
-//! credential ([`crate::cloud::byo`]). Both open from the account menu.
+//! `/settings`: the signed-in account's profile, theme, and plan
+//! ([`crate::plan`]), and `/settings/claude`, where the customer adds or
+//! removes their own Claude credential ([`crate::cloud::byo`]). Both open
+//! from the account menu.
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, State};
+use axum::extract::{Form, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -34,6 +35,9 @@ pub(crate) fn routes() -> Router<App> {
         .route(PAGE, get(settings))
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
+        .route(crate::plan::EXTRA, post(extra_hours))
+        .route(crate::plan::SUBSCRIBE, post(subscribe))
+        .route(crate::plan::MANAGE, post(manage))
 }
 
 /// The signed-in viewer, or the answer to give instead (sign in first).
@@ -128,7 +132,12 @@ impl Standing {
     }
 }
 
-async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn settings(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    let returned = query.is_some_and(|q| q.split('&').any(|p| p == "plan=started"));
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -144,16 +153,263 @@ async fn settings(State(app): State<App>, headers: HeaderMap) -> Response {
     )
     .await;
     let computers = crate::device::computers_section(service, &headers, &viewer).await;
+    let plan = plan_section(&app, service, &headers, &viewer, returned);
     let body = html! {
-        (settings_content(&viewer.account_label, claude, chats))
+        (settings_content(&viewer.account_label, claude, chats, plan))
         (computers)
     };
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }
 
-/// The Settings page: profile, theme, and (when this server keeps keys)
-/// the Claude credential row with its hint and whether Manage can work.
-fn settings_content(name: &str, claude: Option<(String, bool)>, chats: Option<usize>) -> Markup {
+/// The plan section for the viewer: the server's plan (or the checked-in
+/// one when none is set up here) and, with a meter, their month.
+fn plan_section(
+    app: &App,
+    service: &CloudSession,
+    headers: &HeaderMap,
+    viewer: &Viewer,
+    returned: bool,
+) -> Markup {
+    let fallback;
+    let plans = match app.config.plan.as_deref() {
+        Some(plans) => plans,
+        None => {
+            fallback = crate::plan::Plans::with_meter(None, None);
+            &fallback
+        }
+    };
+    let view = plans.view(&viewer.account_id, now() as i64, returned);
+    let request = byo::fresh_request();
+    let ticket = plans
+        .has_meter()
+        .then(|| {
+            service
+                .csrf(
+                    headers,
+                    viewer,
+                    crate::plan::CSRF_SCOPE,
+                    &plan_target(viewer, &request),
+                )
+                .ok()
+        })
+        .flatten();
+    let checkout = plans.checkout().and_then(|_| {
+        service
+            .csrf(
+                headers,
+                viewer,
+                crate::plan::CHECKOUT_SCOPE,
+                &plan_target(viewer, &request),
+            )
+            .ok()
+    });
+    crate::plan::section(
+        &view,
+        ticket.as_deref().map(|t| (t, request.as_str())),
+        checkout.as_deref().map(|t| (t, request.as_str())),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckoutForm {
+    csrf: String,
+    request: String,
+}
+
+fn billing_problem(status: StatusCode, text: &str) -> Response {
+    protect(crate::layout::problem(
+        status,
+        "Subscription",
+        text,
+        (PAGE, "Settings"),
+    ))
+}
+
+/// The sentence for a refused checkout or billing page.
+fn billing_refusal(error: &jev::Error) -> &'static str {
+    let code = match error {
+        jev::Error::Api(api) => api
+            .body
+            .as_ref()
+            .and_then(|b| b.as_json())
+            .and_then(|v| v["error"]["code"].as_str().map(str::to_owned)),
+        _ => None,
+    };
+    match code.as_deref() {
+        Some("already_subscribed") => {
+            "You're already subscribed. Reload Settings to see your plan."
+        }
+        Some("checkout_pending") => {
+            "You already started a checkout. Finish it in the tab where it opened, or try again in an hour."
+        }
+        Some("no_subscription") => "There's no subscription to manage yet.",
+        Some("forbidden") => "Only the owner of your workspace can change its plan.",
+        _ => "Stripe couldn't be reached right now. Try again in a minute.",
+    }
+}
+
+/// The checked ticket, plans with checkout, and the workspace to bill: the
+/// person's own (the first they own).
+async fn checkout_request(
+    app: &App,
+    headers: &HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Result<(Viewer, String, String), Response> {
+    let Ok(Form(form)) = form else {
+        return Err(refused(SessionError::InvalidRequest));
+    };
+    let (service, viewer) = viewer(app, headers, PAGE).await?;
+    service
+        .verify_csrf(
+            headers,
+            Some(&viewer),
+            crate::plan::CHECKOUT_SCOPE,
+            &plan_target(&viewer, &form.request),
+            &form.csrf,
+        )
+        .map_err(refused)?;
+    let Some(plan) = app.config.plan.as_deref().and_then(|p| p.checkout()) else {
+        return Err(billing_problem(
+            StatusCode::NOT_FOUND,
+            "Subscribing isn't open on this server yet.",
+        ));
+    };
+    let Some(workspace) = viewer.workspaces.iter().find(|w| w.role == "owner") else {
+        return Err(billing_problem(
+            StatusCode::CONFLICT,
+            "Your account has no workspace of its own to bill yet.",
+        ));
+    };
+    let workspace = workspace.id.clone();
+    Ok((viewer, plan.to_owned(), workspace))
+}
+
+/// Subscribe: open Stripe Checkout for the plan and send the browser there.
+async fn subscribe(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Response {
+    let (viewer, plan, workspace) = match checkout_request(&app, &headers, form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match viewer
+        .client()
+        .account()
+        .plan_checkout(&workspace, &plan)
+        .await
+    {
+        Ok(url) => protect(Redirect::to(&url).into_response()),
+        Err(error) => billing_problem(StatusCode::BAD_GATEWAY, billing_refusal(&error)),
+    }
+}
+
+/// Manage subscription: Stripe's billing page, to change the card or cancel.
+async fn manage(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<CheckoutForm>, FormRejection>,
+) -> Response {
+    let (viewer, _, workspace) = match checkout_request(&app, &headers, form).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match viewer.client().account().billing_portal(&workspace).await {
+        Ok(url) => protect(Redirect::to(&url).into_response()),
+        Err(error) => billing_problem(StatusCode::BAD_GATEWAY, billing_refusal(&error)),
+    }
+}
+
+fn plan_target(viewer: &Viewer, request: &str) -> String {
+    format!("{}:{request}", viewer.account_id)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExtraForm {
+    csrf: String,
+    request: String,
+    enabled: Option<String>,
+    cap: String,
+}
+
+fn plan_problem(status: StatusCode, text: &str) -> Response {
+    protect(crate::layout::problem(
+        status,
+        "Extra hours",
+        text,
+        (PAGE, "Settings"),
+    ))
+}
+
+async fn extra_hours(
+    State(app): State<App>,
+    headers: HeaderMap,
+    form: Result<Form<ExtraForm>, FormRejection>,
+) -> Response {
+    let Ok(Form(form)) = form else {
+        return refused(SessionError::InvalidRequest);
+    };
+    let (service, viewer) = match viewer(&app, &headers, PAGE).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    if let Err(error) = service.verify_csrf(
+        &headers,
+        Some(&viewer),
+        crate::plan::CSRF_SCOPE,
+        &plan_target(&viewer, &form.request),
+        &form.csrf,
+    ) {
+        return refused(error);
+    }
+    let Some(plans) = app.config.plan.as_deref().filter(|p| p.has_meter()) else {
+        return plan_problem(
+            StatusCode::NOT_FOUND,
+            "This server doesn't track hours yet.",
+        );
+    };
+    let enabled = form.enabled.as_deref() == Some("on");
+    let cap = match (crate::plan::parse_cap(&form.cap), enabled) {
+        (Some(cap), _) => cap,
+        (None, false) if form.cap.trim().is_empty() => 0,
+        (None, _) => {
+            return plan_problem(
+                StatusCode::BAD_REQUEST,
+                "Enter a dollar amount up to 10000, like 10.",
+            );
+        }
+    };
+    if enabled && cap == 0 {
+        return plan_problem(
+            StatusCode::BAD_REQUEST,
+            "Set how much extra hours may cost each month.",
+        );
+    }
+    let choice = retail_cloud::environment::ExtraHours {
+        enabled,
+        cap_usd_micros: cap,
+    };
+    match plans.set_extra(&viewer.account_id, choice) {
+        Ok(()) => protect(Redirect::to("/settings#settings-plan").into_response()),
+        Err(()) => plan_problem(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "That couldn't be saved. Try again later.",
+        ),
+    }
+}
+
+/// The Settings page: profile, theme, plan, and (when this server keeps
+/// keys) the Claude credential row with its hint and whether Manage can
+/// work.
+fn settings_content(
+    name: &str,
+    claude: Option<(String, bool)>,
+    chats: Option<usize>,
+    plan: Markup,
+) -> Markup {
     html! {
         div class="oa-settings" {
             h1 class="oa-heading" data-level="1" { "Settings" }
@@ -179,6 +435,7 @@ fn settings_content(name: &str, claude: Option<(String, bool)>, chats: Option<us
                 }
             }
             (chats_section(chats))
+            (plan)
             @if let Some((hint, manage)) = claude {
                 section class="oa-settings-group" aria-labelledby="settings-claude" {
                     h2 #settings-claude { "Claude" }
@@ -525,19 +782,21 @@ mod tests {
     fn settings_hides_manage_when_the_claude_key_cant_be_kept() {
         let manage = "href=\"/settings/claude\"";
         for standing in [Standing::Empty, Standing::Saved(Material::AnthropicApiKey)] {
-            let html = settings_content("Ada", Some(standing.hint()), Some(0)).into_string();
+            let html =
+                settings_content("Ada", Some(standing.hint()), Some(0), html! {}).into_string();
             assert!(html.contains(manage), "{html}");
             assert!(!html.contains("Unavailable"));
         }
         for standing in [Standing::NoWorkspace, Standing::Broken] {
             let (hint, can) = standing.hint();
             assert!(!can);
-            let html = settings_content("Ada", Some((hint.clone(), can)), Some(0)).into_string();
+            let html =
+                settings_content("Ada", Some((hint.clone(), can)), Some(0), html! {}).into_string();
             assert!(!html.contains(manage), "{html}");
             assert!(html.contains(&hint.replace('\'', "&#39;")) || html.contains(&hint));
         }
         // No key store: no Claude row at all.
-        let html = settings_content("Ada", None, Some(0)).into_string();
+        let html = settings_content("Ada", None, Some(0), html! {}).into_string();
         assert!(!html.contains("settings-claude"));
         for needle in [">Settings<", ">Profile<", ">Theme<", ">Ada<"] {
             assert!(html.contains(needle), "{needle}");

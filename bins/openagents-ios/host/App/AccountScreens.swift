@@ -77,6 +77,7 @@ private struct CopyButton: View {
 /// nsec only after an explicit reveal and warning.
 struct IdentityKeysScreen: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @Environment(\.scenePhase) private var scenePhase
     @State private var account: AccountPacket?
     @State private var nsec: String?
@@ -133,7 +134,7 @@ struct IdentityKeysScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .alert("Reveal your nsec?", isPresented: $warning) {
             Button("Reveal", role: .destructive) {
                 bridge.account(reveal: true) { packet in nsec = packet.nsec }
@@ -170,6 +171,7 @@ struct IdentityKeysScreen: View {
 /// This device's public key and the app's version.
 struct AboutDeviceScreen: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @State private var origin: String?
 
     private var version: String {
@@ -195,7 +197,7 @@ struct AboutDeviceScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .onAppear { bridge.account { origin = $0.origin } }
     }
 }
@@ -203,6 +205,7 @@ struct AboutDeviceScreen: View {
 /// What each build brought and what to test in it, newest first.
 struct ChangelogScreen: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @State private var releases: [Release] = []
 
     var body: some View {
@@ -226,7 +229,7 @@ struct ChangelogScreen: View {
                     }
                 } header: {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("\(release.version) (\(release.build))").font(.paper(.headline)).foregroundStyle(.white)
+                        Text("\(release.version) (\(release.build))").font(.paper(.headline)).foregroundStyle(appColors.primary)
                         Text(release.title)
                         Spacer()
                     }
@@ -236,7 +239,7 @@ struct ChangelogScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .onAppear { bridge.account { releases = $0.changelog } }
     }
 }
@@ -248,6 +251,7 @@ struct ChangelogScreen: View {
 /// reproduction with on a computer.
 struct TrainerScreen: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @Environment(\.scenePhase) private var scenePhase
     @State private var card: TrainerPacket?
     @State private var nsec: String?
@@ -295,7 +299,7 @@ struct TrainerScreen: View {
                             Text("\(card.xp) XP").font(.paper(.title3))
                         }
                         ProgressView(value: progress)
-                            .tint(.white)
+                            .tint(appColors.primary)
                             .accessibilityIdentifier("trainer-progress")
                         Text("\(card.to_next) XP to level \(card.level + 1) · \(card.curve)")
                             .font(.paper(.footnote))
@@ -433,7 +437,7 @@ struct TrainerScreen: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .foregroundStyle(.white)
+                            .foregroundStyle(appColors.primary)
                         }
                     }
                     if let guide = URL(string: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/tutorial-quests.md") {
@@ -468,7 +472,7 @@ struct TrainerScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .fileExporter(isPresented: Binding(get: { cardFile != nil }, set: { if !$0 { cardFile = nil } }),
                       document: cardFile, contentType: .json,
                       defaultFilename: cardFile?.name ?? "trainer-card.json") { _ in cardFile = nil }
@@ -523,6 +527,7 @@ struct TrainerScreen: View {
 /// a draft) and never draws one, only its last four characters.
 struct YourKeysScreen: View {
     @ObservedObject var bridge: MobileBridge
+    @Environment(\.appColors) private var appColors
     @State private var adding: ProviderKeysState.Row?
     @State private var removing: ProviderKeysState.Row?
 
@@ -582,7 +587,7 @@ struct YourKeysScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
+        .background(appColors.background.ignoresSafeArea())
         .sheet(item: $adding) { row in
             ProviderKeyEntry(row: row) { key in bridge.providerKeyAdd(row.provider, key: key) }
         }

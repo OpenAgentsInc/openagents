@@ -5,7 +5,7 @@
 //! as the person, and it is never stored or logged here.
 
 use axum::http::HeaderMap;
-use oa_auth::repos::{Project, RepoError, Repository, Status};
+use oa_auth::repos::{Listing, Project, RepoError, Status};
 use reqwest::Method;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -68,6 +68,39 @@ impl CloudSession {
         Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
+    /// Finish authorizing the GitHub App with GitHub's code and its
+    /// verifier; the account service finds where it is installed.
+    pub(crate) async fn github_app_grant(
+        &self,
+        headers: &HeaderMap,
+        code: &str,
+        verifier: &str,
+    ) -> Result<Status> {
+        let body = self
+            .account_call(
+                headers,
+                Method::POST,
+                "/v1/account/github/app/grant",
+                Some(json!({"code": code, "code_verifier": verifier})),
+            )
+            .await?;
+        Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
+    }
+
+    /// Find where the GitHub App is installed again (after GitHub's
+    /// install page sent the person back).
+    pub(crate) async fn github_app_refresh(&self, headers: &HeaderMap) -> Result<Status> {
+        let body = self
+            .account_call(
+                headers,
+                Method::POST,
+                "/v1/account/github/app/refresh",
+                None,
+            )
+            .await?;
+        Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
+    }
+
     /// Forget the stored GitHub token; projects stay.
     pub(crate) async fn github_disconnect(&self, headers: &HeaderMap) -> Result<Status> {
         let body = self
@@ -76,18 +109,23 @@ impl CloudSession {
         Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
-    /// The repositories the person can connect.
-    pub(crate) async fn github_repositories(&self, headers: &HeaderMap) -> Result<Vec<Repository>> {
+    /// One page of the repositories the person can connect, most recently
+    /// pushed first, whether there are more, and whether single sign-on
+    /// hid some.
+    pub(crate) async fn github_repositories(
+        &self,
+        headers: &HeaderMap,
+        page: u32,
+    ) -> Result<Listing> {
         let body = self
             .account_call(
                 headers,
                 Method::GET,
-                "/v1/account/github/repositories",
+                &format!("/v1/account/github/repositories?page={page}"),
                 None,
             )
             .await?;
-        serde_json::from_value(body["repositories"].clone())
-            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+        serde_json::from_value(body).map_err(|_| RepoCallError::Session(SessionError::Unavailable))
     }
 
     /// The person's GitHub token, to read GitHub as them for this request.

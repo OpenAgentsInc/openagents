@@ -31,6 +31,11 @@ fn digest(revision: u64, checkpoint: &str) -> [u8; 32] {
     h.update(checkpoint.as_bytes());
     h.finalize().into()
 }
+/// The slowest reward-history publications in this process, for soak
+/// diagnosis (#10559).
+pub fn slow_history_syncs() -> serde_json::Value {
+    serde_json::to_value(super::rewards::history::slow_syncs()).unwrap_or_default()
+}
 #[derive(Clone, Copy, Default)]
 pub(in crate::service) struct CommitTimings {
     pub preparation: Option<f64>,

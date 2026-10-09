@@ -108,6 +108,38 @@ lists the state layout and restart recovery. A configured package is not
 deployed-origin availability. That requires the owner-run Boat qualification
 recorded in `NEEDS_OWNER.md`.
 
+The optional dedicated GCE adapter (ENV-09,
+[`coder_working_computer::gce`](../../crates/coder-working-computer/src/gce.rs))
+replaces Boat with one isolated GCE instance per setup, builder, and verifier
+machine. It never uses the shared Coder pool:
+
+```json
+{
+  "schema": "openagents.environment.owners.v1",
+  "provider": "gce",
+  "workdir": "/home/coder/repo",
+  "gce": {
+    "project": "openagentsgemini",
+    "zone": "us-central1-a",
+    "machine": "c3-standard-8",
+    "disk_gb": 200,
+    "base": {"project": "openagentsgemini", "name": "oa-coder-host-20261001", "id": "1234567890123456789"}
+  },
+  "credential_names": ["GH_TOKEN"],
+  "tick_seconds": 15
+}
+```
+
+`base` is one exact image name and its numeric GCE ID (`gcloud compute images
+describe NAME --format='value(id)'`), never a family. A recipe for this
+adapter pins the same base (`GceImage::pin`). The host runs `gcloud` with its
+current account and reaches instances over the pool's SSH key through IAP.
+Its account needs instance, disk, and image create/delete rights in the
+project. Instances get no service account and no API scopes. The janitor
+writes `<root>/cloud-operator/environment-gce/reconciliation.json` with every
+owned instance and image, their sizes and run times, and the orphan instances
+it deleted. It never deletes an image.
+
 ## Existing cloud lanes
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)
@@ -139,6 +171,7 @@ the GCE spot pool granted as one computer (`openagents cloud up/down/status`,
 | [Cloud parallel execution audit, 2026-10-02](2026-10-02-cloud-parallel-execution-audit.md) | What existed before the reset (GCE and Firecracker lanes, the Coder run pool, Factory Droid Computers and Amp orbs), what runs in Google Cloud today, the gaps, a recommended design, and the issues to open |
 | [Boat SDK plan, 2026-10-02](2026-10-02-boat-sdk-plan.md) | Boat (formerly Ascii Box): what we built against it, its current API and prices, how it compares with the GCE pool, and a plan for the Rust SDK `crates/boat` as a second placement backend |
 | [`chat work --on boat`](boat-chat-work.md) | Coder issue runs on Boat sandboxes: one sandbox per issue from the daily template, the start-limit dispatcher, per-run credentials, engine logins, streaming, cost in the issue comment and the route record, teardown |
+| [Saved environments contract v1](retail-environment-contract.md) | Proposed, closed until owner review and funded qualification: a customer buys setup, build, check, and a saved image kept for prepaid days, with its price book, holds, renewal, lapse, and recovery (ENV-10) |
 | [Retail contract v1](retail-contract.md) | The first paid cloud computer and task class, frozen for implementation: Boat per task, a repository change with declared checks, the customer's own model key, credentials, grants, cost identities, and provider-loss outcomes |
 | [Bring your own Claude](claude-code-byo.md) | Running unmodified Claude Code in Cloud computers on the user's own plan or key: sign-in inside the computer, no credential collection, plan concurrency, and API keys for fleets |
 | [Retail prices](retail-prices.md) | Price book `retail-2026-10-06.1`: one credit per sat, compute and coordination rates, quotes, what a failed or cancelled task is charged, and holds versus refunds |

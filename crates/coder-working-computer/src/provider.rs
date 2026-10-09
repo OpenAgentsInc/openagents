@@ -10,8 +10,32 @@
 //! never arbitrary files.
 
 use crate::{Checkpoint, Computer, ServiceDecl};
+use coder_environment::{ImagePin, Provider as ProviderKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Reads a selected credential's current value when it is applied. A
+/// provider holding one re-reads values when it applies them (GCE: before
+/// every command step; Boat: at every create and resume), so a short-lived
+/// token (a GitHub installation token lasts an hour) is current when each
+/// step starts instead of fixed when the owner process started.
+pub type Resolve = std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// A [`Resolve`] that reads `<dir>/<NAME>` when that file exists (a token
+/// minter keeps it current) and the process environment otherwise.
+pub fn resolve_from(dir: Option<std::path::PathBuf>) -> Resolve {
+    std::sync::Arc::new(move |name: &str| {
+        let from_file = dir.as_ref().and_then(|d| {
+            let safe =
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+            safe.then(|| std::fs::read_to_string(d.join(name)).ok())
+                .flatten()
+                .map(|v| v.trim_end_matches(['\n', '\r']).to_owned())
+                .filter(|v| !v.is_empty())
+        });
+        from_file.or_else(|| std::env::var(name).ok())
+    })
+}
 
 /// One command, identified before it is started. The provider runs a given
 /// `id` at most once on a resource: repeating a start with the same `id`
@@ -123,8 +147,9 @@ pub struct ImageRecord {
 }
 
 /// Immutable output images for a dedicated builder (ENV-04). There is no
-/// replace, rename, or delete: a name, once captured, always means the
-/// same snapshot.
+/// replace or rename: a name, once captured, always means the same
+/// snapshot. An image nothing will use again can be deleted; its name is
+/// never captured again.
 #[allow(async_fn_in_trait)]
 pub trait Images: Provider {
     /// Capture `resource`'s filesystem under `name`. Implementations read
@@ -142,6 +167,9 @@ pub trait Images: Provider {
     /// A machine booted from an image can be usable before that; this, not
     /// a boot or command exit, is restore readiness (ENV-05).
     async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool>;
+    /// Delete the image named `name`. `Done(false)` when the provider has
+    /// none by that name.
+    async fn delete_image(&self, name: &str) -> Outcome<bool>;
 }
 
 /// The result of one provider effect.
@@ -210,6 +238,21 @@ pub struct Inspection {
 
 #[allow(async_fn_in_trait)]
 pub trait Provider {
+    /// Which provider this is. Owners stamp it on the computers they create
+    /// and on the image identities they seal.
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::Boat
+    }
+    /// Whether a builder on this provider may start from `base`, a recipe's
+    /// pinned base image. A recipe pinned to another provider is refused;
+    /// a provider that boots a configured base also refuses any other one.
+    fn admits_base(&self, base: &ImagePin) -> Result<(), &'static str> {
+        if base.provider == self.kind() {
+            Ok(())
+        } else {
+            Err("The recipe's base image belongs to another provider.")
+        }
+    }
     /// Create under a retained operation identity; repeating the same
     /// identity must return the same resource, never a second one.
     async fn create(&self, computer: &Computer, operation: &str) -> Outcome<String>;
@@ -248,6 +291,12 @@ pub trait Provider {
 /// One provider shared by several owners (setup, build, and verify over
 /// the same provider state) through an `Arc`.
 impl<P: Provider> Provider for std::sync::Arc<P> {
+    fn kind(&self) -> ProviderKind {
+        (**self).kind()
+    }
+    fn admits_base(&self, base: &ImagePin) -> Result<(), &'static str> {
+        (**self).admits_base(base)
+    }
     async fn create(&self, computer: &Computer, operation: &str) -> Outcome<String> {
         (**self).create(computer, operation).await
     }
@@ -333,6 +382,9 @@ impl<P: Images> Images for std::sync::Arc<P> {
     }
     async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool> {
         (**self).hydration(computer, resource).await
+    }
+    async fn delete_image(&self, name: &str) -> Outcome<bool> {
+        (**self).delete_image(name).await
     }
 }
 
@@ -969,6 +1021,14 @@ pub mod fake {
                 }
                 Outcome::done(!m.hydrating)
             });
+            Self::finish(inject, || out)
+        }
+        async fn delete_image(&self, name: &str) -> Outcome<bool> {
+            let inject = self.begin("delete_image");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = Outcome::done(self.state.lock().unwrap().images.remove(name).is_some());
             Self::finish(inject, || out)
         }
     }

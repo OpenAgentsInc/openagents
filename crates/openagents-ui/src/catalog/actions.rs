@@ -7,7 +7,7 @@ use super::{Pane, caption, row, specimen, stack};
 use crate::actions::{
     Alert, AlertActionsPlacement, Avatar, AvatarGroup, AvatarSize, AvatarStack, Badge, BadgeSize,
     Button, ButtonLink, ButtonVariant, CircularProgress, Color, ControlSize, CopyButton,
-    EmptyMessage, EmptyMessageFill, EmptyMessageIconSize, Image, LoadingDots, LoadingIndicator,
+    EmptyMessage, EmptyMessageFill, EmptyMessageIconSize, Image, Busy, LoadingDots, LoadingIndicator,
     ShimmerTag, ShimmerText, TextLink, Variant,
 };
 use crate::icons::Icon;
@@ -126,6 +126,10 @@ pub(super) fn badges(_pane: Pane) -> Markup {
 
 pub(super) fn indicators(_pane: Pane) -> Markup {
     html! {
+        (specimen("Busy", "A spinner and its words, on one row (inside a paragraph too)", stack(html! {
+            (Busy::new("Working"))
+            p { (Busy::new("Loading your repositories")) }
+        })))
         (specimen("LoadingIndicator", "Loading indicator", row(html! {
             (LoadingIndicator::new())
             (LoadingIndicator::new().label("Loading results"))

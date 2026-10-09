@@ -1,5 +1,5 @@
 use super::*;
-#[path = "../../commercial-spend/tests/support/mod.rs"]
+#[path = "../../../commercial-spend/tests/support/mod.rs"]
 mod support;
 use pay_ledger::shared::{Intent, Operation as SharedOp, Outcome as SharedOutcome};
 use support::{Fixture, NativeInput};

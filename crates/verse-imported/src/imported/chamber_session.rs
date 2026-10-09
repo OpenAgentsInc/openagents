@@ -29,6 +29,10 @@ use web_time::Instant;
 const MOVE_INTERVAL: Duration = Duration::from_millis(33);
 /// Inputs sent but not yet answered; a full queue refuses new input.
 const PENDING_LIMIT: usize = 64;
+/// How long a dead player waits before asking again after a respawn that
+/// did not return a new life, for example because something stood on the
+/// spawn point (#10559).
+pub const RESPAWN_RETRY: Duration = Duration::from_secs(2);
 /// Notes held for an observer that has not drained them.
 const NOTE_LIMIT: usize = 4096;
 pub use controls::Held;
@@ -157,6 +161,7 @@ pub struct Session {
     frame_entry: Option<(LifeId, u64)>,
     frame_entry_pending: bool,
     respawn_attempts: Vec<LifeId>,
+    respawn_asked: Option<Instant>,
     notes: Option<Vec<Note>>,
     /// Snapshots applied since the session started.
     pub snapshots: u64,
@@ -303,6 +308,7 @@ impl Session {
             frame_entry: None,
             frame_entry_pending: false,
             respawn_attempts: vec![],
+            respawn_asked: None,
             notes: None,
             snapshots: 0,
             life_changes: 0,
@@ -613,22 +619,31 @@ impl Session {
         }
     }
 
-    /// Asks for a new character once per death.
+    /// Asks for a new character once per death, and again every
+    /// [`RESPAWN_RETRY`] while that life stays dead: the authority refuses a
+    /// respawn whose spawn point is obstructed.
     pub fn respawn(&mut self) {
         let Some(hud) = self.hud() else {
             return;
         };
-        if hud.resources.hp != 0
-            || self.respawn_attempts.len() >= 128
-            || self.respawn_attempts.contains(&hud.life)
-        {
+        if hud.resources.hp != 0 {
             return;
         }
         let life = hud.life;
+        let retry = self.respawn_attempts.last() == Some(&life)
+            && self
+                .respawn_asked
+                .is_some_and(|at| at.elapsed() >= RESPAWN_RETRY);
+        if !retry && (self.respawn_attempts.len() >= 128 || self.respawn_attempts.contains(&life)) {
+            return;
+        }
         let before = self.pending.len();
         self.send(Input::Respawn);
         if self.pending.len() > before {
-            self.respawn_attempts.push(life);
+            if !retry {
+                self.respawn_attempts.push(life);
+            }
+            self.respawn_asked = Some(Instant::now());
         }
     }
 
@@ -875,6 +890,9 @@ impl Session {
         let Some(baseline) = r.control.as_ref().and_then(|c| c.applied_movement) else {
             return Ok(());
         };
+        if let Some(control) = &r.control {
+            self.prediction.observe_dynamic_poses(&control.dynamic)?;
+        }
         let before = self.prediction.pose();
         let timing = self.notes.as_ref().map(|_| self.prediction.timing());
         if !self

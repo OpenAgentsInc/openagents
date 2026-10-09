@@ -9,8 +9,10 @@
 // the visible end, so short threads never show it. A link inside the region
 // marked [data-oa-scroll-tail] means the newest messages are not loaded:
 // the button then shows and clicking it follows that link (HTMX loads the
-// tail). Otherwise a click smooth-scrolls to the end. Buttons that arrive
-// with HTMX content are bound on htmx:load.
+// tail). Otherwise a click smooth-scrolls to the end. A button marked
+// [data-oa-scroll-follow] also opens its region at the end and keeps it
+// there as content swaps in, unless the reader scrolled up. Buttons that
+// arrive with HTMX content are bound on htmx:load.
 (function () {
   "use strict";
   var BOUND = "oaScrollBound";
@@ -46,11 +48,21 @@
         update();
       }, { passive: true });
     }
+    // [data-oa-scroll-follow]: open at the end, and keep the end in view
+    // when new content arrives while the reader is near it. `near` still
+    // holds the state from before the swap when afterSettle fires.
+    var follow = button.hasAttribute("data-oa-scroll-follow");
+    function toEnd() {
+      region.scrollTop = region.scrollHeight;
+    }
+    if (follow) toEnd();
     document.addEventListener("htmx:afterSettle", function () {
       if (!region.isConnected) return;
+      var stay = follow && near;
       if (sentinel.parentNode !== region || region.lastElementChild !== sentinel) {
         region.appendChild(sentinel);
       }
+      if (stay) toEnd();
       update();
     });
 

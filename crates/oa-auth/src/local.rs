@@ -27,6 +27,8 @@ struct Inner {
     dir: PathBuf,
     github: Github,
     tenant: String,
+    /// The GitHub App, when repository access goes through one.
+    app: Option<crate::app::AppClient>,
 }
 
 /// The local account service.
@@ -44,11 +46,31 @@ impl LocalService {
     ) -> Result<Self, String> {
         Accounts::install(dir).map_err(|e| e.to_string())?;
         Sessions::install(dir, SessionBook::new(session_ttl, 3600)).map_err(|e| e.to_string())?;
+        Self::open(dir, github, tenant)
+    }
+
+    /// The service over stores [`Self::install`] made earlier, so a local
+    /// fixture restarts with its accounts, sessions, and links intact.
+    pub fn open(dir: &Path, github: Github, tenant: &str) -> Result<Self, String> {
+        Accounts::open(dir).map_err(|e| e.to_string())?;
         Ok(Self(Arc::new(Inner {
             dir: dir.to_path_buf(),
             github,
             tenant: tenant.into(),
+            app: None,
         })))
+    }
+
+    /// The same service with repository access through the GitHub App
+    /// `app` ([`crate::app`]).
+    #[must_use]
+    pub fn with_app(self, app: crate::app::AppClient) -> Self {
+        Self(Arc::new(Inner {
+            dir: self.0.dir.clone(),
+            github: self.0.github.clone(),
+            tenant: self.0.tenant.clone(),
+            app: Some(app),
+        }))
     }
 
     #[must_use]

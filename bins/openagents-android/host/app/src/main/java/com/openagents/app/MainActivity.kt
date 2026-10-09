@@ -105,6 +105,8 @@ class MainActivity : ComponentActivity() {
     }
     private var statusTop = 0
 
+    private lateinit var root: FrameLayout
+    private lateinit var tabDivider: View
     private val pages = mutableMapOf<AppTab, FrameLayout>()
     private val tabButtons = mutableMapOf<AppTab, ImageButton>()
     private lateinit var tabBar: LinearLayout
@@ -169,12 +171,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        // The theme Rust resolved last time, so the first frame is drawn in
+        // it; Rust's first packet confirms or changes it.
+        Palette.apply(savedAppearance())
+        restyleWindow()
         scanner = QRScanner(this)
         bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false)) { render() }
+        bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
@@ -200,7 +206,7 @@ class MainActivity : ComponentActivity() {
         terminal = TerminalScreen(this, bridge)
         connect = ConnectScreen(this, bridge, scanner)
 
-        val root = FrameLayout(this).apply { setBackgroundColor(Palette.BACKGROUND) }
+        root = FrameLayout(this).apply { setBackgroundColor(Palette.BACKGROUND) }
         val body = column()
         val pageHost = FrameLayout(this)
         body.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -208,12 +214,14 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Palette.BACKGROUND)
             gravity = Gravity.CENTER_VERTICAL
         }
-        body.addView(View(this).apply { setBackgroundColor(Palette.BORDER) }, LinearLayout.LayoutParams(-1, 1))
+        tabDivider = View(this).apply { setBackgroundColor(Palette.BORDER) }
+        body.addView(tabDivider, LinearLayout.LayoutParams(-1, 1))
         body.addView(tabBar, LinearLayout.LayoutParams(-1, dp(56)))
         for (value in AppTab.entries) {
             val button = ImageButton(this).apply {
                 setImageResource(value.icon)
                 background = null
+                setColorFilter(Palette.PRIMARY)
                 contentDescription = value.title
                 tag = "tab-${value.name.lowercase()}"
                 setOnClickListener { select(value) }
@@ -613,6 +621,9 @@ class MainActivity : ComponentActivity() {
                 "Report a problem" to "account-report" to { report() },
             )), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
+            // System follows the phone; Rust saves the choice.
+            addView(group(listOf("Appearance" to "account-appearance" to { chooseTheme() })),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(group(listOf(AccountRoute.KEYS, AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
                 it.title to "account-${it.name.lowercase()}" to { open(it) } }),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
@@ -621,6 +632,21 @@ class MainActivity : ComponentActivity() {
                 "Follow us on X" to "account-x" to { browse("https://x.com/OpenAgentsInc") },
             ), external = true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
         })
+    }
+
+    /** Account > Appearance: System, Light, or Dark, as Rust lists them. */
+    private fun chooseTheme() {
+        val appearance = bridge.packet?.objectOrNull("appearance") ?: return
+        val choices = appearance.optJSONArray("choices")?.objects() ?: return
+        val checked = choices.indexOfFirst { it.optBoolean("selected") }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Appearance")
+            .setSingleChoiceItems(choices.map { it.optString("label") }.toTypedArray(), checked) { dialog, index ->
+                bridge.theme(choices[index].optString("id"))
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /** Opens an https page in the browser. */
@@ -739,6 +765,8 @@ class MainActivity : ComponentActivity() {
 
     private fun render() {
         if (!::bridge.isInitialized) return
+        // The theme Rust resolved changed: redraw in it.
+        if (Palette.apply(bridge.packet?.objectOrNull("appearance"))) restyle()
         // A chat asked to connect a computer: Account > Computers.
         if (bridge.computersRequested != computersShown) {
             computersShown = bridge.computersRequested
@@ -937,6 +965,57 @@ class MainActivity : ComponentActivity() {
         // Handle each link once, not again when the activity is recreated.
         intent.data = null
         bridge.connectLink(link)
+    }
+
+    // The theme (#11028)
+
+    /** Whether the phone itself is dark: the night bits of its uiMode. */
+    private fun night(configuration: android.content.res.Configuration) =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    /** The manifest keeps the activity across uiMode changes; System follows the phone. */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::bridge.isInitialized) bridge.systemAppearance(night(newConfig))
+    }
+
+    private val appearancePrefs get() = getSharedPreferences("appearance", android.content.Context.MODE_PRIVATE)
+
+    /** The `appearance` Rust last sent, kept only to draw the first frame in it. */
+    private fun savedAppearance(): JSONObject? =
+        appearancePrefs.getString("last", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+    /** The status and navigation bars follow the theme. */
+    private fun restyleWindow() {
+        window.decorView.setBackgroundColor(Palette.BACKGROUND)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = Palette.LIGHT
+            isAppearanceLightNavigationBars = Palette.LIGHT
+        }
+    }
+
+    /**
+     * Redraws in the theme Rust resolved: the window, the tab bar, the chat,
+     * the Account tab and its open screen, the Gym's screens, and the
+     * Wallet. Other views take the new colors when they are next built.
+     */
+    private fun restyle() {
+        bridge.packet?.objectOrNull("appearance")?.let { appearancePrefs.edit().putString("last", it.toString()).apply() }
+        restyleWindow()
+        if (!::root.isInitialized) return
+        root.setBackgroundColor(Palette.BACKGROUND)
+        tabBar.setBackgroundColor(Palette.BACKGROUND)
+        tabDivider.setBackgroundColor(Palette.BORDER)
+        for (button in tabButtons.values) button.setColorFilter(Palette.PRIMARY)
+        coderRenderer.clear()
+        coderContent.removeAllViews()
+        cardViews.clear()
+        imageViews.clear()
+        shownGym = null
+        wallet.update(bridge.packet, force = true)
+        // Rebuilds the Account page, and renders again.
+        open(route)
     }
 
     override fun onResume() {

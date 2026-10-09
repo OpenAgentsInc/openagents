@@ -62,6 +62,32 @@ fn answer(value: impl serde::Serialize) -> Response {
         .into_response()
 }
 use axum::response::IntoResponse;
+/// The published agreement shape. `current_referrer_owner` is in-process
+/// custody input for native settlement review; it names another party's
+/// account and is not part of the authenticated wire contract.
+#[derive(serde::Serialize)]
+struct AgreementWire<'a> {
+    agreement: &'a commission::Agreement,
+    terms: &'a commission::Publication,
+    state: &'a str,
+    terms_qualified: bool,
+    active_for_new_transactions: bool,
+    accrual_enabled: bool,
+    payout_qualified: bool,
+    payout_enabled: bool,
+}
+fn agreement_wire(v: &commission::View) -> AgreementWire<'_> {
+    AgreementWire {
+        agreement: &v.agreement,
+        terms: &v.terms,
+        state: &v.state,
+        terms_qualified: v.terms_qualified,
+        active_for_new_transactions: v.active_for_new_transactions,
+        accrual_enabled: v.accrual_enabled,
+        payout_qualified: v.payout_qualified,
+        payout_enabled: v.payout_enabled,
+    }
+}
 async fn actor(
     state: &ServeState,
     headers: &HeaderMap,
@@ -131,7 +157,7 @@ async fn commission_agreement(
         query.agreement.as_deref(),
         || current(&state, &headers, &account),
     ) {
-        Ok(v) => answer(v),
+        Ok(v) => answer(v.as_ref().map(agreement_wire)),
         Err(e) => refused(e),
     }
 }
@@ -151,7 +177,7 @@ async fn commission_accept(
     match store
         .accept_commission_terms_guarded(&account, &input, || current(&state, &headers, &account))
     {
-        Ok(v) => answer(v),
+        Ok(v) => answer(agreement_wire(&v)),
         Err(e) => refused(e),
     }
 }

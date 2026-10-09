@@ -216,6 +216,7 @@ impl Fixture {
             qualification: Some(qualification),
             supported_plan: plan.digest(),
             plan_starts_left: Some(20),
+            environments: None,
         };
         Self {
             _temp: temp,

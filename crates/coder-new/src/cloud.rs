@@ -365,7 +365,10 @@ fn parse(args: &[String], context: &Context) -> Result<(String, Spec), String> {
             .any(|n| n == "OPENROUTER_API_KEY")
             || spec.model.is_none())
     {
-        return Err("Explicit remote Microcoder model settings require --model and an admitted OPENROUTER_API_KEY.".into());
+        return Err(
+            "Remote Microcoder model settings need --model and an allowed OPENROUTER_API_KEY."
+                .into(),
+        );
     }
     coder_cloud::validate_id(&id)?;
     Ok((id, spec))

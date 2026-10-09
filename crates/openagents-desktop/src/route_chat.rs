@@ -333,7 +333,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
     // The chat reads from across a room: its text and bubbles are drawn
     // larger than the app's.
     let unit = unit * TEXT_SCALE;
-    frame.fill(rect, 0.0, visual::SIDEBAR);
+    frame.fill(rect, 0.0, visual::current().sidebar);
     frame.fill(
         PxRect {
             x: rect.x + rect.w - unit,
@@ -341,7 +341,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
             ..rect
         },
         0.0,
-        visual::BORDER,
+        visual::current().border,
     );
     let clip = frame.clip_to(rect);
     let pad = 16.0 * unit;
@@ -395,7 +395,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
                 10.0 * unit,
                 ink(Color {
                     alpha: 16,
-                    ..visual::TEXT
+                    ..visual::current().text
                 }),
             );
             fonts.draw(
@@ -408,7 +408,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
                 1.0,
                 ink(Color {
                     alpha: 150,
-                    ..visual::MUTED
+                    ..visual::current().muted
                 }),
             );
             bottom = top - gap * 0.8;
@@ -436,7 +436,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
                 12.0 * unit,
                 ink(Color {
                     alpha: 30,
-                    ..visual::TEXT
+                    ..visual::current().text
                 }),
             );
             fonts.draw(
@@ -447,7 +447,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
                 paragraph.width + 1.0,
                 TextAlign::Start,
                 1.0,
-                ink(visual::TEXT),
+                ink(visual::current().text),
             );
         } else {
             fonts.draw(
@@ -458,7 +458,7 @@ pub fn paint_column(fonts: &mut Fonts, frame: &mut Frame, rect: PxRect, unit: f3
                 most,
                 TextAlign::Start,
                 1.0,
-                ink(visual::MUTED),
+                ink(visual::current().muted),
             );
         }
         bottom = top - gap * if person { 1.6 } else { 1.0 };

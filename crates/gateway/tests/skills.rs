@@ -39,6 +39,7 @@ fn account_config() -> config::Accounts {
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,
+        github_app: None,
         anonymous: None,
     }
 }
@@ -97,6 +98,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         require_workspace_membership: false,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(account_config()),
         billing: None,
         funding: None,

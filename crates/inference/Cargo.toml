@@ -1,0 +1,26 @@
+[package]
+name = "inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The inference gateway library: Open Responses types, the SSE codec, the Chat Completions translation, adapters, routing, attempt measurement, live rates, and the credit ledger (docs/inference/gateway.md)."
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order keeps unknown fields in the order the upstream sent them,
+# so a decoded and re-encoded object reads like the original.
+serde_json = { version = "1", features = ["preserve_order"] }
+# Upstream adapters (src/upstream): HTTP, streams, and Google auth.
+base64 = "0.22"
+futures-util = "0.3"
+openrouter = { path = "../openrouter" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+ring = "0.17"
+tokio = { version = "1", features = ["time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+
+[lints]
+workspace = true

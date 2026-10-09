@@ -57,6 +57,7 @@ fn free_plan() -> Plan {
         spend_limit: u64::MAX,
         credit_expiry_secs: None,
         topups_allowed: true,
+        environments: None,
     }
 }
 
@@ -69,6 +70,7 @@ fn billing_config() -> config::Billing {
         webhook_secret_env: SECRET_ENV.to_string(),
         checkout_ttl_secs: 86_400,
         webhook_skew_secs: 300,
+        stripe: None,
     }
 }
 
@@ -79,6 +81,7 @@ fn account_config() -> config::Accounts {
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,
+        github_app: None,
         anonymous: None,
     }
 }
@@ -154,6 +157,7 @@ async fn deploy() -> Deployment {
         require_workspace_membership: true,
         team_policy: None,
         team_reports: None,
+        inference: None,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
         funding: None,

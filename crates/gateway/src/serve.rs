@@ -142,6 +142,11 @@ pub struct ServeState {
     pub(crate) card_test_origin: std::sync::Mutex<Option<String>>,
     pub(crate) card_cursor: std::sync::atomic::AtomicUsize,
     pub(crate) team_progress: crate::team_reports::Monitor,
+    /// The inference meter, present when `inference` is configured.
+    pub meter: Option<Arc<inference::meter::Meter>>,
+    /// The inference router and adapters over that meter, present when
+    /// `inference` is configured.
+    pub inference: Option<Arc<inference::run::Gateway>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -166,6 +171,15 @@ impl ServeState {
     /// on one ledger would race reservations, and refusing is cheaper
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
+        Self::open_with_upstreams(config, None)
+    }
+
+    /// [`ServeState::open`] with the inference adapters given rather than
+    /// read from the environment (`None` reads them), for tests.
+    pub fn open_with_upstreams(
+        config: Config,
+        upstreams: Option<Vec<Arc<dyn inference::upstream::Upstream>>>,
+    ) -> Result<Arc<Self>, Trouble> {
         if config.commercial.is_some()
             || config.team_policy.is_some()
             || config.team_reports.is_some()
@@ -299,7 +313,23 @@ impl ServeState {
         } else {
             None
         };
+        let meter = config
+            .inference
+            .as_ref()
+            .map(|inference| Arc::new(inference::meter::Meter::new(&inference.meter)));
+        let gateway = config
+            .inference
+            .as_ref()
+            .zip(meter.clone())
+            .map(|(inference, meter)| {
+                let upstreams = upstreams.unwrap_or_else(crate::inference_routes::upstreams);
+                Arc::new(crate::inference_routes::gateway(
+                    inference, meter, upstreams,
+                ))
+            });
         let state = Arc::new(Self {
+            meter,
+            inference: gateway,
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
@@ -407,6 +437,8 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     jobs::resume(&state);
     crate::funding::resume(&state);
     crate::card_funding::controller::resume(&state);
+    crate::inference_status::resume(&state);
+    crate::subscriptions::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn(purchase_route))
@@ -586,6 +618,10 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.earnings.is_some() {
         routes.extend(crate::earnings::routes());
+    }
+    if state.config.inference.is_some() {
+        routes.extend(crate::inference_status::routes());
+        routes.extend(crate::inference_routes::routes());
     }
     routes
 }

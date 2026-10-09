@@ -7,6 +7,14 @@
 //! While Coder replies it sends a "working" heartbeat so the website shows
 //! the chat as Working.
 //!
+//! While sync is on, Coder also checks in every [`CHECK_IN_EVERY`]
+//! ([`Job::Listen`]), so the website offers a reply box on this computer's
+//! chats (#11048). A reply typed there waits on the website until Coder
+//! takes it ([`Job::Take`]) and answers it here, with this computer's tools.
+//! The same take brings the messages added to the chat on the website
+//! while this computer was offline (a run on a Cloud computer, #11050), so
+//! Coder adds them to its own copy, in order, before answering (#11052).
+//!
 //! What goes up is the chat's title, the computer's name, and its
 //! messages: what the person wrote, what the model answered, and one line
 //! per tool call (its name and what it acted on, not its output). Every
@@ -45,6 +53,10 @@ pub const MAX_BODY: usize = 7 * 1024 * 1024;
 pub const HEARTBEAT: Duration = Duration::from_secs(30);
 /// How often Coder asks which chats were deleted on the website.
 pub const CHECK_EVERY: Duration = Duration::from_secs(300);
+/// How often Coder, with sync on, tells the website this computer is
+/// online and asks for replies sent there (#11048). The website offers a
+/// reply box on this computer's chats while these keep coming.
+pub const CHECK_IN_EVERY: Duration = Duration::from_secs(10);
 
 /// The person's choice and what has been sent.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -404,6 +416,118 @@ pub async fn deleted_on_site(http: &reqwest::Client, saved: &Saved) -> Result<Ve
     }
 }
 
+/// A reply typed on the website for one of this computer's chats.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reply {
+    pub id: String,
+    pub text: String,
+}
+
+/// Say this computer is online; the answer is its chats with replies
+/// from the website waiting.
+pub async fn check_in(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+) -> Result<Vec<String>, Answer> {
+    let body = json!({"computer": line(computer, 64)});
+    match call(
+        http,
+        saved,
+        reqwest::Method::POST,
+        "/coder/check-in",
+        Some(&body),
+    )
+    .await
+    {
+        (Answer::Done, body) => Ok(body["waiting"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|session| session_path(session).is_some())
+            .map(str::to_owned)
+            .collect()),
+        (answer, _) => Err(answer),
+    }
+}
+
+/// A message added to one of this computer's chats on the website while
+/// it was offline: the person's words, or the answer of a run on a Cloud
+/// computer (#11050).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Added {
+    /// The person wrote it (else the assistant answered it).
+    pub user: bool,
+    pub text: String,
+}
+
+/// What one take brought from the website.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Taken {
+    /// Replies typed on the website, for Coder to answer here.
+    pub replies: Vec<Reply>,
+    /// Messages added there while this computer was offline, oldest first,
+    /// for Coder to add to its own copy before answering `replies`
+    /// (#11052).
+    pub added: Vec<Added>,
+}
+
+/// Take what waits in one chat. The website shows replies in the chat at
+/// once and hands nothing out twice.
+pub async fn take(http: &reqwest::Client, saved: &Saved, session: &str) -> Result<Taken, Answer> {
+    let Some(path) = session_path(session) else {
+        return Err(Answer::Refused("That isn't a Coder session id.".into()));
+    };
+    match call(
+        http,
+        saved,
+        reqwest::Method::POST,
+        &format!("{path}/replies"),
+        None,
+    )
+    .await
+    {
+        (Answer::Done, body) => Ok(taken(&body)),
+        (answer, _) => Err(answer),
+    }
+}
+
+/// The replies and added messages in a take's answer. A website without
+/// added messages sends none.
+fn taken(body: &Value) -> Taken {
+    let replies = body["replies"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|reply| {
+            let text = reply["text"].as_str()?.trim();
+            (!text.is_empty()).then(|| Reply {
+                id: reply["id"].as_str().unwrap_or_default().to_owned(),
+                text: text.to_owned(),
+            })
+        })
+        .collect();
+    let added = body["continued"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|message| {
+            let user = match message["role"].as_str()? {
+                "user" => true,
+                "assistant" => false,
+                _ => return None,
+            };
+            let text = message["text"].as_str()?.trim();
+            (!text.is_empty()).then(|| Added {
+                user,
+                text: text.to_owned(),
+            })
+        })
+        .collect();
+    Taken { replies, added }
+}
+
 /// Delete one chat from the website now, waiting at most a few seconds
 /// (`coder sessions delete`). False when it has to wait for later.
 #[must_use]
@@ -428,9 +552,26 @@ pub fn delete_now(saved: &Saved, session: &str) -> bool {
 /// Work for the background sender.
 #[derive(Debug)]
 pub enum Job {
-    Upload { session: String, upload: Upload },
-    Status { session: String, working: bool },
-    Delete { session: String },
+    Upload {
+        session: String,
+        upload: Upload,
+    },
+    Status {
+        session: String,
+        working: bool,
+    },
+    Delete {
+        session: String,
+    },
+    /// Check in as this computer every [`CHECK_IN_EVERY`] and report
+    /// chats with replies waiting ([`Event::Waiting`]); `None` stops.
+    Listen {
+        computer: Option<String>,
+    },
+    /// Take the replies waiting in this chat ([`Event::Replies`]).
+    Take {
+        session: String,
+    },
 }
 
 /// What the background sender reports.
@@ -448,6 +589,16 @@ pub enum Event {
     SignedOut,
     /// The website refused this chat for good.
     Refused { session: String, message: String },
+    /// These chats have replies from the website waiting.
+    Waiting { sessions: Vec<String> },
+    /// The answer to a [`Job::Take`]: the replies taken from the website
+    /// for this chat, oldest first, and the messages added there while
+    /// this computer was offline (none when there was nothing to take).
+    Replies {
+        session: String,
+        replies: Vec<Reply>,
+        added: Vec<Added>,
+    },
 }
 
 /// The background sender: one thread, its own runtime, quiet retries.
@@ -489,6 +640,9 @@ struct Queue {
     uploads: BTreeMap<String, Upload>,
     statuses: BTreeMap<String, bool>,
     deletes: BTreeSet<String>,
+    takes: BTreeSet<String>,
+    /// The computer to check in as, when listening for replies.
+    computer: Option<String>,
 }
 
 impl Queue {
@@ -504,13 +658,21 @@ impl Queue {
             Job::Delete { session } => {
                 self.uploads.remove(&session);
                 self.statuses.remove(&session);
+                self.takes.remove(&session);
                 self.deletes.insert(session);
+            }
+            Job::Listen { computer } => self.computer = computer,
+            Job::Take { session } => {
+                self.takes.insert(session);
             }
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.uploads.is_empty() && self.statuses.is_empty() && self.deletes.is_empty()
+        self.uploads.is_empty()
+            && self.statuses.is_empty()
+            && self.deletes.is_empty()
+            && self.takes.is_empty()
     }
 }
 
@@ -525,15 +687,21 @@ fn run(saved: &Saved, inbox: &mpsc::Receiver<Job>, outbox: &mpsc::Sender<Event>)
     };
     let mut queue = Queue::default();
     let mut check_at = Instant::now();
+    let mut listen_at = Instant::now();
     let mut retry_at: Option<Instant> = None;
     let mut backoff = Duration::ZERO;
     loop {
         let now = Instant::now();
         let ready = retry_at.is_none_or(|at| at <= now);
+        let timer = if queue.computer.is_some() {
+            check_at.min(listen_at)
+        } else {
+            check_at
+        };
         let due = if ready && !queue.is_empty() {
             now
         } else {
-            retry_at.map_or(check_at, |at| at.min(check_at))
+            retry_at.map_or(timer, |at| at.min(timer))
         };
         match inbox.recv_timeout(due.saturating_duration_since(now)) {
             Ok(job) => {
@@ -548,7 +716,13 @@ fn run(saved: &Saved, inbox: &mpsc::Receiver<Job>, outbox: &mpsc::Sender<Event>)
         if retry_at.is_some_and(|at| at > Instant::now()) {
             continue;
         }
-        let outcome = runtime.block_on(round(&http, saved, &mut queue, &mut check_at, outbox));
+        let outcome = runtime.block_on(round(
+            &http,
+            saved,
+            &mut queue,
+            (&mut check_at, &mut listen_at),
+            outbox,
+        ));
         match outcome {
             Round::SignedOut => {
                 let _ = outbox.send(Event::SignedOut);
@@ -577,10 +751,54 @@ async fn round(
     http: &reqwest::Client,
     saved: &Saved,
     queue: &mut Queue,
-    check_at: &mut Instant,
+    (check_at, listen_at): (&mut Instant, &mut Instant),
     outbox: &mpsc::Sender<Event>,
 ) -> Round {
     let mut failed = false;
+    // Listening for replies typed on the website (#11048).
+    if let Some(computer) = queue.computer.clone()
+        && Instant::now() >= *listen_at
+    {
+        *listen_at = Instant::now() + CHECK_IN_EVERY;
+        match check_in(http, saved, &computer).await {
+            Ok(sessions) => {
+                if !sessions.is_empty() {
+                    let _ = outbox.send(Event::Waiting { sessions });
+                }
+            }
+            Err(Answer::SignedOut) => return Round::SignedOut,
+            // Missed check-ins only make the website say this computer
+            // is offline until the next one.
+            Err(_) => {}
+        }
+    }
+    for session in std::mem::take(&mut queue.takes) {
+        match take(http, saved, &session).await {
+            Ok(Taken { replies, added }) => {
+                let _ = outbox.send(Event::Replies {
+                    session,
+                    replies,
+                    added,
+                });
+            }
+            Err(Answer::SignedOut) => return Round::SignedOut,
+            Err(Answer::Deleted) => {
+                let _ = outbox.send(Event::Gone { session });
+            }
+            Err(Answer::Retry) => {
+                failed = true;
+                queue.takes.insert(session);
+            }
+            // Nothing to take after all.
+            Err(_) => {
+                let _ = outbox.send(Event::Replies {
+                    session,
+                    replies: Vec::new(),
+                    added: Vec::new(),
+                });
+            }
+        }
+    }
     for (session, working) in std::mem::take(&mut queue.statuses) {
         match status(http, saved, &session, working).await {
             Answer::SignedOut => return Round::SignedOut,

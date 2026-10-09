@@ -250,8 +250,13 @@ Streaming replies checkpoint every five seconds and save again when they end;
 typing and scrolling do not write session files. Demo conversations are not saved.
 
 Signed in (`coder login`), `/sync on` also saves chats to your openagents.com
-account, where they show in the web sidebar, read-only, marked Terminal with
-this computer's name (`crates/coder-sync`). It is off by default. `/sync all`
+account, where they show in the web sidebar, marked Terminal with this
+computer's name (`crates/coder-sync`). While Coder is open here with sync on,
+you can reply to these chats on openagents.com: Coder takes the reply when it
+is free (the chat is open, or nothing is being typed), opens that chat, shows
+the reply as your message, and answers it with this computer's tools; the
+answer shows on the web as usual. When Coder isn't open, the web page says so
+and offers no reply box. It is off by default. `/sync all`
 adds your earlier chats, `/sync off` stops, and `/sync delete` removes this
 computer's chats from the account. Messages that look like they hold a
 password or key are left out. Deleting a chat in one place deletes it in the

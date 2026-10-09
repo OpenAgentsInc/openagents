@@ -8,7 +8,7 @@ use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::overlays::MenuItem;
 use crate::shell::{
-    AccountMenu, AppShell, Breadcrumb, ChatGroup, ChatList, ChatSearch, ChatStatus, Composer,
+    AccountMenu, AppShell, Breadcrumb, ChatGroup, ChatList, ChatSearch, ChatStatus, Composer, TaskRow, TaskStatus,
     ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode,
     Message, ModelPickerTrigger, NavItem, RowAction, RowMenu, RowRename, ScrollToBottom, Sidebar,
     SidebarSection, SuggestionChip, SuggestionChips, Theme, ThemeToggle,
@@ -90,6 +90,11 @@ pub(super) fn composer(pane: Pane) -> Markup {
                 (ComposerAction::new(Icon::Mic, "Dictate"))
             }))
             (ComposerPanel::new("Repository").body(html! { p { "Choose a repository for this task." } }))
+        })))
+        (specimen("TaskRow", "Runs inside a chat", stack(html! {
+            (TaskRow::new("Claude Code in acme/app", TaskStatus::Working).detail("Environment v3").href("/ui"))
+            (TaskRow::new("Fix the flaky login test", TaskStatus::Done).href("/ui"))
+            (TaskRow::new("Upgrade the database driver", TaskStatus::Failed))
         })))
         (specimen("Message", "Thread messages", stack(html! {
             (Message::user("Add a light theme to the web app"))

@@ -16,6 +16,11 @@
 //! unless the pack is the pinned one. Every piece must keep to its
 //! committed box. The upload to the private bucket is the owner's
 //! (`gcloud storage cp PACK gs://openagentsgemini-verse-private-assets/packs/`).
+//!
+//! `--phone [--check]` derives the phone tier's pack from the pinned full
+//! pack in the private `packs/` directory instead (images at most
+//! `compile::kit::PHONE_EDGE` pixels, #10908) and prints the two
+//! `KIT_PHONE_` pin lines (`artifacts/everglade-kit-phone.json`).
 
 use std::path::{Path, PathBuf};
 
@@ -40,15 +45,63 @@ fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Derives the phone tier's pack from the pinned full pack.
+fn phone(check: bool) -> Result<(), String> {
+    let packs = home().join(".openagents/verse/private/medieval-town/packs");
+    let full = std::fs::read(packs.join(format!("{}.vtp", kit::KIT_SHA256)))
+        .map_err(|e| format!("the pinned kit pack is not in {}: {e}", packs.display()))?;
+    kit::pinned().verify(&full)?;
+    let compiled = compiled::phone(&full)?;
+    if check {
+        if compiled.sha256 != kit::KIT_PHONE_SHA256
+            || compiled.bytes.len() as u64 != kit::KIT_PHONE_BYTES
+        {
+            return Err(format!(
+                "the phone pack derives to {} ({} bytes), not the pinned {} ({} bytes)",
+                compiled.sha256,
+                compiled.bytes.len(),
+                kit::KIT_PHONE_SHA256,
+                kit::KIT_PHONE_BYTES
+            ));
+        }
+        println!("the pinned kit derives to the pinned phone pack");
+        return Ok(());
+    }
+    let name = format!("{}.vtp", compiled.sha256);
+    private_write(&packs.join(&name), &compiled.bytes)?;
+    let verse = std::env::var_os("VERSE_HOME")
+        .map_or_else(|| home().join(".openagents/verse"), PathBuf::from);
+    private_write(&verse.join("zones-cache").join(&name), &compiled.bytes)?;
+    eprintln!(
+        "phone kit pack: {} models, {} decoded texture bytes, {} bytes, {}",
+        compiled.models,
+        compiled.decoded_texture_bytes,
+        compiled.bytes.len(),
+        packs.join(&name).display()
+    );
+    println!(
+        "pub const KIT_PHONE_SHA256: &str = \"{}\";",
+        compiled.sha256
+    );
+    println!("pub const KIT_PHONE_BYTES: u64 = {};", compiled.bytes.len());
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     let mut check = false;
+    let mut phone_tier = false;
     let mut build = home().join(".openagents/verse/private/medieval-town/kit-build");
     for arg in std::env::args().skip(1) {
         if arg == "--check" {
             check = true;
+        } else if arg == "--phone" {
+            phone_tier = true;
         } else {
             build = PathBuf::from(arg);
         }
+    }
+    if phone_tier {
+        return phone(check);
     }
     let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "everglade-kit-phone",
+  "description": "The phone tier's licensed medieval kit pack (#10908): the pinned kit pack with every image halved to at most 256 pixels, derived by everglade_kit --phone from the pinned pack in the private packs directory, outside the repository. Only its digest and length are pinned, in everglade_pack/kit.rs; it regenerates only on a machine with the pinned kit pack.",
+  "regenerate": "cargo run --release -p verse-zone-everglade --example everglade_kit -- --phone",
+  "check": "cargo run --release -p verse-zone-everglade --example everglade_kit -- --phone --check",
+  "build_lease": true,
+  "pinned": [],
+  "pin": {
+    "file": "crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs",
+    "lines": [
+      "pub const KIT_PHONE_SHA256: &str = ",
+      "pub const KIT_PHONE_BYTES: u64 = "
+    ]
+  },
+  "message": "Repin the Everglade phone kit pack with {changes}"
+}

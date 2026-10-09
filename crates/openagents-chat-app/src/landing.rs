@@ -46,11 +46,12 @@ pub enum Tone {
 impl Tone {
     /// The badge's text color.
     #[must_use]
-    pub const fn color(self) -> Color {
+    pub fn color(self) -> Color {
+        let inks = crate::visual::inks();
         match self {
-            Tone::Done => Color::rgb(87, 196, 128),
-            Tone::Open => Color::rgb(232, 176, 72),
-            Tone::Attention => Color::rgb(232, 98, 92),
+            Tone::Done => inks.done,
+            Tone::Open => inks.open,
+            Tone::Attention => inks.attention,
         }
     }
 }

@@ -1,6 +1,6 @@
 ---
 id: openagents.ttc-unit-of-account
-version: 1
+version: 2
 kind: product
 title: "Capability claims as the unit of account"
 summary: >-
@@ -15,7 +15,7 @@ answer: >-
   A capability claim is the unit of account, produced by a per-component with-
   and-without evaluation. Two arms, not one score: a with-and-without result
   says what one component changed. A written, versioned rule gives the
-  verdict, and every result carries the digest of the rule that judged it.
+  verdict, and every result names the exact version of the rule that judged it.
   Others can rerun it from the published test set, result, and exact component
   versions. Benchmarks ask how capable an agent is; a claim says what caused
   it to become more capable.
@@ -27,11 +27,12 @@ provenance:
     - docs/essays/2026-09-29-test-time-capabilities.md
 evidence:
   - "2026-10-01: written from the essay Test-Time Capabilities and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-A capability claim is the unit of account, produced by a per-component with-and-without evaluation. Two arms, not one score: a with-and-without result says what one component changed. A written, versioned rule gives the verdict, and every result carries the digest of the rule that judged it. Others can rerun it from the published test set, result, and exact component versions. Benchmarks ask how capable an agent is; a claim says what caused it to become more capable.
+A capability claim is the unit of account, produced by a per-component with-and-without evaluation. Two arms, not one score: a with-and-without result says what one component changed. A written, versioned rule gives the verdict, and every result names the exact version of the rule that judged it. Others can rerun it from the published test set, result, and exact component versions. Benchmarks ask how capable an agent is; a claim says what caused it to become more capable.
 
 ## Details
 

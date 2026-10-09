@@ -53,6 +53,7 @@ pub mod lifetimes;
 pub mod modal;
 pub mod navigation;
 pub mod oracle;
+mod parallel;
 pub mod plume;
 pub mod queries;
 pub mod rope;

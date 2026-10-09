@@ -294,6 +294,10 @@ name = "kit_light_acceptance"
 required-features = ["capture"]
 
 [[example]]
+name = "everglade_bake_timelapse"
+required-features = ["capture"]
+
+[[example]]
 name = "crypt_lab"
 required-features = ["capture"]
 

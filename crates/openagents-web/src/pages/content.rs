@@ -27,7 +27,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 30] = [
+pub(crate) const DOCS: [(&str, &str); 31] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -99,6 +99,7 @@ pub(crate) const DOCS: [(&str, &str); 30] = [
     ("wallet", include_str!("../../content/docs/wallet.md")),
     ("decks", include_str!("../../content/docs/decks.md")),
     ("settings", include_str!("../../content/docs/settings.md")),
+    ("pricing", include_str!("../../content/docs/pricing.md")),
     (
         "troubleshooting",
         include_str!("../../content/docs/troubleshooting.md"),
@@ -148,7 +149,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
     ),
     (
         "Reference",
-        "Settings and fixes for common problems.",
+        "Settings, pricing, and fixes for common problems.",
         "settings",
     ),
     (
@@ -294,8 +295,12 @@ mod tests {
         assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-10-09"));
         assert!(TERMS.contains("train, fine-tune, and evaluate the models and tools we run"));
         assert!(PRIVACY.contains("To train, fine-tune, and evaluate models we run or develop"));
-        assert!(PRIVACY.contains("On a paid plan, you may ask us not to use the content you submit"));
-        assert!(TERMS.contains("On a paid plan, you may ask us to stop using your content this way"));
+        assert!(
+            PRIVACY.contains("On a paid plan, you may ask us not to use the content you submit")
+        );
+        assert!(
+            TERMS.contains("On a paid plan, you may ask us to stop using your content this way")
+        );
         for document in [TERMS, PRIVACY] {
             assert!(document.contains("do not sell your"));
             assert!(document.contains("1101 W 34th St. #581, Austin, TX 78705"));

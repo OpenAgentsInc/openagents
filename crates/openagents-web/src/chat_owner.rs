@@ -241,6 +241,9 @@ mod tests {
             id: id.into(),
             owner: owner.into(),
             project: None,
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
             revision: 1,
             title: "A chat".into(),
             messages: vec![Message {

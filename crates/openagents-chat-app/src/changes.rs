@@ -130,6 +130,14 @@ impl Document {
         (self.lines.len() as f32 * line - viewport.max(0.0)).max(0.0)
     }
 
+    /// Drops every line's syntax spans, so the next [`Document::ensure_spans`]
+    /// colors them again, as after a change of scheme.
+    pub fn clear_spans(&mut self) {
+        for line in &mut self.lines {
+            line.spans = None;
+        }
+    }
+
     /// Fill syntax spans for the visible lines. Headers stay plain.
     pub fn ensure_spans(&mut self, first: usize, count: usize, highlighter: &Highlighter) {
         let end = first.saturating_add(count).min(self.lines.len());

@@ -44,6 +44,7 @@ unicode-width = "0.2"
 background = { path = "../background" }
 
 [dev-dependencies]
+oa-copy = { path = "../oa-copy" }
 sha2 = "0.10"
 tempfile = "3"
 

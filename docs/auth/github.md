@@ -133,10 +133,121 @@ Account-service routes (session bearer), served by the gateway and by
 | `GET /v1/account/github` | `{github: {state: none\|connected\|reconnect, login, private}, projects}` |
 | `POST /v1/account/github/grant` `{code, code_verifier}` | the status |
 | `DELETE /v1/account/github/grant` | the status; the token is forgotten |
-| `GET /v1/account/github/repositories` | up to 300, most recently pushed first |
+| `GET /v1/account/github/repositories?page=N` | `{repositories, more, sso_hidden}`: one GitHub page of 30, most recently pushed first (pages 1–20); `more` when GitHub's `Link` names a next page; disabled repositories left out, archived ones marked `archived`; `sso_hidden` when GitHub's `X-GitHub-SSO: partial-results` says an organization hid some; cached per account (below) |
 | `POST /v1/account/github/token` | `{token, private}` for this deployment's web server to read GitHub as the person (`/environments`); never stored there |
 | `POST /v1/account/projects` `{repository}` | `{project}`: id, name, repository id and full name, default branch, private, created time; one per repository |
 | `DELETE /v1/account/projects/{id}` | `{removed}` |
+
+Repository pages are cached per account and grant (`oa_auth::cache`,
+#11057): fresh for 5 minutes, kept for an hour and served at once while one
+background read refreshes them; a failed refresh keeps the kept page.
+Connecting, disconnecting, adding or removing a project, and a GitHub 401
+drop the account's pages. While `x-ratelimit-remaining` is under 100, kept
+pages are served without reading GitHub again.
+
+The chat composer's repository and branch pickers read GitHub as the
+signed-in person when they connected GitHub (the token comes from
+`POST /v1/account/github/token` for that request and is not kept), and
+without a token otherwise. Reads without a token share GitHub's 60 an hour
+for the whole server; past it the composer says "GitHub is limiting requests
+without a sign-in. Connect GitHub, or try again later." Branch lists are
+cached the same way, per token digest (or shared when read without one).
+
+Every GitHub read (`oa_auth::github`, the composer, the environments studio)
+sends `Accept: application/vnd.github+json` and `X-GitHub-Api-Version:
+2022-11-28` (`oa_auth::github::API_VERSION`; the fake refuses any other with
+400). `oa_auth::github` takes
+bodies up to 8 MB (a page of 100 whole repositories is about 600 KB), waits
+at most 15 seconds, and tries a dropped connection or a 502/503/504 once more
+after half a second. Errors say what GitHub said, with these codes:
+
+| Code | Status | When |
+| --- | --- | --- |
+| `github_reconnect` | 409 | GitHub answered 401 to the stored token (it is marked revoked) |
+| `github_rate_limited` | 429 | 429, or 403 with `x-ratelimit-remaining: 0`, a `Retry-After`, or a rate-limit message (secondary limits) |
+| `github_sso_required` | 403 | 403 with `X-GitHub-SSO: required` |
+| `github_forbidden` | 403 | any other 403 or 451 (an organization's OAuth App access restrictions), or a disabled repository |
+| `repository_not_found` | 404 | 404 |
+| `github_error` | 502 | GitHub's own 5xx |
+| `github_bad_answer` | 502 | a 2xx that isn't JSON (an HTML outage page), the wrong shape, or a body over 8 MB |
+| `github_unavailable` | 503 | no connection or no answer in time: the only "isn't answering" |
+| `github_not_configured` | 503 | this server has no GitHub App file or token key |
+| `github_access_storage` | 500 | the sealed token or its file couldn't be read or written |
+
+## GitHub App
+
+Repository access can go through a GitHub App instead of the OAuth App's
+`repo` scope (#11056). The OAuth App stays for sign-in, and people with an
+OAuth grant keep working until they install the App. Code:
+`oa_auth::app` (key, JWT, token cache), `oa_auth::repos::installed`,
+`oa_auth::repos::broker`, `crates/openagents-web/src/projects`.
+
+**Configuration.** One App per deployment (owner steps in the workspace
+`NEEDS_OWNER.md`). Its private file is `{"app_id", "slug", "client_id",
+"client_secret", "token_encryption_key", "private_key"}`, where
+`private_key` names the `.pem` GitHub generated (relative to the file);
+both mode 0600, kept at `~/work/.secrets/github-app-{local,staging,
+production}.json` and `.pem`.
+
+- Web server: `--github-app PRIVATE_JSON` (reads the client id and slug).
+  With it, `/projects` offers **Install on repositories**.
+- Account service: `accounts.github_app: {"credentials": PATH,
+  "redirect_url": URL}` beside `accounts.github`.
+
+**Flow.**
+
+1. **Install on repositories** (`/auth/github/install`) authorizes the
+   App's own client (PKCE, flow tag `.install`, same callback), then
+   `/auth/github/repos/finish` hands the code to `POST
+   /v1/account/github/app/grant`. The account service keeps the App's
+   user token and refresh token sealed (AES-256-GCM, bound to the account,
+   the GitHub user, and which token), refuses another GitHub user (`409
+   github_other_account`), and reads `/user/installations`.
+2. With no installation yet, the browser goes on to GitHub's
+   `https://github.com/apps/<slug>/installations/new`. GitHub's setup URL
+   (`/auth/github/setup`) calls `POST /v1/account/github/app/refresh`.
+   The `installation_id` GitHub adds is never trusted: installations are
+   always read with the person's own user token.
+3. Listing reads `/user/installations/{id}/repositories` per installation
+   (only repositories the person can open; `Link` paging). Adding a
+   project checks `/repos/{owner}/{name}` with the user token and records
+   the installation on the project. The user token is renewed with its
+   refresh token when it has under a minute left, or once on a 401; a
+   refused refresh reads `reconnect`.
+
+**Installation tokens.** The account service signs a JWT with the App's
+key (RS256 by `ring`; `iat` 60 seconds back, `exp` 10 minutes on, `iss`
+the App id) and asks `POST /app/installations/{id}/access_tokens` for one
+repository (`repository_ids`) with contents write, metadata read, and pull
+requests write. Tokens live only in memory (`TokenCache`): reused while
+under 50 minutes old with at least 5 minutes left, minted once for
+concurrent callers, and minted again once when GitHub answers 401. GitHub's
+refusals: `404 github_app_not_installed` (installation removed, or the
+repository isn't in it) and `403 github_app_suspended`.
+
+**Credential broker.** A machine that fetches or pushes a project's
+repository gets a ticket, not a token:
+
+| Route | Answer |
+| --- | --- |
+| `POST /v1/account/github/broker` (session) `{repository, seconds}` | `{ticket, expires_unix, path}`; `ogb_` tickets last 2 hours by default (5 minutes to a day), kept only as a SHA-256 digest; disconnecting drops them |
+| `POST /v1/github/git-credential` (no session) form `ticket, protocol, host, path` | Git's credential lines `username`, `password`, `password_expiry_utc` for `https://github.com/<owner>/<name>` of the ticket's project only; anything else gets an error and no token |
+
+The machine's credential (`OPENAGENTS_GIT_BROKER`, value `<broker URL>
+<ticket>`, `oa_auth::repos::broker::credential_value`) feeds
+`coder_environment_setup::git_auth_env`, whose helper answers only
+`https://github.com` with a path, posts the ticket on standard input with
+`curl`, and has no older token to fall back to.
+
+Tests: `cargo test -p oa-auth --test app` (install and listing, another
+GitHub account, the broker's host and repository checks, reuse until 50
+minutes, a token with under 5 minutes left, twelve concurrent fetches and
+one mint, the 401 retry, a suspended installation, an uninstalled
+repository, user-token renewal and a refused refresh, a JWT for another
+App), `cargo test -p coder-environment-setup --test git_auth` (real Git
+and curl against a broker), and `openagents-web`'s
+`projects::tests::app`. The fake (`oa_auth::fake::FakeApp`) checks JWTs
+against the App's public key and makes its test key with `openssl`.
 
 ## Local testing
 
@@ -164,7 +275,15 @@ Tests: `cargo test -p oa-auth` (flow, config, and end to end against the
 fake: sign-up, returning user, rename, email-less user, wrong verifier,
 reused code, cancel, linking conflict; repository access: public and
 private grants, projects, revocation, another GitHub account, the token
-only encrypted on disk), `cargo test -p tenancy identities`, and
+only encrypted on disk; a 250-repository account paged by real-sized
+pages and `Link` headers; rate limits, secondary limits, 429, 5xx, an HTML
+page, single sign-on, organization restrictions, a retried 502). The fake (`oa_auth::fake`) answers with GitHub's
+whole repository objects (`fake::repository`, about 6 KB each), pages
+`/user/repos` with `per_page`/`page` and `Link`, sends rate-limit headers,
+and fails on request with `Fake::fail` / `Fake::fail_later` and
+`fake::Fault`; `fake::busy(n)` is a person with `n` repositories across
+two organizations, some private, archived, or disabled. Also
+`cargo test -p tenancy identities`, and
 `openagents-web`'s `auth::tests` (header buttons, `/login`, the full
 browser trip, state mismatch, cancel, open-redirect attempts) and
 `projects::tests` (Connect GitHub through the site, adding a project, the

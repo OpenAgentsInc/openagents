@@ -67,8 +67,6 @@ pub struct World {
     colliders: Vec<Collider>,
     #[serde(skip)]
     pub(crate) collision_index: crate::broadphase::Tree<usize>,
-    #[serde(skip)]
-    pub(crate) responding_index: crate::broadphase::Tree<usize>,
     #[cfg(test)]
     #[serde(skip)]
     pub(crate) exhaustive_detection: bool,
@@ -158,7 +156,6 @@ impl World {
             bodies: Vec::new(),
             colliders: Vec::new(),
             collision_index: Default::default(),
-            responding_index: Default::default(),
             #[cfg(test)]
             exhaustive_detection: false,
             joints: Vec::new(),

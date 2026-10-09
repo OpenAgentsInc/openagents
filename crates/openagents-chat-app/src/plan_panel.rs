@@ -226,7 +226,7 @@ impl Panel {
         let node = Node {
             key: key.into(),
             style: Style {
-                background: Some(PANEL),
+                background: Some(panel()),
                 padding_top: Some(Space::Sm),
                 padding_bottom: Some(Space::Sm),
                 padding_start: Some(Space::Md),
@@ -271,8 +271,15 @@ pub fn mark(status: Status) -> &'static str {
 }
 
 const HEADLINE_CHARS: usize = 80;
-const PANEL: Color = Color::rgb(26, 29, 34);
-const QUIET: Color = Color::rgb(153, 153, 153);
+/// The panel fill, from the theme seam ([`crate::visual::inks`]).
+fn panel() -> Color {
+    crate::visual::inks().card
+}
+
+/// Receded text, from the theme seam.
+fn quiet() -> Color {
+    crate::visual::inks().quiet
+}
 
 fn item_row(key: &str, index: usize, item: &Item) -> Node<()> {
     let style = match item.status {
@@ -281,7 +288,7 @@ fn item_row(key: &str, index: usize, item: &Item) -> Node<()> {
             ..Style::default()
         },
         Status::Completed => Style {
-            foreground: Some(QUIET),
+            foreground: Some(quiet()),
             ..Style::default()
         },
         Status::Pending => Style::default(),

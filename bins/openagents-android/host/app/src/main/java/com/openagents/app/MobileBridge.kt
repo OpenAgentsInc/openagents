@@ -220,6 +220,21 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** A Wallet request whose fields Rust checks. */
     fun wallet(op: String, vararg fields: Pair<String, Any?>) = send(json("op" to op, *fields))
 
+    // The theme (#11028)
+
+    /** The appearance last reported, so an unchanged one is not sent again. */
+    private var reportedNight: Boolean? = null
+
+    /** The phone's appearance (the night bits of uiMode), which the System theme follows. */
+    fun systemAppearance(night: Boolean) {
+        if (night == reportedNight) return
+        reportedNight = night
+        send(json("op" to "system_appearance", "dark" to night))
+    }
+
+    /** Account > Appearance: `system`, `light`, or `dark`. Rust saves it. */
+    fun theme(choice: String) = send(json("op" to "theme", "theme" to choice))
+
     /**
      * The recovery words, for a dialog the person asked to see after a
      * warning. They arrive in Rust's direct reply, never in the app packet;

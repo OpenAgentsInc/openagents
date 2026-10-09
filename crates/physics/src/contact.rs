@@ -107,6 +107,7 @@ impl Motion {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Row {
     a: usize,
     b: usize,
@@ -319,6 +320,292 @@ fn effective_mass(ma: &Motion, mb: &Motion, ra: DVec3, rb: DVec3, d: DVec3) -> f
     if k > 0.0 { 1.0 / k } else { 0.0 }
 }
 
+/// Contact row `row`'s Gauss-Seidel update: friction bounded by the
+/// current normal impulse, the twist, then the normal impulse.
+fn solve_row(row: &mut Row, motions: &mut [Motion]) {
+    let (a, b) = (row.a, row.b);
+    // Friction first, bounded by the current normal impulse.
+    let relative = motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
+    let limit = row.friction * row.normal_impulse;
+    let old = row.tangent_impulse;
+    let mut next = [
+        old[0] - relative.dot(row.tangents[0]) * row.tangent_mass[0],
+        old[1] - relative.dot(row.tangents[1]) * row.tangent_mass[1],
+    ];
+    let size = next[0].hypot(next[1]);
+    if size > limit {
+        let scale = if size > 0.0 { limit / size } else { 0.0 };
+        next = [next[0] * scale, next[1] * scale];
+    }
+    row.tangent_impulse = next;
+    let delta = row.tangents[0] * (next[0] - old[0]) + row.tangents[1] * (next[1] - old[1]);
+    motions[a].push(-delta, row.ra);
+    motions[b].push(delta, row.rb);
+    if row.torsional > 0.0 {
+        let spin = (motions[b].omega - motions[a].omega).dot(row.normal);
+        let limit = row.torsional * row.normal_impulse;
+        let old = row.twist_impulse;
+        let next = (old - spin * row.twist_mass).clamp(-limit, limit);
+        row.twist_impulse = next;
+        let delta = row.normal * (next - old);
+        motions[a].twist(-delta);
+        motions[b].twist(delta);
+    }
+    let relative = motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
+    let old = row.normal_impulse;
+    let next = (old + (row.target - relative.dot(row.normal)) * row.normal_mass).max(0.0);
+    row.normal_impulse = next;
+    let delta = row.normal * (next - old);
+    motions[a].push(-delta, row.ra);
+    motions[b].push(delta, row.rb);
+}
+
+/// Every constraint once, `iterations` times: the joint blocks, the
+/// tethers, then the contact rows, each in order.
+fn sweep(
+    iterations: u32,
+    motions: &mut [Motion],
+    rows: &mut [Row],
+    tethers: &mut [(usize, JointRow)],
+    blocks: &mut [BlockJoint],
+) {
+    for _ in 0..iterations {
+        for block in blocks.iter_mut() {
+            block.solve(motions);
+        }
+        for (_, row) in tethers.iter_mut() {
+            row.solve(motions);
+        }
+        for row in rows.iter_mut() {
+            solve_row(row, motions);
+        }
+    }
+}
+
+mod regions;
+
+/// Contact rows that make a solve worth splitting over threads.
+const SPLIT_ROWS: usize = 256;
+
+/// A union-find root.
+fn root(parent: &mut [usize], mut i: usize) -> usize {
+    while parent[i] != i {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+    }
+    i
+}
+
+/// One thread's share of a split solve: constraints with their places.
+struct Part {
+    rows: Vec<(usize, Row)>,
+    tethers: Vec<(usize, (usize, JointRow))>,
+    blocks: Vec<(usize, BlockJoint)>,
+}
+
+/// The solve's passes over every constraint. An island too large to share
+/// out ([`regions`]) solves by regions; the rest by islands
+/// ([`by_islands`]). The islands share no body that moves, so solving
+/// them apart changes nothing.
+fn iterate(
+    iterations: u32,
+    motions: &mut [Motion],
+    rows: &mut Vec<Row>,
+    tethers: &mut Vec<(usize, JointRow)>,
+    blocks: &mut Vec<BlockJoint>,
+    positions: &[DVec3],
+) {
+    if rows.len() < regions::REGION_ROWS {
+        by_islands(iterations, motions, rows, tethers, blocks);
+        return;
+    }
+    let moves: Vec<bool> = motions.iter().map(|m| m.inverse_mass > 0.0).collect();
+    let mut parent: Vec<usize> = (0..motions.len()).collect();
+    let pairs = rows
+        .iter()
+        .map(|r| (r.a, r.b))
+        .chain(tethers.iter().map(|(_, r)| (r.a, r.b)))
+        .chain(blocks.iter().map(|b| (b.a, b.b)));
+    for (a, b) in pairs {
+        if moves[a] && moves[b] {
+            let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+            if ra != rb {
+                parent[ra.max(rb)] = ra.min(rb);
+            }
+        }
+    }
+    let mut island = |a: usize, b: usize| root(&mut parent, if moves[a] { a } else { b });
+    let row_islands: Vec<usize> = rows.iter().map(|r| island(r.a, r.b)).collect();
+    // Islands with joints solve whole.
+    let ends: Vec<(usize, usize)> = tethers
+        .iter()
+        .map(|(_, r)| (r.a, r.b))
+        .chain(blocks.iter().map(|b| (b.a, b.b)))
+        .collect();
+    let jointed: std::collections::BTreeSet<usize> =
+        ends.into_iter().map(|(a, b)| island(a, b)).collect();
+    let mut counts: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for &i in &row_islands {
+        *counts.entry(i).or_default() += 1;
+    }
+    let large: std::collections::BTreeSet<usize> = counts
+        .into_iter()
+        .filter(|&(i, n)| n >= regions::REGION_ROWS && !jointed.contains(&i))
+        .map(|(i, _)| i)
+        .collect();
+    if large.is_empty() {
+        by_islands(iterations, motions, rows, tethers, blocks);
+        return;
+    }
+    let total = rows.len();
+    let mut rest: Vec<(usize, Row)> = Vec::new();
+    let mut apart: std::collections::BTreeMap<usize, Vec<(usize, Row)>> =
+        std::collections::BTreeMap::new();
+    for (k, row) in std::mem::take(rows).into_iter().enumerate() {
+        if large.contains(&row_islands[k]) {
+            apart.entry(row_islands[k]).or_default().push((k, row));
+        } else {
+            rest.push((k, row));
+        }
+    }
+    let (rest_places, mut rest_rows): (Vec<usize>, Vec<Row>) = rest.into_iter().unzip();
+    by_islands(iterations, motions, &mut rest_rows, tethers, blocks);
+    let mut all: Vec<Option<Row>> = vec![None; total];
+    for (k, row) in rest_places.into_iter().zip(rest_rows) {
+        all[k] = Some(row);
+    }
+    for (_, mut island_rows) in apart {
+        regions::solve(iterations, motions, &mut island_rows, positions);
+        for (k, row) in island_rows {
+            all[k] = Some(row);
+        }
+    }
+    *rows = all.into_iter().flatten().collect();
+}
+
+/// [`sweep`], with the constraints split over threads by island when there
+/// are enough of them (issue #10937). An island is the bodies that move and
+/// the constraints between them, joined through bodies that move; a fixed,
+/// kinematic, or sleeping body's motion never changes (its inverse mass and
+/// inertia are zero, so every impulse adds zero), so it joins nothing.
+/// Each thread sweeps whole islands, each island's constraints in their
+/// order, so every body sees the same updates in the same order as one
+/// sweep of everything: the result is the same bit for bit.
+fn by_islands(
+    iterations: u32,
+    motions: &mut [Motion],
+    rows: &mut Vec<Row>,
+    tethers: &mut Vec<(usize, JointRow)>,
+    blocks: &mut Vec<BlockJoint>,
+) {
+    let threads = crate::parallel::threads(rows.len(), SPLIT_ROWS);
+    if threads <= 1 {
+        sweep(iterations, motions, rows, tethers, blocks);
+        return;
+    }
+    let moves: Vec<bool> = motions.iter().map(|m| m.inverse_mass > 0.0).collect();
+    let mut parent: Vec<usize> = (0..motions.len()).collect();
+    let pairs = rows
+        .iter()
+        .map(|r| (r.a, r.b))
+        .chain(tethers.iter().map(|(_, r)| (r.a, r.b)))
+        .chain(blocks.iter().map(|b| (b.a, b.b)));
+    for (a, b) in pairs {
+        if moves[a] && moves[b] {
+            let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+            if ra != rb {
+                parent[ra.max(rb)] = ra.min(rb);
+            }
+        }
+    }
+    // A constraint's island: that of a body of it that moves.
+    let mut island = |a: usize, b: usize| root(&mut parent, if moves[a] { a } else { b });
+    let row_islands: Vec<usize> = rows.iter().map(|r| island(r.a, r.b)).collect();
+    let tether_islands: Vec<usize> = tethers.iter().map(|(_, r)| island(r.a, r.b)).collect();
+    let block_islands: Vec<usize> = blocks.iter().map(|b| island(b.a, b.b)).collect();
+    // Islands to threads, largest first, each to the least loaded.
+    let mut work: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for &i in row_islands.iter().chain(&tether_islands) {
+        *work.entry(i).or_default() += 1;
+    }
+    for &i in &block_islands {
+        *work.entry(i).or_default() += 6;
+    }
+    if work.len() < 2 {
+        sweep(iterations, motions, rows, tethers, blocks);
+        return;
+    }
+    let mut sizes: Vec<(usize, usize)> = work.into_iter().map(|(i, w)| (w, i)).collect();
+    sizes.sort_unstable_by(|a, b| b.cmp(a));
+    let mut load = vec![0usize; threads];
+    let mut thread_of: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::with_capacity(sizes.len());
+    for (w, i) in sizes {
+        let t = (0..threads).min_by_key(|&t| (load[t], t)).unwrap_or(0);
+        load[t] += w;
+        thread_of.insert(i, t);
+    }
+    let mut parts: Vec<Part> = (0..threads)
+        .map(|_| Part {
+            rows: Vec::new(),
+            tethers: Vec::new(),
+            blocks: Vec::new(),
+        })
+        .collect();
+    for (k, row) in std::mem::take(rows).into_iter().enumerate() {
+        parts[thread_of[&row_islands[k]]].rows.push((k, row));
+    }
+    for (k, tether) in std::mem::take(tethers).into_iter().enumerate() {
+        parts[thread_of[&tether_islands[k]]]
+            .tethers
+            .push((k, tether));
+    }
+    for (k, block) in std::mem::take(blocks).into_iter().enumerate() {
+        parts[thread_of[&block_islands[k]]].blocks.push((k, block));
+    }
+    let shared: &[Motion] = motions;
+    let done = crate::parallel::each(parts, |part: Part| {
+        let mut local = shared.to_vec();
+        let (places, mut r): (Vec<usize>, Vec<Row>) = part.rows.into_iter().unzip();
+        let (tether_places, mut t): (Vec<usize>, Vec<(usize, JointRow)>) =
+            part.tethers.into_iter().unzip();
+        let (block_places, mut b): (Vec<usize>, Vec<BlockJoint>) = part.blocks.into_iter().unzip();
+        sweep(iterations, &mut local, &mut r, &mut t, &mut b);
+        let part = Part {
+            rows: places.into_iter().zip(r).collect(),
+            tethers: tether_places.into_iter().zip(t).collect(),
+            blocks: block_places.into_iter().zip(b).collect(),
+        };
+        (part, local)
+    });
+    let mut all_rows: Vec<Option<Row>> = Vec::new();
+    all_rows.resize_with(row_islands.len(), || None);
+    let mut all_tethers: Vec<Option<(usize, JointRow)>> = Vec::new();
+    all_tethers.resize_with(tether_islands.len(), || None);
+    let mut all_blocks: Vec<Option<BlockJoint>> = Vec::new();
+    all_blocks.resize_with(block_islands.len(), || None);
+    for (t, (part, local)) in done.into_iter().enumerate() {
+        // The bodies that move in this thread's islands take its motion.
+        for (i, m) in local.into_iter().enumerate() {
+            if moves[i] && thread_of.get(&root(&mut parent, i)) == Some(&t) {
+                motions[i] = m;
+            }
+        }
+        for (k, row) in part.rows {
+            all_rows[k] = Some(row);
+        }
+        for (k, row) in part.tethers {
+            all_tethers[k] = Some(row);
+        }
+        for (k, block) in part.blocks {
+            all_blocks[k] = Some(block);
+        }
+    }
+    *rows = all_rows.into_iter().flatten().collect();
+    *tethers = all_tethers.into_iter().flatten().collect();
+    *blocks = all_blocks.into_iter().flatten().collect();
+}
+
 impl World {
     /// Resolve joints and `manifolds` by changing body velocities for a step
     /// of `dt`. Records each joint's impulses and returns what each contact
@@ -343,8 +630,20 @@ impl World {
                 }
             })
             .collect();
+        // Last step's contacts by collider pair, in their order, so a
+        // contact finds its warm start among its own pair's rather than
+        // scanning every contact (quadratic with thousands of contacts, as
+        // in a meteor swarm's rubble).
+        let mut warm_of: std::collections::HashMap<(u32, u32), Vec<usize>> =
+            std::collections::HashMap::with_capacity(self.warm.len());
+        for (k, w) in self.warm.iter().enumerate() {
+            warm_of.entry((w.a.0, w.b.0)).or_default().push(k);
+        }
         let mut rows = Vec::new();
         for manifold in manifolds {
+            let warm_pair = warm_of
+                .get(&(manifold.a.0, manifold.b.0))
+                .map_or(&[][..], Vec::as_slice);
             let (ca, cb) = (
                 self.colliders()[manifold.a.0 as usize],
                 self.colliders()[manifold.b.0 as usize],
@@ -383,10 +682,9 @@ impl World {
                 let twist_k = c.normal.dot(ma.inverse_inertia * c.normal)
                     + c.normal.dot(mb.inverse_inertia * c.normal);
                 // Warm start from last step's nearest point on this pair.
-                let warm = self
-                    .warm
+                let warm = warm_pair
                     .iter()
-                    .filter(|w| w.a == manifold.a && w.b == manifold.b)
+                    .map(|&k| &self.warm[k])
                     .map(|w| (w.point.distance_squared(c.point), w))
                     .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
                     .min_by(|x, y| x.0.total_cmp(&y.0))
@@ -439,55 +737,15 @@ impl World {
             motions[row.b].twist(twist);
         }
         let (mut tethers, mut blocks) = self.joint_groups(&motions, dt);
-        for _ in 0..settings.iterations {
-            for block in &mut blocks {
-                block.solve(&mut motions);
-            }
-            for (_, row) in &mut tethers {
-                row.solve(&mut motions);
-            }
-            for row in &mut rows {
-                let (a, b) = (row.a, row.b);
-                // Friction first, bounded by the current normal impulse.
-                let relative =
-                    motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
-                let limit = row.friction * row.normal_impulse;
-                let old = row.tangent_impulse;
-                let mut next = [
-                    old[0] - relative.dot(row.tangents[0]) * row.tangent_mass[0],
-                    old[1] - relative.dot(row.tangents[1]) * row.tangent_mass[1],
-                ];
-                let size = next[0].hypot(next[1]);
-                if size > limit {
-                    let scale = if size > 0.0 { limit / size } else { 0.0 };
-                    next = [next[0] * scale, next[1] * scale];
-                }
-                row.tangent_impulse = next;
-                let delta =
-                    row.tangents[0] * (next[0] - old[0]) + row.tangents[1] * (next[1] - old[1]);
-                motions[a].push(-delta, row.ra);
-                motions[b].push(delta, row.rb);
-                if row.torsional > 0.0 {
-                    let spin = (motions[b].omega - motions[a].omega).dot(row.normal);
-                    let limit = row.torsional * row.normal_impulse;
-                    let old = row.twist_impulse;
-                    let next = (old - spin * row.twist_mass).clamp(-limit, limit);
-                    row.twist_impulse = next;
-                    let delta = row.normal * (next - old);
-                    motions[a].twist(-delta);
-                    motions[b].twist(delta);
-                }
-                let relative =
-                    motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
-                let old = row.normal_impulse;
-                let next =
-                    (old + (row.target - relative.dot(row.normal)) * row.normal_mass).max(0.0);
-                row.normal_impulse = next;
-                let delta = row.normal * (next - old);
-                motions[a].push(-delta, row.ra);
-                motions[b].push(delta, row.rb);
-            }
-        }
+        let positions: Vec<DVec3> = self.bodies().iter().map(|b| b.pos).collect();
+        iterate(
+            settings.iterations,
+            &mut motions,
+            &mut rows,
+            &mut tethers,
+            &mut blocks,
+            &positions,
+        );
         for (index, row) in &tethers {
             let point = self.bodies()[row.b].pos + row.rb;
             if let Some(joint) = self.joints[*index].as_mut() {

@@ -91,6 +91,10 @@ async fn native_terms_and_mutual_acceptance_preserve_version_privacy_and_central
     .await;
     assert_eq!(status, StatusCode::OK, "{accepted}");
     let accepted = &accepted["referral"];
+    assert!(
+        accepted.get("current_referrer_owner").is_none(),
+        "{accepted}"
+    );
     let agreement = accepted["agreement"]["id"].as_str().unwrap();
     assert_eq!(accepted["terms_qualified"], true);
     assert_eq!(accepted["accrual_enabled"], false);

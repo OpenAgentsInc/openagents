@@ -91,6 +91,12 @@ impl WorldRuntime {
             loader.download_kit(download);
         }
     }
+    /// Fetch the phone tier's smaller kit and light files (#10908).
+    pub fn zone_kit_phone_tier(&mut self) {
+        if let Some(loader) = &mut self.zone_state.everglade_loader {
+            loader.kit_tier(everglade_pack::kit::Tier::Phone);
+        }
+    }
     pub fn is_plaza(&self) -> bool {
         self.zone == ZoneId::Plaza
     }
@@ -2924,6 +2930,7 @@ impl WorldRuntime {
             mesh.extend(glade.dynamic());
             mesh.extend(&crate::mesh::Mesh {
                 figure: Some(glade.with_town(grove.figure(glade))),
+                instances: glade.town_instances(),
                 ..crate::mesh::Mesh::default()
             });
             mesh.extend(&glade.spell_mesh(&self.player));

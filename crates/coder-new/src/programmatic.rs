@@ -36,8 +36,8 @@ macro_rules! command_usage {
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
        [--credential-env NAME] [--timeout SECONDS]
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
-  remote list                         List retained remote jobs.
-  remote status ID                    Read one retained remote job.
+  remote list                         List saved remote jobs.
+  remote status ID                    Read one saved remote job.
   remote follow ID                    Observe a remote job to completion.
   remote cancel ID                    Request cancellation of a remote job.
   remote artifacts ID                 Read a remote job's artifacts.
@@ -60,10 +60,10 @@ macro_rules! command_usage {
   agents enable ID                    Enable a discovered ACP agent.
   agents disable ID                   Disable a discovered ACP agent.
   agents refresh                      Discover installed ACP agents again.
-  sessions list                       List retained local chats.
-  sessions read ID                    Read one retained ATIF trajectory.
-  sessions delete ID                  Remove one retained chat.
-  export ID [--output FILE]            Export a retained chat as ATIF-v1.8.
+  sessions list                       List saved local chats.
+  sessions read ID                    Read one saved chat as an ATIF trajectory.
+  sessions delete ID                  Remove one saved chat.
+  export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
   import FILE [--session ID]           Retain ATIF for viewing or continuing.
 Options: --json streams NDJSON events for chat and delegation.
          --approvals stdin asks before any command that is not read-only:
@@ -424,9 +424,9 @@ fn execute_with_demo_policy(
             let config = app.plugins.bundled.cloud(p);
             if !config.enabled {
                 return Err(Error::from(if p == coder_cloud::Placement::Boat {
-                    "Enable boat-cloud with plugins enable boat-cloud before dispatch."
+                    "Enable boat-cloud with plugins enable boat-cloud first."
                 } else {
-                    "Enable gce-cloud with plugins enable gce-cloud before dispatch."
+                    "Enable gce-cloud with plugins enable gce-cloud first."
                 }));
             }
             if command == "delegate" {
@@ -461,7 +461,7 @@ fn execute_with_demo_policy(
                     for pair in args.windows(2).filter(|pair| pair[0] == "--credential-env") {
                         if !config.credential_names.contains(&pair[1]) {
                             return Err(Error::from(
-                                "This credential variable is not admitted in cloud settings.",
+                                "This credential variable isn't allowed in cloud settings.",
                             ));
                         }
                     }

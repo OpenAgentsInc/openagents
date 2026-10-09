@@ -92,6 +92,9 @@ impl Fixture {
                 archived_unix: None,
                 project: None,
                 terminal: None,
+                environment: None,
+                tasks: Vec::new(),
+                opened_unix: None,
             })
             .await
             .unwrap()
@@ -500,8 +503,11 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         archived_unix: None,
         project: None,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
     };
-    assert_eq!(row_detail(&chat), None);
+    assert_eq!(line_two(&chat, true), None);
     assert_eq!(row_status(&chat), None);
     chat.selection = Some(Selection {
         revision: 1,
@@ -512,7 +518,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         }),
         runtime: None,
     });
-    assert_eq!(row_detail(&chat).as_deref(), Some("acme/app · main"));
+    assert_eq!(line_two(&chat, true).as_deref(), Some("acme/app · main"));
     chat.requests.push(Request {
         id: CHAT.into(),
         digest: String::new(),
@@ -715,6 +721,9 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         archived_unix: None,
         project: None,
         terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1078,9 +1087,16 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             digest: "d".repeat(64),
             working_unix: None,
             deleted_unix: None,
+            replies: Vec::new(),
+            reply_ids: Vec::new(),
+            continued: Vec::new(),
+            continued_taken: 0,
         }),
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
     };
-    assert_eq!(row_detail(&chat).as_deref(), Some("Terminal · Studio"));
+    assert_eq!(line_two(&chat, true).as_deref(), Some("Terminal · Studio"));
     assert_eq!(row_status(&chat), None);
     chat.terminal.as_mut().unwrap().working_unix = Some(now());
     assert_eq!(row_status(&chat), Some(ChatStatus::Working));
@@ -1138,4 +1154,195 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
     let (status, _) = fixture.request(Method::GET, &page, OWNER, &[]).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     fixture.no_worker();
+}
+
+/// A Coder chat takes a reply from the website while Coder on its computer
+/// is online (#11048): the composer shows, the reply waits for Coder, and
+/// another visitor can't send one.
+#[tokio::test]
+async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
+    use crate::coder_sync::{Upload, WireMessage};
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    let upload = Upload {
+        computer: "Studio".into(),
+        title: "Fix the build".into(),
+        messages: vec![WireMessage {
+            role: "user".into(),
+            text: "Fix the build".into(),
+        }],
+    };
+    crate::coder_sync::save(&store, OWNER, "coder-new-1", &upload)
+        .await
+        .unwrap();
+    let chat = crate::coder_sync::chat_id(OWNER, "coder-new-1");
+    let page = format!("/chat/{chat}");
+
+    // Offline: one plain line, no composer.
+    let (status, body) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("To reply here, open Coder there"), "{body}");
+    assert!(!body.contains("id=\"chat-form\""), "{body}");
+
+    // Coder on Studio checks in: the composer shows.
+    crate::coder_sync::check_in(&store, OWNER, "Studio")
+        .await
+        .unwrap()
+        .unwrap();
+    let (status, body) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("id=\"chat-form\""), "{body}");
+    assert!(body.contains("Reply to Coder on Studio"), "{body}");
+    assert!(!body.contains("chat-terminal-note"), "{body}");
+
+    // Another visitor can't send to it.
+    let other = csrf(&fixture.app, OTHER_OWNER);
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &page,
+            OTHER_OWNER,
+            &[("q", "Hi"), ("request_id", NEXT), ("csrf", &other)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The owner's reply waits for Coder and shows in the thread.
+    let token = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &page,
+            OWNER,
+            &[
+                ("q", "Now the tests"),
+                ("request_id", NEXT),
+                ("csrf", &token),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = fixture
+        .request(Method::GET, &format!("{page}/transcript"), OWNER, &[])
+        .await;
+    assert!(body.contains("Now the tests"), "{body}");
+    assert!(body.contains("Waiting for Coder on Studio."), "{body}");
+    assert_eq!(
+        crate::coder_sync::check_in(&store, OWNER, "Studio")
+            .await
+            .unwrap(),
+        Ok(vec!["coder-new-1".to_string()])
+    );
+    fixture.no_worker();
+}
+
+/// #11035: a task that ran over a minute and finished makes the row say
+/// Done until the chat is opened; opening it records that, and the row
+/// goes quiet.
+#[tokio::test]
+async fn a_long_finished_task_says_done_until_the_chat_is_opened() {
+    use crate::chat_store::{ChatTask, TaskKind, TaskState};
+    let fixture = Fixture::new();
+    let loaded = fixture.record(None).await;
+    let mut next = loaded.conversation.clone();
+    next.revision += 1;
+    next.tasks = vec![ChatTask {
+        id: "claude-env-1-1".into(),
+        kind: TaskKind::Claude,
+        environment: "env-1".into(),
+        title: "Fix the login redirect".into(),
+        state: TaskState::Done,
+        started_unix: 100,
+        after_message: 2,
+        version: Some(3),
+        finished_unix: Some(400),
+    }];
+    fixture
+        .app
+        .config
+        .chat_store
+        .compare_and_swap(&loaded, &next)
+        .await
+        .unwrap();
+    assert_eq!(
+        row_status(&fixture.read().await.conversation),
+        Some(ChatStatus::Done)
+    );
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let opened = fixture.read().await.conversation;
+    assert!(opened.opened_unix.is_some_and(|at| at >= 400));
+    assert_eq!(row_status(&opened), None);
+    // Opening it again writes nothing.
+    let before = fixture.read().await.generation;
+    fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(fixture.read().await.generation, before);
+}
+
+/// An answered reply sits between hidden markers that name how it was
+/// served, so the chat goldens read a reply from the page exactly as a
+/// person gets it (docs/web/chat-goldens.md); a reply still streaming has
+/// the markers without a tier. None of it is visible.
+#[test]
+fn an_answered_reply_carries_its_served_tier_route_and_answer() {
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 2,
+        title: "Repo".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "how do i connect github repo".into(),
+                request_id: Some(CHAT.into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: "Open Projects and connect GitHub.".into(),
+                request_id: Some(CHAT.into()),
+            },
+        ],
+        pending: None,
+        requests: vec![Request {
+            id: CHAT.into(),
+            digest: String::new(),
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            reply: Some(openagents_chat::router::Meta {
+                tier: Some("canned".into()),
+                route: Some("meta".into()),
+                answer: Some("meta.github.website@1".into()),
+                ..openagents_chat::router::Meta::default()
+            }),
+        }],
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+    };
+    let html = messages(&chat, None, false).into_string();
+    assert!(html.contains(r#"data-oa-reply="1""#), "{html}");
+    assert!(html.contains(r#"data-oa-tier="canned""#), "{html}");
+    assert!(html.contains(r#"data-oa-route="meta""#), "{html}");
+    assert!(
+        html.contains(r#"data-oa-answer="meta.github.website@1""#),
+        "{html}"
+    );
+    assert!(html.contains("data-oa-reply-end"), "{html}");
+    let visible = oa_copy::visible_text(&html);
+    assert!(!visible.contains("canned"), "{visible}");
+    chat.requests[0].outcome = Outcome::Pending;
+    let streaming = messages(&chat, None, false).into_string();
+    assert!(streaming.contains(r#"data-oa-reply="1""#));
+    assert!(!streaming.contains("data-oa-tier"), "{streaming}");
 }

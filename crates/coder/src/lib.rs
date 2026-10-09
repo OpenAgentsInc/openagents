@@ -49,12 +49,15 @@ pub mod activity;
 pub mod agent;
 pub mod argv;
 pub mod capability;
+pub mod chat_goldens;
 pub mod child;
 pub mod claim;
 pub mod classify;
 pub mod cli_route;
 pub mod cloud;
 pub mod codebase;
+#[cfg(test)]
+mod copy_guard_tests;
 pub mod decision;
 pub mod defaults;
 pub mod delegate;

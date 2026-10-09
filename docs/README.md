@@ -12,6 +12,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Reach every surface from one command | [The `openagents` command](cli/README.md) |
 | Use the terminal and follow the workbench release | [Terminal user guide](terminal/README.md), [Grid/standalone and Everglade roadmap](terminal/workbench-roadmap.md), [issue directory and project](terminal/issue-roadmap.md), [smart terminal specification](terminal/smart-terminal.md) |
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
+| See every UI system and component across platforms | [UI inventory](ui/inventory.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
 | See what ships to playtesters and what comes next | [Launch roadmap, 2026-09-29](roadmap/2026-09-29-launch-roadmap.md), [playtesting program](game/playtesting.md) |
@@ -33,6 +34,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Earn revenue from Coder: what businesses want, pricing, referrals, partners, and the sales roadmap | [Sales](sales/README.md), [revenue roadmap](sales/revenue-roadmap.md), [agent sales floor in Everglade](sales/agent-sales-floor.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |
 | Call the Pro inference door (GPT-5.6 Sol, Terra, and Luna) | [Pro inference door](gateway/README.md) |
+| Plan our own inference gateway: every model account behind one Open Responses API, for our apps and the public | [Inference gateway spec](inference/gateway.md) |
 | Work on model implementations | [Kev](kev/README.md), [Lev](lev/README.md), [Laya](laya/README.md) |
 | Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |
 | Operate the relay | [Deployment](deployment/README.md) |

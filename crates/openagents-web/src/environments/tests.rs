@@ -182,7 +182,7 @@ async fn without_a_studio_the_pages_say_so_and_stay_local() {
 
 #[test]
 fn a_ready_setup_reads_as_a_conversation_with_a_save_card() {
-    let html = view::transcript(&review(), false, None).into_string();
+    let html = view::transcript(&review(), view::Claude::Unavailable, None).into_string();
     for needle in [
         "Explored the repository",
         "2 commands",
@@ -217,7 +217,7 @@ fn a_stopped_setup_offers_a_retry_and_a_saved_one_offers_claude_code() {
     }));
     v.phase = Phase::Failed { reason: "x".into() };
     v.candidate = None;
-    let html = view::transcript(&v, false, None).into_string();
+    let html = view::transcript(&v, view::Claude::Unavailable, None).into_string();
     assert!(html.contains("Setup stopped") && html.contains("/environments/env-1/retry"));
     assert!(html.contains("Try again"));
 
@@ -231,14 +231,30 @@ fn a_stopped_setup_offers_a_retry_and_a_saved_one_offers_claude_code() {
         image: "oaenv-build-1".into(),
         created_ms: 1,
     }];
-    let without = view::transcript(&v, false, None).into_string();
+    let without = view::transcript(&v, view::Claude::Unavailable, None).into_string();
     assert!(without.contains("add your Anthropic API key"));
     assert!(!without.contains("/environments/env-1/claude"));
-    let with = view::transcript(&v, true, None).into_string();
+    let with = view::transcript(&v, view::Claude::Ready, None).into_string();
     assert!(with.contains("Run Claude Code on version 1"));
     assert!(with.contains("action=\"/environments/env-1/claude\""));
     assert!(!with.contains("name=\"candidate\""));
-    for html in [&without, &with] {
+    let settings = view::transcript(&v, view::Claude::AddKey, None).into_string();
+    assert!(settings.contains("href=\"/settings/claude\""), "{settings}");
+    assert!(!settings.contains("/environments/env-1/claude"));
+    // Progress lines read as plain lines, without a visible "Status".
+    let mut working = review();
+    working.phase = Phase::Working;
+    working.candidate = None;
+    let working = view::transcript(&working, view::Claude::Ready, None).into_string();
+    assert!(working.contains("Working…"));
+    assert!(
+        !working.contains(r#"<h2 class="oa-message-author">"#),
+        "{working}"
+    );
+    // The setup chat keeps its newest line in view.
+    let thread = view::thread("/environments/env-1/events", maud::html! {}).into_string();
+    assert!(thread.contains("data-oa-scroll-follow"), "{thread}");
+    for html in [&without, &with, &settings] {
         assert!(oa_copy::violations(&text(html), &[]).is_empty());
     }
 }

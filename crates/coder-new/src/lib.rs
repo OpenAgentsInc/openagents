@@ -13,6 +13,8 @@ pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
 mod codex_usage;
+#[cfg(test)]
+mod copy_guard_tests;
 pub mod credentials;
 mod delegation_events;
 mod demo;
