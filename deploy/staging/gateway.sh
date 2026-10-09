@@ -20,12 +20,25 @@
 # instance) is taken over after 150 seconds. Reads go through `cat`, an
 # open(), which NFS revalidates against the server.
 #
+# GATEWAY_HOLD=serving (production, where a deploy first starts a
+# no-traffic candidate): only an instance of the revision that serves
+# traffic holds the store. A starting gateway waits, without claiming,
+# until Cloud Run's traffic gives its revision (K_REVISION) a share; one
+# that handed the store over waits until its revision loses its traffic
+# and gets it back (an update-traffic rollback) before claiming again. A
+# candidate being smoke-tested therefore never takes the store from the
+# revision serving openagents.com. Traffic is read from the Cloud Run API
+# with the runtime account's token from the metadata server.
+#
 # Environment:
 #   PUBLIC_ORIGIN               https://... the site's origin (the OAuth callback base)
 #   GITHUB_OAUTH_JSON           the staging OAuth App's private file
 #   INFERENCE_ADMIN_TOKEN       the /admin/inference bearer
-#   SMOKE_SIGNUP_TOKEN          the operator token that makes the smoke suite's
-#                               test account; open sign-up stays off, as in production
+#   SMOKE_SIGNUP_TOKEN          optional: the operator token that makes the smoke
+#                               suite's test account (staging only); open sign-up stays off
+#   INVITE_ONLY_JSON            optional: accounts.invite_only, the GitHub people who
+#                               may sign in ({"github": [{"id": N, "login": L, "admin": true}]})
+#   GATEWAY_HOLD                optional: `serving` (above)
 #   BYOK_KEYRING_JSON           optional: the oa-seal keyring that seals workspaces'
 #                               own provider keys (Settings > API keys)
 #   INFERENCE_STORE_KEY         optional: the key that seals stored responses
@@ -57,10 +70,39 @@ if [ -n "${BYOK_KEYRING_JSON:-}" ]; then
 fi
 
 # --- the handoff --------------------------------------------------------
-instance=$(curl -fsS -H 'Metadata-Flavor: Google' \
-    http://metadata.google.internal/computeMetadata/v1/instance/id 2> /dev/null \
-    || hostname)
-me="$instance.$(date +%s).$$"
+meta() {
+    curl -fsS -H 'Metadata-Flavor: Google' \
+        "http://metadata.google.internal/computeMetadata/v1/$1" 2> /dev/null
+}
+instance=$(meta instance/id || hostname)
+hold=${GATEWAY_HOLD:-}
+# Whether Cloud Run sends this revision a share of the traffic.
+serving() {
+    token=$(meta instance/service-accounts/default/token |
+        sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')
+    project=$(meta project/project-id)
+    region=$(meta instance/region | sed 's#.*/##')
+    [ -n "$token" ] && [ -n "$project" ] && [ -n "$region" ] || return 1
+    curl -fsS -H "Authorization: Bearer $token" \
+        "https://run.googleapis.com/v2/projects/$project/locations/$region/services/${K_SERVICE:?}" \
+        2> /dev/null | tr -d ' \n' |
+        grep -q "\"revision\":\"${K_REVISION:?}\",\"percent\":[1-9]"
+}
+# Wait until serving() is $1 (0: serving, 1: not), polling every 5 s.
+until_serving() {
+    while :; do
+        if serving; then now=0; else now=1; fi
+        [ "$now" = "$1" ] && return 0
+        sleep 5 &
+        wait $! || true
+    done
+}
+if [ "$hold" = serving ]; then
+    trap 'exit 0' TERM INT
+    echo "gateway: waiting for this revision to serve traffic before taking the store" >&2
+    until_serving 0
+    trap - TERM INT
+fi
 put() {
     printf '%s\n' "$2" > "$1.$$.tmp"
     mv "$1.$$.tmp" "$1"
@@ -75,6 +117,22 @@ idle() {
         wait $! || true
     done
 }
+# After handing the store over: idle, or with GATEWAY_HOLD=serving wait
+# for this revision to lose its traffic and get it back, then return to
+# claim the store again.
+rejoin() {
+    [ "$hold" = serving ] || idle
+    trap 'exit 0' TERM INT
+    until_serving 1
+    echo "gateway: this revision no longer serves traffic; waiting to get it back" >&2
+    until_serving 0
+    echo "gateway: this revision serves traffic again; taking the store back" >&2
+    trap - TERM INT
+}
+# Claim the store, run the gateway, and return only after handing the
+# store over and rejoining (GATEWAY_HOLD=serving).
+take() {
+me="$instance.$(date +%s).$$"
 put "$state/handoff/takeover" "$me"
 waited=0
 while [ -e "$state/handoff/holder" ]; do
@@ -85,7 +143,8 @@ while [ -e "$state/handoff/holder" ]; do
     claim=$(get "$state/handoff/takeover")
     if [ -n "$claim" ] && [ "$claim" != "$me" ]; then
         echo "gateway: a newer instance claimed the store first; not starting" >&2
-        idle
+        rejoin
+        return 0
     fi
     if [ "$waited" -ge 150 ]; then
         echo "gateway: the previous holder never released the store; taking it over" >&2
@@ -111,6 +170,14 @@ if [ ! -s "$state/service.key" ]; then
 fi
 chmod 600 "$state/service.key"
 
+operator=""
+if [ -n "${SMOKE_SIGNUP_TOKEN:-}" ]; then
+    operator='"operator_signup_token_env": "SMOKE_SIGNUP_TOKEN",'
+fi
+invite=""
+if [ -n "${INVITE_ONLY_JSON:-}" ]; then
+    invite="\"invite_only\": $INVITE_ONLY_JSON,"
+fi
 cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
@@ -118,7 +185,8 @@ cat > "$private/gateway.json" << EOF
   "registry": "$state/gateway/registry",
   "accounts": {
     "signup_tenant": "signup",
-    "operator_signup_token_env": "SMOKE_SIGNUP_TOKEN",
+    $operator
+    $invite
     "github": {
       "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"
@@ -169,8 +237,13 @@ wait "$child" || status=$?
 kill "$watcher" 2> /dev/null || true
 if [ -e "$yielded" ]; then
     release
-    idle
+    rejoin
+    return 0
 fi
 # The gateway stopped on its own: exit, and Cloud Run restarts this
 # container, which takes the store straight back (same instance).
 exit "$status"
+}
+while :; do
+    take
+done

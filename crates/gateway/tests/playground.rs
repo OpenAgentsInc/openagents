@@ -77,6 +77,7 @@ async fn deploy() -> Deployment {
             anonymous: None,
             github: None,
             github_app: None,
+            invite_only: None,
         }),
         billing: None,
         funding: None,

@@ -6,6 +6,7 @@
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
 //! - [`github`]: the account-service half: code + verifier to profile.
+//! - [`invite`]: invite-only sign-in, the GitHub people a deployment lets in.
 //! - [`repos`]: connected repositories and projects, with the token kept
 //!   encrypted.
 //! - [`service`]: the account service's GitHub routes over the tenancy
@@ -23,6 +24,7 @@ pub mod device;
 pub mod fake;
 pub mod flow;
 pub mod github;
+pub mod invite;
 #[cfg(feature = "local")]
 pub mod local;
 pub mod repos;
@@ -32,6 +34,7 @@ pub use app::{AppClient, AppCredentials, AppInstall, TokenCache};
 pub use config::{CALLBACK_PATH, Endpoints, GithubApp, GithubCredentials};
 pub use flow::{FLOW_COOKIE, Flow, Purpose, return_to};
 pub use github::Github;
+pub use invite::{InviteOnly, Invited};
 
 /// Why a sign-in did not complete. Carries no secret or provider detail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +48,9 @@ pub enum AuthError {
     AlreadyLinked,
     /// GitHub or the account stores could not be reached.
     Unavailable,
+    /// The deployment is invite-only and this GitHub account isn't
+    /// invited ([`invite`]). Nothing was made.
+    InviteOnly,
 }
 
 impl AuthError {
@@ -56,6 +62,7 @@ impl AuthError {
             Self::Taken => "identity_taken",
             Self::AlreadyLinked => "provider_linked",
             Self::Unavailable => "sign_in_unavailable",
+            Self::InviteOnly => "invite_only",
         }
     }
 
@@ -66,6 +73,7 @@ impl AuthError {
             Self::Denied => 401,
             Self::Taken | Self::AlreadyLinked => 409,
             Self::Unavailable => 503,
+            Self::InviteOnly => 403,
         }
     }
 
@@ -87,6 +95,7 @@ impl std::fmt::Display for AuthError {
             Self::Taken => "That GitHub account is already used by another OpenAgents account.",
             Self::AlreadyLinked => "This account already has a different GitHub account linked.",
             Self::Unavailable => "Sign-in isn't available right now. Try again in a minute.",
+            Self::InviteOnly => "Sign-in is invite-only for now.",
         })
     }
 }

@@ -7,7 +7,8 @@
 # (https://staging.openagents.com,
 # deploy/staging/README.md). One PASS/FAIL/SKIP line per check; exit 1 when
 # any check fails. Groups for --only: home, docs, promises, download, agent, github,
-# gates, accounts, signed-in, gateway, traces, terminal. The terminal group runs the
+# gates, alias, accounts, signed-in, gateway, traces, terminal. --invite-only
+# also checks that /login says sign-in is invite-only. The terminal group runs the
 # site's hosted installer into a scratch HOME and checks `coder --version`.
 # --restart (opt-in) also forces a new revision of the service and checks
 # that an account, its session, an API key, a saved provider key and a
@@ -16,8 +17,8 @@
 # token: SMOKE_SIGNUP_TOKEN, or, when unset, the Secret Manager secret
 # openagents-gateway-staging-smoke-signup-token read with the automation
 # account (never printed). Without it those checks are skipped.
-# --production (openagents.com or its tag URL): one question, no account,
-# no sign-in checks; the operator token is not read.
+# --production (openagents.com or its tag URL): one question, no test
+# account; the operator token is not read.
 set -eu
 case " $* " in *" --production "*) production=1 ;; *) production= ;; esac
 if [ -z "$production" ] && [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then

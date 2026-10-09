@@ -29,6 +29,8 @@ struct Inner {
     tenant: String,
     /// The GitHub App, when repository access goes through one.
     app: Option<crate::app::AppClient>,
+    /// Invite-only sign-in ([`crate::invite`]), when set.
+    invite: Option<crate::InviteOnly>,
 }
 
 /// The local account service.
@@ -58,6 +60,7 @@ impl LocalService {
             github,
             tenant: tenant.into(),
             app: None,
+            invite: None,
         })))
     }
 
@@ -70,6 +73,19 @@ impl LocalService {
             github: self.0.github.clone(),
             tenant: self.0.tenant.clone(),
             app: Some(app),
+            invite: self.0.invite.clone(),
+        }))
+    }
+
+    /// The same service, letting in only the people on `invite`.
+    #[must_use]
+    pub fn with_invite_only(self, invite: crate::InviteOnly) -> Self {
+        Self(Arc::new(Inner {
+            dir: self.0.dir.clone(),
+            github: self.0.github.clone(),
+            tenant: self.0.tenant.clone(),
+            app: self.0.app.clone(),
+            invite: Some(invite),
         }))
     }
 
@@ -182,7 +198,15 @@ async fn github_sign_in(
             "Send a code and a code_verifier.",
         );
     };
-    match service::sign_in(&state.0.dir, &state.0.github, &state.0.tenant, &request).await {
+    match service::sign_in(
+        &state.0.dir,
+        &state.0.github,
+        &state.0.tenant,
+        state.0.invite.as_ref(),
+        &request,
+    )
+    .await
+    {
         Ok(signed) => axum::Json(service::signed_in_body(&signed)).into_response(),
         Err(error) => auth_refused(error),
     }
@@ -204,7 +228,15 @@ async fn github_link(
             "Send a code and a code_verifier.",
         );
     };
-    match service::link(&state.0.dir, &state.0.github, &account, &request).await {
+    match service::link(
+        &state.0.dir,
+        &state.0.github,
+        state.0.invite.as_ref(),
+        &account,
+        &request,
+    )
+    .await
+    {
         Ok(identity) => body(
             json!({"identity": {"provider": "github", "login": identity.profile.login, "account": identity.account}}),
         ),
@@ -293,7 +325,7 @@ async fn account(State(state): State<LocalService>, headers: HeaderMap) -> Respo
         })
         .collect();
     body(json!({
-        "account": {"id": record.id, "label": record.label, "principals": record.principals, "created": record.created, "email": store.identities.github_of(&record.id).and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())), "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar())},
+        "account": {"id": record.id, "label": record.label, "principals": record.principals, "created": record.created, "email": store.identities.github_of(&record.id).and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())), "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()), "admin": service::site_admin(state.0.invite.as_ref(), store.identities.github_of(&record.id))},
         "workspaces": workspaces,
     }))
 }

@@ -19,6 +19,10 @@ struct World {
 }
 
 async fn world() -> World {
+    world_with(None).await
+}
+
+async fn world_with(invite: Option<oa_auth::InviteOnly>) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -31,6 +35,10 @@ async fn world() -> World {
         3600,
     )
     .unwrap();
+    let local = match invite {
+        Some(invite) => local.with_invite_only(invite),
+        None => local,
+    };
     let service = local.spawn().await.unwrap();
     World {
         _dir: dir,
@@ -171,6 +179,63 @@ async fn first_sign_in_signs_up_and_a_returning_user_finds_the_same_account() {
         .unwrap();
     assert_eq!(ended.status(), 200);
     assert_eq!(read(&world, token, "/v1/session").await.0, 401);
+}
+
+#[tokio::test]
+async fn invite_only_lets_in_the_invited_admin_and_refuses_everyone_else_without_an_account() {
+    let invite: oa_auth::InviteOnly = serde_json::from_value(
+        json!({"github": [{"id": 583231, "login": "octo-local", "admin": true}]}),
+    )
+    .unwrap();
+    let world = world_with(Some(invite)).await;
+
+    // Someone not invited: refused, and nothing is written.
+    let (flow, query) = authorize(&world, "login=quiet-local").await;
+    let (status, body) = exchange(&world, param(&query, "code").unwrap(), flow.verifier()).await;
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["error"]["code"], "invite_only");
+    assert!(body.get("token").is_none());
+    let raw = std::fs::read_to_string(world._dir.path().join("accounts.json")).unwrap();
+    assert!(!raw.contains("acct_"), "no account was created");
+    let sessions = std::fs::read_to_string(world._dir.path().join("sessions.json")).unwrap();
+    assert!(!sessions.contains("sess_"), "no session was issued");
+
+    // The invited owner signs in and is a site admin.
+    let owner = sign_in(&world, "octo-local").await;
+    assert_eq!(owner["admin"], true);
+    assert_eq!(
+        owner["github"],
+        json!({"id": 583231, "login": "octo-local"})
+    );
+    let (_, account) = read(&world, owner["token"].as_str().unwrap(), "/v1/account").await;
+    assert_eq!(account["account"]["admin"], true);
+
+    // A rename keeps the owner in: the entry is by id.
+    let mut renamed = fake::octo().user;
+    renamed["login"] = json!("octo-renamed");
+    world.fake.update("octo-local", renamed);
+    assert_eq!(sign_in(&world, "octo-renamed").await["admin"], true);
+
+    // The invited owner can't link someone who isn't invited.
+    let (flow, query) = authorize(&world, "login=quiet-local").await;
+    let response = world
+        .http
+        .post(format!("{}/v1/account/identities/github", world.service))
+        .bearer_auth(owner["token"].as_str().unwrap())
+        .json(&json!({"code": param(&query, "code").unwrap(), "code_verifier": flow.verifier()}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 403);
+}
+
+#[tokio::test]
+async fn without_an_invite_list_no_one_is_admin() {
+    let world = world().await;
+    let signed = sign_in(&world, "octo-local").await;
+    assert_eq!(signed["admin"], false);
+    let (_, account) = read(&world, signed["token"].as_str().unwrap(), "/v1/account").await;
+    assert_eq!(account["account"]["admin"], false);
 }
 
 #[tokio::test]

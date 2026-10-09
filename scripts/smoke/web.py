@@ -12,9 +12,15 @@ sign-up (`POST /api/v1/accounts`), never GitHub. Chats it starts are
 deleted afterwards. Nothing secret is printed.
 
 `--production` is for openagents.com and its no-traffic tag URL: it asks
-one starter question instead of four, makes no account, and skips the
-sign-in and account groups (production has no account service yet,
-#11127), so it writes nothing beyond that one chat.
+one starter question instead of four and makes no account (the operator
+sign-up path is not open there), so it writes nothing beyond that one chat.
+Sign-in checks stop at github.com.
+
+`--invite-only` also checks that `/login` says sign-in is invite-only.
+
+The `alias` group (#11155) checks that `/api/v1` forwards only the public
+API: the inference admin status, operator sign-up, the website-only GitHub
+token and device approval answer 404, and `/api/v1/models` answers.
 """
 
 import argparse
@@ -416,7 +422,7 @@ def durable(base, token, service, region, project):
 # Checks
 
 
-def run(base, only, install, production=False, restart=None):
+def run(base, only, install, production=False, restart=None, invite_only=False):
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
@@ -541,13 +547,29 @@ def run(base, only, install, production=False, restart=None):
             ok = False
         record("mcp/docs: initialize and tools/list", bool(ok), f"{init.status}/{tools.status}")
 
-    if production and (want("github") or want("accounts")):
-        record("sign-in and accounts", None, "production: no account service yet (#11127)")
+    # The /api/v1 alias forwards only the public API (#11155). Nothing it
+    # refuses reaches the gateway, so these write nothing.
+    if want("alias"):
+        for method, path in (("GET", "/api/v1/admin/inference/status"),
+                             ("POST", "/api/v1/accounts"),
+                             ("POST", "/api/v1/sessions/github"),
+                             ("POST", "/api/v1/account/github/token"),
+                             ("POST", "/api/v1/sessions/device/lookup"),
+                             ("POST", "/api/v1/sessions/device/decide"),
+                             ("POST", "/api/v1/sessions/device/paired"),
+                             ("GET", "/api/v1/session")):
+            r = Site(base).request(path, method=method, body={} if method == "POST" else None)
+            record(f"alias: {method} {path} is not reachable", r.status == 404, f"{r.status}")
+        models = Site(base).get("/api/v1/models")
+        record("alias: GET /api/v1/models answers", models.status == 200, f"{models.status}")
 
     # GitHub sign-in, as far as a script can go.
-    if want("github") and not production:
+    if want("github"):
         login = site.get("/login")
         record("sign-in: /login offers GitHub", login.status == 200 and "/auth/github" in login.text)
+        if invite_only:
+            record("sign-in: /login says sign-in is invite-only",
+                   "Sign-in is invite-only for now." in login.text)
         go = site.get("/auth/github")
         loc = go.location()
         q = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)
@@ -590,7 +612,9 @@ def run(base, only, install, production=False, restart=None):
             code = open_.json().get("error", {}).get("code", "")
         except (ValueError, AttributeError):
             code = ""
-        record("accounts: open sign-up is refused", open_.status == 403 and code == "signup_disabled",
+        # Without a bearer the alias doesn't forward it at all (#11155).
+        record("accounts: open sign-up is refused",
+               open_.status == 404 or (open_.status == 403 and code == "signup_disabled"),
                f"{open_.status} {code}")
         token = os.environ.get("SMOKE_SIGNUP_TOKEN", "")
         if token:
@@ -686,7 +710,9 @@ def main():
     parser.add_argument("--no-install", action="store_true")
     parser.add_argument("--only", default="")
     parser.add_argument("--production", action="store_true",
-                        help="one question, no accounts, no sign-in checks")
+                        help="one question, no test account")
+    parser.add_argument("--invite-only", action="store_true",
+                        help="also check that /login says sign-in is invite-only")
     parser.add_argument("--restart", action="store_true",
                         help="also check that an account, its session, an API key, a saved provider "
                         "key and a saved own-Claude key survive a forced new revision of "
@@ -700,7 +726,8 @@ def main():
     started = time.time()
     try:
         restart = (args.service, args.region, args.project) if args.restart else None
-        run(args.base.rstrip("/"), only, not args.no_install, args.production, restart)
+        run(args.base.rstrip("/"), only, not args.no_install, args.production, restart,
+            args.invite_only)
     except Exception as e:  # a crash is a failure, never a silent pass
         record("suite: ran to the end", False, repr(e)[:200])
     passed = sum(1 for r in RESULTS if r[0] == "PASS")

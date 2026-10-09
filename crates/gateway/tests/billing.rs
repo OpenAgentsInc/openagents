@@ -116,6 +116,7 @@ fn account_config() -> config::Accounts {
         recovery_ttl_secs: 3_600,
         github: None,
         github_app: None,
+        invite_only: None,
         anonymous: None,
     }
 }

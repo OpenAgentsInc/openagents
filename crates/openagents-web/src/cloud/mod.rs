@@ -105,7 +105,9 @@ pub(crate) fn failure(status: StatusCode, title: &str, message: &str) -> Respons
 pub(crate) fn refused(error: SessionError) -> Response {
     let status = match error {
         SessionError::Unauthenticated => StatusCode::UNAUTHORIZED,
-        SessionError::Forbidden | SessionError::Csrf => StatusCode::FORBIDDEN,
+        SessionError::Forbidden | SessionError::Csrf | SessionError::InviteOnly => {
+            StatusCode::FORBIDDEN
+        }
         SessionError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         SessionError::InvalidRequest => StatusCode::BAD_REQUEST,
         SessionError::Conflict => StatusCode::CONFLICT,

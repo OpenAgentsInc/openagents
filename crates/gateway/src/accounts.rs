@@ -704,7 +704,15 @@ async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<V
             "Send `code` and `code_verifier`.",
         );
     };
-    match oa_auth::service::sign_in(&state.dir, &github, &tenant, &request).await {
+    match oa_auth::service::sign_in(
+        &state.dir,
+        &github,
+        &tenant,
+        accounts_config(&state).invite_only.as_ref(),
+        &request,
+    )
+    .await
+    {
         Ok(signed) => answered(StatusCode::OK, oa_auth::service::signed_in_body(&signed)),
         Err(error) => auth_refused(error),
     }
@@ -737,7 +745,15 @@ async fn github_link(
             "Send `code` and `code_verifier`.",
         );
     };
-    match oa_auth::service::link(&state.dir, &github, &account, &request).await {
+    match oa_auth::service::link(
+        &state.dir,
+        &github,
+        accounts_config(&state).invite_only.as_ref(),
+        &account,
+        &request,
+    )
+    .await
+    {
         Ok(identity) => answered(
             StatusCode::OK,
             json!({"identity": {"provider": "github", "login": identity.profile.login, "account": identity.account}}),
@@ -1277,6 +1293,10 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
                 "email": store.identities.github_of(&record.id)
                     .and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())),
                 "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()),
+                "admin": oa_auth::service::site_admin(
+                    accounts_config(&state).invite_only.as_ref(),
+                    store.identities.github_of(&record.id),
+                ),
             },
             "workspaces": workspaces,
         }),

@@ -12,6 +12,7 @@ use tenancy::{Account, Accounts};
 
 use crate::AuthError;
 use crate::github::Github;
+use crate::invite::{self, InviteOnly};
 
 /// The body both routes take.
 #[derive(Clone, serde::Deserialize)]
@@ -34,6 +35,10 @@ pub struct SignedIn {
     pub workspace: Option<tenancy::Workspace>,
     pub created: bool,
     pub session: Issued,
+    /// The GitHub user signed in as: id and current login.
+    pub github: (u64, String),
+    /// A site admin by the deployment's invite list.
+    pub admin: bool,
 }
 
 impl std::fmt::Debug for SignedIn {
@@ -48,17 +53,25 @@ impl std::fmt::Debug for SignedIn {
 /// Sign in (or sign up) with a GitHub authorization code.
 ///
 /// `dir` holds `accounts.json` and `sessions.json`; `tenant` is the
-/// deployment's sign-up tenant a new personal workspace binds to.
+/// deployment's sign-up tenant a new personal workspace binds to. With
+/// `invite` set, a GitHub user not on it is refused
+/// ([`AuthError::InviteOnly`]) before the stores are opened: no account,
+/// no session.
 pub async fn sign_in(
     dir: &Path,
     github: &Github,
     tenant: &str,
+    invite: Option<&InviteOnly>,
     request: &CodeRequest,
 ) -> Result<SignedIn, AuthError> {
     let profile = github
         .profile(&request.code, &request.code_verifier)
         .await?;
     profile.validate().map_err(|_| AuthError::Denied)?;
+    if !invite::allowed(invite, profile.id, &profile.login) {
+        return Err(AuthError::InviteOnly);
+    }
+    let admin = invite.is_some_and(|list| list.admin(profile.id, &profile.login));
     let accounts = Accounts::open(dir).map_err(|_| AuthError::Unavailable)?;
     let resolved = accounts
         .sign_in_github(&profile, tenant)
@@ -89,13 +102,17 @@ pub async fn sign_in(
         workspace: resolved.workspace,
         created,
         session,
+        github: (profile.id, profile.login.clone()),
+        admin,
     })
 }
 
-/// Link the GitHub account behind `code` to the signed-in `account`.
+/// Link the GitHub account behind `code` to the signed-in `account`. With
+/// `invite` set, only an invited GitHub account can be linked.
 pub async fn link(
     dir: &Path,
     github: &Github,
+    invite: Option<&InviteOnly>,
     account: &str,
     request: &CodeRequest,
 ) -> Result<GithubIdentity, AuthError> {
@@ -103,6 +120,9 @@ pub async fn link(
         .profile(&request.code, &request.code_verifier)
         .await?;
     profile.validate().map_err(|_| AuthError::Denied)?;
+    if !invite::allowed(invite, profile.id, &profile.login) {
+        return Err(AuthError::InviteOnly);
+    }
     let accounts = Accounts::open(dir).map_err(|_| AuthError::Unavailable)?;
     let identity = accounts
         .link_github(account, &profile)
@@ -121,6 +141,16 @@ pub async fn link(
     Ok(identity)
 }
 
+/// Whether the account whose linked GitHub identity is `identity` is a
+/// site admin by `invite`. No list, or no GitHub identity, is not admin.
+#[must_use]
+pub fn site_admin(invite: Option<&InviteOnly>, identity: Option<&GithubIdentity>) -> bool {
+    match (invite, identity) {
+        (Some(list), Some(identity)) => list.admin(identity.profile.id, &identity.profile.login),
+        _ => false,
+    }
+}
+
 /// The JSON a sign-in answers, the same shape `POST /v1/sessions` uses.
 #[must_use]
 pub fn signed_in_body(signed: &SignedIn) -> serde_json::Value {
@@ -135,5 +165,7 @@ pub fn signed_in_body(signed: &SignedIn) -> serde_json::Value {
         },
         "token": signed.session.once,
         "created": signed.created,
+        "github": {"id": signed.github.0, "login": signed.github.1},
+        "admin": signed.admin,
     })
 }

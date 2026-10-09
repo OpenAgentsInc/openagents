@@ -90,6 +90,11 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
         );
     }
     let title = if signup { "Sign up" } else { "Log in" };
+    let invite_only = app
+        .config
+        .cloud
+        .as_deref()
+        .is_some_and(|service| service.invite_only());
     let path = if signup { "/signup" } else { "/login" };
     let start = format!("/auth/github?return_to={}", encode(&return_to));
     let continue_button = ButtonLink::new("Continue with GitHub", &start)
@@ -103,7 +108,9 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
             }))
             (continue_button)
             p.oa-page-meta {
-                @if signup {
+                @if invite_only {
+                    "Sign-in is invite-only for now."
+                } @else if signup {
                     "Already have an account? " a href=(login_href(&return_to, false)) { "Log in" }
                 } @else {
                     "New here? Continuing with GitHub creates your account."
@@ -313,6 +320,15 @@ async fn finish(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Sign-in isn't available right now",
                 "Try again in a minute.",
+            );
+        }
+        // Not invited: no account was made and no cookie is set.
+        Err(SessionError::InviteOnly) => {
+            return notice(
+                headers,
+                StatusCode::FORBIDDEN,
+                "Sign-in is invite-only for now",
+                "OpenAgents accounts are open to invited people only for now. Nothing was saved.",
             );
         }
         Err(_) => {

@@ -284,6 +284,7 @@ async fn deploy_with(pay: Pay, refuse: bool) -> Deployment {
             recovery_ttl_secs: 3_600,
             github: None,
             github_app: None,
+            invite_only: None,
             anonymous: None,
         }),
         billing: None,

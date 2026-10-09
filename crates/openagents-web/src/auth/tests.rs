@@ -28,6 +28,16 @@ struct World {
 }
 
 async fn world(with_github: bool) -> World {
+    world_with(with_github, None, None).await
+}
+
+/// The site with invite lists on the account service and on the web
+/// server's own Cloud config.
+async fn world_with(
+    with_github: bool,
+    service_invite: Option<oa_auth::InviteOnly>,
+    web_invite: Option<oa_auth::InviteOnly>,
+) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -41,6 +51,10 @@ async fn world(with_github: bool) -> World {
         3600,
     )
     .unwrap();
+    let service = match service_invite {
+        Some(invite) => service.with_invite_only(invite),
+        None => service,
+    };
     let account_service = service.spawn().await.unwrap();
     let private = root.path().canonicalize().unwrap().join("private");
     std::fs::create_dir(&private).unwrap();
@@ -51,7 +65,14 @@ async fn world(with_github: bool) -> World {
     let path = private.join("cloud.json");
     std::fs::write(
         &path,
-        serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":ORIGIN,"account_service":account_service,"csrf_secret":secret})).unwrap(),
+        serde_json::to_vec(&{
+            let mut config = json!({"schema":"openagents.cloud.web-config.v1","public_origin":ORIGIN,"account_service":account_service,"csrf_secret":secret});
+            if let Some(invite) = web_invite {
+                config["invite_only"] = serde_json::to_value(invite).unwrap();
+            }
+            config
+        })
+        .unwrap(),
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -296,6 +317,77 @@ async fn first_github_sign_in_creates_the_account_and_signs_the_browser_in() {
     assert_eq!(back.status, StatusCode::OK);
     assert_eq!(accounts(&world).accounts.len(), 1);
     assert_eq!(world.fake.exchanges(), 2);
+}
+
+fn octo_only() -> oa_auth::InviteOnly {
+    serde_json::from_value(json!({"github": [{"id": 583231, "admin": true}]})).unwrap()
+}
+
+/// Someone not invited lands on the plain invite-only page: no session
+/// cookie, nothing kept.
+fn assert_turned_away(browser: &Browser, done: &Answer) {
+    assert_eq!(done.status, StatusCode::FORBIDDEN, "{}", done.body);
+    assert!(done.body.contains("Sign-in is invite-only for now"));
+    crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
+    assert!(!browser.0.contains_key("oa_cloud_session"));
+    assert!(!browser.0.contains_key("oa_auth_flow"));
+}
+
+#[tokio::test]
+async fn invite_only_turns_away_everyone_but_the_invited_without_an_account() {
+    let world = world_with(true, Some(octo_only()), None).await;
+    let mut browser = Browser::default();
+    let done = browser
+        .through_github(&world, "%2F", "login=quiet-local")
+        .await;
+    assert_turned_away(&browser, &done);
+    assert!(accounts(&world).accounts.is_empty(), "no account was made");
+
+    let mut owner = Browser::default();
+    let done = owner
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(owner.0["oa_cloud_session"].starts_with("sess_"));
+    assert_eq!(accounts(&world).accounts.len(), 1);
+}
+
+#[tokio::test]
+async fn the_web_servers_own_invite_list_sets_no_cookie_and_ends_the_session() {
+    // The account service lets anyone in; this server's list still holds.
+    let world = world_with(true, None, Some(octo_only())).await;
+    let mut browser = Browser::default();
+    let login = browser.get(&world, "/login").await;
+    assert!(login.body.contains("Continue with GitHub"));
+    assert!(login.body.contains("Sign-in is invite-only for now."));
+    assert!(!login.body.contains("creates your account"));
+    let done = browser
+        .through_github(&world, "%2F", "login=quiet-local")
+        .await;
+    assert_turned_away(&browser, &done);
+    let sessions = tenancy::Sessions::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert!(
+        sessions
+            .book
+            .sessions
+            .values()
+            .all(|s| s.standing(now) != tenancy::sessions::SessionState::Active),
+        "the issued session was ended"
+    );
+
+    let mut owner = Browser::default();
+    let done = owner
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(owner.0["oa_cloud_session"].starts_with("sess_"));
 }
 
 #[tokio::test]

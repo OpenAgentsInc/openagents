@@ -16,7 +16,12 @@ chmod 700 "$byo"
 printf '%s' "$GITHUB_OAUTH_JSON" > "$p/github-oauth.json"
 printf '%s' "$CSRF_KEY" > "$p/csrf.key"
 unset GITHUB_OAUTH_JSON CSRF_KEY
-printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"}' "$PUBLIC_ORIGIN" "$p" > "$p/cloud.json"
+# INVITE_ONLY_JSON (optional): only these GitHub people may sign in.
+invite=""
+if [ -n "${INVITE_ONLY_JSON:-}" ]; then
+    invite=",\"invite_only\":$INVITE_ONLY_JSON"
+fi
+printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"%s}' "$PUBLIC_ORIGIN" "$p" "$invite" > "$p/cloud.json"
 exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 \
   --public-host "${PUBLIC_ORIGIN#https://}" --public-host "$ALT_HOST" --public-host "$RUN_HOST" \
   --everglade /srv/everglade --components-build /srv/components \

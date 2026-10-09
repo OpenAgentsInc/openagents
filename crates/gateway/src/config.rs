@@ -586,6 +586,12 @@ pub struct Accounts {
     /// repository access on the OAuth App.
     #[serde(default)]
     pub github_app: Option<GithubSignIn>,
+    /// Invite-only sign-in (`oa_auth::invite`): the GitHub people who may
+    /// sign in or link GitHub, and which of them are site admins. Anyone
+    /// else's GitHub sign-in is refused `403 invite_only` before an
+    /// account or session is made. Absent lets anyone with GitHub in.
+    #[serde(default)]
+    pub invite_only: Option<oa_auth::InviteOnly>,
 }
 
 /// The OAuth App behind `POST /v1/sessions/github`.
@@ -840,6 +846,11 @@ impl Config {
             }
         }
         if let Some(accounts) = &self.accounts {
+            if let Some(invite) = &accounts.invite_only {
+                invite
+                    .validate()
+                    .map_err(|why| format!("{}: accounts.{why}", name.display()))?;
+            }
             if accounts.session_ttl_secs == 0 || accounts.recovery_ttl_secs == 0 {
                 return Err(format!(
                     "{}: session and recovery lifetimes must be positive — a \

@@ -52,6 +52,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         recovery_ttl_secs: 3_600,
         github: None,
         github_app: None,
+        invite_only: None,
         anonymous,
     }
 }
@@ -1777,6 +1778,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             recovery_ttl_secs: 3_600,
             github: None,
             github_app: None,
+            invite_only: None,
             anonymous: None,
         }),
         false,
@@ -1889,6 +1891,7 @@ async fn stores_install_under_accounts_config_and_validate() {
             session_ttl_secs: 28_800,
             github: None,
             github_app: None,
+            invite_only: None,
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),
@@ -1947,6 +1950,23 @@ async fn stores_install_under_accounts_config_and_validate() {
         .as_mut()
         .unwrap()
         .session_cap = 2;
+    assert!(config.check(&path).is_err());
+
+    // Invite-only sign-in: every entry names a GitHub id or login.
+    config.accounts.as_mut().unwrap().session_ttl_secs = 28_800;
+    assert!(config.check(&path).is_ok());
+    let parsed: config::Accounts = serde_json::from_value(json!({
+        "signup_tenant": "acme",
+        "invite_only": {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
+    }))
+    .unwrap();
+    let invite = parsed.invite_only.unwrap();
+    assert!(invite.allows(14167547, "AtlantisPleb") && invite.admin(14167547, "x"));
+    assert!(!invite.allows(1, "AtlantisPleb"));
+    config.accounts.as_mut().unwrap().invite_only = Some(invite);
+    assert!(config.check(&path).is_ok());
+    config.accounts.as_mut().unwrap().invite_only =
+        Some(serde_json::from_value(json!({"github": [{"admin": true}]})).unwrap());
     assert!(config.check(&path).is_err());
 }
 

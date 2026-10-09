@@ -92,6 +92,15 @@ if [ "$env" = production ]; then
         || g compute firewall-rules create oa-pay-host-from-web-production --network default \
             --direction INGRESS --priority 1000 --source-ranges "$range" \
             --target-tags oa-pay-host --allow tcp:4400
+    # The service's other sidecar (coder-serve) reaches private addresses in
+    # 10.128.0.0/9 (the Coder pool host) through the default subnet today;
+    # moving its egress to this subnet keeps exactly the reach the default
+    # network's allow-internal rule gives that subnet. Tagged deny rules
+    # (the NFS server's, the Coder box's) still outrank it.
+    have g compute firewall-rules describe allow-internal-from-web-production \
+        || g compute firewall-rules create allow-internal-from-web-production --network default \
+            --direction INGRESS --priority 65534 --source-ranges "$range" \
+            --allow tcp:0-65535,udp:0-65535,icmp
 fi
 
 echo "$name: NFS server $address, exports /srv/accounts/{stack,web} to $range"

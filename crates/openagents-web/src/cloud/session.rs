@@ -57,6 +57,11 @@ struct Configuration {
     public_origin: String,
     account_service: String,
     csrf_secret: PathBuf,
+    /// Invite-only sign-in (`oa_auth::invite`): with it, a GitHub sign-in
+    /// from anyone not on the list sets no cookie, whatever the account
+    /// service answered.
+    #[serde(default)]
+    invite_only: Option<oa_auth::InviteOnly>,
 }
 
 /// Runtime failures contain no credential, private response, or transport details.
@@ -68,6 +73,8 @@ pub enum SessionError {
     InvalidRequest,
     Csrf,
     Conflict,
+    /// Sign-in is invite-only and this GitHub account isn't invited.
+    InviteOnly,
 }
 
 impl SessionError {
@@ -79,6 +86,7 @@ impl SessionError {
             Self::InvalidRequest => "invalid_cloud_request",
             Self::Csrf => "cloud_request_not_authorized",
             Self::Conflict => "native_account_changed",
+            Self::InviteOnly => "invite_only",
         }
     }
 }
@@ -92,6 +100,7 @@ impl fmt::Display for SessionError {
             Self::InvalidRequest => "That didn't work. Check what you entered and try again.",
             Self::Csrf => "This page expired. Reload it and try again.",
             Self::Conflict => "Your account changed. Reload the page.",
+            Self::InviteOnly => "Sign-in is invite-only for now.",
         })
     }
 }
@@ -185,6 +194,7 @@ pub struct CloudSession {
     secure: bool,
     csrf_key: [u8; 32],
     http: reqwest::Client,
+    invite_only: Option<oa_auth::InviteOnly>,
 }
 
 impl Drop for CloudSession {
@@ -236,6 +246,9 @@ impl CloudSession {
         if key == [0; 32] {
             return Err("The Cloud CSRF secret must be privately generated.".into());
         }
+        if let Some(invite) = &declared.invite_only {
+            invite.validate()?;
+        }
         let http = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
@@ -252,6 +265,7 @@ impl CloudSession {
             secure,
             csrf_key: key,
             http,
+            invite_only: declared.invite_only,
         };
         loaded.health()?;
         Ok(loaded)
@@ -262,6 +276,10 @@ impl CloudSession {
     }
     pub fn secure(&self) -> bool {
         self.secure
+    }
+    /// Whether sign-in is invite-only here (`invite_only` in the config).
+    pub fn invite_only(&self) -> bool {
+        self.invite_only.is_some()
     }
 
     /// Replacement, altered bytes, or loss of private modes fences this instance.
@@ -359,7 +377,11 @@ impl CloudSession {
             .await
             .map_err(|_| SessionError::Unavailable)?;
         if !status.is_success() {
+            let invite_only = status.as_u16() == 403
+                && serde_json::from_slice::<serde_json::Value>(&bytes)
+                    .is_ok_and(|body| body["error"]["code"] == "invite_only");
             return Err(match status.as_u16() {
+                _ if invite_only => SessionError::InviteOnly,
                 400 | 401 | 403 => SessionError::Unauthenticated,
                 409 => SessionError::Conflict,
                 _ => SessionError::Unavailable,
@@ -373,9 +395,16 @@ impl CloudSession {
             expires_at: u64,
         }
         #[derive(Deserialize)]
+        struct WireGithub {
+            id: u64,
+            login: String,
+        }
+        #[derive(Deserialize)]
         struct Wire {
             session: WireSession,
             token: String,
+            #[serde(default)]
+            github: Option<WireGithub>,
         }
         let wire: Wire = (bytes.len() <= 64 * 1024)
             .then(|| serde_json::from_slice(&bytes).ok())
@@ -383,6 +412,20 @@ impl CloudSession {
             .ok_or(SessionError::Unavailable)?;
         if !session_token(&wire.token) {
             return Err(SessionError::Unavailable);
+        }
+        // This server's own invite list: a GitHub user not on it (or an
+        // answer that doesn't say who signed in) gets no cookie, and the
+        // session the account service issued is ended at once.
+        if let Some(invite) = &self.invite_only
+            && !wire
+                .github
+                .as_ref()
+                .is_some_and(|github| invite.allows(github.id, &github.login))
+        {
+            if let Ok(client) = self.client(&wire.token) {
+                client.account().sign_out().await.ok();
+            }
+            return Err(SessionError::InviteOnly);
         }
         let viewer = self.read_view(&wire.token, None).await?;
         if viewer.session_id != wire.session.id

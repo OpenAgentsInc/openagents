@@ -28,6 +28,13 @@ CHAT_BUCKET = "openagentsgemini-web-chats-stage"
 # through (Direct VPC egress, private ranges only).
 NFS_SERVER = "10.42.26.2"
 EGRESS_SUBNET = "openagents-web-staging"
+# Invite-only sign-in (oa_auth::invite, docs/auth/github.md): only the
+# owner's GitHub account (AtlantisPleb, id 14167547) may sign in, as a site
+# admin. Both the gateway and the web server read it.
+INVITE_ONLY = json.dumps(
+    {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
+    separators=(",", ":"),
+)
 
 
 def secret(name, var):
@@ -62,6 +69,9 @@ def main():
             plain("RUN_HOST", RUN_HOST),
             plain("CHAT_BUCKET", CHAT_BUCKET),
             plain("OPENAGENTS_WEB_CHAT_WORKER", args.worker_pubkey),
+            plain("INVITE_ONLY_JSON", INVITE_ONLY),
+            # The smoke suite's operator test account (#11155): staging only.
+            plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
@@ -85,6 +95,7 @@ def main():
         "env": [
             plain("STACK_STATE", "/stack"),
             plain("PUBLIC_ORIGIN", ORIGIN),
+            plain("INVITE_ONLY_JSON", INVITE_ONLY),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-gateway-staging-admin-token", "INFERENCE_ADMIN_TOKEN"),
             secret("openagents-gateway-staging-smoke-signup-token", "SMOKE_SIGNUP_TOKEN"),

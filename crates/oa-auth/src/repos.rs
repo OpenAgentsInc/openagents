@@ -330,7 +330,7 @@ impl std::error::Error for RepoError {}
 impl From<AuthError> for RepoError {
     fn from(error: AuthError) -> Self {
         match error {
-            AuthError::Denied => Self::Denied,
+            AuthError::Denied | AuthError::InviteOnly => Self::Denied,
             AuthError::Taken | AuthError::AlreadyLinked => Self::OtherGithub,
             AuthError::Unavailable => Self::Unavailable,
         }
