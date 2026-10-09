@@ -123,6 +123,12 @@ impl SessionGrant {
     }
 }
 
+/// A redeemed recovery: the native replacement key, shown once.
+pub struct Recovered {
+    pub account: Option<String>,
+    pub key: jev::ApiKey,
+}
+
 /// A public form ticket and the private nonce cookies that bind it.
 pub struct CsrfForm {
     pub token: String,
@@ -278,6 +284,60 @@ impl CloudSession {
             viewer,
             token: issued.token,
             secure: self.secure,
+        })
+    }
+
+    /// Redeem one recovery token at the native account owner. The token is
+    /// sent once, in the body only, with no retry; the replacement account
+    /// key is returned once and never stored here.
+    pub async fn recover(&self, token: &str) -> Result<Recovered> {
+        if !token.starts_with("rcv_")
+            || token.len() > 256
+            || !token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
+        {
+            return Err(SessionError::InvalidRequest);
+        }
+        self.ready()?;
+        let response = self
+            .http
+            .post(format!("{}/v1/recovery/redeem", self.account_service))
+            .json(&serde_json::json!({"token":token}))
+            .send()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        if !status.is_success() {
+            return Err(if status.is_client_error() {
+                SessionError::Forbidden
+            } else {
+                SessionError::Unavailable
+            });
+        }
+        #[derive(Deserialize)]
+        struct Wire {
+            account: Option<String>,
+            key_token: String,
+        }
+        let wire: Wire = (bytes.len() <= 16 * 1024)
+            .then(|| serde_json::from_slice(&bytes).ok())
+            .flatten()
+            .ok_or(SessionError::Unavailable)?;
+        if !wire.key_token.starts_with("oak_")
+            || wire.key_token.len() > 512
+            || wire.account.as_deref().is_some_and(|a| !identifier(a))
+        {
+            return Err(SessionError::Unavailable);
+        }
+        self.ready()?;
+        Ok(Recovered {
+            account: wire.account,
+            key: jev::ApiKey::new(wire.key_token),
         })
     }
 
@@ -893,7 +953,7 @@ fn value(headers: &HeaderMap, name: &str) -> Result<Option<String>> {
     Ok(result)
 }
 
-fn native_error(error: jev::Error) -> SessionError {
+pub(crate) fn native_error(error: jev::Error) -> SessionError {
     match error {
         jev::Error::Api(error) => match error.status {
             401 => SessionError::Unauthenticated,

@@ -99,6 +99,9 @@ pub struct Config {
     /// Private custody of users' own Claude credentials for their own
     /// computers (BYO-04); absence leaves the page unavailable.
     pub cloud_byo: Option<Arc<cloud::byo::Computers>>,
+    /// The owner's explicit browser qualification for team controls
+    /// (WEB-12); absence leaves the Team page unavailable.
+    pub cloud_team: Option<Arc<cloud::team::Qualification>>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -128,6 +131,7 @@ impl Config {
             cloud_build: None,
             cloud_retail: None,
             cloud_byo: None,
+            cloud_team: None,
             pilot: None,
         }
     }

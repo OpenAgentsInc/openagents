@@ -13,6 +13,7 @@ mod operator;
 mod private;
 pub mod retail;
 pub mod session;
+pub mod team;
 #[cfg(test)]
 mod tests;
 mod verse;
@@ -65,7 +66,7 @@ const SECTIONS: [(&str, &str, &str); 12] = [
     (
         "Team",
         "team",
-        "Browser team controls require their own native qualification.",
+        "Browser team controls require their own browser qualification.",
     ),
     (
         "Billing",
@@ -112,11 +113,12 @@ pub(crate) fn routes() -> Router<App> {
         .merge(retail::routes())
         .merge(billing::routes())
         .merge(byo::routes())
+        .merge(team::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
         if !matches!(
             slug,
-            "agents" | "computers" | "projects" | "workbench" | "verse" | "billing"
+            "agents" | "computers" | "projects" | "workbench" | "verse" | "billing" | "team"
         ) {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
@@ -257,8 +259,13 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
         Err(response) => return response,
     };
     let mut response = page(&format!(
-        "<h1>Sign in to your workspace</h1><p>Use an existing native account API key. The selected account service issues a revocable session. This form creates no computer, execution, sales, or spending grant.</p><form method=\"post\" action=\"/cloud/sign-in\">{}{field}<p><button type=\"submit\">Sign in</button></p></form><p class=\"dim\">Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key.</p>",
-        ticket(&csrf.token)
+        "<h1>Sign in to your workspace</h1><p>Use an existing native account API key. The selected account service issues a revocable session. This form creates no computer, execution, sales, or spending grant.</p><form method=\"post\" action=\"/cloud/sign-in\">{}{field}<p><button type=\"submit\">Sign in</button></p></form><p class=\"dim\">Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key.{}</p>",
+        ticket(&csrf.token),
+        if team::lane(&app, team::Lane::Recovery) {
+            " <a href=\"/cloud/recover\">Redeem a recovery token</a>"
+        } else {
+            ""
+        }
     ));
     for cookie in csrf.legacy_cookies {
         response.headers_mut().append(header::SET_COOKIE, cookie);
@@ -477,6 +484,8 @@ fn workspace_shell(
             nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
         } else if slug == "billing" && billing::available(viewer) {
             nav.push_str("<a href=\"/cloud/app/billing\">Billing</a>");
+        } else if slug == "team" && team::available(app) {
+            nav.push_str("<a href=\"/cloud/app/team\">Team</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else if slug == "verse" {

@@ -59,6 +59,32 @@ pub struct TeamInvitationSummary {
     pub expires_unix: u64,
     pub accepted_by: Option<String>,
 }
+/// A once-issued recovery token for one current member. The issuer
+/// delivers it out of band; this client never stores it.
+#[derive(Debug)]
+pub struct RecoveryGrant {
+    pub account: String,
+    pub issued_at: u64,
+    pub expires_at: u64,
+    pub token: ApiKey,
+}
+/// One retained native access event for a workspace.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TeamAccess {
+    pub at: u64,
+    pub actor: String,
+    pub action: String,
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+const MAX_ACCESS: usize = 4096;
+const BUDGET_SCHEMA: &str = "openagents.money.budgets.v1";
+const REPORT_SCHEMA: &str = "openagents.team-report.v1";
 pub struct Team<'a> {
     client: &'a Client,
     account: String,
@@ -93,6 +119,21 @@ impl<'a> Account<'a> {
 }
 impl Team<'_> {
     async fn call(&self, method: Method, path: &str, body: Option<Value>) -> Result<Value> {
+        let value = self.raw(method, path, body, 64 * 1024).await?;
+        if value["v"] != "openagents.accounts.v1" {
+            return Err(invalid());
+        }
+        Ok(value)
+    }
+    /// One private, non-retrying call pinned to the selected account and
+    /// bounded while it is read.
+    async fn raw(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        maximum: usize,
+    ) -> Result<Value> {
         id(&self.account)?;
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -106,16 +147,12 @@ impl Team<'_> {
             .map_err(|_| Error::Config("Invalid private team input.".into()))?;
         let raw = self
             .client
-            .request_private_headers(method, path, bytes, &headers)
+            .request_private_headers_bounded(method, path, bytes, &headers, Some(maximum))
             .await?;
-        if raw.bytes.len() > 64 * 1024 {
+        if raw.bytes.len() > maximum {
             return Err(invalid());
         }
-        let value: Value = serde_json::from_slice(&raw.bytes).map_err(|_| invalid())?;
-        if value["v"] != "openagents.accounts.v1" {
-            return Err(invalid());
-        }
-        Ok(value)
+        serde_json::from_slice(&raw.bytes).map_err(|_| invalid())
     }
     pub async fn members(&self, workspace: &str) -> Result<TeamWorkspace> {
         id(workspace)?;
@@ -333,5 +370,128 @@ impl Team<'_> {
             return Err(invalid());
         }
         Ok(json!({"workspace":workspace,"owner":account}))
+    }
+    /// Issue a single-use recovery token for one current member. Only a
+    /// current admin or owner succeeds; the token is returned once.
+    pub async fn recovery(&self, workspace: &str, account: &str) -> Result<RecoveryGrant> {
+        id(workspace)?;
+        id(account)?;
+        let value = self
+            .call(
+                Method::POST,
+                &format!("/v1/workspaces/{workspace}/recovery"),
+                Some(json!({"account":account})),
+            )
+            .await?;
+        let token = value["token"].as_str().ok_or_else(invalid)?;
+        let recovery = &value["recovery"];
+        if recovery["user"] != account
+            || !token.starts_with("rcv_")
+            || token.len() > 256
+            || token
+                .bytes()
+                .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+        {
+            return Err(invalid());
+        }
+        Ok(RecoveryGrant {
+            account: account.into(),
+            issued_at: recovery["issued_at"].as_u64().ok_or_else(invalid)?,
+            expires_at: recovery["expires_at"].as_u64().ok_or_else(invalid)?,
+            token: ApiKey::new(token),
+        })
+    }
+    /// The workspace's retained access events: an admin reads every
+    /// member's, a member reads their own. A longer history refuses.
+    pub async fn access(&self, workspace: &str) -> Result<Vec<TeamAccess>> {
+        id(workspace)?;
+        let value = self
+            .raw(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/access"),
+                None,
+                2 * 1024 * 1024,
+            )
+            .await?;
+        if value["v"] != "openagents.accounts.v1" {
+            return Err(invalid());
+        }
+        let events: Vec<TeamAccess> =
+            serde_json::from_value(value["access"].clone()).map_err(|_| invalid())?;
+        if events.len() > MAX_ACCESS
+            || events
+                .iter()
+                .any(|e| e.workspace.as_deref() != Some(workspace))
+        {
+            return Err(invalid());
+        }
+        Ok(events)
+    }
+    /// The current monetary caps and holds in this member's scope.
+    pub async fn budgets(&self, workspace: &str) -> Result<Value> {
+        id(workspace)?;
+        let value = self
+            .raw(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/budgets"),
+                None,
+                512 * 1024,
+            )
+            .await?;
+        self.budget_answer(workspace, value)
+    }
+    /// Replace the budget policy under the exact policy last read. The
+    /// native owner alone may change caps; the owner checks the roster.
+    pub async fn change_budgets(
+        &self,
+        workspace: &str,
+        request: &str,
+        expected: Option<&str>,
+        policy: &Value,
+    ) -> Result<Value> {
+        id(workspace)?;
+        id(request)?;
+        let value = self
+            .raw(
+                Method::PUT,
+                &format!("/v1/workspaces/{workspace}/budgets"),
+                Some(json!({"request":request,"expected_policy":expected,"policy":policy})),
+                512 * 1024,
+            )
+            .await?;
+        self.budget_answer(workspace, value)
+    }
+    fn budget_answer(&self, workspace: &str, value: Value) -> Result<Value> {
+        if value["v"] != BUDGET_SCHEMA
+            || value["workspace"] != workspace
+            || value["account"] != self.account.as_str()
+            || !value["budget"].is_object()
+        {
+            return Err(invalid());
+        }
+        Ok(value)
+    }
+    /// The current authorized team work report: bounded native rows with
+    /// exact receipt, policy, budget, hold, and price pins.
+    pub async fn report(&self, workspace: &str) -> Result<Value> {
+        id(workspace)?;
+        let value = self
+            .raw(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/reports"),
+                None,
+                8 * 1024 * 1024,
+            )
+            .await?;
+        let maximum = value["maximum_rows"].as_u64().unwrap_or(0).min(1024) as usize;
+        if value["schema"] != REPORT_SCHEMA
+            || value["workspace"] != workspace
+            || value["rows"]
+                .as_array()
+                .is_none_or(|rows| rows.len() > maximum)
+        {
+            return Err(invalid());
+        }
+        Ok(value)
     }
 }

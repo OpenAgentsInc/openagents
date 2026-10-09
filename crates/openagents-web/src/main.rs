@@ -4,7 +4,7 @@ use std::path::PathBuf;
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON]";
+[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--cloud-team PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,6 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--cloud-byo" => {
                 config.cloud_byo = Some(std::sync::Arc::new(
                     openagents_web::cloud::byo::Computers::open(std::path::Path::new(&value))?,
+                ));
+            }
+            "--cloud-team" => {
+                config.cloud_team = Some(std::sync::Arc::new(
+                    openagents_web::cloud::team::Qualification::load(std::path::Path::new(&value))?,
                 ));
             }
             "--pilot-config" => {

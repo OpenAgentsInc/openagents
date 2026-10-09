@@ -484,6 +484,48 @@ these pages grants a spending, invocation, or publication right.
   quote approval, payment, or invocation for these lanes; those stay with the
   installed customer client and its own native controls.
 
+## Team membership, policy, limits, and reports
+
+`/cloud/app/team` is enabled only by `--cloud-team PRIVATE_JSON`, an
+owner-written `openagents.cloud.team-browser-qualification.v1` document whose
+`surface` is exactly `browser`, whose `origin` is this site's public origin,
+and whose `lanes` name any of `membership`, `recovery`, `policy`, `budgets`,
+and `reports` (plus an `evidence` reference). A native, desktop, or mobile
+qualification is refused at load, a changed file fences the lane, and each
+section appears only for its own lane.
+
+Every read and change uses the viewer's own native session through `jev`'s
+team client, on the one selected workspace; no workspace comes from a URL.
+Each form is a CSRF ticket bound to the account, session, selected workspace,
+its membership epoch, and the exact subject, so a form reviewed before any
+accepted invitation, role change, or removal refuses. A member's role is
+read-only: the page offers no change, and a forged ticket refuses before the
+native owner.
+
+- Members and invitations: admins invite (single-use, expiring token shown
+  once), withdraw, change roles, and remove; `/cloud/app/team/accept` accepts
+  only the reviewed workspace and role. Each membership change explains that
+  stored Claude credentials (BYO-04) belong to the earlier epoch and stay
+  hidden until each member adds theirs again. `/cloud/app/team/watch` keeps
+  connected observers rechecking standing and retires them when the role,
+  membership, or epoch changes.
+- Recovery: admins issue a single-use recovery token; `/cloud/recover`
+  redeems it once (signed out) and shows the replacement key once. Recovery
+  never restores a removed membership.
+- Policy: the exact team policy reference, enabled and unsupported lanes,
+  and, for admins, its rules. A browser change can only narrow: drop rules or
+  bring the expiry earlier, under the exact reviewed digest.
+- Limits: cumulative caps with reserved (in-flight holds), unknown, and
+  settled amounts per workspace, team, and person; only the owner may lower
+  caps or thresholds for the same roster, and nothing is reset.
+- Reports: `/cloud/app/team/reports` shows the native team report under
+  current read rights; `/cloud/app/team/export` returns that report and the
+  workspace access history as one bounded private JSON file, refused if the
+  membership changed during the read.
+
+Department knowledge is admitted documents, workflows, and evaluations under
+their own grants; it is not model training or an enterprise certification.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

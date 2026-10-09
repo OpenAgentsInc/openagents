@@ -36,6 +36,8 @@ mod project_fixture;
 mod projects;
 #[path = "retail_tests.rs"]
 mod retail_web;
+#[path = "team_tests.rs"]
+mod team_web;
 #[path = "verse_tests.rs"]
 mod verse;
 #[path = "workbench_tests.rs"]
@@ -79,6 +81,8 @@ struct Native {
     statement: Option<Value>,
     decision: Option<Value>,
     receipt: Option<Value>,
+    /// A native team book for alice-team (WEB-12); legacy fields apply without one.
+    team: Option<team_web::Book>,
 }
 
 /// The fake gateway serves billing documents only to alice in alice-personal.
@@ -197,6 +201,9 @@ async fn native_details(State(state): State<Arc<Mutex<Native>>>, headers: Header
     let Some(account) = acting(&headers, &state) else {
         return native_refusal(StatusCode::UNAUTHORIZED);
     };
+    if let Some(book) = &state.team {
+        return team_web::details(book, account, state.removed);
+    }
     let workspaces = if state.removed {
         vec![]
     } else if account == "alice" {
@@ -224,6 +231,9 @@ async fn native_workspace(
     let Some(account) = acting(&headers, &state) else {
         return native_refusal(StatusCode::UNAUTHORIZED);
     };
+    if let Some(book) = &state.team {
+        return team_web::workspace(book, account, &id, &headers);
+    }
     if state.removed
         || (state.team_removed && id == "alice-team")
         || !(account == "alice" && matches!(id.as_str(), "alice-personal" | "alice-team")
@@ -283,6 +293,7 @@ async fn fixture() -> Fixture {
             "/v1/workspaces/{id}/usage/receipts/{digest}",
             get(native_receipt),
         )
+        .merge(team_web::native_routes())
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());

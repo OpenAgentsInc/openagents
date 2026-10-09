@@ -60,8 +60,8 @@ pub use referrals::{
     WorkspaceAttribution,
 };
 pub use team::{
-    InvitationGrant, Team, TeamInvitation, TeamInvitationSummary, TeamMember, TeamRole,
-    TeamWorkspace, TeamWorkspaceIdentity,
+    InvitationGrant, RecoveryGrant, Team, TeamAccess, TeamInvitation, TeamInvitationSummary,
+    TeamMember, TeamRole, TeamWorkspace, TeamWorkspaceIdentity,
 };
 
 /// The account surface, scoped to its client.

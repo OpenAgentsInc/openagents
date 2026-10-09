@@ -505,7 +505,7 @@ impl Client {
             .await
     }
 
-    async fn request_private_headers_bounded(
+    pub(crate) async fn request_private_headers_bounded(
         &self,
         method: Method,
         path: &str,
