@@ -47,6 +47,51 @@ impl Drop for Directory {
     }
 }
 
+/// One publication's shape and where its time went, for the slowest calls.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct SyncProfile {
+    pub unix_ms: u128,
+    pub nodes: usize,
+    pub existing: usize,
+    pub bytes: usize,
+    pub collect_ms: f64,
+    pub write_ms: f64,
+    pub sync_ms: f64,
+    pub rename_ms: f64,
+    pub directory_ms: f64,
+    pub total_ms: f64,
+}
+static SLOW: Mutex<Vec<SyncProfile>> = Mutex::new(Vec::new());
+const SLOW_KEPT: usize = 8;
+fn record_sync(mut profile: SyncProfile) {
+    profile.unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let mut slow = SLOW
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    slow.push(profile);
+    slow.sort_by(|a, b| b.total_ms.total_cmp(&a.total_ms));
+    slow.truncate(SLOW_KEPT);
+}
+fn record_directory_sync(ms: f64) {
+    // The directory sync follows the publication it completes.
+    let mut slow = SLOW
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(last) = slow.iter_mut().max_by_key(|p| p.unix_ms) {
+        last.directory_ms = ms;
+        last.total_ms += ms;
+    }
+    slow.sort_by(|a, b| b.total_ms.total_cmp(&a.total_ms));
+}
+/// The slowest reward-history publications in this process, slowest first.
+pub fn slow_syncs() -> Vec<SyncProfile> {
+    SLOW.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 /// Clones share files, while each ledger retains its own immutable index root.
 #[derive(Clone)]
 pub(in crate::service) struct History(Arc<Directory>);
@@ -154,7 +199,9 @@ impl History {
         Ok(pending.bytes < PENDING_BYTES / 2)
     }
     /// Publish staged immutable nodes before a commit can reference their roots.
+    /// The slowest calls are kept for diagnosis ([`slow_syncs`]).
     pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+        let collecting = std::time::Instant::now();
         let nodes: Vec<_> = self
             .0
             .pending
@@ -164,11 +211,13 @@ impl History {
             .iter()
             .map(|(digest, bytes)| (*digest, bytes.clone()))
             .collect();
-        self.publish_all(&nodes)?;
+        self.publish_all(&nodes, collecting.elapsed().as_secs_f64() * 1e3)?;
         if !nodes.is_empty() {
+            let started = std::time::Instant::now();
             File::open(&self.0.path)
                 .and_then(|f| f.sync_all())
                 .map_err(|_| "Cannot sync reward history directory")?;
+            record_directory_sync(started.elapsed().as_secs_f64() * 1e3);
             let mut pending = self
                 .0
                 .pending
@@ -250,13 +299,26 @@ impl History {
     /// then rename. One node at a time paid a full journal commit per sync,
     /// which stalled a battle's commit for 0.6-0.7 s on a busy disk (#10559).
     /// A node still becomes visible only after its own bytes are durable.
-    fn publish_all(&self, nodes: &[([u8; 32], Arc<Vec<u8>>)]) -> Result<(), String> {
+    fn publish_all(
+        &self,
+        nodes: &[([u8; 32], Arc<Vec<u8>>)],
+        collect_ms: f64,
+    ) -> Result<(), String> {
         let mut written: Vec<(PathBuf, PathBuf, File)> = Vec::new();
+        let mut profile = SyncProfile {
+            nodes: nodes.len(),
+            bytes: nodes.iter().map(|(_, b)| b.len()).sum(),
+            collect_ms,
+            ..SyncProfile::default()
+        };
+        let started = std::time::Instant::now();
+        let mut phase = std::time::Instant::now();
         let result = (|| {
             for (digest, bytes) in nodes {
                 let path = self.0.path.join(hex(digest));
                 if path.exists() {
                     self.read_disk(*digest)?;
+                    profile.existing += 1;
                     continue;
                 }
                 let mut nonce = [0; 16];
@@ -277,16 +339,23 @@ impl History {
                 written.push((pending, path, file));
                 wrote.map_err(|_| "Cannot write and sync reward history node")?;
             }
+            profile.write_ms = phase.elapsed().as_secs_f64() * 1e3;
+            phase = std::time::Instant::now();
             for (_, _, file) in &written {
                 file.sync_all()
                     .map_err(|_| "Cannot write and sync reward history node")?;
             }
+            profile.sync_ms = phase.elapsed().as_secs_f64() * 1e3;
+            phase = std::time::Instant::now();
             while let Some((pending, path, _)) = written.first() {
                 std::fs::rename(pending, path).map_err(|_| "Cannot publish reward history node")?;
                 written.remove(0);
             }
+            profile.rename_ms = phase.elapsed().as_secs_f64() * 1e3;
             Ok(())
         })();
+        profile.total_ms = collect_ms + started.elapsed().as_secs_f64() * 1e3;
+        record_sync(profile);
         for (pending, _, _) in written {
             let _ = std::fs::remove_file(pending);
         }
