@@ -209,6 +209,13 @@ pub async fn serve(
     config.cloud = Some(Arc::new(CloudSession::load(&path)?));
     config.cloud_build = Some(build);
     config.components_build = std::env::var_os("CLOUD_FIXTURE_COMPONENTS_BUILD").map(PathBuf::from);
+    // A scratch store for the visitor's own Claude credential, so Settings
+    // offers "Claude credential" (BYO-04) in local tests.
+    let byo = directory.join("byo");
+    std::fs::create_dir_all(&byo).map_err(|_| "fixture credential store failed")?;
+    std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700))
+        .map_err(|_| "fixture credential store failed")?;
+    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(&byo)?));
     config.cloud_hosts = hosts
         .map(|path| openagents_web::cloud::hosts::Hosts::load(FilePath::new(path)))
         .transpose()?
