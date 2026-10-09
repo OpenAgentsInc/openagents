@@ -467,12 +467,12 @@ fn board_html(board: Result<&Board, &'static str>) -> Markup {
         Ok(board) if now().saturating_sub(board.observed_at) < BOARD_TTL_SECONDS => board,
         Ok(_) => {
             return html! {
-                p class="dim" { "Private board cleared: the observation is older than three seconds." }
+                p class="cloud-note" { "Private board cleared: the observation is older than three seconds." }
             };
         }
         Err(reason) => {
             return html! {
-                p class="dim" {
+                p class="cloud-note" {
                     "Private board cleared: " (reason)
                     ". Nothing is shown until a current observation arrives."
                 }
@@ -533,7 +533,7 @@ fn board_html(board: Result<&Board, &'static str>) -> Markup {
         div class="sales-board-live" data-observed-at=(board.observed_at) {
             (details)
             p { (shared) }
-            p class="dim" { "Observed at " (board.observed_at) "; expires three seconds later." }
+            p class="cloud-note" { "Observed at " (board.observed_at) "; expires three seconds later." }
         }
     }
 }
@@ -928,7 +928,7 @@ async fn floor_page(
                 p { "Dispatch is stopped. Pending handoffs are fenced and unknown deliveries stay unknown. Restart needs the owner's correction of every incident on the sales host." }
             } @else if let Some(form) = &stop_form {
                 (form)
-                p class="dim" { "Stop pauses the outbox controller: approved messages are not handed off and unknown deliveries keep their state." }
+                p class="cloud-note" { "Stop pauses the outbox controller: approved messages are not handed off and unknown deliveries keep their state." }
             }
             (request_list)
         }

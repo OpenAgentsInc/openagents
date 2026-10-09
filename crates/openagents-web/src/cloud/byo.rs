@@ -380,7 +380,7 @@ fn content(
                 .csrf(csrf)
                 .bind("request", request)
                 .submit_with(ui::submit("Remove credential", false)))
-            p class="dim" { "Removal takes effect at each running computer's next start or Claude turn, and for every future computer." }
+            p class="cloud-note" { "Removal takes effect at each running computer's next start or Claude turn, and for every future computer." }
         }
         @if let Some((csrf, request)) = add {
             form class="cloud-form" method="post" action=(format!("{PAGE}/credential")) autocomplete="off" {
@@ -399,10 +399,10 @@ fn content(
                     .required(true)
                     .autocomplete("off")
                     .spellcheck(false)))
-                p class="dim" {
+                p class="cloud-note" {
                     "Anthropic: the API key. Bedrock: {\"region\", \"access_key_id\", \"secret_access_key\", \"session_token\"} or {\"region\", \"bearer_token\"}. Vertex: {\"region\", \"project_id\", \"service_account\"}. Foundry: {\"resource\", \"api_key\"}."
                 }
-                p class="dim" { (TERMS) }
+                p class="cloud-note" { (TERMS) }
                 (Checkbox::new("consent", "I consent to this custody")
                     .value("custody")
                     .required(true))

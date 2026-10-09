@@ -1255,7 +1255,7 @@ fn observed(
     let content = html! {
         section id="cloud-observation" hx-ext="sse" sse-connect=(watch) sse-close="retire" {
             div id="cloud-live-status" sse-swap="gap,retire" hx-swap="innerHTML" aria-live="polite" {
-                p class="dim" { "Observing canonical records. A changed source or admission requires a fresh view." }
+                p class="cloud-note" { "Observing canonical records. A changed source or admission requires a fresh view." }
             }
             div id=(element) hx-get=(refresh) hx-trigger="sse:refresh,sse:gap"
                 hx-target="this" hx-swap="innerHTML" hx-sync="this:drop" {
@@ -1418,7 +1418,7 @@ async fn watch(
                     let gap = state.first && state.previous.is_some();
                     state.previous = Some(id.clone());
                     let data = if gap {
-                        html! { p class="dim" { "The canonical snapshot changed while detached. Reading the current bounded projection; original records remain available below." } }.into_string()
+                        html! { p class="cloud-note" { "The canonical snapshot changed while detached. Reading the current bounded projection; original records remain available below." } }.into_string()
                     } else {
                         "Canonical snapshot changed".into()
                     };

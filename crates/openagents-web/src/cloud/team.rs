@@ -384,7 +384,7 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
                     @if let Some(form) = &recovery { (form) }
                 }
             } else {
-                html! { span class="dim" { "No browser change" } }
+                html! { span class="cloud-note" { "No browser change" } }
             };
             cells.push(change);
         }
@@ -520,10 +520,10 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             " \u{b7} membership epoch " code { (context.epoch) }
             @if let Some(seats) = roster.workspace.seats { " \u{b7} " (seats) " seats" }
         }
-        p class="dim" { "Read under your current session for the selected workspace only. Membership grants no host, computer, execution, spending, or publication right; each of those keeps its own grant." }
+        p class="cloud-note" { "Read under your current session for the selected workspace only. Membership grants no host, computer, execution, spending, or publication right; each of those keeps its own grant." }
         section id="team-observation" hx-ext="sse" sse-connect="/cloud/app/team/watch" sse-close="retire" {
             div id="team-live" sse-swap="refresh" hx-swap="innerHTML" aria-live="polite" {
-                p class="dim" { "Watching current membership." }
+                p class="cloud-note" { "Watching current membership." }
             }
             div id="team-roster" sse-swap="retire" hx-swap="innerHTML" {
                 h3 { "Members" }
@@ -536,10 +536,10 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
                 @match &invite {
                     Some(card) => { (card) }
                     None => {
-                        p class="dim" { "Your role is read-only here: invitations, roles, removal, recovery, and policy changes need a current admin or owner." }
+                        p class="cloud-note" { "Your role is read-only here: invitations, roles, removal, recovery, and policy changes need a current admin or owner." }
                     }
                 }
-                p class="dim" { (EPOCH_NOTE) }
+                p class="cloud-note" { (EPOCH_NOTE) }
             }
         }
         p { a href="/cloud/app/team/accept" { "Accept an invitation to another workspace" } }
@@ -1036,7 +1036,7 @@ async fn accept_page(State(app): State<App>, headers: HeaderMap) -> Response {
                 ))
             })
             .submit("Accept"))
-        p class="dim" { (EPOCH_NOTE) }
+        p class="cloud-note" { (EPOCH_NOTE) }
     };
     workspace_shell(
         &app,
@@ -1250,7 +1250,9 @@ async fn policy_section(context: &Context<'_>, headers: &HeaderMap) -> Result<Ma
     };
     let reference = &view.reference;
     let rules = match &view.reviewed {
-        None => html! { p class="dim" { "Rule details are visible to admins and the owner." } },
+        None => {
+            html! { p class="cloud-note" { "Rule details are visible to admins and the owner." } }
+        }
         Some(reviewed) => {
             let narrow = admin(&context.role);
             let mut table = ui::table("Policy rules").header([
@@ -1611,7 +1613,7 @@ async fn budget_section(context: &Context<'_>, headers: &HeaderMap) -> Result<Ma
         }
         (table)
         @if let Some(limits) = answer["limitations"].as_array() {
-            ul class="dim" {
+            ul class="cloud-note" {
                 @for limit in limits.iter().filter_map(Value::as_str) {
                     li { (limit) }
                 }

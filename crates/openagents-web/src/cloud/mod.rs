@@ -292,7 +292,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
                 .csrf(&csrf.token)
                 .body(ui::native(&field))
                 .submit("Sign in"))
-            p class="dim" {
+            p class="cloud-note" {
                 "Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key."
                 @if recovery {
                     " " a href="/cloud/recover" { "Redeem a recovery token" }
@@ -736,7 +736,7 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
     let (mime, bytes) = match file.as_str() {
         "cloud.css" => (
             "text/css; charset=utf-8",
-            crate::palette::stylesheet(include_str!("../../static/cloud.css")).into_bytes(),
+            include_bytes!("../../static/cloud.css").to_vec(),
         ),
         "native.css" => (
             "text/css; charset=utf-8",

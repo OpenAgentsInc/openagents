@@ -20,6 +20,7 @@ use coder_access::protocol::{Operation, Outcome, random_id};
 use coder_access::{Right, cloud, project};
 use coder_ui::{control, coordination};
 use maud::{Markup, PreEscaped, html};
+use openagents_ui::forms::{Field, Input, InputType};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 
@@ -706,7 +707,7 @@ async fn new_job(
     };
     let enabled = can_operate(&context);
     let mut cards = Vec::with_capacity(catalog.profiles.len());
-    for profile in &catalog.profiles {
+    for (index, profile) in catalog.profiles.iter().enumerate() {
         let request = random_id();
         let basis = digest(&json!({"request":request,"profile":profile,"project":project}));
         let csrf = match context.csrf(&headers, "cloud-submit", &basis) {
@@ -729,7 +730,8 @@ async fn new_job(
                 .replace(&format!("name=\"{name}:prompt\""), "name=\"task:prompt\""),
             Err(r) => return r,
         };
-        let timeout = profile.max_timeout_seconds.to_string();
+        let timeout =
+            Field::new(format!("profile-{index}-timeout"), "Timeout in seconds").required(true);
         let form = BoundForm::here()
             .csrf(&csrf)
             .bind("request", &request)
@@ -737,11 +739,15 @@ async fn new_job(
             .bind("basis", &basis)
             .body(html! {
                 (ui::native(&field))
-                label {
-                    "Timeout in seconds "
-                    input type="number" name="timeout" min="1" max=(timeout)
-                        value=(profile.max_timeout_seconds.min(3600)) required;
-                }
+                (timeout.clone().control(
+                    Input::new("timeout")
+                        .input_type(InputType::Number)
+                        .min("1")
+                        .max(profile.max_timeout_seconds.to_string())
+                        .value(profile.max_timeout_seconds.min(3600).to_string())
+                        .required(true)
+                        .aria(timeout.aria()),
+                ))
             })
             .submit_with(PreEscaped(button));
         cards.push(ui::card(html! {

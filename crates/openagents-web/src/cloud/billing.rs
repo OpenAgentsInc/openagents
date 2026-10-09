@@ -394,7 +394,7 @@ fn render_row(row: &Row, projection: Option<&Value>) -> Markup {
                 p { "Original gateway projection: " (projection_line(projection)) }
             }
             @if !row.disclosure.is_empty() {
-                p class="dim" { "Disclosure: " (row.disclosure.join("; ")) }
+                p class="cloud-note" { "Disclosure: " (row.disclosure.join("; ")) }
             }
         }
     }
@@ -617,7 +617,7 @@ fn render_statement(view: &jev::JoinedStatementView, page: &Page) -> Result<Mark
                     }
                 }
             }
-            p class="dim" { (view.attribution_disclosure) }
+            p class="cloud-note" { (view.attribution_disclosure) }
         }))
         (ui::card(html! {
             h3 { "Payee earnings" }
@@ -635,9 +635,9 @@ fn render_statement(view: &jev::JoinedStatementView, page: &Page) -> Result<Mark
                     p { "No payee read is reviewed for this account." }
                 }
             }
-            p class="dim" { (view.payee_disclosure) }
+            p class="cloud-note" { (view.payee_disclosure) }
         }))
-        p class="dim" {
+        p class="cloud-note" {
             (view.native_projection_disclosure) " " (statement.disclosure.join("; "))
         }
     })
@@ -1050,7 +1050,7 @@ async fn receipt(
         (ui::card(html! {
             h3 { "Settlement" }
             (settlement)
-            p class="dim" { "This is the original receipt and its current settlement claim. Reading it never invokes, pays, or retries a purchase." }
+            p class="cloud-note" { "This is the original receipt and its current settlement claim. Reading it never invokes, pays, or retries a purchase." }
         }))
     };
     context.shell(&headers, content)

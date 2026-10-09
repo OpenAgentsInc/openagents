@@ -1057,7 +1057,9 @@ fn request_digest(text: &str, selection: Option<&Selection>) -> String {
     }
 }
 fn refusal(status: StatusCode, text: &str) -> Response {
-    crate::chat_html::protect((status, html! {p.error role="alert" {(text)}}).into_response())
+    crate::chat_html::protect(
+        (status, html! {p.oa-thread-error role="alert" {(text)}}).into_response(),
+    )
 }
 fn unavailable(error: Error) -> Response {
     eprintln!("openagents-web: conversation storage: {error}");
