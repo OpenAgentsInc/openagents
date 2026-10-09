@@ -149,17 +149,13 @@ pub fn fullscreen(title: &str, body: &str) -> Response {
     Html(fullscreen_document(title, body)).into_response()
 }
 
-/// A page answered with `status`: a heading, a sentence, and a way back.
+/// A page answered with `status`: a heading, a sentence, and a way back,
+/// in the Coder Light / Coder Noir shell ([`crate::ui_page::problem`]).
+/// Callers without the request's headers get the system theme; callers with
+/// them should use [`crate::ui_page::problem`] so the theme cookie applies.
 #[must_use]
 pub fn problem(status: StatusCode, title: &str, text: &str, back: (&str, &str)) -> Response {
-    let body = format!(
-        "<h1>{}</h1><p>{}</p><p><a href=\"{}\">[ {} ]</a></p>",
-        escape(title),
-        escape(text),
-        back.0,
-        escape(back.1)
-    );
-    (status, Html(document(title, None, &body))).into_response()
+    crate::ui_page::problem(&axum::http::HeaderMap::new(), status, title, text, back)
 }
 
 #[cfg(test)]

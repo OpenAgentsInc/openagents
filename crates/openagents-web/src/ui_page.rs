@@ -6,14 +6,16 @@
 //! toggle, and the design-language assets. Pages supply only their content,
 //! and optionally a header, actions, a composer, or extra sidebar sections.
 
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use maud::{Markup, PreEscaped, Render, html};
+use openagents_ui::actions::{ButtonLink, ButtonVariant, Color};
+use openagents_ui::content::{MarkdownRoot, PageColumn};
 use openagents_ui::shell::{
     AppShell, Document, MainMode, NavItem, Sidebar, SidebarSection, ThemeToggle,
 };
 
-use crate::layout::SECTIONS;
+use crate::layout::{COPYRIGHT, GITHUB, SECTIONS, X};
 use crate::theme;
 
 /// The navigation every page shares, before [`SECTIONS`].
@@ -34,6 +36,8 @@ pub struct UiPage {
     sections: Vec<SidebarSection>,
     head: Option<Markup>,
     scripts: bool,
+    toggle: bool,
+    status: StatusCode,
 }
 
 impl UiPage {
@@ -52,6 +56,8 @@ impl UiPage {
             sections: Vec::new(),
             head: None,
             scripts: true,
+            toggle: true,
+            status: StatusCode::OK,
         }
     }
 
@@ -114,6 +120,20 @@ impl UiPage {
         self
     }
 
+    /// A page whose policy allows no form (`form-action 'none'`): no theme
+    /// toggle, since without script its fallback is a form. The theme still
+    /// follows the cookie, else the system setting.
+    pub fn without_toggle(mut self) -> Self {
+        self.toggle = false;
+        self
+    }
+
+    /// The status [`UiPage::respond`] answers with (default `200`).
+    pub fn status(mut self, status: StatusCode) -> Self {
+        self.status = status;
+        self
+    }
+
     /// An extra left-panel section, such as a conversation list.
     pub fn sidebar_section(mut self, section: SidebarSection) -> Self {
         self.sections.push(section);
@@ -133,12 +153,14 @@ impl UiPage {
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
-        let toggle = ThemeToggle::new()
-            .fallback_action(theme::TOGGLE_PATH)
-            .return_to(self.return_to);
+        let toggle = self.toggle.then(|| {
+            ThemeToggle::new()
+                .fallback_action(theme::TOGGLE_PATH)
+                .return_to(self.return_to)
+        });
         let actions = html! {
             @if let Some(actions) = &self.actions { (actions) }
-            (toggle)
+            @if let Some(toggle) = toggle { (toggle) }
         };
         let mut shell = AppShell::new()
             .mode(self.mode)
@@ -168,18 +190,59 @@ impl UiPage {
             .render()
     }
 
-    /// The page answered with `200`.
+    /// The page answered with its status (`200` unless [`UiPage::status`]).
     pub fn respond(self, headers: &HeaderMap) -> Response {
-        Html(self.render(headers).into_string()).into_response()
+        let status = self.status;
+        (status, Html(self.render(headers).into_string())).into_response()
     }
+}
+
+/// Trusted, already-escaped markup (such as `markdown::render` output or a
+/// page body built with `layout::escape`) as prose in the reading column.
+pub fn prose(content: impl Render) -> Markup {
+    PageColumn::new(MarkdownRoot::new(content)).render()
+}
+
+/// [`prose`] in the wide column, for pages of tables.
+pub fn wide_prose(content: impl Render) -> Markup {
+    PageColumn::new(MarkdownRoot::new(content)).wide().render()
+}
+
+/// A secondary button link, for a page's "way back" and other actions.
+pub fn action_link(label: &str, href: &str) -> ButtonLink {
+    ButtonLink::new(label, href)
+        .color(Color::Secondary)
+        .variant(ButtonVariant::Outline)
+}
+
+/// A page answered with `status`: a heading, a sentence, and a way back.
+/// It runs no script, so it is safe under any page's policy.
+pub fn problem(
+    headers: &HeaderMap,
+    status: StatusCode,
+    title: &str,
+    text: &str,
+    back: (&str, &str),
+) -> Response {
+    let content = PageColumn::new(html! {
+        (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
+        div.oa-page-actions { (action_link(back.1, back.0)) }
+    });
+    UiPage::new(title)
+        .status(status)
+        .scriptless()
+        .content(content)
+        .respond(headers)
 }
 
 fn legal_footer() -> Markup {
     html! {
         nav class="oa-legal" aria-label="Legal and links" {
+            span { (COPYRIGHT) } " \u{b7} "
             a href="/terms" { "Terms" } " \u{b7} "
             a href="/privacy" { "Privacy" } " \u{b7} "
-            a href="https://github.com/OpenAgentsInc/openagents" rel="noopener" { "GitHub" }
+            a href=(GITHUB) rel="noopener" { "GitHub" } " \u{b7} "
+            a href=(X) rel="noopener" { "X" }
         }
     }
 }
@@ -221,6 +284,60 @@ mod tests {
             !html.contains("class=\"oa-legal\""),
             "app pages have no footer"
         );
+    }
+
+    #[test]
+    fn every_scrolling_page_links_the_terms_privacy_github_and_x_once() {
+        let html = UiPage::new("Download OpenAgents")
+            .section("/download")
+            .scriptless()
+            .content(html! { p { "x" } })
+            .render(&HeaderMap::new())
+            .into_string();
+        assert_eq!(html.matches("href=\"/terms\"").count(), 1);
+        assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
+        assert!(html.contains(
+            "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
+        ));
+        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
+        assert!(html.contains(COPYRIGHT));
+        assert!(html.contains("href=\"/download\" aria-current=\"page\""));
+        assert!(!html.contains("href=\"/docs\" aria-current"));
+        assert!(html.contains("width=device-width"));
+        assert!(!html.to_ascii_lowercase().contains("<script"));
+    }
+
+    #[test]
+    fn a_page_without_the_toggle_has_no_form() {
+        let html = UiPage::new("Connect")
+            .scriptless()
+            .without_toggle()
+            .content(html! { p { "x" } })
+            .render(&HeaderMap::new())
+            .into_string()
+            .to_ascii_lowercase();
+        assert!(!html.contains("<form") && !html.contains("<script"), "{html}");
+        assert!(!html.contains("data-oa-theme-toggle"), "{html}");
+    }
+
+    #[tokio::test]
+    async fn problem_pages_answer_their_status_with_a_way_back_and_no_script() {
+        let response = problem(
+            &HeaderMap::new(),
+            StatusCode::NOT_FOUND,
+            "Not found",
+            "Nothing <here>.",
+            ("/", "Home"),
+        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("<h1>Not found</h1>"), "{html}");
+        assert!(html.contains("<p>Nothing &lt;here&gt;.</p>"), "{html}");
+        assert!(html.contains("href=\"/\""), "{html}");
+        assert!(!html.to_ascii_lowercase().contains("<script"), "{html}");
     }
 
     #[test]
