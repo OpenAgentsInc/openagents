@@ -33,6 +33,7 @@ it. Anything else in this document is design unless it says so.
 13. [Rollout](#13-rollout)
 14. [Owner steps](#14-owner-steps)
 15. [Open decisions](#15-open-decisions)
+16. [Lineage: Episodes 241–247](#16-lineage-episodes-241247)
 
 ## 1. Goals
 
@@ -320,6 +321,21 @@ ordered list of (model, upstream) attempts.
 `openagents/auto` picks the task class with a typed judgment (Jev, as the
 chat router does), never by matching keywords in the prompt.
 
+Added from episodes 242–246 (section 16), design until its issue lands:
+
+- **Verified value.** The quality floor in step 3 will also read each
+  model's accepted-outcome rate in real paid work, beside its Gym score
+  ([#11079](https://github.com/OpenAgentsInc/openagents/issues/11079)).
+  Only real runs count; fixture or synthetic runs never feed the floor.
+- **The caller's own keys fail over too.** Under `pay: "mine"`, each of the
+  caller's keys is its own candidate and is benched like ours (a 401, 402,
+  or exhausted quota), so a spent key falls over to the caller's next one
+  before the first token, never to ours.
+- **Own coding capacity.** `openagents/code` under `pay: "mine"` will also
+  consider the key owner's own linked Coder and subscriptions, own capacity
+  only, never pooled or resold
+  ([#11080](https://github.com/OpenAgentsInc/openagents/issues/11080)).
+
 Starting class table, before measurement takes over:
 
 | Class | For | Order |
@@ -382,6 +398,14 @@ From those records:
   model; the score is the quality floor check in section 5. Shadow runs
   send a small sample to a challenger model and compare, as the cost shadow
   baseline does today.
+- **Tokens served** (added from episode 243, section 16). The one public
+  number for the API: tokens served per UTC day from answering attempts,
+  split into our own services and outside callers, and free and paid
+  ([#11081](https://github.com/OpenAgentsInc/openagents/issues/11081)).
+- **Published comparisons** (added from episode 243). A number we publish
+  against another model or router comes from real runs; fixture or
+  synthetic runs are labeled as illustrations and never published as
+  measurements.
 
 ## 7. Accounts, keys, and billing
 
@@ -521,6 +545,7 @@ and OpenRouter's: start in three lines, then reference, then guides.
 | Errors | Every code, its status, and what to do |
 | Limits you set | Spending caps, price caps, allowed models, rate caps |
 | Privacy and data use | `strict` and `standard`, what we keep (counts, not text), and each upstream's policy |
+| Use with your tools (added from episode 243) | One page per tool, each a base URL, key, and model id: OpenCode first, then the Vercel AI SDK and the OpenAI SDKs. The acceptance run (#11068) includes OpenCode's request shapes: content-part arrays and streamed tool-call deltas, the two the June endpoint rejected |
 | Decisions | Below |
 
 The Decisions guide, our version of OpenAI's guide for choosing an
@@ -693,3 +718,36 @@ These are also in the workspace `NEEDS_OWNER.md`.
 | 8 | Credit routes whose data terms are unverified | Keep them out of `strict` until verified, even though it slows credit burn |
 | 9 | Free tier size | A fixed number of free requests per new key per day, on free-capacity models only |
 | 10 | Public model ids for the Pro door's models | Plain `openai/gpt-5.6-*` ids; the rate card names the upstream as "OpenAgents (Pro)" rather than the proxy vendor, matching the Pro door's own rule |
+| 11 | The Khala name (episodes 242–245) | Not a product or model name: the roadmap lists Khala as historical. `openagents/auto` stays the routed model. Accept `openagents/khala` and `khala` as unlisted aliases of `openagents/auto`, so tool configs written for the June endpoint keep working |
+| 12 | Free tier paid for with data (episodes 243 and 245) | No. The free tier keeps `strict` and keeps no text, like every request. Any trace sharing for pay is a separate opt-in product with its own terms, not a condition of the free tier |
+
+## 16. Lineage: Episodes 241–247
+
+Added 2026-10-09. The June 2026 episodes on Khala (a routed,
+OpenAI-compatible "collective intelligence" API) are the first version of
+this gateway. Khala is historical (`docs/glossary.md`, `docs/roadmap.md`);
+this table records which of its ideas the gateway keeps, and where.
+Sources: [241](../transcripts/241.md), [242](../transcripts/242.md),
+[243](../transcripts/243.md), [244](../transcripts/244.md),
+[245](../transcripts/245.md), [246](../transcripts/246.md),
+[247](../transcripts/247.md).
+
+| Episode | Idea | Verdict | Where it lives |
+| --- | --- | --- | --- |
+| 241 | Many models behind one OpenAI-compatible API, so no single vendor can cut access | Kept | Sections 1, 3, 4 |
+| 241 | Open and inspectable, unlike a closed router over closed models: the caller sees which model answered and can opt out of upstreams | Kept | Section 3 (`openagents` response object, `openagents:route`, headers), `route.ignore` |
+| 242 | One routed model id with free and paid use | Kept, renamed | `openagents/auto` and the class ids (section 3); free tier (section 8); Khala name, decision 11 |
+| 242 | Selected by paid, verified value, not graded on its own benchmarks | Now in spec, build later | Section 5, [#11079](https://github.com/OpenAgentsInc/openagents/issues/11079) |
+| 242 | Open pool: anyone running a Pylon serves and is paid in bitcoin | Kept | Section 4 (Pylon providers), P2 [#11070](https://github.com/OpenAgentsInc/openagents/issues/11070) |
+| 242, 247 | Programs and other people's agents compose answers that are work (code, sites, briefs), with contributors paid | Later | [#11082](https://github.com/OpenAgentsInc/openagents/issues/11082), after #11070 |
+| 242 | Confidential compute as one more route for private work | Later | A future privacy level above `strict` (section 9); no account today |
+| 243 | Tokens served per day as the honest public number, ours kept apart from outside demand | Now in spec, build later | Section 6, [#11081](https://github.com/OpenAgentsInc/openagents/issues/11081) |
+| 243 | One-config-line drop-in for OpenCode and other tools; the content-array and tool-call-delta bugs | Kept | Section 11 ("Use with your tools"), acceptance [#11068](https://github.com/OpenAgentsInc/openagents/issues/11068) |
+| 243 | Free tier sized from a cost model, not a guess | Kept | Section 5 burn-down feeds decision 9 |
+| 243 | Head-to-head Gym and honest published numbers | Kept | Section 6 (Quality, Published comparisons) |
+| 243, 245 | Free tier paid for with data; selling traces | Dropped | Decision 12; section 9 keeps no text |
+| 244 | Coding requests run on the caller's own subscriptions through their own Pylon or Coder; own capacity only, no resale, semantic routing | Now in spec, build later | Sections 4 and 5, [#11080](https://github.com/OpenAgentsInc/openagents/issues/11080) |
+| 244 | Pooling other people's subscription capacity | Dropped | Section 4: never pooled or resold |
+| 245 | "Your coding agent pays you": payouts from trace-derived plugins | Dropped for the gateway | No automatic royalties (roadmap); paid agent work is #11082 instead |
+| 246 | Fail over across a user's several accounts when one is spent | Kept | Section 5 (the caller's own keys fail over too) |
+| 247 | Referral commissions on new buyers | Later, not here | Belongs to the site's referral work, not the gateway |
