@@ -887,8 +887,9 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool)
     } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob && selectors { (crate::composer::controls(&selection, true)) } }
 }
 
-    let chips = crate::suggestions::reply_chips(&app, chat).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+/// The thread, its suggestion chips, and the scroll-to-bottom button over
+/// it. The title is the header row's breadcrumb, not part of the thread.
+fn content(chat: &Conversation, before: Option<usize>, chips: Markup) -> Markup {
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {

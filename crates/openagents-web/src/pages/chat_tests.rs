@@ -511,6 +511,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         outcome: Outcome::Failed,
         selection: None,
         cloud: None,
+        reply: None,
     });
     assert_eq!(row_status(&chat), Some(ChatStatus::Failed));
     chat.pending = Some(Pending {
