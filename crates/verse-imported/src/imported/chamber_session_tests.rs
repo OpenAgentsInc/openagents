@@ -135,6 +135,15 @@ fn a_dead_player_respawns_once_into_a_new_life() {
     session.respawn();
     session.respawn();
     assert_eq!(session.respawn_attempts(), &[dead]);
+    assert_eq!(session.pending.len(), 1);
+    // A life still dead after the retry interval asks again (the authority
+    // refuses a respawn onto an obstructed spawn point), without growing the
+    // record of lives asked for.
+    session.respawn_asked = Some(Instant::now() - RESPAWN_RETRY);
+    session.respawn();
+    session.respawn();
+    assert_eq!(session.pending.len(), 2);
+    assert_eq!(session.respawn_attempts(), &[dead]);
     assert!(until(&mut session, &scene, |s| s.life_changes == 1 && !s.dead()));
     assert_ne!(session.owned_life(), Some(dead));
     assert!(session.controlled(&scene));

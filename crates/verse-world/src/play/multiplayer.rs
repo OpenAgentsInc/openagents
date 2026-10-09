@@ -2,6 +2,8 @@
 use super::*;
 use crate::{Admission, Command, Controller, Intent};
 use verse_engine::core::LifeId;
+/// How far from an obstructed spawn a respawn may stand, in meters.
+pub const RESPAWN_RADIUS: f64 = 3.;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Player {
@@ -1310,13 +1312,14 @@ impl Game {
         admission
             .respawn()
             .map_err(|e| format!("Respawn refused: {e:?}"))?;
-        let mut character = physics::character::Character::new(p.spawn.as_dvec3());
+        let feet = self.respawn_feet(life, p.spawn.as_dvec3())?;
+        let mut character = physics::character::Character::new(feet);
         if !self.colliders.is_empty() {
             character.teleport(
                 &self.query_scene,
                 self.actor_filter(life),
                 physics::character::Settings::default(),
-                p.spawn.as_dvec3(),
+                feet,
             )?;
         }
         let physical = physics::queries::Life {
@@ -1330,13 +1333,16 @@ impl Game {
         if blockers.remove(physical)? && self.navigation.is_some() {
             self.replace_blockers(blockers)?;
         }
+        let revived = feet.as_vec3();
         self.simulation
-            .revive_player(source, spawn.to_array(), std::f32::consts::PI)?;
+            .revive_player(source, revived.to_array(), std::f32::consts::PI)?;
         self.clear_social_seat(life);
         self.bodies.remove(physical);
         self.spells.end_concentration(life.actor)?;
         let next = admission.actor();
         let mut p = Player::new(admission, source, spawn);
+        p.player = revived;
+        p.previous_player = revived;
         p.definition = definition;
         p.character = character;
         self.additional_players.insert(life.actor, p);
@@ -1347,6 +1353,53 @@ impl Game {
         self.sync_bodies(0.)?;
         self.event(Some(next), crate::events::Kind::Respawn)?;
         Ok(next)
+    }
+    /// Where a respawned adventurer stands: its spawn, or, while something
+    /// stands on the spawn, the nearest clear walkable cell on the same floor
+    /// within [`RESPAWN_RADIUS`] (#10559). The battle soak's frontline player
+    /// stayed dead for minutes because hostiles and corpses held its spawn.
+    pub(crate) fn respawn_feet(
+        &self,
+        life: LifeId,
+        spawn: glam::DVec3,
+    ) -> Result<glam::DVec3, String> {
+        if self.colliders.is_empty() {
+            return Ok(spawn);
+        }
+        let filter = self.actor_filter(life);
+        let settings = physics::character::Settings::default();
+        let clear = |feet: glam::DVec3| {
+            physics::character::Character::new(feet)
+                .teleport(&self.query_scene, filter, settings, feet)
+                .is_ok()
+        };
+        if clear(spawn) {
+            return Ok(spawn);
+        }
+        let obstructed = || "Character teleport endpoint is obstructed".to_string();
+        let Some(navigation) = &self.navigation else {
+            return Err(obstructed());
+        };
+        let distance =
+            |feet: &glam::DVec3| glam::DVec2::new(feet.x - spawn.x, feet.z - spawn.z).length();
+        let mut cells: Vec<_> = navigation
+            .nodes()
+            .iter()
+            .map(|cell| cell.feet)
+            .filter(|feet| {
+                (feet.y - spawn.y).abs() <= settings.step_height && distance(feet) <= RESPAWN_RADIUS
+            })
+            .collect();
+        cells.sort_by(|a, b| {
+            distance(a)
+                .total_cmp(&distance(b))
+                .then(a.x.total_cmp(&b.x))
+                .then(a.z.total_cmp(&b.z))
+        });
+        cells
+            .into_iter()
+            .find(|feet| clear(*feet))
+            .ok_or_else(obstructed)
     }
     pub(crate) fn shared_prone(&self, position: Vec3) -> bool {
         self.primary.controls.prone(position, self.time)
