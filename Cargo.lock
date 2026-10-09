@@ -3524,6 +3524,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "nostr",
+ "oa-tokens",
  "pulldown-cmark",
  "rust-native",
  "serde",

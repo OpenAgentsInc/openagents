@@ -9,6 +9,7 @@ description = "Coder application presentation and theme values."
 [dependencies]
 atif = { path = "../atif" }
 nostr = { path = "../nostr" }
+oa-tokens = { path = "../oa-tokens" }
 zeroize = "1"
 rust-native = { path = "../rust-native" }
 serde = { version = "1", features = ["derive"] }
