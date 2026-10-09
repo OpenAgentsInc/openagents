@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-privacy
-version: 6
+version: 7
 kind: product
 title: "How chat messages travel and who sees them"
 summary: >-
@@ -41,6 +41,7 @@ evidence:
   - "2026-10-02: the answer now names Jev's route through the Vercel AI Gateway (its first door since #10110), says the worker stores no message text and that the chat is not answered on the computer, and says no setting turns the providers off (#10136)."
   - "2026-10-02: BYOK (#10176): with **Use my keys for everything** on, messages reach the person's own provider accounts, and the keys travel sealed per message and are never kept."
   - "2026-10-02: on the person's keys, product, codebase, and Gym lookups stay on, embedded and judged on their keys (#10176)."
+  - "2026-10-08: v7 (#11038): a web chat can be deleted from its page (GET/POST /chat/{id}/delete in crates/openagents-web/src/pages/chat.rs; Store::delete removes the record and, on a versioned bucket, its older versions). Removal of untouched chats exists behind --chat-retention-days and is off, so the answer says there is no time limit yet. GCS soft delete keeps deleted objects recoverable for its window (7 days by default)."
   - "2026-10-08: v6 separates the web chat, which saves conversations on our servers (crates/openagents-web/src/chat_store.rs, a private GCS bucket with no lifecycle rule and no delete route), from the apps, which save chats on the device; no code feeds chats into training."
 ---
 
@@ -56,7 +57,7 @@ In the web chat, our website reads your messages and saves your chats on our ser
 - The phone shows only answers signed by the worker's key, tagged to its own request and device.
 - Each message is signed by your device key; the relay is relay.openagents.com, and the chat events it carries to and from our chat worker are ephemeral, so it keeps none of them.
 - In the Mac app, Terminal, and phone app, your conversations are saved on your device, encrypted with its key, not on our servers. When a phone reaches a computer through the relay, the relay holds those messages, encrypted, for that phone and computer only.
-- In the web chat on openagents.com, the website holds the key that signs for you, so it reads your messages, and it saves each conversation in a private Google Cloud Storage bucket. Only the browser with that chat's cookie opens it, and our team can read the bucket. There's no time limit, and you can't delete a web chat yourself yet.
+- In the web chat on openagents.com, the website holds the key that signs for you, so it reads your messages, and it saves each conversation in a private Google Cloud Storage bucket. Only the browser with that chat's cookie opens it, and our team can read the bucket. **Delete chat** on a chat's page removes it from our servers right away; the storage provider may keep a recoverable copy for up to 7 days. Chats you don't delete stay; there's no time limit yet.
 - We don't use chats to train models.
 - There is no account, sign-in, or key to paste: the device key made on first launch signs the request, and the app holds no model key.
 - Jev's doors, in order: the Vercel AI Gateway (`typesafe-ai/jev`), then OpenRouter, then TypeSafe direct.

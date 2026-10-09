@@ -75,6 +75,19 @@ Superseded projections produce an explicit gap notice. Original message text
 remains available through `/messages/{index}/original` in bounded chunks;
 rendering escapes source text and does not execute returned markup.
 
+`GET /chat/{uuid}/delete` asks "Delete this chat? This can't be undone." and
+its form posts back with the chat's CSRF ticket. The POST removes the record
+at the generation it read (a chat that changed since is not removed), waits
+while an answer is still being written, and on a versioned bucket also
+removes every older version of the record. Nothing writes the chat again
+after that: a late answer's compare-and-swap fails.
+
+`--chat-retention-days DAYS` (or `OPENAGENTS_WEB_CHAT_RETENTION_DAYS`) turns
+on removal of chats untouched for that many days, at start and every six
+hours. It is off by default. See
+[web chat retention](../../docs/deployment/web-chat-retention.md) for the
+bucket lifecycle rule and soft delete.
+
 Use `--chat-store DIRECTORY` for restart-durable local records. It uses private
 files, operating-system locks, fsync, and atomic replacement. Production uses
 `--chat-bucket BUCKET`, a private Google Cloud Storage bucket under the
@@ -160,6 +173,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
 | `--chat-store DIRECTORY` | A sibling `web-chats` directory next to `--store` | Private, restart-durable public conversation records on one machine. |
 | `--chat-bucket BUCKET` | none | Private shared conversation records and visitor leases in Google Cloud Storage; replaces local chat storage. |
+| `--chat-retention-days DAYS` | off | Remove chats untouched for DAYS days (1 to 3650), from either store, at start and every six hours. Also `OPENAGENTS_WEB_CHAT_RETENTION_DAYS`. |
 | `--chat-build DIRECTORY` | none | Generated `coder_chat_web.js` and `coder_chat_web_bg.wasm` for composer and scroll interaction. |
 | `--components-build DIRECTORY` | none | The generated `coder_components_web.js` and `coder_components_web_bg.wasm` files for local catalog interaction. Only these names are served. |
 | `--cloud-build DIRECTORY` | none | Accepted and unused since the old Cloud pages left; the site images still pass it. |

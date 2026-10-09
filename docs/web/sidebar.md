@@ -90,8 +90,11 @@ Where each status comes from:
 ## Interactions
 
 - **Row menu** (the `…` that shows on hover or focus, and on long press):
-  Pin / Unpin, Rename, Move to project, Archive. Delete stays out until
-  deletion is a real, complete flow.
+  Pin / Unpin, Rename, Move to project, Archive, Delete.
+- **Delete** opens the same confirm step as the chat page's **Delete chat**
+  (`/chat/{id}/delete`: "Delete this chat? This can't be undone." with
+  Delete and Cancel). It removes the chat from the store for good, and waits
+  while an answer is still being written. There is no undo.
 - **Rename** edits the title in place: Enter saves, Escape cancels.
 - **Archive** is undoable from a short notice ("Chat archived · Undo").
   Archiving a chat whose task is still working asks first.

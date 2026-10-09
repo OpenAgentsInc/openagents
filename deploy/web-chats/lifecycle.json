@@ -1,0 +1,14 @@
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": {
+          "isLive": false,
+          "daysSinceNoncurrentTime": 1,
+          "matchesPrefix": ["conversations/"]
+        }
+      }
+    ]
+  }
+}

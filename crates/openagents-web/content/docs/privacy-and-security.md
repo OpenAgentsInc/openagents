@@ -8,8 +8,10 @@
   site signs your messages for you.
 - **In the web chat** on openagents.com, we save your chats on our servers
   so you can open them again in the same browser. Only that browser's
-  cookie opens them, and our team can read them. There's no time limit
-  yet, and you can't delete a web chat yourself.
+  cookie opens them, and our team can read them. To delete a chat, open it
+  and choose **Delete chat**. It's removed from our servers right away,
+  though our storage provider may keep a copy we can recover for up to 7
+  days. Chats you don't delete stay; there's no time limit yet.
 - **In the Mac app, Terminal, and phone app,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
   messages are encrypted before they leave your device, and the OpenAgents

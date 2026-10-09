@@ -744,4 +744,104 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
     assert!(!html.contains("/workspace"));
     assert_eq!(sidebar::clean_title("  Fine  ").as_deref(), Some("Fine"));
     assert_eq!(sidebar::clean_title("tab\there"), None);
+
+async fn delete_asks_first_then_removes_only_the_owners_chat() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let delete = format!("/chat/{CHAT}/delete");
+    let store = fixture.app.config.chat_store.clone();
+    let stored = move || {
+        let store = store.clone();
+        async move { store.load(OWNER, CHAT).await.unwrap() }
+    };
+
+    // The chat page links to the confirm step; the confirm step asks once.
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&format!("href=\"{delete}\"")), "{body}");
+    let (status, body) = fixture.request(Method::GET, &delete, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("Delete this chat? This can&#39;t be undone.")
+            || body.contains("Delete this chat? This can't be undone."),
+        "{body}"
+    );
+    assert!(body.contains(&format!("action=\"{delete}\"")), "{body}");
+    assert!(stored().await.is_some());
+
+    // Another browser can neither see the confirm step nor delete the chat.
+    let (status, _) = fixture
+        .request(Method::GET, &delete, OTHER_OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let theirs = csrf(&fixture.app, OTHER_OWNER);
+    let (status, _) = fixture
+        .request(Method::POST, &delete, OTHER_OWNER, &[("csrf", &theirs)])
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // A form without this browser's token is refused.
+    let (status, _) = fixture
+        .request(Method::POST, &delete, OWNER, &[("csrf", &theirs)])
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(stored().await.is_some());
+
+    let token = csrf(&fixture.app, OWNER);
+    let (status, _) = fixture
+        .request(Method::POST, &delete, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(stored().await.is_none());
+    let (status, _) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = fixture
+        .request(Method::POST, &delete, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn delete_waits_for_a_running_answer() {
+    let fixture = Fixture::new();
+    let loaded = fixture.record(None).await;
+    let mut next = loaded.conversation.clone();
+    next.revision += 1;
+    next.pending = Some(Pending {
+        request_id: NEXT.into(),
+        started_unix: now(),
+        job_id: None,
+    });
+    fixture
+        .app
+        .config
+        .chat_store
+        .compare_and_swap(&loaded, &next)
+        .await
+        .unwrap();
+    let token = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}/delete"),
+            OWNER,
+            &[("csrf", &token)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("Wait for the answer to finish"), "{body}");
+    assert!(
+        fixture
+            .app
+            .config
+            .chat_store
+            .load(OWNER, CHAT)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }

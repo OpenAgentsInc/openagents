@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
 
@@ -15,6 +15,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();
     let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
+    // Off unless set: chats untouched this many days are removed.
+    let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
     let mut github_oauth: Option<PathBuf> = None;
     let mut github_redirect: Option<String> = None;
     let mut arguments = std::env::args().skip(1);
@@ -29,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
             }
             "--chat-bucket" => chat_bucket = Some(value),
+            "--chat-retention-days" => chat_retention = Some(value),
             "--chat-build" => config.chat_build = Some(PathBuf::from(value)),
             "--customer" => config.customer = Some(PathBuf::from(value)),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
@@ -97,6 +100,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bucket,
             "conversations".into(),
         )?);
+    }
+    if let Some(days) = chat_retention.filter(|value| !value.trim().is_empty()) {
+        let days = openagents_web::chat_store::retention_days(&days)?;
+        openagents_web::chat_store::spawn_expiry(config.chat_store.clone(), days);
+        println!("Chats untouched for {days} days are removed");
     }
     config.port = listen.port();
     // A public deployment is served over HTTPS behind its proxy.

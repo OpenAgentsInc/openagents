@@ -14,10 +14,11 @@ use hmac::{Hmac, Mac};
 use maud::{Markup, PreEscaped, Render, html};
 use openagents_chat::basic_coder::{self, Reply, Turn};
 use openagents_chat::router::{Context, Surface};
-use openagents_ui::content::MarkdownRoot;
+use openagents_ui::actions::{Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize};
+use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::icons::Icon;
 // Disabled until the composer's context, model and voice controls do
 // something (see `composer`):
-// use openagents_ui::icons::Icon;
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
 use openagents_ui::shell::{
     Breadcrumb, ChatList, ChatStatus, Composer, Message as ThreadMessage, ScrollToBottom,
@@ -48,6 +49,7 @@ pub(crate) fn routes() -> Router<App> {
         )
         .route("/chat/{id}", get(show).post(follow))
         .route("/chat/{id}/workspace", get(workspace))
+        .route("/chat/{id}/delete", get(confirm_delete).post(delete))
         .route("/chat/{id}/transcript", get(transcript))
         .route("/chat/{id}/events", get(events))
         .route("/chat/{id}/messages/{index}/original", get(original))
@@ -62,6 +64,11 @@ struct Prompt {
     csrf: String,
     #[serde(default)]
     selection: String,
+}
+
+#[derive(Deserialize)]
+struct Removal {
+    csrf: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -395,6 +402,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .path(format!("/chat/{id}"))
         .app()
         .breadcrumb(Breadcrumb::new(chat.title.clone()))
+        .actions(delete_link(&chat.id, false))
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
@@ -437,13 +445,146 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     )
     .await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (delete_link(&chat.id, true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
         HeaderValue::from_str(&format!("/chat/{id}")).expect("UUID URL"),
     );
     response
+}
+
+/// The chat page's "Delete chat" link in the header row. A chat opened
+/// from the sidebar replaces it (`oob`) so it always names the open chat.
+fn delete_link(id: &str, oob: bool) -> Markup {
+    let mut link = ButtonLink::new("Delete chat", format!("/chat/{id}/delete"))
+        .id("chat-delete")
+        .color(Color::Secondary)
+        .variant(ButtonVariant::Ghost)
+        .size(ControlSize::Sm)
+        .pill(true)
+        .icon_start(Icon::Trash);
+    if oob {
+        link = link.attr("hx-swap-oob", "outerHTML");
+    }
+    link.render()
+}
+
+/// The visitor's own chat as stored, without the checks that only matter
+/// for showing it: a chat that can no longer be opened can still be
+/// deleted.
+async fn stored(app: &App, owner: &str, id: &str) -> Result<Loaded, Response> {
+    if !valid_id(id) {
+        return Err(missing());
+    }
+    app.config
+        .chat_store
+        .load(owner, id)
+        .await
+        .map_err(unavailable)?
+        .ok_or_else(missing)
+}
+
+/// The confirm step: one sentence, Delete, and Cancel. It works without
+/// scripts; the chat is removed only by the form's POST.
+async fn confirm_delete(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(owner) = crate::ask::visitor(&headers) else {
+        return missing();
+    };
+    let record = match stored(&app, &owner, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let chat = &record.conversation;
+    let content = PageColumn::new(html! {
+        (MarkdownRoot::new(html! { p { "Delete this chat? This can't be undone." } }))
+        form method="post" action=(format!("/chat/{id}/delete")) {
+            input type="hidden" name="csrf" value=(csrf(&app, &owner));
+            div.oa-page-actions {
+                (Button::new("Delete")
+                    .kind(ButtonType::Submit)
+                    .color(Color::Danger))
+                (crate::ui_page::action_link("Cancel", &format!("/chat/{id}")))
+            }
+        }
+    });
+    let page = UiPage::new(chat.title.clone())
+        .path(format!("/chat/{id}/delete"))
+        .breadcrumb(Breadcrumb::new(chat.title.clone()))
+        .sidebar_section(chat_list(&app, &owner, Some(&chat.id), false, false).await)
+        .content(content);
+    crate::chat_html::protect(page.respond(&headers))
+}
+
+/// Remove the chat from the store for good and go to a new chat. An
+/// answer still being written is waited for, so it can't be lost halfway.
+async fn delete(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(removal): Form<Removal>,
+) -> Response {
+    let owner = match validate_form(&app, &headers, &removal.csrf) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let record = match stored(&app, &owner, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let stale = match &record.conversation.pending {
+        Some(pending) if now().saturating_sub(pending.started_unix) <= LEASE_SECONDS => {
+            return not_deleted(
+                &id,
+                StatusCode::CONFLICT,
+                "Wait for the answer to finish, then delete this chat.",
+            );
+        }
+        Some(pending) => Some(pending.request_id.clone()),
+        None => None,
+    };
+    match app
+        .config
+        .chat_store
+        .delete(&owner, &id, &record.generation)
+        .await
+    {
+        Ok(_) => {}
+        Err(Error::Conflict) => {
+            return not_deleted(
+                &id,
+                StatusCode::CONFLICT,
+                "This chat just changed. Try again.",
+            );
+        }
+        Err(e) => {
+            eprintln!("openagents-web: conversation storage: {e}");
+            return not_deleted(
+                &id,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "We couldn't delete this chat right now. Try again.",
+            );
+        }
+    }
+    if let Some(request_id) = stale {
+        let _ = app.config.chat_store.release(&owner, &request_id).await;
+    }
+    crate::chat_html::protect(Redirect::to("/").into_response())
+}
+
+/// The confirm form posts without scripts, so a refusal is a whole page
+/// with a way back to the chat.
+fn not_deleted(id: &str, status: StatusCode, text: &str) -> Response {
+    crate::chat_html::protect(problem(
+        status,
+        "Chat not deleted",
+        text,
+        (&format!("/chat/{id}"), "Back to the chat"),
+    ))
 }
 
 async fn follow(

@@ -492,6 +492,48 @@ impl Store {
             }
         }
     }
+
+    /// Remove one chat for good. `expected` is the generation the caller
+    /// read: a chat that changed since then is not removed (`Conflict`), so
+    /// a delete never drops a message the person did not see. Returns false
+    /// when the chat was already gone. Nothing recreates a deleted chat: a
+    /// later compare-and-swap against it fails.
+    pub(crate) async fn delete(
+        &self,
+        owner: &str,
+        id: &str,
+        expected: &str,
+    ) -> Result<bool, Error> {
+        validate_address(owner, id)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let path = path(root, owner, id);
+                let owner = owner.to_owned();
+                let id = id.to_owned();
+                let expected = expected.to_owned();
+                blocking(move || delete_disk(&path, &owner, &id, &expected)).await
+            }
+            Adapter::Gcs(gcs) => gcs.delete_chat(&gcs.object(owner, id), expected).await,
+        }
+    }
+
+    /// Remove every chat, for every visitor, untouched since `cutoff_unix`
+    /// (the server's `--chat-retention-days`; see
+    /// `docs/deployment/openagents-web.md`). On disk a chat's last activity
+    /// is its `updated_unix`; in the bucket it is the time its current
+    /// object was written, which every change rewrites. Each removal is
+    /// fenced by the generation it was judged on, so a chat that gets a new
+    /// message during the sweep stays. Answer leases are left alone. Returns
+    /// how many chats were removed.
+    pub async fn expire_untouched(&self, cutoff_unix: u64) -> Result<usize, Error> {
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let root = root.clone();
+                blocking(move || expire_disk(&root, cutoff_unix)).await
+            }
+            Adapter::Gcs(gcs) => gcs.expire(cutoff_unix).await,
+        }
+    }
 }
 
 impl Gcs {
@@ -676,6 +718,167 @@ impl Gcs {
             return Err(Error::Corrupt("The object generation is invalid."));
         }
         Ok(object.generation)
+    }
+
+    /// Delete a chat whose live object is at `generation`, then every older
+    /// version of it a versioned bucket kept, so nothing of it stays
+    /// readable (the bucket's own soft-delete window aside; see
+    /// `docs/deployment/web-chat-retention.md`). A missing live object is
+    /// `false`; its older versions are still removed.
+    async fn delete_chat(&self, name: &str, generation: &str) -> Result<bool, Error> {
+        let removed = self.delete_object(name, generation).await?;
+        self.purge_versions(name).await?;
+        Ok(removed)
+    }
+
+    /// Remove every stored version of `name`. Without versioning there are
+    /// none left after the live object is deleted.
+    async fn purge_versions(&self, name: &str) -> Result<(), Error> {
+        let mut page = String::new();
+        loop {
+            let response = self
+                .client
+                .get(format!("{STORAGE_API}/storage/v1/b/{}/o", self.bucket))
+                .query(&[
+                    ("prefix", name),
+                    ("versions", "true"),
+                    ("maxResults", "1000"),
+                    ("fields", "items(name,generation),nextPageToken"),
+                    ("pageToken", page.as_str()),
+                ])
+                .bearer_auth(self.bearer().await?)
+                .send()
+                .await
+                .map_err(|_| Error::Unavailable("The chat delete has an unknown outcome."))?;
+            check_status(&response)?;
+            #[derive(Deserialize)]
+            struct Object {
+                name: String,
+                generation: String,
+            }
+            #[derive(Deserialize)]
+            struct Page {
+                #[serde(default)]
+                items: Vec<Object>,
+                #[serde(default, rename = "nextPageToken")]
+                next: String,
+            }
+            let listed: Page = serde_json::from_slice(&limited_body(response, 1024 * 1024).await?)
+                .map_err(|_| Error::Corrupt("The chat versions are invalid."))?;
+            for object in listed.items.iter().filter(|object| object.name == name) {
+                if object.generation.is_empty()
+                    || !object.generation.bytes().all(|byte| byte.is_ascii_digit())
+                {
+                    return Err(Error::Corrupt("The object generation is invalid."));
+                }
+                let response = self
+                    .client
+                    .delete(self.object_url(name)?)
+                    .query(&[("generation", object.generation.as_str())])
+                    .bearer_auth(self.bearer().await?)
+                    .send()
+                    .await
+                    .map_err(|_| Error::Unavailable("The chat delete has an unknown outcome."))?;
+                if response.status() != StatusCode::NOT_FOUND {
+                    check_status(&response)?;
+                }
+            }
+            if listed.next.is_empty() {
+                return Ok(());
+            }
+            if listed.next == page {
+                return Err(Error::Corrupt("The chat versions cursor did not advance."));
+            }
+            page = listed.next;
+        }
+    }
+
+    /// Delete the live object at `generation`; a missing object is `false`.
+    async fn delete_object(&self, name: &str, generation: &str) -> Result<bool, Error> {
+        if generation.is_empty() || !generation.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(Error::Invalid("The object generation is invalid."));
+        }
+        let response = self
+            .client
+            .delete(self.object_url(name)?)
+            .query(&[("ifGenerationMatch", generation)])
+            .bearer_auth(self.bearer().await?)
+            .send()
+            .await
+            .map_err(|_| Error::Unavailable("The chat delete has an unknown outcome."))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if response.status() == StatusCode::PRECONDITION_FAILED
+            || response.status() == StatusCode::CONFLICT
+        {
+            return Err(Error::Conflict);
+        }
+        check_status(&response)?;
+        Ok(true)
+    }
+
+    /// One pass over every chat object; those last written before
+    /// `cutoff_unix` are removed at the generation that was listed.
+    async fn expire(&self, cutoff_unix: u64) -> Result<usize, Error> {
+        let prefix = format!("{}/", self.prefix);
+        let mut page = String::new();
+        let mut removed = 0;
+        loop {
+            let response = self
+                .client
+                .get(format!("{STORAGE_API}/storage/v1/b/{}/o", self.bucket))
+                .query(&[
+                    ("prefix", prefix.as_str()),
+                    ("maxResults", "1000"),
+                    ("fields", "items(name,generation,updated),nextPageToken"),
+                    ("pageToken", page.as_str()),
+                ])
+                .bearer_auth(self.bearer().await?)
+                .send()
+                .await
+                .map_err(|_| Error::Unavailable("The chat list could not be read."))?;
+            check_status(&response)?;
+            #[derive(Deserialize)]
+            struct Object {
+                name: String,
+                generation: String,
+                updated: String,
+            }
+            #[derive(Deserialize)]
+            struct Page {
+                #[serde(default)]
+                items: Vec<Object>,
+                #[serde(default, rename = "nextPageToken")]
+                next: String,
+            }
+            let listed: Page = serde_json::from_slice(&limited_body(response, 1024 * 1024).await?)
+                .map_err(|_| Error::Corrupt("The chat list is invalid."))?;
+            for object in listed.items {
+                if !expirable_object(&prefix, &object.name) {
+                    continue;
+                }
+                let Some(updated) = rfc3339_unix(&object.updated) else {
+                    continue;
+                };
+                if updated >= cutoff_unix {
+                    continue;
+                }
+                match self.delete_chat(&object.name, &object.generation).await {
+                    Ok(true) => removed += 1,
+                    // Gone already, or written again since the listing.
+                    Ok(false) | Err(Error::Conflict) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            if listed.next.is_empty() {
+                return Ok(removed);
+            }
+            if listed.next == page {
+                return Err(Error::Corrupt("The chat list cursor did not advance."));
+            }
+            page = listed.next;
+        }
     }
 
     async fn list(&self, owner: &str) -> Result<Vec<String>, Error> {
@@ -1033,6 +1236,157 @@ fn write_disk(
     atomic_write(path, bytes)
 }
 
+fn delete_disk(path: &Path, owner: &str, id: &str, expected: &str) -> Result<bool, Error> {
+    let directory = path
+        .parent()
+        .ok_or(Error::Invalid("The chat directory is invalid."))?;
+    if !directory.exists() {
+        return Ok(false);
+    }
+    let lock_path = path.with_extension("lock");
+    let _lock = lock(&lock_path)?;
+    let Some(current) = read_disk(path, owner, id)? else {
+        let _ = fs::remove_file(&lock_path);
+        return Ok(false);
+    };
+    if current.generation != expected {
+        return Err(Error::Conflict);
+    }
+    fs::remove_file(path)
+        .map_err(|_| Error::Unavailable("The chat delete has an unknown outcome."))?;
+    File::open(directory)
+        .and_then(|file| file.sync_all())
+        .map_err(|_| Error::Unavailable("The chat delete has an unknown outcome."))?;
+    // Only a create with this same random ID could wait on the old lock.
+    let _ = fs::remove_file(&lock_path);
+    Ok(true)
+}
+
+/// One pass over the disk store; see [`Store::expire_untouched`].
+fn expire_disk(root: &Path, cutoff_unix: u64) -> Result<usize, Error> {
+    let owners = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(_) => return Err(Error::Unavailable("The chat store could not be read.")),
+    };
+    let mut removed = 0;
+    for directory in owners {
+        let directory =
+            directory.map_err(|_| Error::Unavailable("The chat store could not be read."))?;
+        let folder = directory.file_name();
+        let Some(folder) = folder.to_str() else {
+            continue;
+        };
+        if folder.len() != 64 || !folder.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(directory.path()) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(id) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
+                continue;
+            };
+            if !valid_id(id) {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(bytes) = fs::read(&path) else {
+                continue;
+            };
+            if bytes.len() > MAX_RECORD_BYTES {
+                continue;
+            }
+            let Ok(record) = serde_json::from_slice::<Record>(&bytes) else {
+                continue;
+            };
+            let owner = &record.conversation.owner;
+            if record.conversation.id != id
+                || validate_owner(owner).is_err()
+                || owner_digest(owner) != folder
+                || record.conversation.updated_unix >= cutoff_unix
+            {
+                continue;
+            }
+            match delete_disk(&path, owner, id, &digest(&bytes)) {
+                Ok(true) => removed += 1,
+                // Gone already, or written again since it was read.
+                Ok(false) | Err(Error::Conflict) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// A chat record under `prefix` (`{prefix}{owner digest}/{id}.json`), not
+/// an answer lease or anything else that shares the bucket.
+fn expirable_object(prefix: &str, name: &str) -> bool {
+    let Some((digest, file)) = name
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.split_once('/'))
+    else {
+        return false;
+    };
+    digest.len() == 64
+        && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && file.strip_suffix(".json").is_some_and(valid_id)
+}
+
+/// Seconds since 1970 for a Cloud Storage `updated` time
+/// (`2026-10-08T12:34:56.789Z`). Anything else is `None`.
+fn rfc3339_unix(value: &str) -> Option<u64> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || !value.ends_with('Z')
+    {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| -> Option<u64> {
+        let part = value.get(range)?;
+        part.bytes()
+            .all(|byte| byte.is_ascii_digit())
+            .then(|| part.parse().ok())?
+    };
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    let rest = &value[19..value.len() - 1];
+    if !(rest.is_empty()
+        || (rest.starts_with('.')
+            && rest.len() > 1
+            && rest[1..].bytes().all(|b| b.is_ascii_digit())))
+    {
+        return None;
+    }
+    if year < 1970
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm), March-based.
+    let (y, m) = if month <= 2 {
+        (year - 1, month + 9)
+    } else {
+        (year, month - 3)
+    };
+    let era = y / 400;
+    let year_of_era = y - era * 400;
+    let day_of_year = (153 * m + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3600 + minute * 60 + second)
+}
+
 fn create_directory(directory: &Path) -> Result<(), Error> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
@@ -1206,6 +1560,50 @@ pub(crate) fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// The longest chat retention a server accepts, in days (ten years).
+pub const MAX_RETENTION_DAYS: u64 = 3650;
+
+/// How often a server with a retention removes untouched chats.
+const EXPIRY_INTERVAL: Duration = Duration::from_secs(6 * 3600);
+
+/// Parse `--chat-retention-days` (1 to [`MAX_RETENTION_DAYS`]).
+pub fn retention_days(value: &str) -> Result<u64, Error> {
+    value
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|days| (1..=MAX_RETENTION_DAYS).contains(days))
+        .ok_or(Error::Invalid(
+            "The chat retention must be a whole number of days from 1 to 3650.",
+        ))
+}
+
+/// The time before which a chat counts as untouched for `days`.
+pub fn retention_cutoff(now_unix: u64, days: u64) -> u64 {
+    now_unix.saturating_sub(days.saturating_mul(86_400))
+}
+
+/// Remove chats untouched for `days` now and every six hours after, for
+/// the life of the server. A failed pass is logged and tried again later.
+pub fn spawn_expiry(store: Arc<Store>, days: u64) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(EXPIRY_INTERVAL);
+        loop {
+            ticks.tick().await;
+            match store
+                .expire_untouched(retention_cutoff(now_unix(), days))
+                .await
+            {
+                Ok(0) => {}
+                Ok(removed) => {
+                    println!("openagents-web: removed {removed} chats untouched for {days} days");
+                }
+                Err(error) => eprintln!("openagents-web: chat expiry: {error}"),
+            }
+        }
+    })
 }
 
 #[cfg(test)]
@@ -1451,5 +1849,118 @@ mod tests {
             store.compare_and_swap(&accepted, &redirected).await,
             Err(Error::Invalid(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn local_delete_is_fenced_final_and_private() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::local(directory.path().join("chats"));
+        let original = store.create(&conversation()).await.unwrap();
+        let mut next = conversation();
+        next.revision = 2;
+        let changed = store.compare_and_swap(&original, &next).await.unwrap();
+
+        // A stale read cannot delete a chat that changed since.
+        assert!(matches!(
+            store.delete(OWNER, ID, &original.generation).await,
+            Err(Error::Conflict)
+        ));
+        // Another visitor's address finds nothing to delete.
+        let other = "22222222222222222222222222222222";
+        assert!(!store.delete(other, ID, &changed.generation).await.unwrap());
+        assert!(store.load(OWNER, ID).await.unwrap().is_some());
+
+        assert!(store.delete(OWNER, ID, &changed.generation).await.unwrap());
+        assert!(store.load(OWNER, ID).await.unwrap().is_none());
+        assert!(store.list(OWNER).await.unwrap().is_empty());
+        assert!(!store.delete(OWNER, ID, &changed.generation).await.unwrap());
+        // Nothing of the chat stays on disk.
+        let files: Vec<_> = fs::read_dir(directory.path().join("chats").join(owner_digest(OWNER)))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert!(files.is_empty(), "{files:?}");
+        // A late answer cannot bring it back.
+        let mut late = next.clone();
+        late.revision = 3;
+        assert!(matches!(
+            store.compare_and_swap(&changed, &late).await,
+            Err(Error::Conflict)
+        ));
+        assert!(store.load(OWNER, ID).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn local_expiry_removes_only_untouched_chats() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::local(directory.path().join("chats"));
+        assert_eq!(store.expire_untouched(100).await.unwrap(), 0);
+        let mut old = conversation();
+        old.updated_unix = 50;
+        store.create(&old).await.unwrap();
+        let fresh_id = "93e18906-00e2-436c-978b-13a4932f58b0";
+        let mut fresh = conversation();
+        fresh.id = fresh_id.into();
+        fresh.requests[0].id = fresh_id.into();
+        fresh.messages[0].request_id = Some(fresh_id.into());
+        fresh.updated_unix = 150;
+        store.create(&fresh).await.unwrap();
+        let other = "33333333333333333333333333333333";
+        let mut theirs = conversation();
+        theirs.owner = other.into();
+        theirs.updated_unix = 10;
+        store.create(&theirs).await.unwrap();
+
+        assert_eq!(store.expire_untouched(100).await.unwrap(), 2);
+        assert!(store.load(OWNER, ID).await.unwrap().is_none());
+        assert!(store.load(other, ID).await.unwrap().is_none());
+        assert!(store.load(OWNER, fresh_id).await.unwrap().is_some());
+        assert_eq!(store.expire_untouched(100).await.unwrap(), 0);
+    }
+
+    #[test]
+    fn retention_settings_and_bucket_names_are_bounded() {
+        assert_eq!(retention_days("30").unwrap(), 30);
+        assert_eq!(retention_days(" 3650 ").unwrap(), 3650);
+        for bad in ["0", "3651", "-1", "30d", ""] {
+            assert!(retention_days(bad).is_err(), "{bad}");
+        }
+        assert_eq!(retention_cutoff(10 * 86_400, 3), 7 * 86_400);
+        assert_eq!(retention_cutoff(5, 3), 0);
+
+        let digest = owner_digest(OWNER);
+        assert!(expirable_object(
+            "conversations/",
+            &format!("conversations/{digest}/{ID}.json")
+        ));
+        for name in [
+            format!("conversations/{digest}/.active.json"),
+            format!("conversations/{digest}/{ID}.json.tmp"),
+            format!("other/{digest}/{ID}.json"),
+            format!("conversations/{ID}.json"),
+            format!("conversations/{digest}/nested/{ID}.json"),
+        ] {
+            assert!(!expirable_object("conversations/", &name), "{name}");
+        }
+    }
+
+    #[test]
+    fn storage_times_parse_to_unix_seconds() {
+        assert_eq!(rfc3339_unix("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(rfc3339_unix("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(rfc3339_unix("2000-03-01T00:00:00Z"), Some(951_868_800));
+        assert_eq!(
+            rfc3339_unix("2026-10-08T12:34:56.789Z"),
+            Some(1_791_462_896)
+        );
+        for bad in [
+            "2026-10-08",
+            "2026-10-08T12:34:56+00:00",
+            "2026-13-08T12:34:56Z",
+            "2026-10-08T12:34:56.Z",
+            "abcd-10-08T12:34:56Z",
+        ] {
+            assert_eq!(rfc3339_unix(bad), None, "{bad}");
+        }
     }
 }
