@@ -5,6 +5,28 @@ Measured 2026-10-09 on a fresh `git clone --bare` of
 fetches), in a throwaway copy. Nothing on the real repo or remote was
 changed.
 
+## Cloning
+
+Fast clone (history blobs download only when a command needs them):
+
+    git clone --filter=blob:none https://github.com/OpenAgentsInc/openagents
+
+Bench captures, record archives and large reports are no longer in the
+tree (#11110). They live in the private bucket
+`gs://openagents-bench-artifacts` (one object per sha256, never
+overwritten or deleted), and each run directory keeps a
+`bench-artifacts.json` manifest plus a `.gitignore` for those files.
+Bring them back (gcloud must be authenticated):
+
+    scripts/bench-artifacts.py restore                 # everything under bench/
+    scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-sustained
+
+New run output goes the same way: `scripts/bench-artifacts.py push RUN_DIR`
+uploads captures and files over 1 MB and writes the manifest. Enable the
+large-file check once per clone with `git config core.hooksPath .githooks`
+(it runs `scripts/dev/check-large-files.sh`; allowlist in
+`scripts/dev/large-files-allowlist.txt`).
+
 ## Where the 9 GB comes from
 
 | Part of a normal clone | Size |

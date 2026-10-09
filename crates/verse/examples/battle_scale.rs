@@ -1,5 +1,7 @@
 //! Isolated original-world capacity checks with the actual authority and TLS worker.
 //! Usage: battle_scale authority|network|combined OUTPUT.json SECONDS
+//! A report over 1 MB stays out of git (#11110): upload it with
+//! `scripts/bench-artifacts.py push RUN_DIRECTORY`, which keeps a sha256 manifest.
 //! VERSE_BATTLE_RESOLUTION=2560x1440 selects the offscreen dimensions.
 //! VERSE_BATTLE_PACK selects a local licensed pack; its files stay outside Git.
 #[path = "common/battle_acceptance.rs"]
@@ -939,6 +941,16 @@ fn main() -> Result<(), String> {
         serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    if std::fs::metadata(&args[1]).is_ok_and(|m| m.len() > 1 << 20) {
+        let run = std::path::Path::new(&args[1])
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(std::path::Path::new("."));
+        eprintln!(
+            "The report is over 1 MB; keep it out of git: scripts/bench-artifacts.py push {}",
+            run.display()
+        );
+    }
     result?;
     if !failures.is_empty() {
         return Err("Capacity budgets failed; the report retains observations".into());

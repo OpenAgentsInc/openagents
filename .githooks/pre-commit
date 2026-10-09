@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Repository hooks. Enable once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/dev/check-large-files.sh"

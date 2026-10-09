@@ -3,6 +3,11 @@
 //!
 //! Usage: water_capture OUTPUT_DIRECTORY [--baseline DIRECTORY]...
 //!
+//! Captures stay out of git (#11110): after a run under `bench/`, upload
+//! the PNGs with `scripts/bench-artifacts.py push OUTPUT_DIRECTORY`, which
+//! leaves a sha256 manifest beside the JSON. A committed baseline's PNGs
+//! come back with `scripts/bench-artifacts.py restore DIRECTORY`.
+//!
 //! Phase W7 adds `waterline` (the eye at the pond's surface, the view
 //! split per pixel), `snell` (the surface from below: Snell's window), and
 //! `posts-under` (caustics on the posts and the bed, from under the
@@ -1244,6 +1249,9 @@ fn main() -> Result<(), String> {
         }
         _ => {}
     }
+    for base in &baseline {
+        baseline_restored(base)?;
+    }
     let gpu = gpu()?;
     let mut records = Vec::new();
     let mut checks = Vec::new();
@@ -1451,8 +1459,33 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    eprintln!(
+        "Captures stay out of git: scripts/bench-artifacts.py push {}",
+        directory.display()
+    );
     if !all {
         return Err("A view's water drew nothing".into());
+    }
+    Ok(())
+}
+
+/// A baseline whose captures live in the bench bucket must be restored
+/// first; otherwise its Low pictures would silently go uncompared.
+fn baseline_restored(base: &std::path::Path) -> Result<(), String> {
+    let Ok(text) = std::fs::read_to_string(base.join("bench-artifacts.json")) else {
+        return Ok(());
+    };
+    let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let missing = manifest["files"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .any(|(path, _)| !base.join(path).exists());
+    if missing {
+        return Err(format!(
+            "The baseline's captures are in the bench bucket; run scripts/bench-artifacts.py restore {}",
+            base.display()
+        ));
     }
     Ok(())
 }

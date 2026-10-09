@@ -39,3 +39,17 @@ private-assets.json
 /.claude/
 # Finder metadata.
 .DS_Store
+
+# Bench captures and record archives live in gs://openagents-bench-artifacts
+# with a sha256 manifest per run (scripts/bench-artifacts.py, #11110).
+/bench/verse/**/*.mp4
+/bench/verse/**/*.webm
+/bench/verse/**/*.mov
+/bench/verse/**/*.png
+/bench/verse/**/*.jpg
+/bench/verse/**/*.jpeg
+/bench/verse/**/*.wav
+/bench/verse/**/*.gz
+/bench/verse/**/*.zip
+/bench/verse/**/*.npy
+/bench/terminal-bench/experiments/**/*.tar.gz

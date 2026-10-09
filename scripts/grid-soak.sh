@@ -21,7 +21,11 @@
 #
 # Receipts land in DIR (default bench/verse/<date>/grid-soak): meta.json,
 # walkers.ndjson, load.json, frames.ndjson, summary.json, cap.ndjson,
-# relay.log, and each client's first and last view as a PNG.
+# relay.log, and each client's first and last view as a PNG. The PNGs and
+# any receipt over 1 MB go to the bench bucket afterwards
+# (scripts/bench-artifacts.py push DIR), which leaves a sha256 manifest in
+# DIR and keeps them out of git; without gcloud, run that push by hand
+# before committing the receipts.
 #
 # `--world` soaks a portal's shared zone instance (`verse-everglade`,
 # `verse-lagrange-1`) instead: walkers stand in for all 20 players there,
@@ -151,4 +155,7 @@ load=$?
 set -e
 
 echo "grid-soak: clients exit $clients, load exit $load; receipts in $out"
+if ! { command -v gcloud >/dev/null && python3 "$root/scripts/bench-artifacts.py" push "$out"; }; then
+  echo "grid-soak: captures not uploaded; run scripts/bench-artifacts.py push $out before committing" >&2
+fi
 [[ $clients -eq 0 && $load -eq 0 ]]

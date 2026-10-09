@@ -273,6 +273,31 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _offload_large(job_dirs: list[Path]) -> None:
+    """Upload retained files over 1 MB to the bench bucket (#11110).
+
+    The files stay on disk; ``scripts/bench-artifacts.py`` writes a sha256
+    manifest in the job directory and makes git ignore them, so the
+    large-file check passes. Without gcloud this only says what to run.
+    """
+    script = paths.PACKAGE_DIR.parent.parent / "scripts" / "bench-artifacts.py"
+    for job_dir in job_dirs:
+        large = [p for p in job_dir.rglob("*") if p.is_file() and p.stat().st_size > 1 << 20]
+        if not large:
+            continue
+        command = [sys.executable, str(script), "push", "--large-only", str(job_dir)]
+        try:
+            ok = subprocess.run(command).returncode == 0
+        except OSError:
+            ok = False
+        if not ok:
+            print(
+                f"retain: {len(large)} files over 1 MB in {job_dir} are not uploaded; "
+                f"run scripts/bench-artifacts.py push --large-only {job_dir} before committing",
+                file=sys.stderr,
+            )
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     """Copy jobs' evidence closures into the retained traces."""
     retained, errors = retain_jobs(
@@ -301,6 +326,8 @@ def cmd_retain(args: argparse.Namespace) -> int:
         for entry in item.record["files"]:
             if entry["digest"] == "mismatch":
                 print(f"  digest mismatch: {entry['path']}")
+    if not args.dry_run:
+        _offload_large(sorted({item.destination for item in retained}))
     for error in errors:
         print(f"retain: {error}", file=sys.stderr)
     verb = "checked" if args.dry_run else "retained"
