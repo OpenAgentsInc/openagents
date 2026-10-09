@@ -73,7 +73,8 @@ as `crates/coder-ui/NOTICE` already does for its sources.
   in `crates/coder-ui/src/coder_noir.rs` for native and Wasm surfaces, and as
   `--noir-*` CSS variables for the site (`src/palette.rs` maps the white
   ladder). There is no light theme and no `data-theme` switching.
-- **Fonts**: Geist for body text and Paper Mono for code (`static/fonts.css`).
+- **Fonts**: Geist for body text and Paper Mono for code until 2026-10-08;
+  now the system font stacks (decision 7).
 - **Scripts**: HTMX and the HTMX SSE extension are vendored under
   `static/vendor`, plus small page scripts (`chat.js`, `ask.js`, `flow.js`,
   and others). No Alpine.
@@ -130,9 +131,12 @@ as `crates/coder-ui/NOTICE` already does for its sources.
    theme with no flash; clearing the cookie returns to the system setting.
    Nested `data-theme` lets a single panel, such as a terminal, stay dark
    inside a light page.
-7. **Fonts**: keep Geist for body text and Paper Mono for code instead of Apps
-   SDK UI's system sans. The type scale (sizes, line heights, weights,
-   tracking) comes from Apps SDK UI. Revisit after Coder Light is on screen.
+7. **Fonts** (owner decision, 2026-10-08): Apps SDK UI's system font stacks,
+   `ui-sans-serif, -apple-system, system-ui, ...` for text and
+   `ui-monospace, "SF Mono", Menlo, ...` for code, terminal grids and the
+   wordmark, in both themes. The web app no longer serves Geist or Paper Mono.
+   The type scale (sizes, line heights, weights, tracking) also comes from
+   Apps SDK UI. Native apps keep their own fonts until phase 4.
 8. **Icons**: copy `apps_sdk_icons.rs` into `openagents-ui` as
    `icons.rs` with its generator. Instead of a runtime name lookup, generate a
    Rust `enum Icon` with one variant per icon, so a misspelled icon fails to
@@ -238,8 +242,5 @@ files.
   primary. Coder Noir keeps its near-white neutral.
 - **Default theme**: follow the system setting, with a one-click light/dark
   toggle (decision 6).
-
-## Open questions
-
-- **Fonts**: Geist and Paper Mono, or Apps SDK UI's system sans and mono, for
-  Coder Light. A side-by-side comparison page is being reviewed.
+- **Fonts**: system sans and system mono on the web (decision 7). Geist and
+  Paper Mono were removed from `openagents-web`.

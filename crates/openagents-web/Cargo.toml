@@ -8,8 +8,6 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
-# Paper Mono, the one typeface, for the pages this crate renders.
-paper-mono = { path = "../paper-mono" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }

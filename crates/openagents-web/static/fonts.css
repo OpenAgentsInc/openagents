@@ -1,2 +1,1 @@
-@font-face{font-family:"Geist";src:url('/fonts/Geist.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap}
-:root{--font-body:"Geist",sans-serif;--font-mono:"Paper Mono",monospace}
+:root{--font-body:ui-sans-serif,-apple-system,system-ui,"Segoe UI","Noto Sans",Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol",sans-serif;--font-mono:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Monaco,Consolas,"Liberation Mono","DejaVu Sans Mono","Courier New",monospace}

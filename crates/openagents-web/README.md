@@ -9,8 +9,9 @@ The site, catalog, Cloud, and demo use Coder Noir from
 `coder_ui::coder_noir`: Superlogical's Static Noir base with neutral Coder
 accents and cursors. Shared semantic CSS tokens preserve the native palette,
 including status colors and translucent control states. The game scenes retain
-their content colors. Normal UI text uses the [restored variable Geist face](fonts/README.md);
-code, terminal grids, and the OpenAgents wordmark retain Paper Mono.
+their content colors. All text uses the system font stacks from Apps SDK UI: the system sans for
+UI text and the system monospace for code, terminal grids, and the wordmark.
+The site serves no font files.
 The interactive pages run scripts under a
 policy that allows same-site scripts and same-origin requests: the
 homepage and chat composer (HTMX with a small Rust/Wasm interaction adapter), `/live`'s

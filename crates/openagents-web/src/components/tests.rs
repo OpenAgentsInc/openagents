@@ -115,7 +115,6 @@ async fn only_named_build_assets_are_served_and_wasm_enables_the_loader() {
         StatusCode::NOT_FOUND
     );
     assert!(crate::upstream::owned("/components/assets/private.json"));
-    assert!(crate::upstream::owned(paper_mono::WOFF2_PATH));
 }
 
 #[tokio::test]

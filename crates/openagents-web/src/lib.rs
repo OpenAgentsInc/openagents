@@ -171,8 +171,6 @@ pub fn router(config: Config) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
         .route("/static/tailwind.css", get(tailwind))
-        .route(paper_mono::WOFF2_PATH, get(paper_mono_font))
-        .route("/fonts/Geist.ttf", get(geist_font))
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
         .route("/static/chat.js", get(chat_script))
@@ -308,37 +306,9 @@ fn css() -> String {
     with_fonts(&palette::stylesheet(include_str!("../static/site.css")))
 }
 
-/// Prefix a web surface's rules with the bundled fonts and shared font stacks.
+/// Prefix a web surface's rules with the shared system font stacks.
 pub(crate) fn with_fonts(rules: &str) -> String {
-    format!(
-        "{}{}{rules}",
-        paper_mono::font_face(paper_mono::WOFF2_PATH),
-        include_str!("../static/fonts.css"),
-    )
-}
-
-/// The site's monospace font, served from this origin.
-async fn paper_mono_font() -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "font/woff2"),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-        ],
-        paper_mono::WOFF2,
-    )
-        .into_response()
-}
-
-/// The site's proportional font, restored from the former web application.
-async fn geist_font() -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "font/ttf"),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-        ],
-        include_bytes!("../fonts/Geist.ttf").as_slice(),
-    )
-        .into_response()
+    format!("{}{rules}", include_str!("../static/fonts.css"))
 }
 
 /// The homepage composer's script.

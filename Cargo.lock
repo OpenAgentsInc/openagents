@@ -10439,7 +10439,6 @@ dependencies = [
  "nostr",
  "openagents-chat",
  "openagents-wallet",
- "paper-mono",
  "pay-ledger",
  "pulldown-cmark",
  "receipts",
