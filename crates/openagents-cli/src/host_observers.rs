@@ -6,6 +6,9 @@ pub struct Options {
     pub arguments: Vec<String>,
     pub projects: Option<PathBuf>,
     pub cloud: Option<PathBuf>,
+    /// `--environment-owners CONFIG`: the setup, build, and verify owners
+    /// packaged beside the cloud operator (ENV-08).
+    pub environment: Option<PathBuf>,
     pub state: Option<PathBuf>,
     pub root: Option<PathBuf>,
     pub policy: coder_access::RelayPolicy,
@@ -15,11 +18,13 @@ impl Options {
         let mut remaining = Vec::new();
         let mut projects = None;
         let mut cloud = None;
+        let mut environment = None;
         let mut index = 0;
         while index < arguments.len() {
             let target = match arguments[index].as_str() {
                 "--project-observer" => Some(&mut projects),
                 "--cloud-operator" => Some(&mut cloud),
+                "--environment-owners" => Some(&mut environment),
                 _ => None,
             };
             if let Some(target) = target {
@@ -49,6 +54,9 @@ impl Options {
                 .find(|pair| pair[0] == flag)
                 .map(|pair| PathBuf::from(&pair[1]))
         };
+        if environment.is_some() && cloud.is_none() {
+            return Err("environment owners run only beside a --cloud-operator".into());
+        }
         let state = explicit("--state");
         let root = explicit("--root");
         if cloud.is_some()
@@ -71,6 +79,7 @@ impl Options {
             arguments: remaining,
             projects,
             cloud,
+            environment,
             state,
             root,
             policy,
@@ -119,6 +128,31 @@ mod tests {
             Options::take(&args(&["serve", "--cloud-operator", "/private/cloud.json"])).is_err()
         );
         assert!(Options::take(&args(&["serve", "--project-observer", "relative.json"])).is_err());
+        // Environment owners run only beside an explicit cloud operator.
+        let packaged = Options::take(&args(&[
+            "serve",
+            "--cloud-operator",
+            "/private/cloud.json",
+            "--environment-owners",
+            "/private/environment.json",
+            "--state",
+            "/private/access",
+            "--root",
+            "/private/host",
+        ]))
+        .unwrap();
+        assert_eq!(
+            packaged.environment,
+            Some(PathBuf::from("/private/environment.json"))
+        );
+        assert!(
+            Options::take(&args(&[
+                "serve",
+                "--environment-owners",
+                "/private/environment.json"
+            ]))
+            .is_err()
+        );
         assert!(
             Options::take(&args(&[
                 "init",

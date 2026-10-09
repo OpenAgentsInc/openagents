@@ -27,6 +27,8 @@ mod billing;
 mod controls;
 #[path = "environment_tests.rs"]
 mod environment;
+#[path = "environment_e2e_tests.rs"]
+mod environment_e2e;
 
 #[path = "../../examples/support/operator_fixture.rs"]
 mod operator_fixture;

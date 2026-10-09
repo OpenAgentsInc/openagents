@@ -1,0 +1,26 @@
+[package]
+name = "coder-environment-operator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The environment setup, build, and verify owners packaged as one service beside the resident Cloud operator: shared state layout, panel composition, wake and recovery loop, and Boat configuration."
+
+[dependencies]
+boat = { path = "../boat" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-cloud = { path = "../coder-cloud" }
+coder-environment = { path = "../coder-environment" }
+coder-environment-build = { path = "../coder-environment-build" }
+coder-environment-setup = { path = "../coder-environment-setup" }
+coder-environment-verify = { path = "../coder-environment-verify" }
+coder-working-computer = { path = "../coder-working-computer" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

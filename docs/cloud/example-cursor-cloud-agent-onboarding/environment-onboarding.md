@@ -655,8 +655,72 @@ setup owner is composed with `Operator::with_setup`
 it retains steering and its evidence before answering and hands wake-ups to
 the owner's loop, which calls `Setup::resume`; without one the panel shows
 setup as unavailable. A terminal is the separately granted native
-workbench. Composing the setup and verify owners into a running operator is
-ENV-08 packaging.
+workbench.
+
+ENV-08 packages the owners in
+[`coder-environment-operator`](../../../crates/coder-environment-operator/src/lib.rs).
+`Owners::open` builds the setup, build, and verify owners over the
+operator's private state directory (`<host root>/cloud-operator`), and
+`attach` composes the setup owner with `Operator::with_setup` and starts
+their loop on its own thread. The service handle lives inside the composed
+operator, so the loop starts and stops with it; `Service::stop` also waits
+for the current visit. With the owners packaged, the panel lists and steers
+setup sessions instead of showing setup as unavailable. Every owner keeps its
+state under the operator's state directory, created `0700`:
+
+| Path | Owner | Contents |
+| --- | --- | --- |
+| `environments/` | ENV-01 | environment records; the operator admits jobs from them |
+| `environment-setup/sessions/`, `evidence/`, `blobs/` | setup | sessions, tool evidence, install scripts |
+| `environment-build/jobs/`, `evidence/` | build | build jobs and evidence |
+| `environment-verify/jobs/`, `evidence/<verify job>` | verify | jobs and the run evidence the panel pages |
+| `environment-verify/artifacts/<digest>` | verify | protected check plans, check scripts, and install scripts sealed by digest |
+| `environment-computers/` | all | setup, builder, and verifier computer records |
+
+The loop resumes a session the panel steered. On start and on every tick,
+`Owners::recover` advances builds and verifications that are not finished or
+whose machines are not confirmed deleted. It times out setup commands past
+their deadline, wakes a session whose steering arrived while the owner was
+down, and retries the cleanup of ended sessions. A restarted operator
+therefore recovers the same sessions, jobs, and versions. An owner restart
+that loses a live recorder is disclosed: setup and build open a new evidence
+segment and mark the old one interrupted, and a verification ends
+incomplete. Only the operator writes protected artifacts:
+`Owners::seal_artifact` retains plans and check scripts, and
+`Owners::verify` seals the build's exact install script before the
+verifier starts.
+
+`openagents host serve ... --cloud-operator POLICY --environment-owners
+CONFIG` turns the package on (see the [Cloud README](../README.md#environment-owners)).
+In this release a setup session, a build, or a verification is opened
+through the package API (`Owners::setup.open`, `Owners::build`,
+`Owners::verify`). The browser panel reads, steers, promotes, and selects;
+it does not start them.
+
+Code acceptance is one isolated, simulated end-to-end test,
+[`environment_e2e_tests.rs`](../../../crates/openagents-web/src/cloud/environment_e2e_tests.rs),
+over the in-memory provider, synthetic identities, the resident host, and
+real HTTP through `openagents-web`. A setup session materializes the pinned
+commit with the real source script (local `sh` and `git` against a scratch
+origin) and runs a named-credential command that is redacted. Its install
+fails, and the session pauses for input. The operator then restarts (host,
+operator, and owners) and recovers the same records; the restart is disclosed
+as an interrupted evidence segment. Steering through the panel's request book
+wakes the session through the packaged loop. The recipe is repaired and the
+install reruns, bound to the new revision. A clean build runs on a fresh
+builder, and a fresh verification runs the untouched baseline, then the
+idempotence fork. A reviewed Promote from the browser saves and selects the
+exact candidate. A new task submitted from the browser pins `v1` with the
+saved image, which the provider still holds `Ready`. The evidence export is
+complete with no gaps and two machine records. No retained file holds the
+credential value. All four machines are deleted with acknowledged cleanup, and
+the panel pages pass keyboard and narrow-screen checks: a viewport that still
+zooms, a skip link, labelled controls, and button-submitted forms.
+The tier qualified is simulated; no real Boat machine, image, or deployed
+origin ran. That run, with measured build and restore time and cost, and
+the deployment, source, and custody record, is the owner-only ENV-08
+qualification entry in the workspace `NEEDS_OWNER.md`. Until it passes,
+environment onboarding is not available on a deployed origin.
 
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;

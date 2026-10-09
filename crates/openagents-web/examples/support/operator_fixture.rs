@@ -195,3 +195,21 @@ pub fn operator(
         },
     )
 }
+/// The same operator reloaded from its retained policy and state, as a
+/// restarted host loads it (ENV-08 restart acceptance).
+#[allow(dead_code)]
+pub fn reload(directory: &Path, authority: Authority) -> Result<Operator, String> {
+    let claude = std::fs::read_to_string(directory.join(EXECUTOR_FILE))
+        .is_ok_and(|v| v.trim() == coder_cloud::claude::ENGINE);
+    Operator::load(
+        directory.join("operator-policy.json"),
+        directory.join("operator-cloud"),
+        authority,
+    )?
+    .with_backend(
+        PROFILE,
+        Synthetic {
+            turns: claude.then(|| directory.join(RELEASED_TURNS)),
+        },
+    )
+}

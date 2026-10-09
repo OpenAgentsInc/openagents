@@ -3125,6 +3125,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-environment-operator"
+version = "0.1.0"
+dependencies = [
+ "boat",
+ "coder-access",
+ "coder-cloud",
+ "coder-environment",
+ "coder-environment-build",
+ "coder-environment-setup",
+ "coder-environment-verify",
+ "coder-working-computer",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coder-environment-setup"
 version = "0.1.0"
 dependencies = [
@@ -10196,6 +10214,7 @@ dependencies = [
  "coder-computers",
  "coder-connect",
  "coder-delegate",
+ "coder-environment-operator",
  "coder-host",
  "coder-labor",
  "coder-lease",
@@ -10429,11 +10448,16 @@ dependencies = [
  "coder-cloud",
  "coder-demo-ui",
  "coder-environment",
+ "coder-environment-build",
+ "coder-environment-operator",
+ "coder-environment-setup",
+ "coder-environment-verify",
  "coder-host",
  "coder-project",
  "coder-pty",
  "coder-scheduler",
  "coder-ui",
+ "coder-working-computer",
  "compute-workbench",
  "discovery",
  "futures-util",

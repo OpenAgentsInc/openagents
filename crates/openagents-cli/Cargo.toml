@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 coder-cloud = { path = "../coder-cloud" }
+coder-environment-operator = { path = "../coder-environment-operator" }
 coder-new = { path = "../coder-new" }
 brainstorm-client = { path = "../brainstorm-client" }
 receipts = { path = "../receipts" }

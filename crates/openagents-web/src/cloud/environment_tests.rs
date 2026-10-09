@@ -14,7 +14,7 @@ const CLOUD: &str = "/cloud/app/hosts/resident/cloud/synthetic-cloud";
 const PANEL: &str = "/cloud/app/hosts/resident/cloud/synthetic-cloud/environment";
 const STDOUT: &[u8] = b"test result: ok. 3 passed <script>\n";
 
-fn operator_root(fixture: &Fixture) -> PathBuf {
+pub(super) fn operator_root(fixture: &Fixture) -> PathBuf {
     fixture
         .config
         .cloud_build
@@ -178,10 +178,10 @@ fn verified(root: &std::path::Path) -> EnvStore {
     }
     s
 }
-async fn get(fixture: &Fixture, cookies: &Cookies, path: &str) -> Answer {
+pub(super) async fn get(fixture: &Fixture, cookies: &Cookies, path: &str) -> Answer {
     request(&fixture.site, Method::GET, path, cookies, None, None).await
 }
-async fn post(fixture: &Fixture, cookies: &Cookies, path: &str, input: &str) -> Answer {
+pub(super) async fn post(fixture: &Fixture, cookies: &Cookies, path: &str, input: &str) -> Answer {
     request(
         &fixture.site,
         Method::POST,
@@ -192,7 +192,7 @@ async fn post(fixture: &Fixture, cookies: &Cookies, path: &str, input: &str) -> 
     )
     .await
 }
-fn link(html: &str, needle: &str) -> String {
+pub(super) fn link(html: &str, needle: &str) -> String {
     html.split("href=\"")
         .skip(1)
         .filter_map(|v| v.split('"').next())
@@ -200,7 +200,7 @@ fn link(html: &str, needle: &str) -> String {
         .unwrap_or_else(|| panic!("no link containing {needle}"))
         .replace("&amp;", "&")
 }
-fn action_form(html: &str, action: &str) -> Vec<(String, String)> {
+pub(super) fn action_form(html: &str, action: &str) -> Vec<(String, String)> {
     let form = html
         .split("<form ")
         .skip(1)
@@ -220,12 +220,12 @@ fn action_form(html: &str, action: &str) -> Vec<(String, String)> {
     .map(|n| ((*n).to_string(), field(form, n)))
     .collect()
 }
-fn encode(fields: &[(String, String)]) -> String {
+pub(super) fn encode(fields: &[(String, String)]) -> String {
     url::form_urlencoded::Serializer::new(String::new())
         .extend_pairs(fields.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .finish()
 }
-async fn enroll(fixture: &Fixture, cookies: &Cookies) {
+pub(super) async fn enroll(fixture: &Fixture, cookies: &Cookies) {
     let page = get(fixture, cookies, BASE).await;
     assert_eq!(page.status, StatusCode::OK);
     let csrf = action_token(&page.body, &format!("{BASE}/enroll"), None);
@@ -238,7 +238,11 @@ async fn enroll(fixture: &Fixture, cookies: &Cookies) {
     .await;
     assert_eq!(answer.status, StatusCode::SEE_OTHER, "{}", answer.body);
 }
-async fn confirm_form(fixture: &Fixture, cookies: &Cookies, id: &str) -> (String, String) {
+pub(super) async fn confirm_form(
+    fixture: &Fixture,
+    cookies: &Cookies,
+    id: &str,
+) -> (String, String) {
     let path = format!("{BASE}/requests/{id}");
     let page = get(fixture, cookies, &path).await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);

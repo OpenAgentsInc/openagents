@@ -509,6 +509,29 @@ async fn host(arguments: &[String]) -> u8 {
             std::env::var_os("HOME")
                 .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
         });
+    // The packaged environment owners' Boat providers, built before the
+    // host opens its owners (ENV-08). Their loop starts and stops with the
+    // cloud operator they are composed with.
+    #[cfg(unix)]
+    let environment = match &observers.environment {
+        Some(path) => {
+            let config = match coder_environment_operator::Config::load(path) {
+                Ok(c) => c,
+                Err(why) => {
+                    eprintln!("openagents host: {why}");
+                    return EXIT_FAILURE;
+                }
+            };
+            match coder_environment_operator::boat::providers(&config).await {
+                Ok(providers) => Some((config, providers)),
+                Err(why) => {
+                    eprintln!("openagents host: {why}");
+                    return EXIT_FAILURE;
+                }
+            }
+        }
+        None => None,
+    };
     let open = Box::new(
         move |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
             let mut inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
@@ -532,11 +555,22 @@ async fn host(arguments: &[String]) -> u8 {
                     observers.policy,
                 ))
                 .map_err(|_| "operator cloud authority is unavailable")?;
-                let operator = coder_cloud::operator::Operator::load(
-                    path,
-                    &root.join("cloud-operator"),
-                    authority,
-                )?;
+                let state = root.join("cloud-operator");
+                let mut operator = coder_cloud::operator::Operator::load(path, &state, authority)?;
+                if let Some((config, providers)) = environment {
+                    let owners = coder_environment_operator::Owners::open(
+                        &state,
+                        providers,
+                        coder_environment_operator::environment_custody(),
+                    )?;
+                    // The service handle lives in the composed operator.
+                    operator = coder_environment_operator::attach(
+                        std::sync::Arc::new(owners),
+                        operator,
+                        config.cadence(),
+                    )?
+                    .0;
+                }
                 inbox = inbox.with_cloud(std::sync::Arc::new(operator));
             }
             if let Some(root) = root.clone() {

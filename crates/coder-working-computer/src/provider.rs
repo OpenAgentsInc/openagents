@@ -245,6 +245,97 @@ pub trait Provider {
     async fn inspect(&self, computer: &Computer, resource: &str) -> Outcome<Inspection>;
 }
 
+/// One provider shared by several owners (setup, build, and verify over
+/// the same provider state) through an `Arc`.
+impl<P: Provider> Provider for std::sync::Arc<P> {
+    async fn create(&self, computer: &Computer, operation: &str) -> Outcome<String> {
+        (**self).create(computer, operation).await
+    }
+    async fn restore(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Outcome<String> {
+        (**self).restore(computer, resource, checkpoint).await
+    }
+    async fn apply_credentials(&self, computer: &Computer, resource: &str) -> Outcome<String> {
+        (**self).apply_credentials(computer, resource).await
+    }
+    async fn start_service(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        service: &ServiceDecl,
+    ) -> Outcome<String> {
+        (**self).start_service(computer, resource, service).await
+    }
+    async fn checkpoint(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        generation: u64,
+    ) -> Outcome<CheckpointEvidence> {
+        (**self).checkpoint(computer, resource, generation).await
+    }
+    async fn shutdown_processes(&self, computer: &Computer, resource: &str) -> Outcome<String> {
+        (**self).shutdown_processes(computer, resource).await
+    }
+    async fn stop(&self, computer: &Computer, resource: &str) -> Outcome<String> {
+        (**self).stop(computer, resource).await
+    }
+    async fn meter(&self, computer: &Computer, resource: &str) -> Outcome<Meter> {
+        (**self).meter(computer, resource).await
+    }
+    async fn delete(&self, computer: &Computer, resource: &str) -> Outcome<String> {
+        (**self).delete(computer, resource).await
+    }
+    async fn inspect(&self, computer: &Computer, resource: &str) -> Outcome<Inspection> {
+        (**self).inspect(computer, resource).await
+    }
+}
+impl<P: Commands> Commands for std::sync::Arc<P> {
+    async fn start_command(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        spec: &CommandSpec,
+    ) -> Outcome<String> {
+        (**self).start_command(computer, resource, spec).await
+    }
+    async fn read_command(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        (**self)
+            .read_command(computer, resource, id, cursor, max_bytes)
+            .await
+    }
+    async fn stop_command(&self, computer: &Computer, resource: &str, id: &str) -> Outcome<String> {
+        (**self).stop_command(computer, resource, id).await
+    }
+}
+impl<P: Images> Images for std::sync::Arc<P> {
+    async fn capture_image(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        name: &str,
+    ) -> Outcome<ImageRecord> {
+        (**self).capture_image(computer, resource, name).await
+    }
+    async fn read_image(&self, name: &str) -> Outcome<Option<ImageRecord>> {
+        (**self).read_image(name).await
+    }
+    async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool> {
+        (**self).hydration(computer, resource).await
+    }
+}
+
 /// An in-memory provider for tests: files per resource, snapshots, per-boot
 /// environment, services, and injectable failed, unknown, or lost-reply
 /// outcomes.

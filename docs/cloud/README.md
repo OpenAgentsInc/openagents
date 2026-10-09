@@ -78,6 +78,36 @@ that request returns its retained result, and reconciliation follows the
 original provider task without submitting a replacement. Provider and cleanup
 uncertainty remain visible until the native owner records a result.
 
+### Environment owners
+
+`--environment-owners /absolute/private/environment.json` (only beside
+`--cloud-operator`) runs the repository environment setup, build, and verify
+owners next to the operator as one packaged service
+([`coder-environment-operator`](../../crates/coder-environment-operator/src/lib.rs),
+ENV-08). They keep their state under `<root>/cloud-operator` with the
+environment records the operator reads, and their loop starts and stops with
+the operator. The configuration file holds no secret:
+
+```json
+{
+  "schema": "openagents.environment.owners.v1",
+  "provider": "boat",
+  "workdir": "/workspace/repo",
+  "template": null,
+  "credential_names": ["GH_TOKEN"],
+  "tick_seconds": 15
+}
+```
+
+The Boat client reads `BOAT_API_KEY` (or Secret Manager `boat-api-key`) and
+`BOAT_API_BASE`. Credential values are read by name from the host process
+environment at start and are also the redaction set. Setup and builder
+machines may receive them; verifier machines never do. The
+[environment onboarding contract](example-cursor-cloud-agent-onboarding/environment-onboarding.md)
+lists the state layout and restart recovery. A configured package is not
+deployed-origin availability. That requires the owner-run Boat qualification
+recorded in `NEEDS_OWNER.md`.
+
 ## Existing cloud lanes
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)
