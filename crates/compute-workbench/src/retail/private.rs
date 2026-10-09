@@ -98,6 +98,34 @@ impl Custody {
         Ok(())
     }
 }
+/// How long a client open waits for a held state lock before refusing.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Take the client state's exclusive lock, waiting a bounded time.
+///
+/// A client holds its lock only for one request, but the lock can also look
+/// held after its holder dropped it: `flock` belongs to the open file
+/// description, and a thread in this process that forks a child (a PTY or
+/// any spawn with a `pre_exec` hook) shares every open descriptor with that
+/// child until it execs and close-on-exec drops them. Under load that window
+/// is long enough for the next open to see a contended lock, so the open
+/// retries briefly; a real concurrent holder still refuses.
+fn acquire(lock: &File) -> Result<()> {
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    let mut pause = std::time::Duration::from_millis(1);
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if error.kind() == fs2::lock_contended_error().kind()
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(std::time::Duration::from_millis(25));
+            }
+            Err(_) => return Err(Error::Private("another retail client owns this state")),
+        }
+    }
+}
 pub(super) struct StateFile {
     directory: Custody,
     lock: Custody,
@@ -124,9 +152,7 @@ impl StateFile {
             path,
             directory: false,
         };
-        lock.file
-            .try_lock_exclusive()
-            .map_err(|_| Error::Private("another retail client owns this state"))?;
+        acquire(&lock.file)?;
         let path = root.join("references.json");
         let record = Custody {
             file: create(&path)?,
