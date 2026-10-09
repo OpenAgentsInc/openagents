@@ -1,12 +1,53 @@
+/* Cloud pages. Shared parts (cloud/ui.rs) and the workspace layout use the
+   openagents-ui tokens, so they follow Coder Light and Coder Noir. Rust
+   Native views keep their Coder Noir palette inside a nested dark panel
+   (ui::native). */
 .cloud [hidden]{display:none!important}
-.cloud .rn-view{--rn-default-font:var(--font-body);--rn-mono-font:var(--font-mono);--rn-default-foreground:var(--noir-content);--rn-dialog-background:var(--noir-surface-raised)}
-.cloud form{margin:1rem 0}.cloud button{font:inherit;color:var(--noir-content);background:var(--noir-control);border:1px solid var(--noir-stroke-subtle);padding:.5rem .75rem;cursor:pointer}.cloud button:focus-visible,.cloud a:focus-visible{outline:2px solid var(--noir-accent);outline-offset:3px}.cloud button:disabled{cursor:default;color:var(--noir-content-secondary)}
-.cloud form label{display:block;margin:.75rem 0}.cloud input:not([type=checkbox]),.cloud select,.cloud textarea{font:inherit;color:var(--noir-content);background:var(--noir-surface);border:1px solid var(--noir-stroke-subtle);padding:.5rem;max-width:100%;box-sizing:border-box}.cloud textarea{display:block;width:48ch;min-height:7rem}.cloud button{white-space:normal}.cloud pre{max-width:100%;box-sizing:border-box}
-.cloud-layout{display:grid;grid-template-columns:minmax(180px,25%) minmax(0,1fr);gap:2rem}.cloud-sidebar{border-right:1px solid var(--noir-stroke-subtle);padding-right:1rem}.cloud-sidebar nav{display:flex;flex-direction:column;gap:.75rem}.cloud-sidebar [aria-disabled=true]{color:var(--noir-content-secondary);font-size:.875rem}.cloud-switcher button{width:100%;text-align:left;overflow-wrap:anywhere}.cloud-main{min-width:0}.cloud-card{padding:1rem 0;border-bottom:1px solid var(--noir-stroke-subtle)}.cloud .rn-view{overflow-wrap:anywhere}.cloud .rn-field{max-width:48ch}.cloud .rn-input{font:inherit;color:var(--noir-content);background:var(--noir-surface);padding:.75rem;max-width:100%;box-sizing:border-box}.cloud .rn-input:focus-visible{outline:2px solid var(--noir-accent)}
-@media(max-width:640px){.cloud-layout{grid-template-columns:minmax(0,1fr)}.cloud-sidebar{border-right:0;border-bottom:1px solid var(--noir-stroke-subtle);padding:0 0 1rem}.cloud-sidebar nav{flex-direction:row;flex-wrap:wrap;gap:.5rem 1rem}.cloud-switcher{display:flex;gap:.5rem;flex-wrap:wrap}}
-
-.cloud button:hover{background:var(--noir-control-hover)}
-.cloud button:active{background:var(--noir-control-pressed)}
-.cloud input,.cloud textarea{caret-color:var(--noir-cursor);accent-color:var(--noir-accent)}
-.cloud input::placeholder,.cloud textarea::placeholder{color:var(--noir-content-secondary)}
+.cloud{min-width:0}
+.cloud .rn-view{--rn-default-font:var(--font-sans);--rn-mono-font:var(--font-mono);--rn-default-foreground:var(--color-text);--rn-dialog-background:var(--color-surface-elevated);overflow-wrap:anywhere}
+.cloud .rn-field{max-width:48ch}
+.cloud .rn-input{font:inherit;color:var(--color-text);background:var(--color-surface);padding:.75rem;max-width:100%;box-sizing:border-box}
+.cloud .rn-input:focus-visible{outline:2px solid var(--color-ring)}
+.cloud-native{color:var(--color-text);background:var(--color-surface);border:1px solid var(--color-border-subtle);border-radius:var(--radius-xl);padding:calc(var(--spacing)*4);margin:calc(var(--spacing)*3) 0}
+.cloud pre{max-width:100%;box-sizing:border-box;overflow:auto}
+.cloud a:focus-visible{outline:2px solid var(--color-ring);outline-offset:3px}
+/* Workspace layout. */
+.cloud-layout{display:grid;grid-template-columns:minmax(180px,25%) minmax(0,1fr);gap:calc(var(--spacing)*8)}
+.cloud-sidebar{border-right:1px solid var(--color-border-subtle);padding-right:calc(var(--spacing)*4)}
+.cloud-sidebar h1,.cloud-sidebar h2{font-size:var(--font-text-sm-size);font-weight:var(--font-weight-semibold);color:var(--color-text-secondary);margin:calc(var(--spacing)*4) 0 calc(var(--spacing)*2)}
+.cloud-sidebar nav{display:flex;flex-direction:column;gap:calc(var(--spacing)*1)}
+.cloud-sidebar nav a{color:var(--color-text);text-decoration:none;padding:calc(var(--spacing)*1.5) calc(var(--spacing)*2);border-radius:var(--radius-sm)}
+.cloud-sidebar nav a:hover{background:var(--color-background-secondary-ghost-hover)}
+.cloud-sidebar nav a[aria-current=page]{background:var(--color-background-secondary-soft);font-weight:var(--font-weight-medium)}
+.cloud-sidebar [aria-disabled=true]{color:var(--color-text-tertiary);font-size:var(--font-text-sm-size);padding:calc(var(--spacing)*1.5) calc(var(--spacing)*2)}
+.cloud-switcher{display:flex;flex-direction:column;gap:calc(var(--spacing)*1)}
+.cloud-switcher .cloud-form{margin:0}
+.cloud-switcher .oa-button{width:100%;justify-content:flex-start;overflow-wrap:anywhere;white-space:normal}
+.cloud-main{min-width:0}
+.cloud-main>hr{border:0;border-top:1px solid var(--color-border-subtle);margin:calc(var(--spacing)*4) 0}
+/* Shared parts (cloud/ui.rs). */
+.cloud-card{padding:calc(var(--spacing)*4) 0;border-bottom:1px solid var(--color-border-subtle)}
+.cloud-form{margin:calc(var(--spacing)*4) 0;display:flex;flex-direction:column;gap:calc(var(--spacing)*3);max-width:48rem}
+.cloud-form-actions{display:flex;flex-wrap:wrap;gap:calc(var(--spacing)*2)}
+.cloud-details{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:calc(var(--spacing)*1.5) calc(var(--spacing)*4);margin:calc(var(--spacing)*3) 0}
+.cloud-details dt{color:var(--color-text-secondary)}
+.cloud-details dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.cloud-links{display:flex;flex-wrap:wrap;gap:0 calc(var(--spacing)*1)}
+.cloud-empty{margin:calc(var(--spacing)*4) 0}
+.cloud .oa-alert{margin:calc(var(--spacing)*3) 0}
+.cloud .oa-alert .cloud-form{margin:0}
+.cloud .oa-table-container{margin:calc(var(--spacing)*3) 0}
+.cloud .oa-field{max-width:48rem}
+@media(max-width:640px){.cloud-layout{grid-template-columns:minmax(0,1fr)}.cloud-sidebar{border-right:0;border-bottom:1px solid var(--color-border-subtle);padding:0 0 calc(var(--spacing)*4)}.cloud-sidebar nav{flex-direction:row;flex-wrap:wrap;gap:calc(var(--spacing)*1) calc(var(--spacing)*2)}.cloud-switcher{flex-direction:row;flex-wrap:wrap}.cloud-details{grid-template-columns:minmax(0,1fr)}}
+/* Legacy controls on pages not yet built from openagents-ui (billing,
+   retail, team, sales, partners): plain elements only, never a component. */
+.cloud form:not([class]){margin:1rem 0}
+.cloud form:not([class]) label{display:block;margin:.75rem 0}
+.cloud button:not([class]){font:inherit;color:var(--color-text);background:var(--color-background-secondary-soft);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:.5rem .75rem;cursor:pointer;white-space:normal}
+.cloud button:not([class]):hover{background:var(--color-background-secondary-soft-hover)}
+.cloud button:not([class]):focus-visible{outline:2px solid var(--color-ring);outline-offset:3px}
+.cloud button:not([class]):disabled{cursor:default;color:var(--color-text-disabled)}
+.cloud :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not([class]):not([class^="oa-"] *){font:inherit;color:var(--color-text);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:.5rem;max-width:100%;box-sizing:border-box}
+.cloud textarea:not([class]):not([class^="oa-"] *){display:block;width:48ch;min-height:7rem}
+.cloud :is(input,textarea):not([class]){accent-color:var(--color-ring)}
 .cloud .sales-board-live{animation:sales-board-expire 1ms step-end 3s forwards}@keyframes sales-board-expire{to{visibility:hidden}}

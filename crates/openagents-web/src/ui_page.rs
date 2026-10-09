@@ -32,6 +32,7 @@ pub struct UiPage {
     composer: Option<Markup>,
     footer: Option<Markup>,
     sections: Vec<SidebarSection>,
+    head: Option<Markup>,
     scripts: bool,
 }
 
@@ -49,6 +50,7 @@ impl UiPage {
             composer: None,
             footer: None,
             sections: Vec::new(),
+            head: None,
             scripts: true,
         }
     }
@@ -95,6 +97,13 @@ impl UiPage {
     /// Replaces the default legal footer on scrolling pages.
     pub fn footer(mut self, footer: impl Render) -> Self {
         self.footer = Some(footer.render());
+        self
+    }
+
+    /// Extra `<head>` content after the design-language assets, such as an
+    /// area's own stylesheet or deferred script (never inline script).
+    pub fn head(mut self, head: impl Render) -> Self {
+        self.head = Some(head.render());
         self
     }
 
@@ -153,6 +162,7 @@ impl UiPage {
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 (PreEscaped(theme::style_tag()))
                 @if scripts { (PreEscaped(theme::script_tags())) }
+                @if let Some(head) = &self.head { (head) }
             })
             .body(shell)
             .render()

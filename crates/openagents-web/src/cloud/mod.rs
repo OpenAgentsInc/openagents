@@ -19,6 +19,7 @@ pub mod session;
 pub mod team;
 #[cfg(test)]
 mod tests;
+mod ui;
 mod verse;
 mod work;
 mod workbench;
