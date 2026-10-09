@@ -1,0 +1,466 @@
+{
+  "$comment": [
+    "What we expect the openagents.com web chat to do when people ask what they actually ask (docs/web/chat-goldens.md). Each golden is one expectation; each phrasing is one case sent through the same path the live site uses.",
+    "route: the chat router routes that are right (any one). answers: the prepared answer or product note ids whose text is right (any one; a bank id without @version, a note id like openagents.github-projects). An empty list means any served answer, or none, is fine.",
+    "tier: the served tier words that are right. Product notes served whole come back as tier canned with the note id as the answer. speed: instant (Jev picks a prepared answer or note, shown at once) or model (the chat model writes it).",
+    "required: each item is a list of alternatives; one of them must appear in the reply, case-insensitive. forbidden: none may appear. Every reply is also checked against the set's forbidden list and for machine talk (oa-copy).",
+    "Secrets in phrasings are fake placeholders, never real keys.",
+    "Do not tune bank `when` text or note `applies_when` text against these phrasings one by one; they are the expectations, not training data. Fix the product knowledge when a golden is right and the reply is wrong."
+  ],
+  "schema": "openagents.web-chat.goldens.v1",
+  "set": "web-chat-goldens-v1",
+  "created": "2026-10-09",
+  "surface": "web",
+  "budgets": {
+    "instant": { "first_ms": 3000, "total_ms": 3500, "judge_ms": 2000 },
+    "model": { "first_ms": 10000, "total_ms": 60000, "judge_ms": 2000 }
+  },
+  "forbidden": [
+    "we don't train on",
+    "we do not train on",
+    "we never train on",
+    "we won't train on",
+    "don't use your chats to train",
+    "don't use your conversations to train",
+    "there's no account",
+    "there is no account",
+    "OpenAgents for Mac 1.0",
+    ".dmg",
+    "computer you've connected",
+    "As an AI language model"
+  ],
+  "flows": [
+    {
+      "id": "about",
+      "title": "Who we are and what we can do",
+      "goldens": [
+        {
+          "id": "about.who",
+          "phrasings": ["who are you", "who r u", "who am i talking to?", "introduce yourself"],
+          "route": ["meta"],
+          "answers": ["meta.who.website"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["OpenAgents"], ["openagents.com/download", "Coder"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "about.overview",
+          "phrasings": ["what is openagents", "what does openagents do?", "whats openagents for"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.overview", "meta.who.website"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"]],
+          "forbidden": ["app for iPhone and Android"]
+        },
+        {
+          "id": "about.capabilities",
+          "phrasings": ["what can you do", "can you write code?", "how can you help me", "what tools do you have"],
+          "route": ["meta"],
+          "answers": ["meta.capabilities.website", "meta.tools.website"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"], ["openagents.com/download"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "about.model",
+          "phrasings": ["what model are you", "are you chatgpt?", "which llm powers this chat"],
+          "route": ["meta"],
+          "answers": ["meta.model"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Jev"]],
+          "forbidden": []
+        },
+        {
+          "id": "about.jev",
+          "phrasings": ["what is jev", "how do you answer so fast?", "why do some answers show up instantly"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.jev", "openagents.jev", "openagents.instant-answers"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Jev"]],
+          "forbidden": []
+        },
+        {
+          "id": "about.open_source",
+          "phrasings": ["are you open source", "where is your source code"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.open_source", "openagents.open-source"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["github.com/OpenAgentsInc/openagents"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "github",
+      "title": "Connecting GitHub repositories and projects",
+      "goldens": [
+        {
+          "id": "github.connect_repo",
+          "phrasings": [
+            "how do I connect to repo?",
+            "how do i connect github repo",
+            "how do I add my github repository",
+            "connect my repo",
+            "can you work on my github repos?",
+            "how do i add a private repo"
+          ],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.github.website", "openagents.github-projects"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Projects"], ["connect GitHub", "Connect GitHub"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "github.projects",
+          "phrasings": ["what is a project", "how do I start a chat in a project", "how do i move a chat into a project"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.github-projects", "openagents.previous-chats", "meta.github.website"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["project"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "account",
+      "title": "Signing in on openagents.com",
+      "goldens": [
+        {
+          "id": "account.sign_in",
+          "phrasings": ["how do I sign in", "do I need an account?", "how do i make an account", "how do i log in", "what do i get if i sign in"],
+          "route": ["account", "product.kb", "meta"],
+          "answers": ["openagents.web-account"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["GitHub"]],
+          "forbidden": ["download the app", "OpenAgents app does"]
+        }
+      ]
+    },
+    {
+      "id": "coder",
+      "title": "Coder: install, sign in, sync",
+      "goldens": [
+        {
+          "id": "coder.what",
+          "phrasings": ["what is coder", "how does coder work"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.coder.website", "openagents.chat-and-coder"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"], ["terminal"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "coder.install",
+          "phrasings": ["how do I install coder", "how do i get coder", "download coder", "install coder on linux"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.install-coder", "openagents.get-the-app"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["openagents.com/download", "install.sh"]],
+          "forbidden": ["QR code", "scan"]
+        },
+        {
+          "id": "coder.login",
+          "phrasings": ["how do I log in to coder", "how do i sign into coder with my account", "what is the code at openagents.com/device"],
+          "route": ["product.kb", "account", "meta"],
+          "answers": ["openagents.coder-sync"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["coder login", "/login"], ["openagents.com/device"]],
+          "forbidden": []
+        },
+        {
+          "id": "coder.sync",
+          "phrasings": ["how do I see my coder chats on the website", "how do i sync coder chats", "can I reply to my coder chat from the website?"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.coder-sync"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["/sync on"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "environments",
+      "title": "Environments and Claude Code runs",
+      "goldens": [
+        {
+          "id": "environments.what",
+          "phrasings": ["what is an environment", "what are environments in openagents"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.environments"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["repositor"], ["Claude Code"]],
+          "forbidden": []
+        },
+        {
+          "id": "environments.run_claude_code",
+          "phrasings": ["how do I run claude code on my repo", "can you run claude code in the cloud on my repository?"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.environments"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["environment"]],
+          "forbidden": []
+        },
+        {
+          "id": "environments.when",
+          "phrasings": ["can i use environments yet", "when will environments be available?"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.environments"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["early testing", "aren't open", "not open"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "claude_key",
+      "title": "Your own Claude key",
+      "goldens": [
+        {
+          "id": "claude_key.add",
+          "phrasings": ["where do I add my anthropic api key", "how do i use my own claude key", "where do i put my claude api key", "can I use my bedrock credentials"],
+          "route": ["product.kb", "account", "meta"],
+          "answers": ["openagents.claude-key"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Settings"], ["Claude credential"]],
+          "forbidden": ["paste it here", "send it to us", "share it here"]
+        },
+        {
+          "id": "claude_key.pasted",
+          "phrasings": ["here is my anthropic key sk-ant-api03-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000 please save it"],
+          "route": ["refuse", "account", "product.kb"],
+          "answers": ["refuse.secret_shared", "warn.secret_shared"],
+          "tier": ["refuse", "canned"],
+          "speed": "instant",
+          "required": [["rotat"]],
+          "forbidden": ["saved your key", "I've saved", "we've saved"]
+        }
+      ]
+    },
+    {
+      "id": "pricing",
+      "title": "Cost, plans, and limits",
+      "goldens": [
+        {
+          "id": "pricing.cost",
+          "phrasings": ["how much does it cost", "is this free?", "whats the price"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.pricing", "openagents.pricing"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["free"]],
+          "forbidden": ["there's no plan", "there is no plan"]
+        },
+        {
+          "id": "pricing.plan",
+          "phrasings": ["do you have a paid plan", "is there a subscription?", "how much is the pro plan"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.pricing", "openagents.pricing"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["$20"], ["not on sale", "isn't on sale"]],
+          "forbidden": ["there's no plan", "there is no plan", "no subscription"]
+        },
+        {
+          "id": "pricing.limits",
+          "phrasings": ["how many messages can I send", "is there a message limit?"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.quota", "openagents.chat-limits"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["cap", "limit"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "chats",
+      "title": "Finding, archiving, and deleting chats",
+      "goldens": [
+        {
+          "id": "chats.find",
+          "phrasings": ["where are my old chats", "how do i archive a chat", "how do i rename a chat", "where did my previous chats go"],
+          "route": ["product.kb", "meta"],
+          "answers": ["openagents.previous-chats", "openagents.delete-chats"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["left panel"]],
+          "forbidden": []
+        },
+        {
+          "id": "chats.delete",
+          "phrasings": ["how do I delete a chat", "can i delete all my chats", "delete my chat history"],
+          "route": ["meta", "product.kb"],
+          "answers": ["openagents.delete-chats", "meta.data_retention", "openagents.chat-privacy", "openagents.previous-chats"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["delete"]],
+          "forbidden": ["there's no way to delete", "you can't delete", "you cannot delete"]
+        }
+      ]
+    },
+    {
+      "id": "privacy",
+      "title": "Privacy and training",
+      "goldens": [
+        {
+          "id": "privacy.training",
+          "phrasings": ["do you train on my chats", "will you use my conversations to train ai?", "can I opt out of training"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.data_retention", "openagents.chat-privacy"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["train"], ["paid plan"]],
+          "forbidden": ["never used for training", "not used for training"]
+        },
+        {
+          "id": "privacy.who_sees",
+          "phrasings": ["who can see my messages", "is this chat private?", "are my chats encrypted"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.privacy", "openagents.chat-privacy", "meta.data_retention"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["web chat", "our website", "our servers"]],
+          "forbidden": []
+        },
+        {
+          "id": "privacy.storage",
+          "phrasings": ["do you store my chats", "how long do you keep my messages"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.data_retention", "openagents.chat-privacy"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["servers"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "title": "Plugins",
+      "goldens": [
+        {
+          "id": "plugins.which",
+          "phrasings": ["which plugin should I try?", "what plugins are there", "what plugins can i use with coder"],
+          "route": ["eval.run", "product.kb", "meta"],
+          "answers": ["plugins.web", "openagents.plugin-list"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Project map"]],
+          "forbidden": ["Code Reviewer", "Test Generator", "Doc Writer", "Bug Hunter", "Refactor Assistant"]
+        }
+      ]
+    },
+    {
+      "id": "limits",
+      "title": "What the web chat can't do",
+      "goldens": [
+        {
+          "id": "limits.files",
+          "phrasings": ["can you see my files", "can you read my repo from here?", "can you run code"],
+          "route": ["meta"],
+          "answers": ["meta.limits_chat.website", "meta.capabilities.website"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Coder"], ["openagents.com/download"]],
+          "forbidden": ["computer you connect"]
+        },
+        {
+          "id": "limits.web",
+          "phrasings": ["can you browse the web", "can you open this link https://example.com/post"],
+          "route": ["meta"],
+          "answers": ["meta.web_access"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["browse", "links"]],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "smalltalk",
+      "title": "Greetings",
+      "goldens": [
+        {
+          "id": "smalltalk.hello",
+          "phrasings": ["hi", "hello there", "hey!"],
+          "route": ["smalltalk"],
+          "answers": ["smalltalk.hello"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [],
+          "forbidden": []
+        },
+        {
+          "id": "smalltalk.thanks",
+          "phrasings": ["thanks!", "thank you so much"],
+          "route": ["smalltalk", "end"],
+          "answers": ["smalltalk.thanks", "smalltalk.bye"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [],
+          "forbidden": []
+        }
+      ]
+    },
+    {
+      "id": "general",
+      "title": "General questions and work the website can't do",
+      "goldens": [
+        {
+          "id": "general.explain",
+          "phrasings": ["explain what a mutex is in two sentences", "what's the difference between git merge and rebase?"],
+          "route": ["general"],
+          "answers": [],
+          "tier": ["model", "opener"],
+          "speed": "model",
+          "required": [],
+          "forbidden": []
+        },
+        {
+          "id": "general.code_work",
+          "phrasings": ["fix the failing test in my repo", "refactor the auth module in my project"],
+          "route": ["work.dispatch", "general", "clarify", "codebase.kb"],
+          "answers": [],
+          "tier": ["model", "opener", "grounded"],
+          "speed": "model",
+          "required": [["openagents.com/download", "Coder"]],
+          "forbidden": ["I've fixed", "we've fixed", "I fixed the test"]
+        }
+      ]
+    },
+    {
+      "id": "followup",
+      "title": "A question after another",
+      "goldens": [
+        {
+          "id": "followup.repo_after_hello",
+          "earlier": ["hi"],
+          "phrasings": ["ok how do i connect my github repo"],
+          "route": ["meta", "product.kb"],
+          "answers": ["meta.github.website", "openagents.github-projects"],
+          "tier": ["canned"],
+          "speed": "instant",
+          "required": [["Projects"]],
+          "forbidden": []
+        }
+      ]
+    }
+  ]
+}

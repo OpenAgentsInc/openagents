@@ -51,6 +51,19 @@ chip = "Who are you?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.capabilities", "meta.model", "meta.pricing"]
 
+
+[[answer]]
+id = "meta.who.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
+examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
+text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. Sign in with GitHub to keep your chats on your account and add your repositories as projects. For hands-on work in your code, Coder, our coding agent, runs in your terminal: get it at openagents.com/download."
+chip = "Who are you?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/auth/README.md", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.capabilities", "meta.github", "meta.pricing"]
+
 [[answer]]
 id = "meta.model"
 version = 1
@@ -132,6 +145,31 @@ chip = "What can you do?"
 sources = ["crates/openagents-chat/src/basic_coder.rs"]
 followups = ["meta.coder", "meta.limits_chat"]
 
+
+[[answer]]
+id = "meta.capabilities.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks in general what we can do, how we can help, or whether we can write code, without naming a project, file, error, or task of their own"
+text = "In this chat we answer questions, explain code and concepts, and help you plan and write. We can't run code, open your files, or browse the web from here. Coder, our coding agent, does that work in your terminal, on your own computer: get it at openagents.com/download."
+chip = "What can you do?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "meta.github", "meta.limits_chat"]
+
+[[answer]]
+id = "meta.tools.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks what tools, abilities, or integrations we have or use, or what we can use to help them, without naming a project, file, error, or plugin of their own"
+not_for = "What a plugin is, or what one named plugin does, which other answers cover"
+examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
+text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Plugins give Coder extra abilities, like Project map, which shows it how a project is laid out. Get Coder at openagents.com/download."
+chip = "What tools do you have?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "docs/plugins/README.md", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "gym.what_tool"]
+
 [[answer]]
 id = "meta.limits_chat"
 version = 3
@@ -154,6 +192,18 @@ facts = { project = "chat.project", project_path = "chat.project_path" }
 chip = "Can you see my files?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder-host/src/control/mod.rs"]
 followups = ["meta.coder"]
+
+
+[[answer]]
+id = "meta.limits_chat.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks whether we can see their files or screen, run code, or reach their computer or repository from this chat, without asking for a specific task to be done; not whether we can browse the web"
+text = "In this chat we can't run code, read your files, or reach your computer. Coder, our coding agent, does that work in your terminal on your own computer: get it at openagents.com/download."
+chip = "Can you see my files?"
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/openagents-web/src/pages/download.rs"]
+followups = ["meta.coder", "meta.github"]
 
 [[answer]]
 id = "meta.web_access"
@@ -189,6 +239,19 @@ chip = "What is Coder?"
 sources = ["crates/openagents-chat/src/basic_coder.rs", "README.md"]
 followups = ["meta.github", "meta.pricing"]
 
+
+[[answer]]
+id = "meta.coder.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks what Coder is or how Coder works, in general"
+examples = ["how does coder work", "what actually happens when you dispatch coder"]
+text = "Coder is our coding agent. It runs in your terminal on your own computer, where it reads and edits your files and runs commands. Install it from openagents.com/download, then run `coder` in your project. Signed in, `/sync on` saves its chats to your account, so they show here too."
+chip = "What is Coder?"
+sources = ["crates/coder-new/README.md", "crates/openagents-web/src/pages/download.rs", "docs/auth/README.md"]
+followups = ["meta.github", "meta.pricing"]
+
 [[answer]]
 id = "meta.github"
 version = 2
@@ -214,6 +277,19 @@ text = "We work with GitHub through this computer: Coder, our coding agent, runs
 chip = "How do you work with GitHub?"
 sources = ["crates/openagents-chat/src/basic_coder.rs"]
 followups = ["meta.coder"]
+
+[[answer]]
+id = "meta.github.website"
+version = 1
+routes = ["meta"]
+place = "web"
+when = "The user asks us to connect to, sign in to, or link their GitHub account, asks how to connect or add a GitHub repository, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
+not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
+examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub", "how do I connect a github repo", "how do i connect to repo?"]
+text = "We work with GitHub two ways. Here on openagents.com, sign in with GitHub, open Projects in the left panel, and connect GitHub to add your repositories as projects; chats you start in a project are grouped under it. And Coder, our coding agent, works in your terminal on your own computer, with that computer's own git and GitHub login: get it at openagents.com/download."
+chip = "How do you work with GitHub?"
+sources = ["docs/auth/github.md", "crates/openagents-web/src/projects/mod.rs", "crates/coder-new/README.md"]
+followups = ["meta.coder", "meta.pricing"]
 
 [[answer]]
 id = "meta.open_source"

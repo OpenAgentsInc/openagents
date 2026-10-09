@@ -220,10 +220,28 @@ fn a_reply_cites_only_the_entries_it_was_given() {
 fn download_guidance_matches_the_published_apps() {
     let corpus = Corpus::load(&default_dir(), Some(&repository())).expect("the corpus loads");
     let download_source = "crates/openagents-web/src/pages/download.rs";
-    for (id, minimum_version) in [
-        ("openagents.get-the-app", 4),
-        ("openagents.overview", 3),
-        ("openagents.playtesting", 2),
+    // The page offers Coder and the command-line program, with one-line
+    // installers, and no Mac disk image.
+    let page = std::fs::read_to_string(repository().join(download_source)).expect("the page");
+    assert!(page.contains("Download Coder") && page.contains("install.sh"));
+    assert!(!page.contains(".dmg"), "the download page offers a .dmg again: update these notes");
+    for (id, minimum_version, claims) in [
+        (
+            "openagents.get-the-app",
+            5,
+            &["openagents.com/download", "macOS, Linux, and Windows", "from source"][..],
+        ),
+        ("openagents.overview", 4, &["openagents.com/download"][..]),
+        (
+            "openagents.playtesting",
+            3,
+            &["openagents.com/download", "macOS, Linux, and Windows", "from source"][..],
+        ),
+        (
+            "openagents.install-coder",
+            5,
+            &["openagents.com/download", "install.sh", "install.ps1"][..],
+        ),
     ] {
         let entry = corpus
             .base
@@ -238,15 +256,7 @@ fn download_guidance_matches_the_published_apps() {
         assert!(entry.cites.iter().any(|cite| cite == download_source));
         for text in [entry.answer.as_deref().unwrap(), &entry.body] {
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-            for claim in [
-                "openagents.com/download",
-                "Mac 1.0.0-rc.2",
-                ".dmg",
-                "Terminal 1.0.0-rc.2",
-                "macOS, Linux, and Windows",
-                "Build iPhone, Android, and",
-                "desktop apps from source",
-            ] {
+            for claim in claims {
                 assert!(
                     text.contains(claim),
                     "{id} must include the following download guidance:\n{claim}"
@@ -256,6 +266,9 @@ fn download_guidance_matches_the_published_apps() {
                 "TestFlight",
                 "signed APK",
                 "Android app is still in testing",
+                ".dmg",
+                "Mac 1.0.0-rc.2",
+                "Terminal 1.0.0-rc.2",
             ] {
                 assert!(
                     !text.contains(outdated),

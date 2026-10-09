@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-limits
-version: 3
+version: 4
 kind: product
 title: "How many messages the chat allows"
 summary: >-
@@ -12,11 +12,11 @@ applies_when: >-
   that it's done for today, or what the chat's limits are; not what OpenAgents
   costs.
 answer: >-
-  Send us as many messages as you like: we don't cap how many you send in a
-  minute or in a day, and we don't throttle you or charge per message.
-  There's no plan, account, quota, or fair-use cap behind that, so there's
-  nothing to look up. If you ever see "Couldn't reach OpenAgents; try
-  again.", send the message again.
+  Send us as many messages as you like: we don't cap how many you send in
+  a minute or in a day, and we don't throttle you or charge per message.
+  There's no quota or fair-use cap behind that, so there's nothing to look
+  up. If you ever see "Couldn't reach OpenAgents; try again.", send the
+  message again.
 status: admitted
 author: openagents
 provenance:
@@ -28,11 +28,12 @@ evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-01: the owner removed every usage limit (#10120); rewritten from the cited documents."
   - "2026-10-02: the answer says there is no throttle, per-message charge, plan, account, quota, or fair-use cap behind the missing limit (#10135)."
+  - "2026-10-09: v4 (chat goldens): accounts exist now and a paid plan is being built, so the answer no longer says there is no plan or account behind the missing limit."
 ---
 
 ## Answer
 
-Send us as many messages as you like: we don't cap how many you send in a minute or in a day, and we don't throttle you or charge per message. There's no plan, account, quota, or fair-use cap behind that, so there's nothing to look up. If you ever see "Couldn't reach OpenAgents; try again.", send the message again.
+Send us as many messages as you like: we don't cap how many you send in a minute or in a day, and we don't throttle you or charge per message. There's no quota or fair-use cap behind that, so there's nothing to look up. If you ever see "Couldn't reach OpenAgents; try again.", send the message again.
 
 ## Details
 

@@ -724,7 +724,9 @@ mod tests {
                     !entry.records
                         && !matches!(
                             entry.place,
-                            crate::router::bank::Place::Here | crate::router::bank::Place::Desktop
+                            crate::router::bank::Place::Here
+                                | crate::router::bank::Place::Desktop
+                                | crate::router::bank::Place::Web
                         )
                 })
                 .count()

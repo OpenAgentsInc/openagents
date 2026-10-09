@@ -148,6 +148,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         openagents_web::chat_store::spawn_expiry(config.chat_store.clone(), days);
         println!("Chats untouched for {days} days are removed");
     }
+    let worker = openagents_web::ask::Worker::from_env()?;
+    if !worker.is_production() {
+        println!("Chat answers come from the worker {}", worker.worker());
+    }
+    config.chat = std::sync::Arc::new(worker);
     config.port = listen.port();
     // A public deployment is served over HTTPS behind its proxy.
     config.secure_cookies = !config.public_hosts.is_empty();

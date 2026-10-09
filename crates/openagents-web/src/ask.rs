@@ -26,14 +26,79 @@ pub trait Chat: Send + Sync {
     fn door(&self, secret: SecretKey) -> Result<Box<dyn Door>, String>;
 }
 
-/// The OpenAgents chat worker, reached through `relay.openagents.com`.
-pub struct Worker;
+/// The variable that points this server's chat at another relay; set
+/// together with [`WORKER_VAR`].
+pub const RELAY_VAR: &str = "OPENAGENTS_WEB_CHAT_RELAY";
+/// The variable that points this server's chat at another chat worker, by
+/// its public key in hex: a local `coder-worker` serving answers before
+/// they ship, for the chat goldens (docs/web/chat-goldens.md).
+pub const WORKER_VAR: &str = "OPENAGENTS_WEB_CHAT_WORKER";
+
+/// The OpenAgents chat worker, reached through `relay.openagents.com`, or
+/// the worker [`Worker::from_env`] names.
+pub struct Worker {
+    relay: String,
+    worker: String,
+}
+
+impl Default for Worker {
+    fn default() -> Self {
+        Worker {
+            relay: basic_coder::RELAY.into(),
+            worker: basic_coder::WORKER.into(),
+        }
+    }
+}
+
+impl Worker {
+    /// The production chat worker, unless [`WORKER_VAR`] names another
+    /// (on [`RELAY_VAR`]'s relay, by default ours).
+    ///
+    /// # Errors
+    ///
+    /// A worker key that isn't 64 hex characters, or a relay that isn't a
+    /// WebSocket URL.
+    pub fn from_env() -> Result<Self, String> {
+        let mut worker = Worker::default();
+        if let Ok(key) = std::env::var(WORKER_VAR).map(|k| k.trim().to_lowercase())
+            && !key.is_empty()
+        {
+            if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(format!(
+                    "{WORKER_VAR} is a worker's public key in 64 hex characters"
+                ));
+            }
+            worker.worker = key;
+        }
+        if let Ok(relay) = std::env::var(RELAY_VAR).map(|r| r.trim().to_string())
+            && !relay.is_empty()
+        {
+            if !(relay.starts_with("wss://") || relay.starts_with("ws://")) {
+                return Err(format!("{RELAY_VAR} is a ws:// or wss:// URL"));
+            }
+            worker.relay = relay;
+        }
+        Ok(worker)
+    }
+
+    /// Whether this is the production chat worker.
+    #[must_use]
+    pub fn is_production(&self) -> bool {
+        self.relay == basic_coder::RELAY && self.worker == basic_coder::WORKER
+    }
+
+    /// The worker's public key.
+    #[must_use]
+    pub fn worker(&self) -> &str {
+        &self.worker
+    }
+}
 
 impl Chat for Worker {
     fn door(&self, secret: SecretKey) -> Result<Box<dyn Door>, String> {
         Ok(Box::new(basic_coder::Relay::new(
-            basic_coder::RELAY,
-            basic_coder::WORKER,
+            &self.relay,
+            &self.worker,
             secret,
         )?))
     }

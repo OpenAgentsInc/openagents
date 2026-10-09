@@ -399,7 +399,9 @@ pub(crate) struct Request {
     /// What the router said about the answer that the chips under it read:
     /// its prepared answer, follow-ups, offers to run Coder or open a
     /// screen, and the plugins it shows as cards
-    /// (`openagents_chat::suggestions::chip_meta`). Older records have none.
+    /// (`openagents_chat::suggestions::chip_meta`), with the tier and route
+    /// it was served on (the reply marker, docs/web/chat-goldens.md).
+    /// Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply: Option<openagents_chat::router::Meta>,
 }

@@ -49,6 +49,7 @@ pub mod activity;
 pub mod agent;
 pub mod argv;
 pub mod capability;
+pub mod chat_goldens;
 pub mod child;
 pub mod claim;
 pub mod classify;

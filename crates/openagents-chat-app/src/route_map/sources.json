@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@226865d8437b",
-  "bank": "chat-answers-v1@38bd1bf42429",
+  "bank": "chat-answers-v1@aa9fa65069b4",
   "routes": [
     {
       "id": "meta",
@@ -205,6 +205,22 @@
       ]
     },
     {
+      "id": "meta.who.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Who are you?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "docs/auth/README.md",
+        "crates/openagents-web/src/pages/download.rs"
+      ]
+    },
+    {
       "id": "meta.model",
       "version": 1,
       "routes": [
@@ -313,6 +329,37 @@
       ]
     },
     {
+      "id": "meta.capabilities.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What can you do?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "crates/openagents-web/src/pages/download.rs"
+      ]
+    },
+    {
+      "id": "meta.tools.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What tools do you have?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "docs/plugins/README.md",
+        "crates/openagents-web/src/pages/download.rs"
+      ]
+    },
+    {
       "id": "meta.limits_chat",
       "version": 3,
       "routes": [
@@ -339,6 +386,21 @@
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
         "crates/coder-host/src/control/mod.rs"
+      ]
+    },
+    {
+      "id": "meta.limits_chat.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "Can you see my files?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-chat/src/basic_coder.rs",
+        "crates/openagents-web/src/pages/download.rs"
       ]
     },
     {
@@ -386,6 +448,22 @@
       ]
     },
     {
+      "id": "meta.coder.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What is Coder?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/coder-new/README.md",
+        "crates/openagents-web/src/pages/download.rs",
+        "docs/auth/README.md"
+      ]
+    },
+    {
       "id": "meta.github",
       "version": 2,
       "routes": [
@@ -413,6 +491,22 @@
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs"
+      ]
+    },
+    {
+      "id": "meta.github.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "How do you work with GitHub?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/auth/github.md",
+        "crates/openagents-web/src/projects/mod.rs",
+        "crates/coder-new/README.md"
       ]
     },
     {
@@ -1687,7 +1781,7 @@
       },
       {
         "id": "openagents.chat-and-coder",
-        "title": "Chatting with OpenAgents and dispatching Coder",
+        "title": "Chatting with OpenAgents and sending Coder",
         "path": "knowledge/openagents/openagents.chat-and-coder.md",
         "status": "admitted",
         "tags": [
@@ -1767,6 +1861,24 @@
         "answer": true
       },
       {
+        "id": "openagents.claude-key",
+        "title": "Your own Claude key",
+        "path": "knowledge/openagents/openagents.claude-key.md",
+        "status": "admitted",
+        "tags": [
+          "claude",
+          "anthropic",
+          "api-key",
+          "key",
+          "credential",
+          "settings",
+          "byo",
+          "bedrock",
+          "vertex"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.cli",
         "title": "The openagents command",
         "path": "knowledge/openagents/openagents.cli.md",
@@ -1809,6 +1921,23 @@
           "settings",
           "claude-code",
           "codex"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.coder-sync",
+        "title": "Signing in to Coder and syncing its chats",
+        "path": "knowledge/openagents/openagents.coder-sync.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "login",
+          "sign-in",
+          "sync",
+          "device",
+          "terminal",
+          "chats",
+          "website"
         ],
         "answer": true
       },
@@ -1884,6 +2013,21 @@
         "answer": true
       },
       {
+        "id": "openagents.delete-chats",
+        "title": "Deleting and archiving web chats",
+        "path": "knowledge/openagents/openagents.delete-chats.md",
+        "status": "admitted",
+        "tags": [
+          "chat",
+          "delete",
+          "archive",
+          "history",
+          "website",
+          "privacy"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.earn-xp",
         "title": "How to earn trainer XP",
         "path": "knowledge/openagents/openagents.earn-xp.md",
@@ -1894,6 +2038,22 @@
           "tutorial",
           "trainer",
           "gym"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.environments",
+        "title": "Environments: running Claude Code on your repository",
+        "path": "knowledge/openagents/openagents.environments.md",
+        "status": "admitted",
+        "tags": [
+          "environments",
+          "environment",
+          "claude-code",
+          "cloud",
+          "repository",
+          "setup",
+          "run"
         ],
         "answer": true
       },
@@ -2112,8 +2272,8 @@
           "terminal",
           "mac",
           "desktop",
-          "dmg",
-          "android"
+          "android",
+          "iphone"
         ],
         "answer": true
       },
@@ -2187,7 +2347,8 @@
           "coder",
           "computer",
           "setup",
-          "mac"
+          "download",
+          "terminal"
         ],
         "answer": true
       },
@@ -2318,6 +2479,7 @@
           "overview",
           "app",
           "product",
+          "website",
           "off-computer"
         ],
         "answer": true
@@ -2384,7 +2546,10 @@
           "chat",
           "history",
           "previous",
-          "menu"
+          "menu",
+          "sidebar",
+          "archive",
+          "website"
         ],
         "answer": true
       },
@@ -3107,6 +3272,22 @@
           "trust",
           "custody",
           "risk"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.web-account",
+        "title": "Signing in on openagents.com",
+        "path": "knowledge/openagents/openagents.web-account.md",
+        "status": "admitted",
+        "tags": [
+          "account",
+          "sign-in",
+          "login",
+          "sign-up",
+          "github",
+          "website",
+          "settings"
         ],
         "answer": true
       },

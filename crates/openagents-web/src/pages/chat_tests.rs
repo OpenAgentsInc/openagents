@@ -1282,3 +1282,67 @@ async fn a_long_finished_task_says_done_until_the_chat_is_opened() {
         .await;
     assert_eq!(fixture.read().await.generation, before);
 }
+
+/// An answered reply sits between hidden markers that name how it was
+/// served, so the chat goldens read a reply from the page exactly as a
+/// person gets it (docs/web/chat-goldens.md); a reply still streaming has
+/// the markers without a tier. None of it is visible.
+#[test]
+fn an_answered_reply_carries_its_served_tier_route_and_answer() {
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 2,
+        title: "Repo".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "how do i connect github repo".into(),
+                request_id: Some(CHAT.into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: "Open Projects and connect GitHub.".into(),
+                request_id: Some(CHAT.into()),
+            },
+        ],
+        pending: None,
+        requests: vec![Request {
+            id: CHAT.into(),
+            digest: String::new(),
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            reply: Some(openagents_chat::router::Meta {
+                tier: Some("canned".into()),
+                route: Some("meta".into()),
+                answer: Some("meta.github.website@1".into()),
+                ..openagents_chat::router::Meta::default()
+            }),
+        }],
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+    };
+    let html = messages(&chat, None, false).into_string();
+    assert!(html.contains(r#"data-oa-reply="1""#), "{html}");
+    assert!(html.contains(r#"data-oa-tier="canned""#), "{html}");
+    assert!(html.contains(r#"data-oa-route="meta""#), "{html}");
+    assert!(
+        html.contains(r#"data-oa-answer="meta.github.website@1""#),
+        "{html}"
+    );
+    assert!(html.contains("data-oa-reply-end"), "{html}");
+    let visible = oa_copy::visible_text(&html);
+    assert!(!visible.contains("canned"), "{visible}");
+    chat.requests[0].outcome = Outcome::Pending;
+    let streaming = messages(&chat, None, false).into_string();
+    assert!(streaming.contains(r#"data-oa-reply="1""#));
+    assert!(!streaming.contains("data-oa-tier"), "{streaming}");
+}

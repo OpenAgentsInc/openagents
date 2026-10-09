@@ -1194,7 +1194,8 @@ impl Context {
         let mut facts = base
             .clone()
             .on_computer(self.here())
-            .on_desktop(self.surface() == Surface::Desktop);
+            .on_desktop(self.surface() == Surface::Desktop)
+            .on_web(self.surface() == Surface::Web);
         let name = match &self.computer {
             Some(Computer::Here { name, .. }) => name.clone(),
             Some(Computer::Paired { name, .. }) => Some(name.clone()),

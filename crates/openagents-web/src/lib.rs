@@ -145,7 +145,7 @@ impl Config {
             port: 4300,
             public_hosts: Vec::new(),
             backend: Arc::new(Development),
-            chat: Arc::new(ask::Worker),
+            chat: Arc::new(ask::Worker::default()),
             ask_salt: secp256k1::rand::random(),
             secure_cookies: false,
             upstream: None,

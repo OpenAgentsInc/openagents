@@ -1007,9 +1007,17 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                 r.text.clone(),
                 r.done,
                 r.failure.as_ref().map(|e| e.describe()),
-                // What the chips under the answer read (`crate::suggestions`).
+                // What the chips under the answer read (`crate::suggestions`),
+                // and how it was served: its tier and route, which the
+                // reply's marker carries for the chat goldens
+                // (docs/web/chat-goldens.md).
                 r.done
-                    .then(|| openagents_chat::suggestions::chip_meta(&r.meta))
+                    .then(|| {
+                        let mut meta = openagents_chat::suggestions::chip_meta(&r.meta);
+                        meta.tier = r.meta.tier.clone();
+                        meta.route = r.meta.route.clone();
+                        meta
+                    })
                     .filter(|meta| !meta.is_empty()),
             )
         };
@@ -1237,13 +1245,26 @@ fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: boo
 /// One stored message as a thread turn. Assistant text is rendered Markdown
 /// (the renderer escapes it), followed by the plugin cards its answer came
 /// with (`plugins`, `docs/web/plugin-card.md`); user and status text is
-/// escaped as written.
-fn turn(message: &Message, index: usize, plugins: &[String]) -> ThreadMessage {
+/// escaped as written. A reply sits between two hidden markers: the first
+/// names how it was served (`reply`: its tier, route, and prepared
+/// answer, once answered), so the chat goldens can read a reply from the
+/// page exactly as a person gets it (docs/web/chat-goldens.md).
+fn turn(
+    message: &Message,
+    index: usize,
+    plugins: &[String],
+    reply: Option<&openagents_chat::router::Meta>,
+) -> ThreadMessage {
     match message.role {
         Role::User => ThreadMessage::user(&message.text),
         Role::Assistant => ThreadMessage::assistant(html! {
+            span hidden data-oa-reply=(index)
+                data-oa-tier=[reply.and_then(|r| r.tier.as_deref())]
+                data-oa-route=[reply.and_then(|r| r.route.as_deref())]
+                data-oa-answer=[reply.and_then(|r| r.answer.as_deref())] {}
             (MarkdownRoot::new(PreEscaped(crate::markdown::render(&message.text))))
             (crate::suggestions::plugin_cards(plugins))
+            span hidden data-oa-reply-end {}
         })
         .author("OpenAgents"),
         Role::Tool => ThreadMessage::status(&message.text),
@@ -1269,7 +1290,12 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
         }
         @if start == 0 { (work::rows(chat, 0, links)) }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
-            (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
+            (turn(
+                message,
+                index + start,
+                crate::suggestions::message_plugins(chat, message),
+                crate::suggestions::message_reply(chat, message),
+            ))
             (work::rows(chat, index + start + 1, links))
         }
         // Replies sent here that Coder hasn't taken yet (#11048).
