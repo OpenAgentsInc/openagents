@@ -102,6 +102,13 @@ all          4         4       0        0     4       2403         238          
 
 ## Retention
 
-The log grows by one line per job and is never trimmed by the worker. Each
-line is a few hundred bytes, so a million jobs is a few hundred megabytes.
-Delete or archive old day files by hand when the disk needs it.
+The worker keeps 30 days of day files, today included, and deletes older
+ones (#11042): once at start, and again when the first job of a new UTC day
+is written. `CODER_WORKER_USAGE_DAYS` sets the window (a whole number of
+days) or `forever` keeps every file; any other value stops the worker. The
+start lines say the window (`usage   … kept 30 day(s)`) and how many files a
+start deleted. Only `YYYY-MM-DD.jsonl` files are touched, so an archive or a
+note in the directory stays. Copy day files elsewhere before they age out if
+a longer history is needed; `--since` queries cannot reach past the window.
+Each line is a few hundred bytes, so a million jobs is a few hundred
+megabytes.

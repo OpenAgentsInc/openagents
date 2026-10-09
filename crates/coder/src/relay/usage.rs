@@ -10,6 +10,12 @@
 //! took, its tokens, and how it ended. No message text is ever written:
 //! the record holds ids, words from fixed vocabularies, counts, and times.
 //!
+//! Day files are deleted once they are older than the log's window
+//! ([`Log::keeping`]; the chat worker keeps [`DEFAULT_KEEP_DAYS`] unless
+//! `CODER_WORKER_USAGE_DAYS` says otherwise, #11042): the log prunes when
+//! the first job of a new day is appended, and the worker prunes once at
+//! start.
+//!
 //! [`read`] and [`stats`] are what `coder-worker usage` runs; read
 //! `docs/deployment/chat-worker-usage.md` for the queries.
 
@@ -249,17 +255,101 @@ fn word(value: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// How many days of usage the chat worker keeps unless configured
+/// otherwise: today and the 29 days before it.
+pub const DEFAULT_KEEP_DAYS: u32 = 30;
+
 /// The usage log: a directory of day files.
 #[derive(Clone, Debug)]
 pub struct Log {
     dir: PathBuf,
+    /// Days of files kept, today included; `None` keeps every file.
+    keep: Option<u32>,
+    /// The day the log last pruned for, so it prunes once a day.
+    pruned: std::sync::Arc<std::sync::Mutex<String>>,
 }
 
 impl Log {
-    /// A log in `dir`, made on the first append if it is missing.
+    /// A log in `dir`, made on the first append if it is missing, that
+    /// keeps every day file until [`Log::keeping`] bounds it.
     #[must_use]
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            keep: None,
+            pruned: std::sync::Arc::default(),
+        }
+    }
+
+    /// The same log keeping `days` days of files, today included (`None`
+    /// keeps them all; zero is read as one).
+    #[must_use]
+    pub fn keeping(mut self, days: Option<u32>) -> Self {
+        self.keep = days.map(|days| days.max(1));
+        self
+    }
+
+    /// The days of files the log keeps, or `None` for all of them.
+    #[must_use]
+    pub fn keeps(&self) -> Option<u32> {
+        self.keep
+    }
+
+    /// Deletes the day files older than the window, as of `now_secs` (Unix
+    /// seconds), and returns how many it deleted. Files that are not day
+    /// files are left alone; a log that keeps everything deletes nothing.
+    ///
+    /// # Errors
+    ///
+    /// The directory could not be listed or a file could not be deleted.
+    /// A missing directory is nothing to prune.
+    pub fn prune(&self, now_secs: u64) -> Result<usize, String> {
+        let Some(keep) = self.keep else {
+            return Ok(0);
+        };
+        let oldest = date(now_secs.saturating_sub(u64::from(keep - 1) * 86_400));
+        let entries = match fs::read_dir(&self.dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(format!("{}: {e}", self.dir.display())),
+        };
+        let mut deleted = 0;
+        for entry in entries.filter_map(Result::ok) {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(day) = name.strip_suffix(".jsonl") else {
+                continue;
+            };
+            if is_date(day) && day < oldest.as_str() {
+                fs::remove_file(entry.path())
+                    .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
+
+    /// Prunes once per new day seen in `day`, as of the clock now. A
+    /// failure is reported on stderr and costs nothing else: the job's line
+    /// is already written.
+    fn prune_for(&self, day: &str) {
+        if self.keep.is_none() {
+            return;
+        }
+        {
+            let Ok(mut pruned) = self.pruned.lock() else {
+                return;
+            };
+            if pruned.as_str() == day {
+                return;
+            }
+            *pruned = day.to_string();
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        if let Err(why) = self.prune(now) {
+            eprintln!("usage   could not delete old usage files: {why}");
+        }
     }
 
     /// The directory the log writes to.
@@ -286,7 +376,9 @@ impl Log {
             .append(true)
             .open(&path)
             .and_then(|mut file| file.write_all(line.as_bytes()))
-            .map_err(|e| format!("{}: {e}", path.display()))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        self.prune_for(day);
+        Ok(())
     }
 }
 
@@ -758,7 +850,53 @@ mod tests {
 
         let since = read(log.dir(), Some("2026-10-02")).unwrap();
         assert_eq!(since.records.len(), 1);
+        // A log with no window keeps every day.
+        assert_eq!(log.prune(day_two / 1_000 + 400 * 86_400).unwrap(), 0);
         assert!(read(log.dir(), Some("yesterday")).is_err());
         assert!(By::parse("color").is_err());
+    }
+
+    /// #11042: a bounded log deletes day files older than its window and
+    /// keeps the rest, including files that are not day files.
+    #[test]
+    fn a_bounded_log_deletes_days_past_its_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = Log::new(dir.path().join("usage")).keeping(Some(30));
+        assert_eq!(log.keeps(), Some(30));
+        // Nothing written yet: nothing to prune.
+        assert_eq!(log.prune(1_790_812_800).unwrap(), 0);
+        fs::create_dir_all(log.dir()).unwrap();
+        for day in [
+            "2026-08-31",
+            "2026-09-01",
+            "2026-09-02",
+            "2026-09-30",
+            "2026-10-01",
+        ] {
+            fs::write(log.dir().join(format!("{day}.jsonl")), "{}\n").unwrap();
+        }
+        fs::write(log.dir().join("notes.txt"), "kept").unwrap();
+        // 2026-10-01: thirty days back to 2026-09-02 stay.
+        let now = 1_790_812_800 + 3_600;
+        assert_eq!(date(now), "2026-10-01");
+        assert_eq!(log.prune(now).unwrap(), 2);
+        let mut left: Vec<String> = fs::read_dir(log.dir())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "2026-09-02.jsonl",
+                "2026-09-30.jsonl",
+                "2026-10-01.jsonl",
+                "notes.txt"
+            ]
+        );
+        // A one-day window keeps only today.
+        let today = Log::new(log.dir()).keeping(Some(0));
+        assert_eq!(today.keeps(), Some(1));
+        assert_eq!(today.prune(now).unwrap(), 2);
     }
 }

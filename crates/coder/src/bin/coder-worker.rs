@@ -90,6 +90,9 @@
 //! Every job is recorded: one JSON line per job in the usage log
 //! ([`coder::relay::usage`]), `CODER_WORKER_USAGE_DIR` or, under systemd,
 //! `usage/` in the unit's state directory. `coder-worker usage` reads it.
+//! Day files older than `CODER_WORKER_USAGE_DAYS` (30 unless set;
+//! `forever` keeps them all) are deleted at start and as each new day
+//! begins (#11042).
 //!
 //! One request is answered once. An event whose ID the worker has already
 //! seen is set aside, and a request whose `created_at` is more than ten
@@ -244,7 +247,9 @@ only, each request at most 96 KiB. CODER_WORKER_QUOTA
 set; each count left out is unlimited, and setting it also opens the
 worker. CODER_WORKER_QUOTA_FILE keeps its day's counts across a restart.
 Every job is appended to the usage log (CODER_WORKER_USAGE_DIR, else
-usage/ in systemd's STATE_DIRECTORY; off says off). CODER_WORKER_JOBS bounds
+usage/ in systemd's STATE_DIRECTORY; off says off), and day files older
+than CODER_WORKER_USAGE_DAYS (30 unless set; forever keeps them) are
+deleted. CODER_WORKER_JOBS bounds
 how many jobs run at once; the rest are refused busy. The first-response
 judge answers a turn that asks for it (opener or judge in the request)
 through the decision profile the agent resolves (TYPESAFE_API_KEY or
@@ -302,6 +307,25 @@ const QUOTA_VAR: &str = "CODER_WORKER_QUOTA";
 
 /// The environment variable naming the usage log's directory, or `off`.
 const USAGE_DIR_VAR: &str = "CODER_WORKER_USAGE_DIR";
+
+/// The environment variable naming how many days of usage files the
+/// worker keeps (#11042): a whole number of days, or `forever`. Unset is
+/// [`coder::relay::usage::DEFAULT_KEEP_DAYS`].
+const USAGE_DAYS_VAR: &str = "CODER_WORKER_USAGE_DAYS";
+
+/// Reads `CODER_WORKER_USAGE_DAYS`: `Some(days)`, or `None` for `forever`.
+fn usage_days_from(value: Option<&str>) -> Result<Option<u32>, String> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(Some(coder::relay::usage::DEFAULT_KEEP_DAYS)),
+        Some("forever") => Ok(None),
+        Some(text) => match text.parse::<u32>() {
+            Ok(days) if days > 0 => Ok(Some(days)),
+            _ => Err(format!(
+                "{USAGE_DAYS_VAR} is a number of days or `forever`, not `{text}`"
+            )),
+        },
+    }
+}
 
 /// Where `coder-worker usage` reads when nothing else names a directory.
 const DEFAULT_USAGE_DIR: &str = "/var/lib/coder-worker-chat/usage";
@@ -831,9 +855,25 @@ async fn serve(options: &Options) -> Result<(), String> {
     } else {
         None
     };
+    let keep_days = usage_days_from(env::var(USAGE_DAYS_VAR).ok().as_deref())?;
     let usage = usage_dir_from_env().map(|dir| {
-        eprintln!("usage   one line per job in {}", dir.display());
-        Arc::new(coder::relay::usage::Log::new(dir))
+        let log = coder::relay::usage::Log::new(&dir).keeping(keep_days);
+        match keep_days {
+            Some(days) => eprintln!(
+                "usage   one line per job in {}, kept {days} day(s)",
+                dir.display()
+            ),
+            None => eprintln!(
+                "usage   one line per job in {}, kept forever",
+                dir.display()
+            ),
+        }
+        match log.prune(unix_now()) {
+            Ok(0) => {}
+            Ok(deleted) => eprintln!("usage   deleted {deleted} day file(s) past the window"),
+            Err(why) => eprintln!("usage   could not delete old usage files: {why}"),
+        }
+        Arc::new(log)
     });
     if usage.is_none() {
         eprintln!("usage   log off ({USAGE_DIR_VAR} is off, or unset outside systemd)");
@@ -3778,6 +3818,18 @@ fn answering_door(door: &Door, model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11042: the usage window is 30 days unless set, `forever` keeps
+    /// every file, and anything else stops the worker.
+    #[test]
+    fn the_usage_window_defaults_to_thirty_days() {
+        assert_eq!(usage_days_from(None), Ok(Some(30)));
+        assert_eq!(usage_days_from(Some(" ")), Ok(Some(30)));
+        assert_eq!(usage_days_from(Some("90")), Ok(Some(90)));
+        assert_eq!(usage_days_from(Some("forever")), Ok(None));
+        assert!(usage_days_from(Some("0")).is_err());
+        assert!(usage_days_from(Some("a month")).is_err());
+    }
     use coder::generate::StubGenerate;
     use secp256k1::SecretKey;
 
