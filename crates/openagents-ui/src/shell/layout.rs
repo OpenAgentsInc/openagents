@@ -487,9 +487,6 @@ impl Render for ChatList {
                 } @else {
                     @if let Some(search) = &self.search { (search) }
                     div class="oa-chat-list-rows" id=[rows_id] data-oa-chat-rows {
-                        div class="oa-chat-list-notice" role="status" {
-                            @if let Some(notice) = &self.notice { (notice) }
-                        }
                         @if !self.pinned.is_empty() {
                             div class="oa-chat-list-group" {
                                 h2 class="oa-sidebar-section-title" { "Pinned" }
@@ -518,7 +515,13 @@ impl Render for ChatList {
                             }
                         }
                     }
-                    @if let Some(after) = &self.after { (after) }
+                    // Secondary links and the notice sit at the bottom of the column.
+                    div class="oa-chat-list-secondary" {
+                        div class="oa-chat-list-notice" role="status" {
+                            @if let Some(notice) = &self.notice { (notice) }
+                        }
+                        @if let Some(after) = &self.after { (after) }
+                    }
                 }
             }
         }

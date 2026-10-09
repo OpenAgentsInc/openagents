@@ -666,6 +666,11 @@ fn chat_rows_organize_with_plain_forms_and_a_search_box() {
     assert!(list.contains(r#"hx-confirm="Archive it?""#));
     assert!(list.contains(r#"aria-label="Options for Fix &lt;it&gt;""#));
     assert!(list.contains("Chat archived.") && list.contains(">Archived<"));
+    // Secondary links and the notice render after the chat rows.
+    let secondary = list.find("oa-chat-list-secondary").unwrap();
+    assert!(secondary > list.find("Fix &lt;it&gt;").unwrap());
+    assert!(list.find("Chat archived.").unwrap() > secondary);
+    assert!(list.find(">Archived<").unwrap() > secondary);
     // Nothing found: the plain line, still inside the box.
     let none = ChatList::new()
         .id("chat-sidebar")

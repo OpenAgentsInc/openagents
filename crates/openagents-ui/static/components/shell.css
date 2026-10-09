@@ -322,6 +322,20 @@ html:has(> body.oa-body) {
 .oa-chat-list {
   min-width: 0;
 }
+/* The chat list fills the column so its secondary links (Archived chats,
+   Connect a GitHub repository, the Undo notice) sit at the bottom, just
+   above the account footer. */
+.oa-chat-list:has(.oa-chat-list-secondary) {
+  flex: 1;
+}
+.oa-chat-list-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  margin-top: auto;
+  padding-top: calc(var(--spacing) * 3);
+  opacity: 0.85;
+}
 .oa-chat-list-rows,
 .oa-chat-list-group {
   display: flex;
