@@ -52,5 +52,5 @@ impl Backend for Development {
 }
 
 /// The note a page shows in place of its data on a development server.
-pub const NOT_CONNECTED: &str = "This server runs without the production backend, so this page \
-     shows no records. openagents.com serves them from its account store.";
+pub const NOT_CONNECTED: &str = "This is a test server, so there's nothing to show here. \
+     The real page is on openagents.com.";

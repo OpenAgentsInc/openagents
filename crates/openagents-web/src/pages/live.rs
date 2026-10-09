@@ -56,7 +56,7 @@ happen, on the route map. Nothing here is simulated."
                 canvas id="flow-map" role="img" aria-label="The route map with live traffic" {}
             }
             p.oa-page-meta id="flow-status" aria-live="polite" {
-                "Connecting to the flow stream."
+                "Connecting to the live feed."
             }
             (totals)
             (MarkdownRoot::new(html! {

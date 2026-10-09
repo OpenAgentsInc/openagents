@@ -46,8 +46,8 @@ pub(crate) fn routes() -> Router<crate::App> {
 async fn retired() -> Response {
     let mut response = crate::chat_html::protect(crate::layout::problem(
         StatusCode::GONE,
-        "This chat route has moved",
-        "Start a chat from the homepage. Messages and answers now stay in their conversation page.",
+        "This page has moved",
+        "Start a chat from the homepage.",
         ("/", "Start a chat"),
     ));
     response.headers_mut().insert(

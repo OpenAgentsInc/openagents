@@ -104,25 +104,25 @@ fn decode<T: DeserializeOwned>(
     if token.len() > MAX_TOKEN {
         return Err(refused(
             StatusCode::BAD_REQUEST,
-            "The selection exceeds its limit. Reload this page.",
+            "Something went wrong. Reload this page.",
         ));
     }
     let Some((payload, tag)) = token.split_once('.') else {
         return Err(refused(
             StatusCode::BAD_REQUEST,
-            "The selection ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         ));
     };
     let payload = URL_SAFE_NO_PAD.decode(payload).map_err(|_| {
         refused(
             StatusCode::BAD_REQUEST,
-            "The selection ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         )
     })?;
     let tag = URL_SAFE_NO_PAD.decode(tag).map_err(|_| {
         refused(
             StatusCode::BAD_REQUEST,
-            "The selection ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         )
     })?;
     if payload.len() > MAX_PAYLOAD
@@ -132,13 +132,13 @@ fn decode<T: DeserializeOwned>(
     {
         return Err(refused(
             StatusCode::FORBIDDEN,
-            "The selection ticket changed or belongs to another browser. Reload this page.",
+            "This page is out of date. Reload it.",
         ));
     }
     serde_json::from_slice(&payload).map_err(|_| {
         refused(
             StatusCode::BAD_REQUEST,
-            "The selection ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         )
     })
 }
@@ -155,7 +155,7 @@ pub(crate) fn state(app: &App, owner: &str, token: &str) -> Result<Selection, Re
     validate_selection(&selection).map_err(|_| {
         refused(
             StatusCode::BAD_REQUEST,
-            "The selected source or runtime is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         )
     })?;
     Ok(selection)
@@ -300,7 +300,7 @@ async fn choices(app: &App, headers: &HeaderMap) -> Result<Vec<RuntimeChoice>, R
             }) {
                 return Err(refused(
                     StatusCode::BAD_GATEWAY,
-                    "The native runtime catalog is invalid. Reopen its workspace.",
+                    "Something went wrong. Open your workspace again.",
                 ));
             }
             Ok(choices)
@@ -355,7 +355,7 @@ async fn show(
         if loaded.conversation.selection.clone().unwrap_or_default() != selection {
             return response(panel(
                 "Selection changed",
-                html! { p role="alert" { "This conversation changed. Reopen it before selecting another source." } },
+                html! { p role="alert" { "This chat changed. Open it again to pick a repository." } },
             ));
         }
     }
@@ -373,7 +373,7 @@ async fn show(
         "model" => model_panel(&selection),
         _ => panel(
             "Voice input",
-            html! { p { "Voice input is not available in this browser yet. Type your message in the composer." } },
+            html! { p { "Voice input doesn't work in this browser. Type your message instead." } },
         ),
     };
     let _ = input.csrf;
@@ -395,14 +395,13 @@ fn context_panel(selection: &Selection) -> Markup {
             @if let Some(source) = &selection.repository {
                 dl class="oa-composer-details" {
                     dt { "Repository" } dd { (source.repository) }
-                    dt { "Branch" } dd { (if source.branch == source.revision { "Pinned revision" } else { &source.branch }) }
+                    dt { "Branch" } dd { (if source.branch == source.revision { "Fixed commit" } else { &source.branch }) }
                     dt { "Commit" } dd { code { (source.revision) } }
                 }
             } @else {
-                p { "No repository is selected. Your message supplies the conversation's context." }
+                p { "No repository selected." }
             }
             (picker_link("repository", "Choose repository"))
-            p class="oa-composer-note" { "File uploads are not available yet. Repository commands require an admitted execution runtime and a separate review." }
         },
     )
 }
@@ -412,11 +411,9 @@ fn model_panel(selection: &Selection) -> Markup {
         "Model",
         html! {
             @if let Some(runtime) = &selection.runtime {
-                p { "The selected runtime uses " strong { (runtime.model.as_deref().unwrap_or("Native policy")) } "." }
-                p { "The connected computer's profile selects its model." }
+                p { "This environment uses " strong { (runtime.model.as_deref().unwrap_or("its default model")) } "." }
             } @else {
-                p { strong { "Auto" } " uses the managed Web answer service." }
-                p { "Select an admitted execution runtime to use its configured model." }
+                p { strong { "Auto" } " picks a model for you." }
             }
             (picker_link("environment", "Choose environment"))
         },
@@ -433,7 +430,7 @@ fn repository_panel(
     panel(
         "Repository",
         html! {
-            p { "Select a public GitHub source or a repository admitted by your connected computer. An admitted repository also selects its configured runtime." }
+            p { "Pick a public GitHub repository, or one from your connected computer." }
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 label for="composer-repository" { "Public GitHub repository" }
@@ -444,27 +441,26 @@ fn repository_panel(
                 }
             }
             @if !choices.is_empty() {
-                h3 { "Admitted repositories" }
+                h3 { "On your computer" }
                 @for choice in choices.iter().filter(|choice| choice.repository.is_some()) {
                     form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                         (fields(app, owner, selection, chat))
                         button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available] {
                             strong { (choice.repository.as_deref().unwrap_or_default()) }
-                            small { (choice.branch.as_deref().unwrap_or("Pinned revision")) " · " (revision_prefix(&choice.runtime.source_revision)) }
-                            small { "Runtime: " (choice.runtime.profile) }
-                            @if !choice.available { small { "Runtime unavailable" } }
+                            small { (choice.branch.as_deref().unwrap_or("Fixed commit")) " · " (revision_prefix(&choice.runtime.source_revision)) }
+                            small { "Environment: " (choice.runtime.profile) }
+                            @if !choice.available { small { "Unavailable" } }
                         }
                     }
                 }
             }
             @if choices.is_empty() {
-                p class="oa-composer-note" { "To select an admitted repository, open Cloud and choose a workspace with a connected computer." }
-                a href="/cloud/app" { "Choose Cloud workspace" }
+                p class="oa-composer-note" { "To use a repository on your computer, connect it in Cloud." }
+                a href="/cloud/app" { "Open Cloud" }
             }
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat)) button type="submit" name="value" value="none" class="oa-composer-choice" { "No repository" }
             }
-            p class="oa-composer-note" { "Public metadata does not connect a computer or authorize code execution." }
         },
     )
 }
@@ -522,15 +518,14 @@ async fn branch_panel(
         return panel(
             "Branch",
             html! {
-                p { "These source revisions are admitted by your connected computer." }
+                p { "Branches on your connected computer." }
                 @for choice in native {
                     form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                         (fields(app, owner, selection, chat))
                         button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available] {
-                            strong { (choice.branch.as_deref().unwrap_or("Pinned revision")) }
+                            strong { (choice.branch.as_deref().unwrap_or("Fixed commit")) }
                             small { (revision_prefix(&choice.runtime.source_revision)) " · " (choice.runtime.profile) }
-                            small { "Selects this source and its configured runtime." }
-                            @if !choice.available { small { "Runtime unavailable" } }
+                            @if !choice.available { small { "Unavailable" } }
                         }
                     }
                 }
@@ -541,9 +536,9 @@ async fn branch_panel(
         return panel(
             "Branch",
             html! {
-                p { "The selected native source is not in the current catalog. Choose a current admitted repository and runtime." }
+                p { "That repository isn't available anymore. Pick another one." }
                 (picker_link("repository", "Choose repository"))
-                a href="/cloud/app" { "Choose Cloud workspace" }
+                a href="/cloud/app" { "Open Cloud" }
             },
         );
     }
@@ -552,14 +547,14 @@ async fn branch_panel(
         Err(message) => {
             return panel(
                 "Branch",
-                html! { p role="alert" { (message) } p { "Your selection has not changed." } },
+                html! { p role="alert" { (message) } p { "Nothing changed." } },
             );
         }
     };
     panel(
         "Branch",
         html! {
-            p { (source.repository) " · selection pins the branch's current commit." }
+            p { (source.repository) }
             @for branch in branches {
                 form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                     (fields(app, owner, selection, chat))
@@ -568,7 +563,7 @@ async fn branch_panel(
                     }
                 }
             }
-            @if more { p class="oa-composer-note" { "This is a bounded page of up to 100 branches. Enter another branch below." } }
+            @if more { p class="oa-composer-note" { "Showing the first 100 branches. Type a branch name to pick another." } }
             form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 label for="composer-branch" { "Branch name" }
@@ -591,7 +586,7 @@ fn environment_panel(
             form action="/composer/environment" method="post" hx-post="/composer/environment" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 button type="submit" name="value" value="none" class="oa-composer-choice" {
-                    strong { "Web answers" } small { "Questions and conversation. Choosing Web answers clears an admitted repository's source pins." }
+                    strong { "Web answers" } small { "Questions and conversation, no repository." }
                 }
             }
             @for choice in choices {
@@ -601,16 +596,15 @@ fn environment_panel(
                     button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available || !compatible] {
                         strong { (choice.runtime.profile) }
                         small { (choice.runtime.placement) " · " (choice.size) " · " (choice.runtime.executor) }
-                        small { "Source " (revision_prefix(&choice.runtime.source_revision)) " · model " (choice.runtime.model.as_deref().unwrap_or("Native policy")) }
-                        @if let Some(template) = &choice.template { small { "Runtime image: " (template) } }
-                        @if !choice.available { small { "Runtime unavailable" } }
-                        @if !compatible { small { "Does not match the selected source" } }
+                        small { "Source " (revision_prefix(&choice.runtime.source_revision)) " · model " (choice.runtime.model.as_deref().unwrap_or("default")) }
+                        @if let Some(template) = &choice.template { small { "Image: " (template) } }
+                        @if !choice.available { small { "Unavailable" } }
+                        @if !compatible { small { "Doesn't match the selected repository" } }
                     }
                 }
             }
-            @if choices.is_empty() { p { "No execution runtime is admitted for this browser. Open Cloud and choose a workspace with a connected computer." } }
-            p class="oa-composer-note" { "A runtime selection stages a separate native review when you send a message. Saved project-image preparation remains a separate operation." }
-            a href="/cloud/app" { "Open connected computers and native profiles" }
+            @if choices.is_empty() { p { "No environments yet. Connect a computer in Cloud to add one." } }
+            a href="/cloud/app" { "Open Cloud" }
         },
     )
 }
@@ -624,17 +618,17 @@ async fn selected_choice(
 ) -> Result<RuntimeChoice, &'static str> {
     let token = value
         .strip_prefix("n.")
-        .ok_or("Choose a current admitted runtime.")?;
+        .ok_or("That environment isn't available anymore. Pick another one.")?;
     let original: RuntimeChoice = decode(app, owner, b"openagents.web.composer.runtime.v1:", token)
-        .map_err(|_| "The runtime ticket changed. Reopen its selector.")?;
+        .map_err(|_| "This list is out of date. Open it again.")?;
     let choice = choices
         .iter()
         .find(|choice| **choice == original)
         .cloned()
-        .ok_or("The runtime changed. Reopen its selector.")?;
+        .ok_or("This list is out of date. Open it again.")?;
     crate::cloud::composer::validate(app, headers, &choice.runtime)
         .await
-        .map_err(|_| "The native runtime admission changed. Reopen the workspace.")?;
+        .map_err(|_| "Your access changed. Open your workspace again.")?;
     Ok(choice)
 }
 
@@ -674,7 +668,7 @@ async fn select(
     {
         return response(panel(
             "Selection changed",
-            html! { p role="alert" { "This conversation changed. Reopen it before choosing another source." } },
+            html! { p role="alert" { "This chat changed. Open it again to pick a repository." } },
         ));
     }
     let choices = match choices(&app, &headers).await {
@@ -691,15 +685,14 @@ async fn select(
             }
             "repository" | "branch" if value.starts_with("n.") => {
                 let choice = selected_choice(&app, &headers, &owner, value, &choices).await?;
-                let source = source_from(&choice)
-                    .ok_or("This profile does not declare a repository source.")?;
+                let source = source_from(&choice).ok_or("This environment has no repository.")?;
                 if kind == "branch"
                     && previous
                         .repository
                         .as_ref()
                         .is_none_or(|old| !old.repository.eq_ignore_ascii_case(&source.repository))
                 {
-                    return Err("Choose a branch from the currently selected repository.");
+                    return Err("Pick a branch from the selected repository.");
                 }
                 next.repository = Some(source);
                 next.runtime = Some(choice.runtime);
@@ -718,9 +711,7 @@ async fn select(
                         .as_ref()
                         .is_some_and(|value| value.eq_ignore_ascii_case(&repository.repository))
                 }) {
-                    return Err(
-                        "Choose one of the source revisions admitted by the connected computer.",
-                    );
+                    return Err("Pick one of the branches on your connected computer.");
                 }
                 next.repository = Some(public_source(&repository.repository, Some(value)).await?);
             }
@@ -733,21 +724,21 @@ async fn select(
             "environment" => {
                 let choice = selected_choice(&app, &headers, &owner, value, &choices).await?;
                 if !choice.available {
-                    return Err("This native runtime is unavailable.");
+                    return Err("This environment is unavailable.");
                 }
                 if next
                     .repository
                     .as_ref()
                     .is_some_and(|source| !matches_source(&choice, source))
                 {
-                    return Err("The runtime does not match the selected repository revision.");
+                    return Err("This environment doesn't match the selected repository.");
                 }
                 if next.repository.is_none() {
                     next.repository = source_from(&choice);
                 }
                 next.runtime = Some(choice.runtime);
             }
-            _ => return Err("This selector is unavailable."),
+            _ => return Err("This option is unavailable."),
         }
         if kind != "environment"
             && next.runtime.as_ref().is_some_and(|runtime| {
@@ -780,14 +771,14 @@ async fn select(
         None => {
             return refused(
                 StatusCode::CONFLICT,
-                "This selection cannot advance. Start another conversation.",
+                "Something went wrong. Start a new chat.",
             );
         }
     };
     if validate_selection(&next).is_err() {
         return refused(
             StatusCode::BAD_REQUEST,
-            "The selected source or runtime is invalid.",
+            "Something went wrong. Reload this page.",
         );
     }
     let mut ticket = html! {};
@@ -799,7 +790,7 @@ async fn select(
             None => {
                 return refused(
                     StatusCode::CONFLICT,
-                    "This conversation cannot advance. Start another conversation.",
+                    "Something went wrong. Start a new chat.",
                 );
             }
         };
@@ -817,7 +808,7 @@ async fn select(
             Err(_) => {
                 return response(panel(
                     "Selection unchanged",
-                    html! { p role="alert" { "This conversation changed or could not be saved. Reopen it before choosing another source." } },
+                    html! { p role="alert" { "This chat changed or couldn't be saved. Open it again to pick a repository." } },
                 ));
             }
         };
@@ -851,9 +842,9 @@ struct Branch {
 
 fn github(path: &[&str]) -> Result<reqwest::Url, &'static str> {
     let mut url = reqwest::Url::parse("https://api.github.com")
-        .map_err(|_| "GitHub metadata is unavailable.")?;
+        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
     url.path_segments_mut()
-        .map_err(|_| "GitHub metadata is unavailable.")?
+        .map_err(|_| "Couldn't reach GitHub. Try again.")?
         .extend(path.iter().copied());
     Ok(url)
 }
@@ -870,22 +861,22 @@ async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &
                 .build()
         })
         .as_ref()
-        .map_err(|_| "GitHub metadata is unavailable.")?;
+        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
     let mut response = client
         .get(url)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2026-03-10")
         .send()
         .await
-        .map_err(|_| "GitHub metadata is temporarily unavailable. Try again.")?;
+        .map_err(|_| "Couldn't reach GitHub. Try again.")?;
     if !response.status().is_success() {
         return Err(match response.status().as_u16() {
             404 => {
-                "Public repository or branch not found. Private sources require an admitted computer profile."
+                "Repository or branch not found. Private repositories need a connected computer."
             }
-            403 | 429 => "GitHub metadata is temporarily limited. Try again later.",
+            403 | 429 => "GitHub is busy. Try again in a minute.",
             301 | 302 | 307 | 308 => "The repository moved. Enter its current owner and name.",
-            _ => "GitHub metadata is temporarily unavailable. Try again.",
+            _ => "Couldn't reach GitHub. Try again.",
         });
     }
     let more = response
@@ -897,21 +888,22 @@ async fn metadata<T: DeserializeOwned>(url: reqwest::Url) -> Result<(T, bool), &
         .content_length()
         .is_some_and(|length| length > MAX_METADATA as u64)
     {
-        return Err("GitHub metadata exceeds the selector's bound.");
+        return Err("That repository is too big to list here.");
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|_| "GitHub metadata was interrupted. Try again.")?
+        .map_err(|_| "Couldn't reach GitHub. Try again.")?
     {
         if bytes.len().saturating_add(chunk.len()) > MAX_METADATA {
-            return Err("GitHub metadata exceeds the selector's bound.");
+            return Err("That repository is too big to list here.");
         }
         bytes.extend_from_slice(&chunk);
     }
     Ok((
-        serde_json::from_slice(&bytes).map_err(|_| "GitHub returned invalid source metadata.")?,
+        serde_json::from_slice(&bytes)
+            .map_err(|_| "GitHub sent something we couldn't read. Try again.")?,
         more,
     ))
 }
@@ -927,16 +919,16 @@ async fn public_source(
         .ok_or("Enter a GitHub repository as owner/repository.")?;
     let (info, _): (Repository, _) = metadata(github(&["repos", owner, name])?).await?;
     if info.private || !info.full_name.eq_ignore_ascii_case(repository) {
-        return Err("Only public metadata is available for this repository.");
+        return Err("Only public repositories work here.");
     }
     coder_access::cloud::repository(&info.full_name)
-        .map_err(|_| "GitHub returned an unsupported repository name.")?;
+        .map_err(|_| "That repository name isn't supported.")?;
     let branch = branch.unwrap_or(&info.default_branch);
-    coder_access::cloud::branch(branch).map_err(|_| "This branch name is unsupported.")?;
+    coder_access::cloud::branch(branch).map_err(|_| "That branch name isn't supported.")?;
     let (info_branch, _): (Branch, _) =
         metadata(github(&["repos", owner, name, "branches", branch])?).await?;
     if info_branch.name != branch || !sha(&info_branch.commit.sha) {
-        return Err("GitHub returned an invalid branch revision.");
+        return Err("GitHub sent something we couldn't read. Try again.");
     }
     Ok(RepositorySource {
         repository: info.full_name,
@@ -954,7 +946,7 @@ async fn public_branches(repository: &str) -> Result<(Vec<Branch>, bool), &'stat
     url.query_pairs_mut().append_pair("per_page", "100");
     let (mut branches, mut more): (Vec<Branch>, bool) = metadata(url).await?;
     if branches.len() > 100 {
-        return Err("GitHub returned too many branches.");
+        return Err("That repository has too many branches to list.");
     }
     let original = branches.len();
     branches.retain(|branch| {

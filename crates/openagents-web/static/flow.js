@@ -272,12 +272,12 @@
   function clock() { return (performance.now() - started) / 1000; }
 
   function say() {
-    var last = lastAt != null ? "last event " + utc(lastAt) : "no events yet";
+    var last = lastAt != null ? "last payment " + utc(lastAt) : "no payments yet";
     statusLine.textContent =
       state === "live" ? "Live · " + last :
-      state === "down" ? "The flow stream is unreachable · " + last + ". Retrying." :
-      state === "again" ? "The flow stream dropped · " + last + ". Reconnecting." :
-      "Connecting to the flow stream.";
+      state === "down" ? "Can't reach the live feed · " + last + ". Retrying." :
+      state === "again" ? "The live feed dropped · " + last + ". Reconnecting." :
+      "Connecting to the live feed.";
     document.getElementById("flow-received").textContent = money(totals.received_sats) + " sats";
     document.getElementById("flow-paid").textContent = money(totals.paid_out_sats) + " sats";
     document.getElementById("flow-calls").textContent = grouped(totals.calls);

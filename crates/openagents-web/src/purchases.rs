@@ -26,17 +26,15 @@ pub(crate) fn routes() -> Router<App> {
         .route("/app/purchases/{id}", get(purchase))
 }
 
-const UNAVAILABLE: &str = "<h2>Unavailable in the browser</h2><p>Quote, approve, invoke, cancel, and \
-recover stay on the installed client, which holds the resident wallet and the private \
-purchase authorization. This page cannot approve, pay, or dispatch, and reloading it never \
-repeats a payment.</p>";
+const UNAVAILABLE: &str = "<h2>Manage purchases in the app</h2><p>To buy, approve, or cancel a \
+purchase, use the OpenAgents app on this computer. This page only shows them.</p>";
 
 fn load(app: &App) -> Result<Vec<Summary>, Response> {
     let Some(root) = app.config.customer.clone() else {
         return Err(problem(
             StatusCode::NOT_FOUND,
             "Purchases are unavailable",
-            "This server was started without --customer DIRECTORY, so it has no purchase store to read.",
+            "This server has no purchases to show.",
             ("/app", "Back to tasks"),
         ));
     };
@@ -44,7 +42,7 @@ fn load(app: &App) -> Result<Vec<Summary>, Response> {
         Ok(list) => Ok(list),
         Err(error) => Err(problem(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Purchase store is unavailable",
+            "Purchases are unavailable",
             &error.to_string(),
             ("/app/purchases", "Try again"),
         )),
@@ -53,16 +51,14 @@ fn load(app: &App) -> Result<Vec<Summary>, Response> {
 
 fn phase_text(phase: Phase) -> &'static str {
     match phase {
-        Phase::Quoted => "quoted, waiting for approval on the installed client",
-        Phase::Approved => "approved, not yet invoked",
+        Phase::Quoted => "waiting for your approval in the app",
+        Phase::Approved => "approved, not started yet",
         Phase::Cancelled => "cancelled before payment",
-        Phase::Paying => "payment in flight",
-        Phase::Paid => "paid, delivery pending",
-        Phase::Completed => "completed, result and receipt retained",
+        Phase::Paying => "paying",
+        Phase::Paid => "paid, waiting for the result",
+        Phase::Completed => "done",
         Phase::Failed => "failed",
-        Phase::Unknown => {
-            "unknown: payment or delivery unresolved; use recover on the installed client"
-        }
+        Phase::Unknown => "we couldn't confirm the payment or result; check it in the app",
     }
 }
 
@@ -77,11 +73,11 @@ fn option(value: Option<&str>) -> String {
 pub(crate) fn render_list(list: &[Summary]) -> String {
     let mut body = String::from(
         "<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><h1>Plugin purchases</h1>\
-<p class=\"oa-page-meta\">The purchases your installed client made from this machine's customer store. \
+<p class=\"oa-page-meta\">Plugins you bought from this computer. \
 <a href=\"/app/purchases\">Refresh</a></p><ul class=\"oa-item-list\">",
     );
     if list.is_empty() {
-        body.push_str("<li><p class=\"oa-item-title\">No purchases</p><p>Use <code>openagents plugin purchase quote</code> on the installed client. The browser shows the result here.</p></li>");
+        body.push_str("<li><p class=\"oa-item-title\">No purchases</p><p>Plugins you buy in the app show up here.</p></li>");
     }
     for item in list {
         body.push_str(&format!(
@@ -103,17 +99,16 @@ pub(crate) fn render_one(item: &Summary) -> String {
         "<p class=\"oa-page-meta\"><a href=\"/app/purchases\">All purchases</a> / {id}</p><h1>{plugin}</h1>\
 <p><a href=\"/app/purchases/{id}\">Refresh</a></p>\
 <p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><dl class=\"oa-facts\">\
-<div><dt>Phase</dt><dd>{phase:?}: {phase_text}</dd></div>\
+<div><dt>Status</dt><dd>{phase_text}</dd></div>\
 <div><dt>Release</dt><dd>{release}</dd></div>\
 <div><dt>Endpoint</dt><dd>{url}</dd></div>\
 <div><dt>Account / workspace</dt><dd>{account} / {workspace}</dd></div>\
 <div><dt>Payer</dt><dd>{node} on {network}</dd></div>\
 <div><dt>Price</dt><dd>{price}, fee at most {fee}</dd></div>\
-<div><dt>Quote digest</dt><dd>{quote}</dd></div>\
-<div><dt>Approval digest</dt><dd>{approval}</dd></div>\
-<div><dt>Quote expires</dt><dd>{expires} ms since the epoch</dd></div>",
+<div><dt>Quote ID</dt><dd>{quote}</dd></div>\
+<div><dt>Approval ID</dt><dd>{approval}</dd></div>\
+<div><dt>Quote expires</dt><dd>{expires}</dd></div>",
         plugin = option(item.plugin.as_deref()),
-        phase = item.phase,
         phase_text = phase_text(item.phase),
         release = option(item.release.as_deref()),
         url = escape(&item.url),
@@ -149,21 +144,21 @@ pub(crate) fn render_one(item: &Summary) -> String {
         item.delivery_status
             .map_or_else(|| "unknown".to_string(), |s| format!("HTTP {s}")),
         if item.result_present {
-            "retained; read it with <code>openagents plugin purchase show</code>"
+            "saved; see it with <code>openagents plugin purchase show</code>"
         } else {
             "none"
         }
     ));
     if let Some(maximum) = item.unresolved_maximum_msat {
         body.push_str(&format!(
-            "<div><dt>Unresolved liability</dt><dd>at most {}</dd></div>",
+            "<div><dt>May still be charged</dt><dd>up to {}</dd></div>",
             msat(maximum)
         ));
     }
     if item.recovery_present {
-        body.push_str("<div><dt>Recovery</dt><dd>a recovery outcome is retained</dd></div>");
+        body.push_str("<div><dt>Recovery</dt><dd>checked</dd></div>");
     }
-    body.push_str("</dl><h2>Supported here</h2><p>Reading this purchase's current phase, terms, payer, digests, and receipt. The same identifiers resume on the installed client:</p>");
+    body.push_str("</dl><h2>Next step</h2><p>Run this on your computer:</p>");
     let next = match item.phase {
         Phase::Quoted => format!(
             "openagents plugin purchase approve --root ROOT --purchase {id} --digest {}",

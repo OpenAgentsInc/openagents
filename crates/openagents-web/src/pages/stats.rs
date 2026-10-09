@@ -256,10 +256,7 @@ fn numbers(stats: Option<&Stats>, snapshot: Option<&Snapshot>) -> Markup {
         return Alert::new()
             .id("stats-unreachable")
             .color(Color::Warning)
-            .description(
-                "The payment statistics are unreachable right now, so there are no numbers \
-to show. Try again shortly.",
-            )
+            .description("We can't load the payment numbers right now. Try again shortly.")
             .render();
     };
     let events = snapshot.map_or(&[][..], |snapshot| &snapshot.events[..]);
@@ -371,13 +368,13 @@ to show. Try again shortly.",
 /// The reconciliation state and the time of the last event.
 fn footing(reconciliation: &str, last: Option<i64>) -> Markup {
     let state = match reconciliation {
-        "ok" => "the ledger matches the wallet",
-        "drift" => "the ledger and the wallet disagree; payouts are being checked",
+        "ok" => "the books match the wallet",
+        "drift" => "the books and the wallet don't match yet; we're checking payouts",
         _ => "not checked yet",
     };
     let last = last.map_or_else(|| "none yet".to_owned(), |at| format!("{} UTC", utc(at)));
     html! {
-        p.oa-page-meta id="stats-footing" { "Reconciliation: " (state) ". Last event: " (last) "." }
+        p.oa-page-meta id="stats-footing" { "Balance check: " (state) ". Last payment: " (last) "." }
     }
 }
 

@@ -5,7 +5,7 @@ try {
 } catch (error) {
   const status = document.getElementById('catalog-status');
   if (status) {
-    status.textContent = 'Interactive module unavailable. Source previews remain readable.';
+    status.textContent = 'The interactive preview didn\'t load. You can still read the code.';
     status.className = 'catalog-error';
   }
   console.error('Component catalog could not start', error);

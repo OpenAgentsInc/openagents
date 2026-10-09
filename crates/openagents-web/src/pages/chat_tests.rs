@@ -73,7 +73,7 @@ impl Fixture {
                     },
                     Message {
                         role: Role::Assistant,
-                        text: "Retained answer".into(),
+                        text: "Saved answer".into(),
                         request_id: Some(CHAT.into()),
                     },
                 ],
@@ -131,10 +131,19 @@ impl Fixture {
             .await
             .unwrap();
         let status = response.status();
+        let html = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .is_some_and(|kind| kind.as_bytes().starts_with(b"text/html"));
         let bytes = to_bytes(response.into_body(), 2 * 1024 * 1024)
             .await
             .unwrap();
-        (status, String::from_utf8(bytes.to_vec()).unwrap())
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        if html {
+            // #11031: no chat page or fragment shows machine talk.
+            crate::copy_guard::assert_plain(uri, &body);
+        }
+        (status, body)
     }
 
     fn no_worker(&self) {
@@ -349,7 +358,7 @@ async fn unconfigured_native_selection_cannot_stage_or_dispatch_work() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(body.contains("No execution runtime is admitted"));
+    assert!(body.contains("No environments yet."));
     assert!(body.contains("href=\"/cloud/app\""));
     fixture.no_worker();
 }
@@ -450,8 +459,8 @@ async fn chat_and_information_panels_render_semantic_controls() {
     }
     for (kind, expected) in [
         ("context", "OpenAgentsInc/openagents"),
-        ("model", "managed Web answer service"),
-        ("voice", "Voice input is not available"),
+        ("model", "picks a model for you"),
+        ("voice", "Type your message instead."),
     ] {
         let (status, body) = fixture
             .request(

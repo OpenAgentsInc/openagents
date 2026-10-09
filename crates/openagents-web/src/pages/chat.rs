@@ -133,7 +133,7 @@ pub(crate) fn validate_form(
     if mac.verify_slice(&correct.finalize().into_bytes()).is_err() {
         return Err(refusal(
             StatusCode::FORBIDDEN,
-            "The message ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         ));
     }
     if headers
@@ -170,7 +170,7 @@ fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, S
     if !valid_id(&prompt.request_id) {
         return Err(refusal(
             StatusCode::FORBIDDEN,
-            "The message ticket is invalid. Reload this page.",
+            "Something went wrong. Reload this page.",
         ));
     }
     let Some(text) = normalize(&prompt.q) else {
@@ -211,7 +211,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Ok(Some(_)) => {
             return refusal(
                 StatusCode::CONFLICT,
-                "This message identity was already used for different text.",
+                "This message was already sent with different text. Reload the chat.",
             );
         }
         Ok(None) => {}
@@ -487,7 +487,7 @@ async fn follow(
         if request.digest != hash {
             return refusal(
                 StatusCode::CONFLICT,
-                "This message identity was already used for different text.",
+                "This message was already sent with different text. Reload the chat.",
             );
         }
         return accepted(&app, &headers, &loaded.conversation).await;
@@ -495,7 +495,7 @@ async fn follow(
     if selection != loaded.conversation.selection {
         return refusal(
             StatusCode::CONFLICT,
-            "The source or runtime selection changed. Reload this chat before sending.",
+            "Your repository or environment changed. Reload the chat and send again.",
         );
     }
     if loaded.conversation.pending.is_some() {
@@ -507,7 +507,7 @@ async fn follow(
     if loaded.conversation.messages.len() + 2 > MAX_MESSAGES {
         return refusal(
             StatusCode::BAD_REQUEST,
-            "This chat is full. Start another chat; the original messages remain available.",
+            "This chat is full. Start a new chat to keep going.",
         );
     }
     let previous = loaded
@@ -519,7 +519,7 @@ async fn follow(
     if previous.is_some() && selection.as_ref().is_none_or(|s| s.runtime.is_none()) {
         return refusal(
             StatusCode::CONFLICT,
-            "Continue Cloud work through its current job controls.",
+            "Continue this work from its job page in Cloud.",
         );
     }
     let cloud = if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
@@ -758,10 +758,11 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                     next.messages.push(Message {
                         role: Role::Tool,
                         text: if expired {
-                            "The answer's outcome is unknown. The request will not be submitted again automatically."
+                            "We couldn't confirm this went through. Try asking again."
                         } else {
                             "We couldn't get an answer. Try asking again."
-                        }.into(),
+                        }
+                        .into(),
                         request_id: Some(request_id.clone()),
                     });
                 }
@@ -921,7 +922,7 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
         }
         p #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.pending.is_some() {"OpenAgents is answering…"}
-            @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"The previous request's outcome is unknown. It will not be repeated automatically."}
+            @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
         }
     }
@@ -959,14 +960,14 @@ async fn original(
     if offset > bytes.len() {
         return refusal(
             StatusCode::BAD_REQUEST,
-            "The original offset is outside this message.",
+            "That position is past the end of this message.",
         );
     }
     let mut end = (offset + 64 * 1024).min(bytes.len());
     if !message.text.is_char_boundary(offset) {
         return refusal(
             StatusCode::BAD_REQUEST,
-            "Choose a UTF-8 character boundary for this offset.",
+            "That position splits a character. Pick another.",
         );
     }
     while !message.text.is_char_boundary(end) {
@@ -1017,16 +1018,13 @@ async fn events(
             None => {
                 return refusal(
                     StatusCode::CONFLICT,
-                    "This event cursor belongs to another conversation or is invalid.",
+                    "Something went wrong. Reload the chat.",
                 );
             }
         },
     };
     if cursor > loaded.conversation.revision {
-        return refusal(
-            StatusCode::CONFLICT,
-            "This event cursor is ahead of the retained conversation. Reload the chat.",
-        );
+        return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
     let stream = futures_util::stream::unfold(
         (app, headers, id, cursor, 0u16),
@@ -1089,7 +1087,7 @@ fn unavailable(error: Error) -> Response {
     eprintln!("openagents-web: conversation storage: {error}");
     refusal(
         StatusCode::SERVICE_UNAVAILABLE,
-        "The conversation store is unavailable. Your message was not repeated; try again with the same ticket.",
+        "We couldn't save your chat right now. Try again.",
     )
 }
 /// The homepage and chat share one composer: a stable text box

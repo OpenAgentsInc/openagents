@@ -43,11 +43,11 @@ fn error_response(error: task::Error) -> Response {
         ),
         task::Error::Busy => (
             StatusCode::SERVICE_UNAVAILABLE,
-            "Task store is busy. Try again.",
+            "Tasks are busy. Try again.",
         ),
         _ => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Task store is unavailable.",
+            "Tasks are unavailable right now.",
         ),
     };
     problem(status, message, message, ("/app", "Back to tasks"))
@@ -77,7 +77,11 @@ async fn tasks(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(Ok(list)) => list,
         Ok(Err(error)) => return error_response(error),
         Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Task reader stopped").into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong. Try again.",
+            )
+                .into_response();
         }
     };
     let mut body = String::from(
@@ -115,14 +119,16 @@ async fn task(
     let cursor = match query.cursor {
         Some(encoded) if encoded.len() <= 8192 => {
             let Ok(bytes) = URL_SAFE_NO_PAD.decode(encoded) else {
-                return (StatusCode::BAD_REQUEST, "Invalid page cursor").into_response();
+                return (StatusCode::BAD_REQUEST, "This page link is invalid.").into_response();
             };
             match serde_json::from_slice::<task::view::Cursor>(&bytes) {
                 Ok(cursor) => Some(cursor),
-                Err(_) => return (StatusCode::BAD_REQUEST, "Invalid page cursor").into_response(),
+                Err(_) => {
+                    return (StatusCode::BAD_REQUEST, "This page link is invalid.").into_response();
+                }
             }
         }
-        Some(_) => return (StatusCode::BAD_REQUEST, "Invalid page cursor").into_response(),
+        Some(_) => return (StatusCode::BAD_REQUEST, "This page link is invalid.").into_response(),
         None => None,
     };
     let store = app.config.store.clone();
@@ -137,7 +143,11 @@ async fn task(
         Ok(Ok(view)) => view,
         Ok(Err(error)) => return error_response(error),
         Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Task reader stopped").into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong. Try again.",
+            )
+                .into_response();
         }
     };
     let task = &view.task;
@@ -161,19 +171,19 @@ async fn task(
         escape(&task.intent.configuration.adapter),
     );
     body.push_str(&format!(
-        "<section><h2>Transcript</h2><p class=\"oa-page-meta\">Evidence: {} \u{b7} {} steps</p>",
+        "<section><h2>Transcript</h2><p class=\"oa-page-meta\">{} \u{b7} {} steps</p>",
         escape(&view.evidence.state),
         view.evidence.total_steps
     ));
     if let Some(digest) = &view.evidence.digest {
         body.push_str(&format!(
-            "<p class=\"oa-page-meta\">Trace digest: <code>{}</code></p>",
+            "<p class=\"oa-page-meta\">Trace ID: <code>{}</code></p>",
             escape(digest)
         ));
     }
     for fault in &view.evidence.faults {
         body.push_str(&format!(
-            "<p>Trace fault: <code>{}</code></p>",
+            "<p>Trace problem: <code>{}</code></p>",
             escape(&fault.to_string())
         ));
     }
@@ -212,7 +222,7 @@ async fn task(
                 "<p><code>{}</code> \u{b7} {} \u{b7} <code>{}</code></p>",
                 escape(&entry.path.display().to_string()),
                 escape(&entry.state),
-                escape(entry.digest.as_deref().unwrap_or("no digest"))
+                escape(entry.digest.as_deref().unwrap_or("no checksum"))
             ));
             if let Some(target) = &entry.link_target {
                 body.push_str(&format!(
@@ -222,19 +232,16 @@ async fn task(
             }
         }
         if manifest.entries.is_empty() {
-            body.push_str("<p>No retained artifacts.</p>");
+            body.push_str("<p>No files saved.</p>");
         }
     } else {
-        body.push_str("<p>No retained artifacts.</p>");
+        body.push_str("<p>No files saved.</p>");
     }
     if let Some(error) = &view.artifact_error {
-        body.push_str(&format!(
-            "<p>Artifact state unavailable: {}</p>",
-            escape(error)
-        ));
+        body.push_str(&format!("<p>Files unavailable: {}</p>", escape(error)));
     }
     for fault in &view.artifact_faults {
-        body.push_str(&format!("<p>Artifact fault: {}</p>", escape(fault)));
+        body.push_str(&format!("<p>File problem: {}</p>", escape(fault)));
     }
     body.push_str("</section>");
     UiPage::new(task.intent.title.clone())

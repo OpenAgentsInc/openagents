@@ -21,7 +21,7 @@ lives in one directory:
 | --- | --- |
 | `src/lib.rs` | The Wasm: one operation, `explain`, written in Rust against `plugin-pdk`. |
 | `programs/explain-error.json` | The workflow: one step that hands the Wasm your request and lets it read the files the request names, at most 16. |
-| `package.json` | The plugin's record: its name, a one-line summary, the publisher's key, and the workflow it pins by digest. |
+| `package.json` | The plugin's record: its name, a one-line summary, the publisher's key, and the workflow it uses, pinned by hash. |
 | `evals/` | The tests: five where it should help, two where it should stay out of the way. |
 
 To make your own from it, in a checkout of the
@@ -33,7 +33,7 @@ To make your own from it, in a checkout of the
    run it against files in memory, in a second.
 3. Add `NAME` to `scripts/build-plugin-guests.sh` and run
    `./scripts/build-plugin-guests.sh NAME`. It builds the Wasm, puts it in
-   the workflow, and updates the digest in `package.json`.
+   the workflow, and updates the hash in `package.json`.
 4. Try it once on a project, with reads only:
    `openagents plugin run crates/plugin-NAME --in PROJECT --request "..."`.
 

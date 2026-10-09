@@ -1129,6 +1129,24 @@ fn ui_pages() -> Vec<&'static str> {
         .collect()
 }
 
+/// #11031: no page a visitor can open without signing in, nor any demo
+/// chat, shows machine talk.
+#[tokio::test]
+async fn public_and_demo_pages_have_no_machine_talk() {
+    let root = tempfile::tempdir().unwrap();
+    let routes = ui_pages().into_iter().chain([
+        "/u/AtlantisPleb",
+        "/app",
+        "/demo/environment",
+        "/demo/lease-fix",
+        "/demo/benchmark",
+    ]);
+    for uri in routes {
+        let (_, html) = get(router(config(root.path().join("tasks"))), uri).await;
+        crate::copy_guard::assert_plain(uri, &html);
+    }
+}
+
 /// UI-13: a `UiPage` page links one stylesheet, `/static/ui.css`, within
 /// the `openagents-ui` byte budget; no legacy stylesheet is shipped.
 #[tokio::test]
@@ -2177,6 +2195,7 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
     assert!(html.contains("<dt>Pending</dt><dd>600 sats</dd>"));
     assert!(html.contains("<dt>Calls</dt><dd>3</dd>"));
     assert!(html.contains("<dt>Author earnings</dt><dd>1,200.5 sats</dd>"));
+    crate::copy_guard::assert_plain("/stats", &html);
     // Plugins by earnings, then authors.
     let plugins = &html[html.find("id=\"stats-plugins\"").unwrap()..];
     assert!(plugins.find("explain-error").unwrap() < plugins.find("summarize").unwrap());
@@ -2195,8 +2214,8 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
         pages::utc(now + 120_000)
     )));
     // The footing, the series, escaping, and no payer alias anywhere.
-    assert!(html.contains("Reconciliation: the ledger matches the wallet."));
-    assert!(html.contains(&format!("Last event: {} UTC.", pages::utc(now + 240_000))));
+    assert!(html.contains("Balance check: the books match the wallet."));
+    assert!(html.contains(&format!("Last payment: {} UTC.", pages::utc(now + 240_000))));
     let day = &html[html.find("id=\"stats-24h\"").unwrap()..];
     assert_eq!(
         day[..day.find("</figure>").unwrap()]
@@ -2228,7 +2247,7 @@ async fn the_stats_page_says_when_there_are_no_payments_or_no_pay_host() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("id=\"stats-empty\""), "{html}");
-    assert!(html.contains("Reconciliation: not checked yet. Last event: none yet."));
+    assert!(html.contains("Balance check: not checked yet. Last payment: none yet."));
     assert!(!html.contains("<table") && !html.contains("sats</dd>"));
 
     // No pay host configured, and one that doesn't answer.
@@ -2239,6 +2258,7 @@ async fn the_stats_page_says_when_there_are_no_payments_or_no_pay_host() {
         let (status, _, html) = get_with(router(config), "/stats", LOCAL).await;
         assert_eq!(status, StatusCode::OK);
         assert!(html.contains("id=\"stats-unreachable\""), "{html}");
+        crate::copy_guard::assert_plain("/stats", &html);
         assert!(!html.contains("<table") && !html.contains(" sats"));
         assert!(html.contains("href=\"/live\""));
     }
