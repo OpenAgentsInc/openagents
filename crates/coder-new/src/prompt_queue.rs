@@ -6,6 +6,8 @@ pub type Inbox =
 
 pub(crate) struct Prompt {
     pub text: String,
+    pub composer: crate::composer_state::ComposerState,
+    pub editable: bool,
     slot: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     session: Option<String>,
     pub agent: Option<String>,
@@ -13,7 +15,7 @@ pub(crate) struct Prompt {
 
 impl App {
     pub(crate) fn queue_prompt(&mut self) {
-        if self.draft.text.trim().is_empty() {
+        if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
         self.record_prompt();
@@ -21,12 +23,16 @@ impl App {
         if self.live.busy
             && self.active_delegation.is_none()
             && self.selected_agent.is_none()
+            && self.composer.mode == crate::composer_state::InputMode::Prompt
+            && self.composer.images.is_empty()
             && !self.draft.text.trim().starts_with('/')
         {
             self.prompt_inbox.lock().unwrap().push(slot.clone());
         }
         self.queued_prompts.push(Prompt {
             slot,
+            editable: true,
+            composer: std::mem::take(&mut self.composer),
             text: std::mem::take(&mut self.draft.text),
             session: self.session_id().map(str::to_owned),
             agent: self
@@ -51,11 +57,17 @@ impl App {
         self.acknowledge_prompts();
         let cursor = self.draft.cursor;
         let mut text = Vec::new();
+        let mut images = Vec::new();
+        let mut pasted = Vec::new();
+        let mut retrieved = false;
         self.queued_prompts.retain(|p| {
-            if p.agent == agent && p.session == session {
+            if p.editable && p.agent == agent && p.session == session {
                 // Taking the slot cancels execution atomically. If a worker won
                 // the race, it owns the prompt and we must not restore it.
                 if let Some(pending) = p.slot.lock().unwrap().take() {
+                    retrieved = true;
+                    images.extend(p.composer.images.clone());
+                    pasted.extend(p.composer.pasted.clone());
                     if !pending.is_empty() {
                         text.push(pending);
                     }
@@ -67,16 +79,20 @@ impl App {
                 true
             }
         });
-        if text.is_empty() {
+        if !retrieved {
             return false;
         }
         let prefix = text.join("\n");
-        let offset = prefix.len() + usize::from(!self.draft.text.is_empty());
+        let offset = prefix.len() + usize::from(!prefix.is_empty() && !self.draft.text.is_empty());
         if !self.draft.text.is_empty() {
             text.push(std::mem::take(&mut self.draft.text));
         }
         self.draft.text = text.join("\n");
         self.draft.cursor = (offset + cursor).min(self.draft.text.len());
+        self.composer.images.extend(images);
+        self.composer.pasted.extend(pasted);
+        self.composer.mode = crate::composer_state::InputMode::Prompt;
+        self.assign_image_ids();
         self.composer_history.reset();
         if self.notice.as_deref() == Some("Press up to edit queued messages") {
             self.notice = None;
@@ -104,6 +120,11 @@ impl App {
 
     pub(crate) fn process_prompt_queue(&mut self) {
         self.acknowledge_prompts();
+        if !self.queued_prompts.iter().any(|p| p.editable)
+            && self.notice.as_deref() == Some("Press up to edit queued messages")
+        {
+            self.notice = None;
+        }
         if self.mode != Mode::Live
             || self.live.busy
             || self.checking_key
@@ -119,7 +140,7 @@ impl App {
         let Some(first) = self
             .queued_prompts
             .iter()
-            .position(|p| p.session == session)
+            .position(|p| p.editable && p.session == session)
         else {
             return;
         };
@@ -134,13 +155,21 @@ impl App {
             None => None,
         };
         let slash = self.queued_prompts[first].text.trim().starts_with('/');
+        let rich = self.queued_prompts[first].composer.clone();
+        let single =
+            slash || rich.mode == crate::composer_state::InputMode::Bash || !rich.images.is_empty();
         let mut batch = Vec::new();
         let mut position = 0;
         self.queued_prompts.retain(|p| {
-            let take = if slash {
+            let take = if single {
                 position == first
             } else {
-                p.session == session && p.agent == agent && !p.text.trim().starts_with('/')
+                p.editable
+                    && p.session == session
+                    && p.agent == agent
+                    && p.composer.mode == crate::composer_state::InputMode::Prompt
+                    && p.composer.images.is_empty()
+                    && !p.text.trim().starts_with('/')
             };
             position += 1;
             if take {
@@ -153,6 +182,7 @@ impl App {
         let selected = self.selected_agent;
         self.select_agent(index);
         let draft = std::mem::take(&mut self.draft);
+        let composer = std::mem::replace(&mut self.composer, rich);
         let last = batch.pop().unwrap();
         // Each submission stays a distinct user message.
         for text in batch {
@@ -168,7 +198,9 @@ impl App {
             text: last,
         };
         self.replaying_prompt = true;
-        if slash {
+        if self.composer.mode == crate::composer_state::InputMode::Bash {
+            self.submit_bash();
+        } else if slash {
             self.handle(crossterm::event::Event::Key(
                 crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::Enter,
@@ -179,11 +211,12 @@ impl App {
             self.submit_live();
         }
         self.replaying_prompt = false;
-        if !self.draft.text.is_empty() {
+        if !self.draft.text.is_empty() || !self.composer.images.is_empty() {
             // A disabled agent or failed session admission must not discard input.
             self.queue_prompt();
         }
         self.draft = draft;
+        self.composer = composer;
         self.select_agent(selected);
     }
 }
@@ -283,5 +316,27 @@ mod tests {
         app.screen = Screen::Conversation;
         app.process_prompt_queue();
         assert!(app.live.busy);
+    }
+    #[test]
+    fn image_only_retrieval_keeps_identifiers_and_noneditable_messages() {
+        let mut a = app();
+        a.live.busy = true;
+        a.composer.mode = crate::composer_state::InputMode::Bash;
+        a.attach_image("embedded".into(), Some("queued-id".into()));
+        a.queue_prompt();
+        a.draft.text = "notification".into();
+        a.queue_prompt();
+        a.queued_prompts[1].editable = false;
+        a.draft.text = "draft".into();
+        a.draft.cursor = 2;
+        a.attach_image("existing".into(), Some("draft-id".into()));
+        assert!(a.restore_queued_prompts());
+        assert_eq!(a.draft.text, "draft");
+        assert_eq!(a.draft.cursor, 2);
+        assert_eq!(a.composer.mode, crate::composer_state::InputMode::Prompt);
+        assert_eq!(a.composer.images[0].id.as_deref(), Some("draft-id"));
+        assert_eq!(a.composer.images[1].id.as_deref(), Some("queued-id"));
+        assert_eq!(a.queued_prompts.len(), 1);
+        assert!(!a.restore_queued_prompts());
     }
 }

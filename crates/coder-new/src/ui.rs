@@ -161,6 +161,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.selected_agent.is_none(),
         app.model_picker.is_none() && !app.footer_focused,
         &app.plugins,
+        &app.composer,
         if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
             let chat = app
                 .selected_agent
@@ -1046,6 +1047,7 @@ fn composer_view(
     main_selected: bool,
     cursor_visible: bool,
     plugins: &crate::plugins::Plugins,
+    composer: &crate::composer_state::ComposerState,
     fallback_model: Option<&str>,
 ) {
     let block = Block::default()
@@ -1054,6 +1056,18 @@ fn composer_view(
         .style(Style::default().bg(t::BG_BASE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    if !composer.images.is_empty() {
+        coder_terminal::rail(
+            area,
+            frame.buffer_mut(),
+            0,
+            Some((
+                &format!("{} image(s)", composer.images.len()),
+                Style::default().fg(t::GRAY),
+            )),
+            None,
+        );
+    }
     let contributions = if let Some(model) = fallback_model {
         crate::plugin_definition::resolve_composer_rails(
             &[crate::plugin_definition::FALLBACK_PROVIDER],
@@ -1081,7 +1095,11 @@ fn composer_view(
     }
     frame.render_widget(
         Paragraph::new(span(
-            " ❯",
+            if composer.mode == crate::composer_state::InputMode::Bash {
+                " !"
+            } else {
+                " ❯"
+            },
             if main_selected {
                 t::TEXT_SECONDARY
             } else {

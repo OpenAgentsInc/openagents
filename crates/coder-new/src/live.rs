@@ -64,6 +64,7 @@ pub struct Delegation {
     pub elapsed_seconds: u64,
     pub running: bool,
     pub(crate) draft: crate::Draft,
+    pub(crate) composer: crate::composer_state::ComposerState,
     pub(crate) scroll: u16,
 }
 
@@ -196,6 +197,10 @@ pub struct Request {
 }
 
 pub enum Work {
+    Bash {
+        command: String,
+        cwd: std::path::PathBuf,
+    },
     Brainstorm {
         job: crate::brainstorm::Job,
     },
@@ -431,6 +436,13 @@ fn run_with_provider(
         };
         let work = async {
             let update = match request.kind {
+                Work::Bash { command, cwd } => {
+                    event_callback(RuntimeEvent::Tool { name: "Run".into(), input: serde_json::json!({"command":command}), output: serde_json::Value::Null, running: true });
+                    let result = crate::bundled_runtime::run_command(&command, &cwd, &[], &cancel, &mut event_callback).await;
+                    let output = result.as_ref().cloned().unwrap_or_else(|error| serde_json::json!({"error":error}));
+                    event_callback(RuntimeEvent::Tool { name: "Run".into(), input: serde_json::json!({"command":command}), output, running: false });
+                    Update::Finished { id, result: result.map(|_| Streamed::default()) }
+                },
                 Work::Delegate { delegation, name, tool, arguments, mut execution, model, options } => {
                     if !request.key.expose().is_empty() {
                         execution.redaction_keys.push(model_access::ApiKey::new(request.key.expose()));
@@ -634,6 +646,36 @@ mod tests {
 
     use super::*;
     use crate::{App, Mode, Screen, plugins::Connection};
+
+    #[test]
+    fn bash_worker_runs_without_an_inference_provider() {
+        let root = tempfile::tempdir().unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(
+            Request {
+                id: 42,
+                key: model_access::ApiKey::new(""),
+                kind: Work::Bash {
+                    command: "printf composer-shell".into(),
+                    cwd: root.path().to_owned(),
+                },
+            },
+            sender,
+            canceled,
+            |_| panic!("Bash must not create an inference provider"),
+        );
+        let events = receiver.try_iter().collect::<Vec<_>>();
+        assert!(events.iter().any(|event| matches!(event, Update::Tool { name, output, running: false, .. } if name == "Run" && output["output"].as_str().is_some_and(|text| text.contains("composer-shell")))));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Update::Finished {
+                id: 42,
+                result: Ok(_),
+                ..
+            }
+        )));
+    }
 
     const FIXTURE_TOKEN: &str = "local-worker-fixture-token";
     const TEST_TIMEOUT: Duration = Duration::from_secs(3);

@@ -14,6 +14,7 @@ pub mod cloud_settings;
 pub mod cloud_tools;
 mod codex_usage;
 mod composer_history;
+pub mod composer_state;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
@@ -78,6 +79,8 @@ pub struct App {
     pub mode: Mode,
     pub screen: Screen,
     pub draft: Draft,
+    pub composer: composer_state::ComposerState,
+    pub(crate) next_image_id: u64,
     pub(crate) composer_history: composer_history::History,
     pub(crate) composer_width: u16,
     footer_focused: bool,
@@ -128,6 +131,7 @@ pub struct App {
     export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,
     main_draft: Draft,
+    main_composer: composer_state::ComposerState,
     main_scroll: u16,
     other_draft: Draft,
     return_screen: Screen,
@@ -228,6 +232,7 @@ impl App {
                     elapsed_seconds: 0,
                     running: true,
                     draft: Draft::default(),
+                    composer: Default::default(),
                     scroll: u16::MAX,
                 });
                 self.delegations.len() - 1
@@ -362,7 +367,8 @@ impl App {
     }
 
     pub fn slash_hints(&self) -> Vec<slash::Command> {
-        if self.slash_hidden
+        if self.composer.mode == composer_state::InputMode::Bash
+            || self.slash_hidden
             || self.model_picker.is_some()
             || self.resume_picker.is_some()
             || self.screen != Screen::Conversation
@@ -696,10 +702,14 @@ impl App {
         if command == slash::Command::Resume {
             if self.resume(None) {
                 self.draft = Draft::default();
+                self.composer = Default::default();
+                self.composer_history.reset();
             }
             return;
         }
         self.draft = Draft::default();
+        self.composer = Default::default();
+        self.composer_history.reset();
         self.slash_selected = 0;
         self.slash_hidden = false;
         self.notice = None;
@@ -744,6 +754,8 @@ impl App {
             self.time_export_notice();
         }
         self.draft = Draft::default();
+        self.composer = Default::default();
+        self.composer_history.reset();
     }
 
     /// Copy a saved export path once, through the terminal's clipboard adapter.
@@ -935,6 +947,10 @@ impl App {
             self.queue_prompt();
             return;
         }
+        if !self.composer.images.is_empty() {
+            self.live.notice = Some("This text-only provider cannot accept image attachments. Remove the images or keep editing; they have not been discarded.".into());
+            return;
+        }
         if self.submit_brainstorm_command() {
             return;
         }
@@ -955,6 +971,7 @@ impl App {
             .entries
             .push(live::Entry::User(std::mem::take(&mut self.draft.text)));
         self.draft.cursor = 0;
+        self.composer = Default::default();
         self.live.notice = None;
         self.live.partial.clear();
         self.live.partial_model = None;
@@ -1076,6 +1093,7 @@ impl App {
         self.draft.text = text.clone();
         self.record_prompt();
         self.draft.text.clear();
+        self.composer = Default::default();
         self.cancel_request();
         self.active_delegation = Some(id.clone());
         self.active_options = self.plugins.options.clone();
@@ -1202,6 +1220,7 @@ impl App {
     }
 
     pub fn tick(&mut self) {
+        self.poll_prompt_history();
         self.expire_export_notice(std::time::Instant::now());
         self.poll_login();
         self.poll_sync();
@@ -1222,16 +1241,20 @@ impl App {
             }
             if let Some(previous) = self.selected_agent {
                 self.delegations[previous].draft = std::mem::take(&mut self.draft);
+                self.delegations[previous].composer = std::mem::take(&mut self.composer);
                 self.delegations[previous].scroll = self.scroll;
             } else {
                 self.main_draft = std::mem::take(&mut self.draft);
+                self.main_composer = std::mem::take(&mut self.composer);
                 self.main_scroll = self.scroll;
             }
             if let Some(next) = selected {
                 self.draft = std::mem::take(&mut self.delegations[next].draft);
+                self.composer = std::mem::take(&mut self.delegations[next].composer);
                 self.scroll = self.delegations[next].scroll;
             } else {
                 self.draft = std::mem::take(&mut self.main_draft);
+                self.composer = std::mem::take(&mut self.main_composer);
                 self.scroll = self.main_scroll;
             }
             self.selected_agent = selected;
@@ -1367,7 +1390,13 @@ impl App {
                     }
                     self.plugins.paste(&text);
                 } else if !matches!(self.screen, Screen::Plugins | Screen::Appearance) {
-                    self.draft.insert(&text);
+                    self.composer_history.reset();
+                    if text.starts_with("data:image/") {
+                        self.attach_image(text, None);
+                    } else {
+                        self.composer.pasted.push(text.clone());
+                        self.draft.insert(&text);
+                    }
                     self.slash_selected = 0;
                     self.slash_hidden = false;
                 }
@@ -1592,6 +1621,10 @@ impl App {
                     }
                     return true;
                 }
+                if self.footer_focused && matches!(key.code, KeyCode::Up | KeyCode::Down) {
+                    self.composer_arrow(key.code == KeyCode::Up);
+                    return true;
+                }
                 let hints = self.slash_hints();
                 if !hints.is_empty() {
                     match key.code {
@@ -1630,6 +1663,8 @@ impl App {
                         if self.footer_focused {
                             self.footer_focused = false;
                             self.select_agent(None);
+                        } else if self.notice.as_deref() == Some(slash::help().as_str()) {
+                            self.notice = None;
                         } else if self.restore_queued_prompts() {
                             self.escape_at = None;
                         } else if self.live.busy {
@@ -1638,7 +1673,7 @@ impl App {
                             self.live
                                 .notice
                                 .get_or_insert_with(|| "Request stopped.".into());
-                        } else if !self.draft.text.is_empty() {
+                        } else if !self.draft.text.is_empty() || !self.composer.images.is_empty() {
                             let now = std::time::Instant::now();
                             if self
                                 .escape_at
@@ -1646,6 +1681,8 @@ impl App {
                             {
                                 self.record_prompt();
                                 self.draft = Draft::default();
+                                self.composer = Default::default();
+                                self.composer_history.reset();
                                 self.escape_at = None;
                             } else {
                                 self.escape_at = Some(now);
@@ -1670,12 +1707,18 @@ impl App {
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
                     KeyCode::End if ctrl => self.scroll = u16::MAX,
                     KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
+                        self.composer_history.reset();
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
+                        if self.composer.mode == composer_state::InputMode::Bash {
+                            self.submit_bash();
+                            return true;
+                        }
                         if self.mode == Mode::Live
                             && self.live.busy
-                            && !self.draft.text.trim().is_empty()
+                            && (!self.draft.text.trim().is_empty()
+                                || !self.composer.images.is_empty())
                         {
                             self.queue_prompt();
                             return true;
@@ -1696,6 +1739,8 @@ impl App {
                                 Some(&selection)
                             }) {
                                 self.draft = Draft::default();
+                                self.composer = Default::default();
+                                self.composer_history.reset();
                             }
                         } else if let Some(argument) = self
                             .draft
@@ -1706,6 +1751,8 @@ impl App {
                         {
                             self.sync_command(&argument);
                             self.draft = Draft::default();
+                            self.composer = Default::default();
+                            self.composer_history.reset();
                         } else if let Some(path) = self
                             .draft
                             .text
@@ -1722,9 +1769,16 @@ impl App {
                             self.notice =
                                 Some("Unknown command. Type / to see available commands.".into());
                             self.draft = Draft::default();
-                        } else if self.mode == Mode::Live && !self.draft.text.trim().is_empty() {
+                            self.composer = Default::default();
+                            self.composer_history.reset();
+                        } else if self.mode == Mode::Live
+                            && (!self.draft.text.trim().is_empty()
+                                || !self.composer.images.is_empty())
+                        {
                             self.submit_live();
                         } else if !self.draft.text.trim().is_empty() {
+                            self.record_prompt();
+                            self.composer = Default::default();
                             self.messages.push(std::mem::take(&mut self.draft.text));
                             self.draft.cursor = 0;
                             self.screen = Screen::Conversation;
@@ -1734,7 +1788,23 @@ impl App {
                     _ => {
                         self.footer_focused = false;
                         self.escape_at = None;
-                        self.draft.edit(key);
+                        if key.code == KeyCode::Char('!')
+                            && self.draft.text.is_empty()
+                            && !ctrl
+                            && self.composer.mode == composer_state::InputMode::Prompt
+                        {
+                            self.composer.mode = composer_state::InputMode::Bash;
+                        } else if key.code == KeyCode::Backspace && self.draft.text.is_empty() {
+                            self.composer.mode = composer_state::InputMode::Prompt;
+                        } else {
+                            if matches!(
+                                key.code,
+                                KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
+                            ) {
+                                self.composer_history.reset();
+                            }
+                            self.draft.edit(key);
+                        }
                         self.slash_selected = 0;
                         self.slash_hidden = false;
                     }

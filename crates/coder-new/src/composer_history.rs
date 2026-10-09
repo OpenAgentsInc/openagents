@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 struct Entry {
     text: String,
     #[serde(default)]
+    composer: crate::composer_state::ComposerState,
+    #[serde(default)]
     id: String,
     #[serde(default)]
     removed: bool,
@@ -16,20 +18,107 @@ struct Entry {
 #[derive(Default)]
 pub(crate) struct History {
     entries: Vec<Entry>,
-    walk: Vec<String>,
+    walk: Vec<Entry>,
+    stash_composer: crate::composer_state::ComposerState,
+    bash_only: bool,
+    recall_up: bool,
+    applied: Option<(usize, String, bool)>,
     index: Option<usize>,
     stash: Draft,
-    loaded: bool,
+    load: Option<std::sync::Arc<DiskLoad>>,
+    navigating: bool,
     session: Option<String>,
     last_recorded: Option<String>,
 }
 
 impl History {
     pub(crate) fn reset(&mut self) {
+        self.applied = None;
         self.index = None;
+        self.navigating = false;
+        self.load = None;
         self.walk.clear();
         self.stash = Draft::default();
+        self.stash_composer = Default::default();
     }
+}
+
+#[derive(Default)]
+struct DiskLoad {
+    pages: std::sync::Mutex<Vec<Vec<Entry>>>,
+    done: std::sync::atomic::AtomicBool,
+}
+
+type LoadKey = (std::path::PathBuf, std::path::PathBuf, String, bool);
+fn shared_load(
+    path: std::path::PathBuf,
+    project: std::path::PathBuf,
+    session: String,
+    bash: bool,
+) -> std::sync::Arc<DiskLoad> {
+    use std::sync::{Arc, Mutex, OnceLock, Weak};
+    static LOADS: OnceLock<Mutex<std::collections::HashMap<LoadKey, Weak<DiskLoad>>>> =
+        OnceLock::new();
+    let mut loads = LOADS.get_or_init(Default::default).lock().unwrap();
+    let key = (path.clone(), project.clone(), session.clone(), bash);
+    if let Some(load) = loads.get(&key).and_then(Weak::upgrade) {
+        return load;
+    }
+    loads.retain(|_, load| load.strong_count() > 0);
+    let load = Arc::new(DiskLoad::default());
+    loads.insert(key, Arc::downgrade(&load));
+    let worker = load.clone();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let mut entries = std::collections::VecDeque::new();
+        let mut removed = std::collections::HashSet::new();
+        if let Ok(file) = std::fs::File::open(path) {
+            for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+                if let Ok(mut entry) = serde_json::from_str::<Entry>(&line) {
+                    if let Some(text) = entry.text.strip_prefix('!') {
+                        entry.text = text.to_owned();
+                        entry.composer.mode = crate::composer_state::InputMode::Bash;
+                    }
+                    if entry.project != project {
+                        continue;
+                    }
+                    if entry.removed {
+                        removed.insert(entry.id.clone());
+                    }
+                    entries.push_back(entry);
+                    if entries.len() > 2000 {
+                        entries.pop_front();
+                    }
+                }
+            }
+        }
+        let window = entries
+            .into_iter()
+            .rev()
+            .filter(|e| !e.removed && !removed.contains(&e.id))
+            .take(1000)
+            .collect::<Vec<_>>();
+        let ordered = [true, false]
+            .into_iter()
+            .flat_map(|current| {
+                window
+                    .iter()
+                    .filter({
+                        let session = &session;
+                        move |e| (e.session == *session) == current
+                    })
+                    .filter(|e| !bash || e.composer.mode == crate::composer_state::InputMode::Bash)
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        for page in ordered.chunks(10) {
+            worker.pages.lock().unwrap().push(page.to_vec());
+        }
+        worker
+            .done
+            .store(true, std::sync::atomic::Ordering::Release);
+    });
+    load
 }
 
 impl App {
@@ -62,14 +151,14 @@ impl App {
         if self.replaying_prompt {
             return;
         }
-        self.load_prompt_history();
         self.composer_history.reset();
-        if self.draft.text.trim().is_empty() {
+        if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
         let session = self.prompt_session();
         let entry = Entry {
             text: self.draft.text.clone(),
+            composer: self.composer.clone(),
             id: format!(
                 "{}-{}",
                 std::process::id(),
@@ -116,7 +205,7 @@ impl App {
         let Some(crate::live::Entry::User(text)) = self.live.entries.last() else {
             return;
         };
-        let text = text.clone();
+        let mut text = text.clone();
         let Some(id) = self.composer_history.last_recorded.take() else {
             return;
         };
@@ -124,10 +213,22 @@ impl App {
             .composer_history
             .entries
             .iter()
-            .any(|e| e.id == id && e.text == text)
+            .any(|e| e.id == id && (e.text == text || format!("!{}", e.text) == text))
         {
             return;
         }
+        let restored = self
+            .composer_history
+            .entries
+            .iter()
+            .find(|e| e.id == id)
+            .unwrap()
+            .composer
+            .clone();
+        if restored.mode == crate::composer_state::InputMode::Bash {
+            text = text.strip_prefix('!').unwrap_or(&text).to_owned();
+        }
+        self.composer = restored;
         self.live.entries.pop();
         self.draft = Draft {
             cursor: text.len(),
@@ -159,25 +260,77 @@ impl App {
         self.composer_history.reset();
     }
 
-    fn load_prompt_history(&mut self) {
-        if !self.composer_history.loaded {
-            if let Some(path) = self.history_path() {
-                if let Ok(text) = std::fs::read_to_string(path) {
-                    self.composer_history.entries = text
-                        .lines()
-                        .filter_map(|line| serde_json::from_str(line).ok())
-                        .collect();
+    pub(crate) fn poll_prompt_history(&mut self) {
+        if !self.composer_history.navigating {
+            return;
+        }
+        let Some(load) = self.composer_history.load.clone() else {
+            return;
+        };
+        let disk = load
+            .pages
+            .lock()
+            .unwrap()
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>();
+        let session = self.prompt_session();
+        let project = self.cwd.clone().unwrap_or_default();
+        let h = &mut self.composer_history;
+        let removed = h
+            .entries
+            .iter()
+            .filter(|e| e.removed)
+            .map(|e| e.id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        let mut seen = std::collections::HashSet::new();
+        let mut entries = h
+            .entries
+            .iter()
+            .rev()
+            .chain(disk.iter())
+            .filter(|e| {
+                !e.removed
+                    && !removed.contains(&e.id)
+                    && e.project == project
+                    && (!h.bash_only || e.composer.mode == crate::composer_state::InputMode::Bash)
+                    && seen.insert(e.id.clone())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        entries.truncate(1000);
+        entries.sort_by_key(|e| e.session != session);
+        h.walk = entries;
+        if let Some(mut index) = h.index {
+            if load.done.load(std::sync::atomic::Ordering::Acquire) {
+                if h.walk.is_empty() {
+                    h.index = None;
+                    return;
                 }
+                index = index.min(h.walk.len() - 1);
+                h.index = Some(index);
             }
-            self.composer_history.loaded = true;
+            if let Some(entry) = h.walk.get(index) {
+                let applied = (index, entry.id.clone(), h.recall_up);
+                if h.applied.as_ref() == Some(&applied) {
+                    return;
+                }
+                h.applied = Some(applied);
+                self.composer = entry.composer.clone();
+                self.draft = Draft {
+                    text: entry.text.clone(),
+                    cursor: if h.recall_up { 0 } else { entry.text.len() },
+                };
+            }
         }
     }
 
     fn start_history(&mut self) {
-        self.load_prompt_history();
         let session = self.prompt_session();
         let project = self.cwd.clone().unwrap_or_default();
         let h = &mut self.composer_history;
+        h.bash_only = self.composer.mode == crate::composer_state::InputMode::Bash;
         let project = &project;
         let session = &session;
         let removed: std::collections::HashSet<_> = h
@@ -199,11 +352,24 @@ impl App {
                 window
                     .iter()
                     .filter(move |e| &e.project == project && (&e.session == session) == current)
-                    .map(|e| e.text.clone())
+                    .filter(|e| {
+                        !h.bash_only || e.composer.mode == crate::composer_state::InputMode::Bash
+                    })
+                    .map(|e| (*e).clone())
             })
             .take(1000)
             .collect();
-        h.stash = if self.draft.text.trim().is_empty() {
+        h.navigating = true;
+        h.load = self.account_dir.as_ref().map(|root| {
+            shared_load(
+                root.join("prompt-history.jsonl"),
+                project.clone(),
+                session.clone(),
+                h.bash_only,
+            )
+        });
+        h.stash_composer = self.composer.clone();
+        h.stash = if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             Draft::default()
         } else {
             self.draft.clone()
@@ -238,31 +404,47 @@ impl App {
             if self.restore_queued_prompts() {
                 return;
             }
-            if self.composer_history.index.is_none() {
+            if !self.composer_history.navigating {
                 self.start_history();
             }
             let h = &mut self.composer_history;
             let next = h.index.map_or(0, |i| i + 1);
-            if let Some(text) = h.walk.get(next) {
+            h.recall_up = true;
+            if h.load.is_some() {
+                h.index = Some(next);
+            }
+            if let Some(entry) = h.walk.get(next) {
+                let text = &entry.text;
+                self.composer = entry.composer.clone();
                 self.draft = Draft {
                     text: text.clone(),
                     cursor: 0,
                 };
                 h.index = Some(next);
+                h.applied = Some((next, entry.id.clone(), true));
             }
+            self.poll_prompt_history();
         } else if let Some(index) = self.composer_history.index {
             let h = &mut self.composer_history;
             if index == 0 {
+                self.composer = std::mem::take(&mut h.stash_composer);
                 self.draft = std::mem::take(&mut h.stash);
                 self.draft.cursor = self.draft.text.len();
                 h.reset();
             } else {
-                let text = h.walk[index - 1].clone();
+                h.recall_up = false;
+                h.index = Some(index - 1);
+                let Some(entry) = h.walk.get(index - 1).cloned() else {
+                    return;
+                };
+                self.composer = entry.composer;
+                let text = entry.text;
                 self.draft = Draft {
                     cursor: text.len(),
                     text,
                 };
                 h.index = Some(index - 1);
+                h.applied = Some((index - 1, entry.id, false));
             }
         } else if !self.delegations.is_empty() || self.mode == crate::Mode::Demo {
             self.footer_focused = true;
@@ -314,6 +496,22 @@ mod tests {
         app.set_mode(crate::Mode::Live);
         app.composer_width = 80;
         app
+    }
+    fn wait_history(app: &mut App) {
+        for _ in 0..1000 {
+            app.poll_prompt_history();
+            if app
+                .composer_history
+                .load
+                .as_ref()
+                .is_none_or(|l| l.done.load(std::sync::atomic::Ordering::Acquire))
+            {
+                app.poll_prompt_history();
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        panic!("history load timed out");
     }
     fn record(app: &mut App, text: &str) {
         app.draft = Draft {
@@ -393,6 +591,7 @@ mod tests {
         record(&mut a, "mine");
         a.composer_history.entries.push(Entry {
             text: "other".into(),
+            composer: Default::default(),
             project: Default::default(),
             session: "other-session".into(),
             id: "other".into(),
@@ -423,6 +622,7 @@ mod tests {
         c.account_dir = Some(root.path().to_owned());
         c.cwd = Some(".".into());
         c.composer_arrow(true);
+        wait_history(&mut c);
         assert_eq!(c.draft.text, "retained");
     }
     #[test]
@@ -489,5 +689,87 @@ mod tests {
         a.composer_arrow(true);
         assert!(!a.footer_focused);
         assert_eq!(a.draft.text, "draft");
+    }
+    #[test]
+    fn bash_filter_and_rich_draft_restore() {
+        use crate::composer_state::InputMode;
+        let mut a = app();
+        record(&mut a, "normal");
+        a.composer.mode = InputMode::Bash;
+        record(&mut a, "pwd");
+        a.composer = Default::default();
+        record(&mut a, "new normal");
+        a.composer.mode = InputMode::Bash;
+        a.composer.pasted.push("paste".into());
+        a.attach_image("data:image/png;base64,AA".into(), Some("existing".into()));
+        a.draft.text = "draft".into();
+        let saved = a.composer.clone();
+        a.composer_arrow(true);
+        assert_eq!(a.draft.text, "pwd");
+        assert_eq!(a.composer.mode, InputMode::Bash);
+        a.composer_arrow(true);
+        assert_eq!(a.draft.text, "pwd");
+        a.composer_arrow(false);
+        assert_eq!(a.draft.text, "draft");
+        assert_eq!(a.composer, saved);
+        assert_eq!(a.draft.cursor, 5);
+    }
+
+    #[test]
+    fn asynchronous_pages_share_load_and_preserve_rapid_intent() {
+        let root = tempfile::tempdir().unwrap();
+        let mut writer = app();
+        writer.account_dir = Some(root.path().to_owned());
+        for i in 0..25 {
+            record(&mut writer, &format!("entry {i}"));
+        }
+        let mut reader = app();
+        reader.account_dir = writer.account_dir.clone();
+        reader.draft.text = "live draft".into();
+        reader.draft.cursor = 0;
+        reader.start_history();
+        let load = reader.composer_history.load.clone().unwrap();
+        let shared = shared_load(
+            root.path().join("prompt-history.jsonl"),
+            Default::default(),
+            reader.prompt_session(),
+            false,
+        );
+        assert!(std::sync::Arc::ptr_eq(&load, &shared));
+        // Issue all arrow intents while the renderer has not polled the load.
+        for _ in 0..12 {
+            reader.composer_arrow(true);
+        }
+        wait_history(&mut reader);
+        assert_eq!(reader.draft.text, "entry 13");
+        assert!(load.pages.lock().unwrap().iter().all(|p| p.len() <= 10));
+        reader.draft.cursor = 3;
+        reader.poll_prompt_history();
+        assert_eq!(reader.draft.cursor, 3);
+        reader.draft.cursor = reader.draft.text.len();
+        for _ in 0..12 {
+            reader.composer_arrow(false);
+        }
+        assert_eq!(reader.draft.text, "live draft");
+        reader.poll_prompt_history();
+        assert_eq!(reader.draft.text, "live draft");
+    }
+    #[test]
+    fn returning_to_draft_cancels_pending_disk_recall() {
+        let mut a = app();
+        a.draft.text = "live".into();
+        a.start_history();
+        let pending = std::sync::Arc::new(DiskLoad::default());
+        a.composer_history.load = Some(pending.clone());
+        a.composer_arrow(true);
+        assert_eq!(a.composer_history.index, Some(0));
+        a.composer_arrow(false);
+        assert_eq!(a.draft.text, "live");
+        pending
+            .done
+            .store(true, std::sync::atomic::Ordering::Release);
+        a.poll_prompt_history();
+        assert_eq!(a.draft.text, "live");
+        assert!(!a.composer_history.navigating);
     }
 }

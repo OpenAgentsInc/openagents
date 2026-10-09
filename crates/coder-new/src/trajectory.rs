@@ -558,6 +558,7 @@ pub fn restore_app(app: &mut App, value: &Value) -> Result<(), String> {
             started_at: 0,
             running: false,
             draft: crate::Draft::default(),
+            composer: Default::default(),
             scroll: 0,
         });
     }
@@ -700,6 +701,7 @@ mod tests {
             started_at: 0,
             running: false,
             draft: crate::Draft::default(),
+            composer: Default::default(),
             scroll: 0,
         });
         let document = app_document(&app, Path::new("/workspace"));

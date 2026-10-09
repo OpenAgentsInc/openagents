@@ -200,6 +200,7 @@ fn add_child(app: &mut App) {
         elapsed_seconds: 0,
         running: false,
         draft: Default::default(),
+        composer: Default::default(),
         scroll: 0,
     });
 }

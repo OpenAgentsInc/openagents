@@ -249,6 +249,9 @@ impl App {
         self.live = restored.live;
         self.delegations = restored.delegations;
         self.draft = Draft::default();
+        self.composer = Default::default();
+        self.main_composer = Default::default();
+        self.composer_history.reset();
         self.main_draft = Draft::default();
         self.scroll = u16::MAX;
         self.main_scroll = u16::MAX;
@@ -314,6 +317,9 @@ impl App {
         self.live = fresh.live;
         self.delegations = fresh.delegations;
         self.draft = Draft::default();
+        self.composer = Default::default();
+        self.main_composer = Default::default();
+        self.composer_history.reset();
         self.main_draft = Draft::default();
         self.scroll = u16::MAX;
         self.main_scroll = u16::MAX;
