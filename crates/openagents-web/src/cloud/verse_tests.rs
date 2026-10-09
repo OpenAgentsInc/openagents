@@ -96,7 +96,10 @@ async fn connections_stay_visible_and_separate_without_any_host_or_world() {
             .contains("supply no host, Studio, or private-work connection")
     );
     assert!(!page.body.contains(">Join<"));
-    assert!(page.body.contains("<a href=\"/cloud/app/verse\">Verse</a>"));
+    assert!(
+        page.body
+            .contains("<a aria-current=\"page\" href=\"/cloud/app/verse\">Verse</a>")
+    );
     let signed_out = get(&fixture, &Cookies::default(), "/cloud/app/verse").await;
     assert_eq!(signed_out.status, StatusCode::SEE_OTHER);
 }

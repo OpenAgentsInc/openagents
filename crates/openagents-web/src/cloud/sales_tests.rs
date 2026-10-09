@@ -247,7 +247,7 @@ async fn sales_delegation_reads_and_changes_only_through_the_bound_owner_credent
     assert!(
         index
             .body
-            .contains("<a href=\"/cloud/app/sales\">Sales</a>")
+            .contains("<a aria-current=\"page\" href=\"/cloud/app/sales\">Sales</a>")
     );
 
     let path = format!("{PAGE}/alice-sales/leads/{}", owner.lead);

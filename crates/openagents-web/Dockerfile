@@ -47,15 +47,19 @@ RUN scripts/build-everglade-web.sh /build/everglade \
         find crates/openagents-web/kit/bake -maxdepth 1 -name '*.vlay' \
             -exec cp {} /build/everglade/kit/bake/ \;; fi
 
-# Build the shared component catalog and Cloud privacy adapter directly in
-# this isolated stage. The local build scripts use the machine's build lease.
+# Build the shared component catalog, the Cloud privacy adapter, and the
+# granted workbench terminal (both served from /cloud/assets/ out of the
+# --cloud-build directory) directly in this isolated stage. The local build scripts use the machine's build lease.
 RUN cargo build --locked --release --target wasm32-unknown-unknown \
-        -p coder-components-web -p coder-cloud-web -p coder-chat-web \
+        -p coder-components-web -p coder-cloud-web -p coder-browser-web \
+        -p coder-chat-web \
     && mkdir -p /build/components /build/cloud /build/chat \
     && wasm-bindgen --target web --no-typescript --out-dir /build/components \
         target/wasm32-unknown-unknown/release/coder_components_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/cloud \
         target/wasm32-unknown-unknown/release/coder_cloud_web.wasm \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/cloud \
+        target/wasm32-unknown-unknown/release/coder_browser_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
         target/wasm32-unknown-unknown/release/coder_chat_web.wasm \
     && test -s /build/chat/coder_chat_web.js \
@@ -63,7 +67,9 @@ RUN cargo build --locked --release --target wasm32-unknown-unknown \
     && test -s /build/components/coder_components_web.js \
     && test -s /build/components/coder_components_web_bg.wasm \
     && test -s /build/cloud/coder_cloud_web.js \
-    && test -s /build/cloud/coder_cloud_web_bg.wasm
+    && test -s /build/cloud/coder_cloud_web_bg.wasm \
+    && test -s /build/cloud/coder_browser_web.js \
+    && test -s /build/cloud/coder_browser_web_bg.wasm
 
 FROM debian:13-slim
 

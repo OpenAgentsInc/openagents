@@ -1,0 +1,76 @@
+{
+  "issue": 10963,
+  "date": "2026-10-08",
+  "browser": "Google Chrome 154.0.8037.98, headless, fresh profile (openagents browser run), macOS",
+  "fixture": "crates/openagents-web/examples/cloud_task_fixture.rs (synthetic account, resident host, one task); Cloud Wasm from a debug wasm-bindgen 0.2.128 build",
+  "results": {
+    "ime_composition_commits_into_credential_field": {
+      "ok": true,
+      "detail": "日本"
+    },
+    "first_tab_reaches_skip_link": {
+      "ok": true,
+      "detail": "Skip to content"
+    },
+    "sign_in_reveals_workspace_after_standing_check": {
+      "ok": true,
+      "detail": "0.27s"
+    },
+    "workspace_selected_and_current_section_marked": {
+      "ok": true,
+      "detail": "Overview"
+    },
+    "no_horizontal_scroll_320px_app": {
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    "no_horizontal_scroll_320px_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    "no_horizontal_scroll_375px_app": {
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    "no_horizontal_scroll_375px_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    "task_page_revealed_with_sse_observer": {
+      "ok": true,
+      "detail": ""
+    },
+    "first_sse_event_names_snapshot": {
+      "ok": true,
+      "detail": "refresh v1:e39bdeaa6dbb9f809"
+    },
+    "dropped_sse_retires_view_instead_of_looking_current": {
+      "ok": true,
+      "detail": "0.2s; resume link: Reopen workspace"
+    },
+    "reload_after_drop_readmits_and_observes_current_snapshot": {
+      "ok": true,
+      "detail": "refresh"
+    },
+    "reload_recovers_same_task_view": {
+      "ok": true,
+      "detail": ""
+    },
+    "tab_suspension_retires_private_content": {
+      "ok": true,
+      "detail": "real background tab"
+    },
+    "return_after_suspension_needs_navigation_and_readmits": {
+      "ok": true,
+      "detail": ""
+    },
+    "revoked_session_retires_open_page": {
+      "ok": true,
+      "detail": "4.7s after revoke"
+    },
+    "reopen_after_expiry_requires_sign_in": {
+      "ok": true,
+      "detail": "/cloud/sign-in"
+    }
+  }
+}

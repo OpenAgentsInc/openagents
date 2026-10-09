@@ -165,11 +165,13 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--chat-bucket BUCKET` | none | Private shared conversation records and visitor leases in Google Cloud Storage; replaces local chat storage. |
 | `--chat-build DIRECTORY` | none | Generated `coder_chat_web.js` and `coder_chat_web_bg.wasm` for composer and scroll interaction. |
 | `--components-build DIRECTORY` | none | The generated `coder_components_web.js` and `coder_components_web_bg.wasm` files for local catalog interaction. Only these names are served. |
-| `--cloud-build DIRECTORY` | none | Rust/Wasm private-view lifecycle assets built by `scripts/build-coder-cloud-web.sh`. Private content waits for current account and resource standing before display. |
+| `--cloud-build DIRECTORY` | none | Rust/Wasm private-view lifecycle assets built by `scripts/build-coder-cloud-web.sh`, plus the granted workbench terminal from `scripts/build-coder-browser-web.sh`; the site images build both into `/srv/cloud`. Private content waits for current account and resource standing before display. |
 | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
 | `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed Observe grants, device keys, and exact host routes and generations. No host enrollment or task effect comes from sign-in. |
 | `--cloud-retail PRIVATE_JSON` | none | Protected account/workspace/epoch delegations to the retail service through native `retail-client` configurations, plus a private site directory for key custody and request journals. No funding, quote, confirmation, or cancellation right comes from sign-in. |
 | `--cloud-sales PRIVATE_JSON` | none | Protected account/workspace/epoch delegations to the separate sales-owner remote adapter (endpoint, binding, and that binding's bearer file), plus a private site directory for request journals. The site never opens the pipeline; no sales right comes from sign-in or membership. |
+| `--cloud-byo PRIVATE_DIR` | none | An owner-only directory for customers' own Claude credentials (Anthropic API key, Bedrock, Vertex, or Foundry) behind **Settings → Manage Claude credential**. |
+| `--cloud-team PRIVATE_JSON` | none | The owner-written browser qualification that enables `/cloud/app/team` lanes; see "Team membership, policy, limits, and reports". |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
 

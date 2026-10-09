@@ -27,6 +27,7 @@ use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{DefaultBodyLimit, Form, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Json, Redirect, Response};
 use axum::routing::{get, post};
 use coder_ui::workspace;
@@ -183,6 +184,34 @@ pub(crate) fn protect(mut response: Response) -> Response {
     );
     headers.insert(header::VARY, HeaderValue::from_static("Cookie"));
     response
+}
+
+/// The reconnect answer of an observation stream that can no longer be
+/// admitted. A browser `EventSource` treats an error status as a failed
+/// connection and `htmx-sse` keeps re-creating it, so the page would go on
+/// saying it observes. A reconnect therefore receives one `retire` event,
+/// which every Cloud observer closes on (`sse-close="retire"`), and the
+/// page shows that observation stopped. It carries no private record.
+pub(crate) fn retired_stream(message: &'static str) -> Response {
+    let event = Event::default()
+        .event("retire")
+        .data(format!("<p>{message}</p>"));
+    let mut response = protect(
+        Sse::new(futures_util::stream::once(async move {
+            Ok::<_, std::convert::Infallible>(event)
+        }))
+        .into_response(),
+    );
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response
+}
+
+/// Whether this request is a browser `EventSource` reconnect: one that
+/// carries the last event id it saw.
+pub(crate) fn reconnect(headers: &HeaderMap) -> bool {
+    headers.contains_key("last-event-id")
 }
 
 fn failure(status: StatusCode, title: &str, message: &str) -> Response {
@@ -517,6 +546,17 @@ fn workspace_shell(
             ));
         }
     }
+    // Screen readers announce which section this page is.
+    let current = if selected == "overview" {
+        "<a href=\"/cloud/app\">".to_owned()
+    } else {
+        format!("<a href=\"/cloud/app/{selected}\">")
+    };
+    let nav = nav.replacen(
+        &current,
+        &current.replace("<a ", "<a aria-current=\"page\" "),
+        1,
+    );
     let mut content = String::new();
     if selected == "overview" {
         let configured = app
@@ -648,6 +688,16 @@ async fn standing(State(app): State<App>, headers: HeaderMap) -> Response {
     }
 }
 
+/// Generated Rust/Wasm files served from the `--cloud-build` directory. The
+/// site images build and check every one (`Dockerfile`,
+/// `Dockerfile.components`); a test keeps the lists equal.
+pub(crate) const BUILD_ASSETS: [&str; 4] = [
+    "coder_cloud_web.js",
+    "coder_cloud_web_bg.wasm",
+    "coder_browser_web.js",
+    "coder_browser_web_bg.wasm",
+];
+
 async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
     let (mime, bytes) = match file.as_str() {
         "cloud.css" => (
@@ -662,10 +712,7 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
             "text/javascript; charset=utf-8",
             include_bytes!("../../static/cloud-start.js").to_vec(),
         ),
-        "coder_cloud_web.js"
-        | "coder_cloud_web_bg.wasm"
-        | "coder_browser_web.js"
-        | "coder_browser_web_bg.wasm" => {
+        name if BUILD_ASSETS.contains(&name) => {
             let Some(dir) = &app.config.cloud_build else {
                 return StatusCode::NOT_FOUND.into_response();
             };

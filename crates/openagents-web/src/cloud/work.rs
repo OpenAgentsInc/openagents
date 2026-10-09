@@ -1305,6 +1305,8 @@ struct Watch {
     ended: bool,
 }
 
+const RETIRED: &str = "Observation stopped. Reopen this view to check current account, host, and original source standing.";
+
 async fn watch(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1316,6 +1318,7 @@ async fn watch(
     };
     let (_, viewer, binding) = match admitted(&app, &headers, &id).await {
         Ok(value) => value,
+        Err(_) if super::reconnect(&headers) => return super::retired_stream(RETIRED),
         Err(response) => return response,
     };
     let pin: Pin = match decode(&input.pin) {
@@ -1325,6 +1328,9 @@ async fn watch(
     if watch_operation(binding, &pin).is_err()
         || input.identity != pin_identity(binding, &pin, &viewer)
     {
+        if super::reconnect(&headers) {
+            return super::retired_stream(RETIRED);
+        }
         return refused(SessionError::Conflict);
     }
     let prefix = format!("v1:{}:", input.identity.trim_start_matches("sha256:"));
@@ -1336,7 +1342,7 @@ async fn watch(
                     digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
                 })
             }) else {
-                return refused(SessionError::Conflict);
+                return super::retired_stream(RETIRED);
             };
             Some(value.into())
         }
@@ -1386,9 +1392,12 @@ async fn watch(
             }
             _ => {
                 state.ended = true;
-                Event::default().event("retire").data(html! {
-                    p { "Observation stopped. Reopen this view to check current account, host, and original source standing." }
-                }.into_string())
+                Event::default().event("retire").data(
+                    html! {
+                        p { (RETIRED) }
+                    }
+                    .into_string(),
+                )
             }
         };
         state.first = false;

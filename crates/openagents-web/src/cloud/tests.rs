@@ -38,6 +38,8 @@ mod partners_web;
 mod project_fixture;
 #[path = "project_tests.rs"]
 mod projects;
+#[path = "reconnect_tests.rs"]
+mod reconnect;
 #[path = "retail_tests.rs"]
 mod retail_web;
 #[path = "sales_floor_tests.rs"]
@@ -396,6 +398,56 @@ async fn request(
         headers,
         body,
     }
+}
+
+/// Opens an observation stream, optionally as a browser reconnect carrying
+/// `Last-Event-ID`, and returns its first complete event (or a whole
+/// non-stream refusal body) without waiting for the stream to end.
+async fn first_event(
+    site: &Router,
+    path: &str,
+    cookies: &Cookies,
+    last_event_id: Option<&str>,
+) -> Answer {
+    use futures_util::StreamExt;
+    let mut request = Request::builder()
+        .method(Method::GET)
+        .uri(path)
+        .header(header::HOST, HOST);
+    if !cookies.0.is_empty() {
+        request = request.header(header::COOKIE, cookies.header());
+    }
+    if let Some(id) = last_event_id {
+        request = request.header("last-event-id", id);
+    }
+    let response = site
+        .clone()
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let mut stream = response.into_body().into_data_stream();
+    let mut body = String::new();
+    while !body.contains("\n\n") {
+        match tokio::time::timeout(std::time::Duration::from_secs(20), stream.next()).await {
+            Ok(Some(Ok(bytes))) => body.push_str(&String::from_utf8_lossy(&bytes)),
+            _ => break,
+        }
+    }
+    Answer {
+        status,
+        headers,
+        body,
+    }
+}
+
+/// The `id:` field of one server-sent event.
+fn event_id(event: &str) -> Option<&str> {
+    event
+        .lines()
+        .find_map(|line| line.strip_prefix("id:"))
+        .map(str::trim)
 }
 
 #[derive(Default)]
@@ -1436,5 +1488,73 @@ async fn valid_logout_clears_browser_after_native_or_configuration_standing_chan
             assert_eq!(fixture.state.lock().unwrap().signouts, 1);
         }
         assert!(!fixture.local_store.exists());
+    }
+}
+
+/// WEB-17 packaging: every generated Rust/Wasm file the Cloud routes serve
+/// from `--cloud-build` is built and checked by both site images, so a
+/// deployed workbench never loads a missing terminal module.
+#[test]
+fn site_images_package_every_served_cloud_build_asset() {
+    for (name, dockerfile) in [
+        ("Dockerfile", include_str!("../../Dockerfile")),
+        (
+            "Dockerfile.components",
+            include_str!("../../Dockerfile.components"),
+        ),
+    ] {
+        for asset in super::BUILD_ASSETS {
+            assert!(
+                dockerfile.contains(&format!("test -s /build/cloud/{asset}")),
+                "{name} does not check {asset}"
+            );
+        }
+        for package in ["-p coder-cloud-web", "-p coder-browser-web"] {
+            assert!(
+                dockerfile.contains(package),
+                "{name} does not build {package}"
+            );
+        }
+    }
+    assert!(include_str!("../../Dockerfile").contains("\"--cloud-build\", \"/srv/cloud\""));
+}
+
+/// WEB-17 accessibility basics for the authenticated shell: one skip link
+/// to `<main>`, a labelled workspace navigation that marks the current
+/// section, a live region for standing changes, and named buttons.
+#[tokio::test]
+async fn workspace_shell_keeps_keyboard_and_screen_reader_basics() {
+    let fixture = fixture().await;
+    let mut cookies = login(&fixture, "alice").await;
+    choose_personal(&fixture, &mut cookies).await;
+    for (path, current) in [
+        (
+            "/cloud/app",
+            "<a aria-current=\"page\" href=\"/cloud/app\">Overview</a>",
+        ),
+        (
+            "/cloud/app/settings",
+            "<a aria-current=\"page\" href=\"/cloud/app/settings\">Settings</a>",
+        ),
+    ] {
+        let page = request(&fixture.site, Method::GET, path, &cookies, None, None).await;
+        assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+        let body = &page.body;
+        assert!(body.contains("<html lang=\"en\""));
+        assert!(body.contains("<a class=\"skip\" href=\"#content\">"));
+        assert!(body.contains("<main id=\"content\""));
+        assert!(body.contains("<nav aria-label=\"Workspace\">"));
+        assert_eq!(body.matches("aria-current=\"page\"").count(), 1, "{path}");
+        assert!(body.contains(current), "{path}");
+        assert!(body.contains("id=\"cloud-resume\" aria-live=\"polite\""));
+        assert!(body.contains("name=\"viewport\""));
+        for button in body.split("<button").skip(1) {
+            let text = button
+                .split_once('>')
+                .and_then(|(_, rest)| rest.split_once("</button>"))
+                .map(|(text, _)| text.trim())
+                .unwrap_or_default();
+            assert!(!text.is_empty(), "{path}: unnamed button");
+        }
     }
 }

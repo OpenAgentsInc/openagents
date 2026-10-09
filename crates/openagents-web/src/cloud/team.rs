@@ -51,6 +51,7 @@ const WATCH_INTERVAL: Duration = Duration::from_secs(5);
 #[cfg(test)]
 const WATCH_INTERVAL: Duration = Duration::from_millis(20);
 const WATCH_READS: u32 = 120;
+const RETIRED: &str = "Observation stopped: your membership, role, or this workspace's membership epoch changed, or standing could not be checked. Reopen the team page to read the current membership.";
 
 /// The separately qualified browser lanes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -545,9 +546,31 @@ async fn watch_read(state: &Watch) -> Option<String> {
 
 /// Connected observers recheck native standing on every read and retire as
 /// soon as the membership they started under no longer holds.
+///
+/// Each event carries the roster digest as its id. A browser reconnect after
+/// a dropped connection or a suspended tab sends that id back, so a roster
+/// change made while detached is announced instead of becoming the new
+/// baseline unseen; a reconnect that can no longer be admitted retires.
 async fn watch(State(app): State<App>, headers: HeaderMap) -> Response {
+    let previous = match headers.get("last-event-id") {
+        None => None,
+        Some(value) => match value
+            .to_str()
+            .ok()
+            .and_then(|value| value.strip_prefix("team-v1:"))
+            .filter(|digest| {
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            }) {
+            Some(digest) => Some(digest.to_owned()),
+            None => return super::retired_stream(RETIRED),
+        },
+    };
     let context = match context(&app, &headers, Lane::Membership).await {
         Ok(value) => value,
+        Err(_) if super::reconnect(&headers) => return super::retired_stream(RETIRED),
         Err(response) => return response,
     };
     let state = Watch {
@@ -557,7 +580,7 @@ async fn watch(State(app): State<App>, headers: HeaderMap) -> Response {
         role: context.role.clone(),
         app: app.clone(),
         headers,
-        digest: None,
+        digest: previous,
         reads: 0,
         first: true,
         ended: false,
@@ -573,21 +596,25 @@ async fn watch(State(app): State<App>, headers: HeaderMap) -> Response {
         state.reads += 1;
         let event = match watch_read(&state).await {
             Some(digest) if state.reads <= WATCH_READS => {
+                let id = format!("team-v1:{digest}");
                 if state.digest.as_ref().is_some_and(|d| d != &digest) {
                     state.digest = Some(digest);
-                    Event::default().event("refresh").data(
+                    Event::default().event("refresh").id(id).data(
                         "<p>Invitations changed. Reopen this page to review the current list.</p>",
                     )
-                } else {
+                } else if state.digest.is_none() {
+                    // The first read names the baseline a reconnect resumes from.
                     state.digest = Some(digest);
+                    Event::default().event("standing").id(id).data("")
+                } else {
                     Event::default().comment("membership standing checked")
                 }
             }
             _ => {
                 state.ended = true;
-                Event::default().event("retire").data(
-                    "<p>Observation stopped: your membership, role, or this workspace's membership epoch changed, or standing could not be checked. Reopen the team page to read the current membership.</p>",
-                )
+                Event::default()
+                    .event("retire")
+                    .data(format!("<p>{RETIRED}</p>"))
             }
         };
         Some((Ok::<_, Infallible>(event), state))

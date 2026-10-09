@@ -1240,3 +1240,51 @@ async fn reports_and_export_are_bounded_to_current_read_rights() {
         StatusCode::FORBIDDEN
     );
 }
+
+/// WEB-17: a team observer that reconnects (network drop, suspended tab)
+/// resumes from its last roster digest, so a change made while detached is
+/// announced; a reconnect that can no longer be admitted retires.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn team_watch_resumes_from_last_event_id_and_retires_on_lost_admission() {
+    let fixture = team_fixture().await;
+    let mut alice = login(&fixture, "alice").await;
+    choose(&fixture, &mut alice, TEAM).await;
+    let page = read(&fixture, &alice, "/cloud/app/team").await;
+    assert!(page.body.contains("sse-close=\"retire\""));
+    let watch = "/cloud/app/team/watch";
+
+    let fresh = first_event(&fixture.site, watch, &alice, None).await;
+    assert_eq!(fresh.status, StatusCode::OK, "{}", fresh.body);
+    assert!(fresh.body.contains("event: standing"), "{}", fresh.body);
+    let id = event_id(&fresh.body).expect("baseline id").to_owned();
+    assert!(id.starts_with("team-v1:") && id.len() == 8 + 64);
+
+    let same = first_event(&fixture.site, watch, &alice, Some(&id)).await;
+    assert!(
+        same.body.starts_with(": membership standing checked"),
+        "{}",
+        same.body
+    );
+
+    let stale = format!(
+        "team-v1:{}",
+        if id.ends_with('0') { "1" } else { "0" }.repeat(64)
+    );
+    let changed = first_event(&fixture.site, watch, &alice, Some(&stale)).await;
+    assert!(changed.body.contains("event: refresh"), "{}", changed.body);
+    assert_eq!(event_id(&changed.body), Some(id.as_str()));
+
+    for bad in ["team-v1:short", "v1:abc", "team-v1:ZZ"] {
+        let malformed = first_event(&fixture.site, watch, &alice, Some(bad)).await;
+        assert_eq!(malformed.status, StatusCode::OK);
+        assert!(malformed.body.contains("event: retire"), "{bad}");
+    }
+
+    // Signed out: a reconnect retires, a first connection is refused.
+    let signed_out = Cookies(BTreeMap::new());
+    let expired = first_event(&fixture.site, watch, &signed_out, Some(&id)).await;
+    assert_eq!(expired.status, StatusCode::OK);
+    assert!(expired.body.contains("event: retire"));
+    let refused = first_event(&fixture.site, watch, &signed_out, None).await;
+    assert_ne!(refused.status, StatusCode::OK);
+}
