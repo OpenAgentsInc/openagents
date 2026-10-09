@@ -73,6 +73,7 @@ const OWNED_EXACT: [&str; 54] = [
     "/sign-in",
     "/sign-out",
     "/settings",
+    "/projects",
     "/.well-known/apple-app-site-association",
     "/.well-known/assetlinks.json",
     "/.well-known/agent-card.json",
@@ -110,6 +111,7 @@ const OWNED_PREFIXES: [&str; 14] = [
     "/components/",
     "/cloud/",
     "/settings/",
+    "/projects/",
 ];
 
 /// The sections removed at the owner's direction (2026-09-29). They answer

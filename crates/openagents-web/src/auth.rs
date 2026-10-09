@@ -6,6 +6,10 @@
 //! hands the code and verifier to the account service, which talks to
 //! GitHub, finds or creates the account, and issues the session this
 //! server sets as the usual Cloud session cookie.
+//!
+//! Connecting repositories ([`crate::projects`]) uses the same trip with
+//! more scopes ([`oa_auth::Purpose::Repos`]) and the same callback, which
+//! hands such a trip on to the projects page's finishing step.
 
 use axum::Router;
 use axum::extract::{Query, State};
@@ -117,9 +121,24 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap, Query(back): Query<Back>) -> Response {
-    let Some((github, service)) = github(&app) else {
+    begin(
+        &app,
+        &headers,
+        back.return_to.as_deref(),
+        oa_auth::Purpose::SignIn,
+    )
+}
+
+/// Send the browser to GitHub for `purpose`, with a fresh flow cookie.
+pub(crate) fn begin(
+    app: &App,
+    headers: &HeaderMap,
+    return_to: Option<&str>,
+    purpose: oa_auth::Purpose,
+) -> Response {
+    let Some((github, service)) = github(app) else {
         return notice(
-            &headers,
+            headers,
             StatusCode::NOT_FOUND,
             "Sign-in isn't available",
             "This server doesn't sign people in with GitHub.",
@@ -135,19 +154,20 @@ async fn start(State(app): State<App>, headers: HeaderMap, Query(back): Query<Ba
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
     if host != origin_host {
-        let back = oa_auth::return_to(back.return_to.as_deref());
-        return protect(
-            Redirect::to(&format!(
-                "{}/auth/github?return_to={}",
-                service.origin(),
-                encode(&back)
-            ))
-            .into_response(),
-        );
+        let back = oa_auth::return_to(return_to);
+        let path = match purpose {
+            oa_auth::Purpose::SignIn => format!("/auth/github?return_to={}", encode(&back)),
+            oa_auth::Purpose::Repos { private } => format!(
+                "{}?access={}",
+                crate::projects::CONNECT,
+                if private { "private" } else { "public" }
+            ),
+        };
+        return protect(Redirect::to(&format!("{}{path}", service.origin())).into_response());
     }
-    let Ok((url, flow)) = oa_auth::Flow::start(github, back.return_to.as_deref()) else {
+    let Ok((url, flow)) = oa_auth::Flow::start_for(github, return_to, purpose) else {
         return notice(
-            &headers,
+            headers,
             StatusCode::SERVICE_UNAVAILABLE,
             "Sign-in isn't available",
             "Try again in a minute.",
@@ -167,7 +187,7 @@ struct Callback {
     error: Option<String>,
 }
 
-fn flow_cookie(headers: &HeaderMap) -> Option<oa_auth::Flow> {
+pub(crate) fn flow_cookie(headers: &HeaderMap) -> Option<oa_auth::Flow> {
     headers
         .get_all(header::COOKIE)
         .iter()
@@ -191,9 +211,37 @@ async fn callback(
             "This server doesn't sign people in with GitHub.",
         );
     };
+    let query = query.ok().map(|q| q.0);
+    // A repository trip finishes on the projects page, in a same-site step
+    // that carries the session cookie; its flow cookie stays until then.
+    if let Some(Callback {
+        code: Some(code),
+        state: Some(state),
+        error: None,
+    }) = &query
+        && flow_cookie(&headers).is_some_and(|flow| {
+            matches!(flow.purpose, oa_auth::Purpose::Repos { .. }) && flow.matches(state)
+        })
+    {
+        return crate::projects::continue_page(&headers, code, state);
+    }
+    let canceled_repos = query.as_ref().is_some_and(|q| q.error.is_some())
+        && flow_cookie(&headers)
+            .is_some_and(|flow| matches!(flow.purpose, oa_auth::Purpose::Repos { .. }));
     let clear = HeaderValue::from_str(&oa_auth::flow::clear_cookie(service.secure()))
         .expect("static cookie is valid");
-    let mut response = finish(&app, service, &headers, query.ok().map(|q| q.0)).await;
+    if canceled_repos {
+        let mut response = protect(crate::ui_page::problem(
+            &headers,
+            StatusCode::OK,
+            "GitHub wasn't connected",
+            "Nothing changed. You can connect GitHub any time.",
+            (crate::projects::PAGE, "Back to projects"),
+        ));
+        response.headers_mut().append(header::SET_COOKIE, clear);
+        return response;
+    }
+    let mut response = finish(&app, service, &headers, query).await;
     response.headers_mut().append(header::SET_COOKIE, clear);
     response
 }

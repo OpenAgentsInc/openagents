@@ -46,6 +46,13 @@ pub(crate) struct Conversation {
     /// and list on the Archived page until restored. Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_unix: Option<u64>,
+    /// The project (`prj_…`, a connected GitHub repository of the signed-in
+    /// account) the chat belongs to; the sidebar groups it there. The name
+    /// and repository come from the account, never from this record, so a
+    /// chat shows under its project only to that account. Older records
+    /// have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// GitHub metadata identifies a selected source; it does not authorize execution.
@@ -1164,6 +1171,13 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
     if let Some(selection) = &conversation.selection {
         selection.validate()?;
     }
+    if conversation
+        .project
+        .as_deref()
+        .is_some_and(|project| !oa_auth::repos::project_id(project))
+    {
+        return Err(Error::Invalid("The chat's project is invalid."));
+    }
     let mut identities = HashSet::new();
     for request in &conversation.requests {
         if !valid_id(&request.id)
@@ -1762,6 +1776,7 @@ mod tests {
             updated_unix: 1,
             pinned_unix: None,
             archived_unix: None,
+            project: None,
         }
     }
 

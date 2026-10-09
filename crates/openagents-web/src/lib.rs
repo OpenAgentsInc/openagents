@@ -13,8 +13,8 @@
 //! service's site, reimplemented here.
 
 pub mod account;
-mod auth;
 pub mod ask;
+mod auth;
 pub mod backend;
 mod chat_html;
 mod chat_owner;
@@ -30,6 +30,7 @@ mod markdown;
 mod pages;
 pub mod palette;
 pub mod pilot;
+mod projects;
 mod purchases;
 pub mod sales_remote;
 mod settings;
@@ -208,11 +209,13 @@ pub fn router(config: Config) -> Router {
         .merge(device::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(projects::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
         .merge(wellknown::routes())
         .fallback(not_found)
+        .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
@@ -265,8 +268,9 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
         || path.starts_with("/auth/")
         || path == "/device"
         || path.starts_with("/device/")
-        || matches!(path, "/sign-in" | "/sign-out" | "/settings")
-        || path.starts_with("/settings/");
+        || matches!(path, "/sign-in" | "/sign-out" | "/settings" | "/projects")
+        || path.starts_with("/settings/")
+        || path.starts_with("/projects/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
         || path == "/ask"

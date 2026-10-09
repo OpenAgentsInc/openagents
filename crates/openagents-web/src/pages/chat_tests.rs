@@ -90,6 +90,7 @@ impl Fixture {
                 updated_unix: 1,
                 pinned_unix: None,
                 archived_unix: None,
+                project: None,
             })
             .await
             .unwrap()
@@ -496,6 +497,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         updated_unix: 1,
         pinned_unix: None,
         archived_unix: None,
+        project: None,
     };
     assert_eq!(row_detail(&chat), None);
     assert_eq!(row_status(&chat), None);
@@ -709,6 +711,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         updated_unix: 1,
         pinned_unix: None,
         archived_unix: None,
+        project: None,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);

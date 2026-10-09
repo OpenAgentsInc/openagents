@@ -10,10 +10,10 @@
 //!
 //! These pages are local only (the site guard answers them on the local
 //! address, like `/app`), and every post must come from this site.
-//! Repositories come from the person's GitHub account when the studio has
-//! a GitHub token, else from a pasted public repository address; the
-//! GitHub sign-in work replaces that token with the signed-in person's own
-//! (see `Studio::github`).
+//! Repositories come from the signed-in person's own GitHub access when
+//! they connected GitHub on `/projects` ([`crate::projects`]), else from
+//! the studio's GitHub token (`Studio::github`), else from a pasted public
+//! repository address.
 
 mod view;
 
@@ -30,6 +30,7 @@ use axum::response::sse::{Event, KeepAlive};
 use axum::response::{IntoResponse, Redirect, Response, Sse};
 use axum::routing::{get, post};
 use coder_environment_operator::studio::Studio;
+use coder_environment_operator::studio::github::GitHub;
 use maud::html;
 use serde::Deserialize;
 
@@ -74,6 +75,18 @@ fn head() -> maud::Markup {
 
 fn studio(app: &App) -> Option<&Arc<Studio>> {
     app.config.environments.as_ref()
+}
+
+/// The GitHub client for this request: the signed-in person's own access
+/// when they connected GitHub, else the studio's. The person's token is
+/// used for this request only.
+async fn github(app: &App, studio: &Studio, headers: &HeaderMap) -> GitHub {
+    if let Some(service) = app.config.cloud.as_deref()
+        && let Ok(token) = service.github_token(headers).await
+    {
+        return GitHub::new(Some(token));
+    }
+    studio.github().clone()
 }
 
 fn unavailable(headers: &HeaderMap) -> Response {
@@ -157,23 +170,24 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
     } else {
         q.repo.trim()
     };
+    let github = github(&app, studio, &headers).await;
     if chosen.is_empty() {
-        return pick_page(studio, &headers, "", None).await;
+        return pick_page(&github, &headers, "", None).await;
     }
     let Some(name) = coder_environment_operator::studio::github::RepoName::parse(chosen) else {
         return pick_page(
-            studio,
+            &github,
             &headers,
             chosen,
             Some("Enter a GitHub repository as owner/name or its github.com address."),
         )
         .await;
     };
-    let repo = match studio.github().repository(&name).await {
+    let repo = match github.repository(&name).await {
         Ok(r) => r,
-        Err(e) => return pick_page(studio, &headers, chosen, Some(e.as_str())).await,
+        Err(e) => return pick_page(&github, &headers, chosen, Some(e.as_str())).await,
     };
-    let branches = studio.github().branches(&name).await.unwrap_or_default();
+    let branches = github.branches(&name).await.unwrap_or_default();
     branch_page(
         &headers,
         &repo.full_name,
@@ -184,13 +198,13 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
 }
 
 async fn pick_page(
-    studio: &Studio,
+    github: &GitHub,
     headers: &HeaderMap,
     repo: &str,
     error: Option<&str>,
 ) -> Response {
-    let mine = if studio.github().signed_in() {
-        studio.github().repositories().await.ok()
+    let mine = if github.signed_in() {
+        github.repositories().await.ok()
     } else {
         None
     };
@@ -255,10 +269,16 @@ async fn create(
         return refused();
     }
     let branch = form.branch.trim();
-    match studio
-        .resolve(&form.repo, (!branch.is_empty()).then_some(branch))
-        .await
-    {
+    let github = github(&app, studio, &headers).await;
+    let resolved = match coder_environment_operator::studio::github::RepoName::parse(&form.repo) {
+        Some(name) => {
+            github
+                .resolve(&name, (!branch.is_empty()).then_some(branch))
+                .await
+        }
+        None => Err("Enter a GitHub repository as owner/name or its github.com address.".into()),
+    };
+    match resolved {
         Ok(resolved) => match studio.create(&resolved) {
             Ok(id) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
             Err(e) => branch_page(

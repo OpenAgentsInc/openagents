@@ -4,11 +4,12 @@
 //! here); the Grid's screenshot is on `/docs/the-grid`.
 
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
 use maud::html;
+use serde::Deserialize;
 
 use crate::App;
 use crate::ui_page::UiPage;
@@ -17,9 +18,22 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home))
 }
 
+#[derive(Default, Deserialize)]
+struct Home {
+    /// A project to start the chat in (a project group's "New chat").
+    #[serde(default)]
+    project: Option<String>,
+}
+
 /// The composer sits centered in the content area; the left panel lists the
-/// visitor's recent chats.
-async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
+/// visitor's recent chats. A signed-in person with projects picks one
+/// under the composer.
+async fn home(
+    State(app): State<App>,
+    headers: HeaderMap,
+    query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
+) -> Response {
+    let query = query.map(|q| q.0).unwrap_or_default();
     let (owner, fresh) = super::chat::visitor(&app, &headers).await;
     let selection = Default::default();
     let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
@@ -30,9 +44,11 @@ async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
     } else {
         Vec::new()
     };
+    let picker = crate::projects::picker(&app, query.project.as_deref()).await;
     let content = html! {
         div.oa-home-stage {
             (super::chat::composer("/chat", "Start a chat", None, selectors, html! {}))
+            @if let Some(picker) = picker { (picker) }
             (crate::composer::state_field(&app, &owner, &selection, false))
             input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
             input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";

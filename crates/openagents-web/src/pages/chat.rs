@@ -65,6 +65,9 @@ struct Prompt {
     csrf: String,
     #[serde(default)]
     selection: String,
+    /// The project picked in the new-chat composer (`prj_…`), if any.
+    #[serde(default)]
+    project: String,
 }
 
 #[derive(Deserialize)]
@@ -260,6 +263,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         } else {
             None
         };
+    let project = crate::projects::chosen(&app, &prompt.project).await;
     let admitted_at = now();
     if cloud.is_none() {
         match app
@@ -324,6 +328,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         updated_unix: now(),
         pinned_unix: None,
         archived_unix: None,
+        project,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,

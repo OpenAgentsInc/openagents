@@ -7,10 +7,17 @@
 //! JavaScript it redirects back; with HTMX it answers with the list, which
 //! replaces `#chat-sidebar` in place. Pins and archives live on the chat
 //! record (`pinned_unix`, `archived_unix`), so they survive a reload.
+//!
+//! For a signed-in person with projects (#11034, [`crate::projects`]), the
+//! list groups chats under a Projects heading, one group per project, and
+//! the row menu offers moving a chat to a project (`project` on the chat
+//! record). Names come from the account, so nobody else sees them.
 
 use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, ControlSize};
 use openagents_ui::icons::Icon;
-use openagents_ui::shell::{HxGet, NavItem, RowAction, RowMenu, RowRename};
+use openagents_ui::shell::{ChatGroup, GROUP_ROWS, HxGet, NavItem, RowAction, RowMenu, RowRename};
+
+use crate::projects::Sidebar;
 
 use super::*;
 
@@ -29,7 +36,12 @@ pub(super) fn routes() -> Router<App> {
         .route("/chat/{id}/pin", post(pin))
         .route("/chat/{id}/archive", post(archive))
         .route("/chat/{id}/rename", get(rename_field).post(rename))
+        .route("/chat/{id}/project", get(move_page).post(move_chat))
 }
+
+/// The most projects a row's menu lists as "Move to …" entries; with more,
+/// it links the Move to project page instead.
+const MENU_PROJECTS: usize = 6;
 
 /// What the list shows: the open chat (rows then load with HTMX), the
 /// search text, and the chat just archived (its Undo notice).
@@ -39,6 +51,8 @@ pub(super) struct View<'a> {
     pub hx: bool,
     pub q: &'a str,
     pub archived: Option<&'a str>,
+    /// The signed-in person's projects ([`crate::projects::sidebar`]).
+    pub projects: Option<&'a Sidebar>,
 }
 
 /// The list for `owner`; see [`super::chat_list`].
@@ -67,7 +81,18 @@ pub(super) async fn render_working(
         .filter(|chat| chat.archived_unix.is_none() && chat.pending.is_some())
         .map(|chat| chat.id.clone())
         .collect();
+    let projects = crate::projects::sidebar(app).await;
+    let view = View {
+        projects: projects.as_deref(),
+        ..view
+    };
     (build(list, &rows, &csrf(app, owner), view), working)
+}
+
+/// The chat's project, when it is one of the viewer's.
+fn project_of<'a>(chat: &Conversation, view: View<'a>) -> Option<&'a oa_auth::repos::Project> {
+    let id = chat.project.as_deref()?;
+    view.projects?.project(id)
 }
 
 /// The list from loaded rows (newest first, as the store sorts them).
@@ -87,14 +112,46 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
             .cmp(&b.pinned_unix)
             .then_with(|| a.id.cmp(&b.id))
     });
-    let mut list = list
-        .pinned(pinned.iter().map(|chat| row(chat, csrf, view)))
-        .items(
-            shown
+    let unpinned: Vec<&Conversation> = shown
+        .iter()
+        .copied()
+        .filter(|chat| chat.pinned_unix.is_none())
+        .collect();
+    let mut list = list.pinned(pinned.iter().map(|chat| row(chat, csrf, view, false)));
+    if let Some(sidebar) = view.projects {
+        for project in &sidebar.status.projects {
+            let chats: Vec<&Conversation> = unpinned
                 .iter()
-                .filter(|chat| chat.pinned_unix.is_none())
-                .map(|chat| row(chat, csrf, view)),
-        );
+                .copied()
+                .filter(|chat| chat.project.as_deref() == Some(project.id.as_str()))
+                .collect();
+            if !q.is_empty() && chats.is_empty() {
+                continue;
+            }
+            // The open chat always stays visible, even in a closed group.
+            let at = chats
+                .iter()
+                .position(|chat| view.current == Some(chat.id.as_str()));
+            let mut group = ChatGroup::new(
+                project.id.clone(),
+                project.name.clone(),
+                format!("/?project={}", project.id),
+            )
+            .open(at.is_some() || !q.is_empty() || !sidebar.closed.contains(&project.id))
+            .more_open(at.is_some_and(|at| at >= GROUP_ROWS))
+            .items(chats.iter().map(|chat| row(chat, csrf, view, true)));
+            if sidebar.reconnect() {
+                group = group.note("Reconnect GitHub", crate::projects::PAGE);
+            }
+            list = list.project(group);
+        }
+    }
+    list = list.items(
+        unpinned
+            .iter()
+            .filter(|chat| project_of(chat, view).is_none())
+            .map(|chat| row(chat, csrf, view, false)),
+    );
     let open = rows.iter().any(|chat| chat.archived_unix.is_none());
     // The search box waits until people have more chats (owner,
     // 2026-10-09); `/chat/list?q=` and its keyboard shortcuts stay.
@@ -121,9 +178,23 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
             }
         });
     }
-    if rows.iter().any(|chat| chat.archived_unix.is_some()) {
+    let archived = rows.iter().any(|chat| chat.archived_unix.is_some());
+    // Signed in: where to connect a repository or manage projects.
+    let projects = view.projects.map(|sidebar| {
+        if sidebar.status.projects.is_empty() {
+            "Connect a GitHub repository"
+        } else {
+            "Manage projects"
+        }
+    });
+    if archived || projects.is_some() {
         list = list.after(html! {
-            p.oa-chat-list-more { a.oa-chat-list-link href=(ARCHIVED) { "Archived chats" } }
+            @if archived {
+                p.oa-chat-list-more { a.oa-chat-list-link href=(ARCHIVED) { "Archived chats" } }
+            }
+            @if let Some(label) = projects {
+                p.oa-chat-list-more { a.oa-chat-list-link href=(crate::projects::PAGE) { (label) } }
+            }
         });
     }
     list
@@ -144,14 +215,24 @@ fn matches(chat: &Conversation, q: &str) -> bool {
                 .any(|m| m.role != Role::Tool && m.text.to_lowercase().contains(&q)))
 }
 
-/// One chat row with its "…" menu.
-fn row(chat: &Conversation, csrf: &str, view: View<'_>) -> NavItem {
+/// One chat row with its "…" menu. Inside a project's group (`grouped`)
+/// line 2 drops the repository: the group's heading names it.
+fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavItem {
     let id = &chat.id;
     let current = view.current.unwrap_or_default();
     let mut item = NavItem::new(chat.title.clone(), format!("/chat/{id}"))
         .current(view.current == Some(id.as_str()))
         .row_id(format!("chat-row-{id}"));
-    if let Some(detail) = row_detail(chat) {
+    let detail = if grouped {
+        chat.selection
+            .as_ref()
+            .and_then(|selection| selection.repository.as_ref())
+            .map(|source| source.branch.clone())
+            .filter(|branch| !branch.is_empty())
+    } else {
+        row_detail(chat)
+    };
+    if let Some(detail) = detail {
         item = item.detail(detail);
     }
     let working = chat.pending.is_some();
@@ -188,13 +269,58 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>) -> NavItem {
     if working {
         archive = archive.confirm("This chat is still working. Archive it anyway?");
     }
+    let mut menu = RowMenu::new(format!("chat-menu-{id}"), chat.title.clone())
+        .action(pin)
+        .action(rename);
+    for action in move_actions(chat, csrf, view) {
+        menu = menu.action(action);
+    }
     item.menu(
-        RowMenu::new(format!("chat-menu-{id}"), chat.title.clone())
-            .action(pin)
-            .action(rename)
-            .action(archive)
+        menu.action(archive)
             .action(RowAction::open("Delete", format!("/chat/{id}/delete")).icon(Icon::Trash)),
     )
+}
+
+/// "Move to …" entries for the viewer's projects, and leaving the chat's
+/// project; a link to the Move to project page when there are many.
+fn move_actions(chat: &Conversation, csrf: &str, view: View<'_>) -> Vec<RowAction> {
+    let Some(sidebar) = view.projects else {
+        return Vec::new();
+    };
+    let id = &chat.id;
+    let current = view.current.unwrap_or_default();
+    let inside = project_of(chat, view);
+    let others: Vec<&oa_auth::repos::Project> = sidebar
+        .status
+        .projects
+        .iter()
+        .filter(|p| inside.is_none_or(|inside| inside.id != p.id))
+        .collect();
+    let post = |label: String, project: &str| {
+        RowAction::post(label, format!("/chat/{id}/project"))
+            .icon(Icon::Folder)
+            .field("csrf", csrf)
+            .field("current", current)
+            .field("project", project)
+            .target(SIDEBAR)
+            .swap("outerHTML")
+    };
+    let mut actions = Vec::new();
+    if others.len() > MENU_PROJECTS {
+        actions.push(
+            RowAction::open("Move to project", format!("/chat/{id}/project")).icon(Icon::Folder),
+        );
+    } else {
+        actions.extend(
+            others
+                .iter()
+                .map(|p| post(format!("Move to {}", p.name), &p.id)),
+        );
+    }
+    if let Some(inside) = inside {
+        actions.push(post(format!("Remove from {}", inside.name), ""));
+    }
+    actions
 }
 
 #[derive(Default, Deserialize)]
@@ -211,6 +337,8 @@ struct Change {
     title: String,
     #[serde(default)]
     back: String,
+    #[serde(default)]
+    project: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -279,6 +407,7 @@ async fn changed(
             hx: current.is_some(),
             q: "",
             archived,
+            projects: None,
         };
         let list = render(app, owner, view, false).await;
         return crate::chat_html::protect(html! { (list) (extra) }.into_response());
@@ -465,11 +594,13 @@ async fn list(
         );
     };
     let current = current(&search.current);
+    let projects = crate::projects::sidebar(&app).await;
     let view = View {
         current,
         hx: current.is_some(),
         q: &search.q,
         archived: None,
+        projects: projects.as_deref(),
     };
     if hx(&headers) {
         return crate::chat_html::protect(
@@ -575,5 +706,106 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
     if let Some(owner) = &owner {
         page = page.sidebar_section(chat_list(&app, owner, None, false, false).await);
     }
+    crate::chat_html::protect(page.respond(&headers))
+}
+
+/// Moves a chat into one of the viewer's projects, or out of its project
+/// (`project` empty).
+async fn move_chat(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(form): Form<Change>,
+) -> Response {
+    let owner = match validate_form(&app, &headers, &form.csrf) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let target = form.project.trim();
+    let project = if target.is_empty() {
+        None
+    } else {
+        let sidebar = crate::projects::sidebar(&app).await;
+        match sidebar.as_deref().and_then(|s| s.project(target)) {
+            Some(project) => Some(project.id.clone()),
+            None => {
+                return refusal(StatusCode::BAD_REQUEST, "Pick one of your projects.");
+            }
+        }
+    };
+    let result = update(&app, &owner, &id, |chat| {
+        if chat.project == project {
+            return false;
+        }
+        chat.project.clone_from(&project);
+        true
+    })
+    .await;
+    match result {
+        Ok(_) => changed(&app, &headers, &owner, &form, None, html! {}).await,
+        Err(r) => r,
+    }
+}
+
+/// The Move to project page, for a row menu with many projects (and
+/// without JavaScript): one button per project, and No project.
+async fn move_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    let Some(owner) = crate::ask::visitor(&headers).filter(|_| valid_id(&id)) else {
+        return missing();
+    };
+    let chat = match app.config.chat_store.load(&owner, &id).await {
+        Ok(Some(loaded)) => loaded.conversation,
+        Ok(None) => return missing(),
+        Err(error) => return unavailable(error),
+    };
+    let sidebar = crate::projects::sidebar(&app).await;
+    let projects = sidebar
+        .as_deref()
+        .map(|s| s.status.projects.as_slice())
+        .unwrap_or_default();
+    let token = csrf(&app, &owner);
+    let inside = chat.project.as_deref();
+    let choice = |label: &str, value: &str, chosen: bool| {
+        html! {
+            li.oa-chat-archive-row {
+                span { (label) }
+                @if chosen {
+                    span { "Current" }
+                } @else {
+                    form method="post" action=(format!("/chat/{id}/project")) {
+                        input type="hidden" name="csrf" value=(token);
+                        input type="hidden" name="current" value=(id);
+                        input type="hidden" name="project" value=(value);
+                        (Button::new("Move here")
+                            .kind(ButtonType::Submit)
+                            .size(ControlSize::Sm)
+                            .variant(ButtonVariant::Soft)
+                            .color(Color::Secondary))
+                    }
+                }
+            }
+        }
+    };
+    let page = UiPage::new("Move to project")
+        .path(format!("/chat/{id}/project"))
+        .head(crate::chat_html::head())
+        .sidebar_section(chat_list(&app, &owner, Some(id.as_str()), false, false).await)
+        .content(crate::ui_page::prose(html! {
+            h1 { "Move to project" }
+            p { (chat.title) }
+            @if projects.is_empty() {
+                p {
+                    "You don't have any projects yet. "
+                    a href=(crate::projects::PAGE) { "Connect a GitHub repository" }
+                }
+            } @else {
+                ul.oa-chat-archive-list role="list" {
+                    @for project in projects {
+                        (choice(&project.name, &project.id, inside == Some(project.id.as_str())))
+                    }
+                    (choice("No project", "", inside.is_none_or(|p| !projects.iter().any(|x| x.id == p))))
+                }
+            }
+        }));
     crate::chat_html::protect(page.respond(&headers))
 }

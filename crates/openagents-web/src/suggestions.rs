@@ -262,6 +262,7 @@ mod tests {
             updated_unix: 1,
             pinned_unix: None,
             archived_unix: None,
+            project: None,
         }
     }
 
