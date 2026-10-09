@@ -15,7 +15,7 @@ Each App's callback is the deployment's `/auth/github/callback`:
 | Deployment | Homepage | Callback |
 | --- | --- | --- |
 | Local | `http://127.0.0.1:4301` | `http://127.0.0.1:4301/auth/github/callback` |
-| Staging | `https://onboarding---coder-ezxz4mgdsq-uc.a.run.app` | `https://onboarding---coder-ezxz4mgdsq-uc.a.run.app/auth/github/callback` |
+| Staging | `https://staging.openagents.com` | `https://staging.openagents.com/auth/github/callback` |
 | Production | `https://openagents.com` | `https://openagents.com/auth/github/callback` |
 
 Each App's private file is `{"client_id", "client_secret",

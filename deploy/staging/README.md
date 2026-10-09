@@ -26,6 +26,13 @@ The staging GitHub OAuth App must list
 `https://staging.openagents.com/auth/github/callback`
 as its callback URL for sign-in to come back.
 
+Sign-in is invite-only: `INVITE_ONLY_JSON` (`render.py`) lets only the
+owner's GitHub account in, as a site admin, in both the gateway and the
+web ([GitHub sign-in](../../docs/auth/github.md#invite-only-sign-in)).
+`/api/v1` forwards only the public API (#11155); staging alone sets
+`OPENAGENTS_WEB_API_OPERATOR_SIGNUP=1` so the smoke suite's operator
+account can still be made through it.
+
 ## Secrets (Secret Manager, staging only)
 
 `openagents-web-1-staging-{github-oauth,byo-keys,ask-salt,csrf-key}`,

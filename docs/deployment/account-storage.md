@@ -177,7 +177,47 @@ checks them, forces a new revision (`gcloud run services update
 (`openagents-web-1-staging-nfs1` to `openagents-web-1-staging-00008-6jp`),
 and the full suite afterwards: 55 passed, 0 failed, 1 skipped.
 
-## Production (on the owner's go; not applied)
+## Production (live since 2026-10-09 20:57 UTC)
+
+Applied on the owner's go (#11094). openagents.com (service `coder`,
+revision `coder-web-accounts-d4f5b07301-b`) runs `web`, `coder-serve` and
+`gateway`, one instance (min and max 1, the one-writer rule), gen2, with
+Direct VPC egress on `openagents-web-production`. What differs from
+staging:
+
+- No chat worker container: the site's chat keeps using the production
+  chat worker VM over the relay (the web's default worker).
+- The web container starts through `deploy/production/web.sh` (inlined by
+  `deploy/production/render.py`) with the live revision's own arguments
+  after it; paths the site doesn't own still go to `coder-serve`.
+- The gateway runs `deploy/staging/gateway.sh` with `GATEWAY_HOLD=serving`:
+  it takes the store only while its revision has traffic, so a no-traffic
+  candidate (`scripts/deploy/web.sh promote`) never takes the store from
+  the revision serving openagents.com, and an `update-traffic` rollback to
+  an earlier gateway revision hands the store back within seconds. It has
+  no startup probe and the web does not wait for it.
+- Secrets: `openagents-web-production-{github-oauth,csrf-key,byo-keys}`,
+  `openagents-gateway-production-{admin-token,byok-keyring,store-key}`
+  (made by `deploy/accounts-nfs/secrets.py production --runtime
+  157437760789-compute@developer.gserviceaccount.com --web
+  ~/work/.secrets/github-oauth-production.json`), the existing
+  `openagents-web-ask-salt`, and the production upstream keys
+  `openagents-{vertex-sa-key,openrouter-api-key,vercel-gateway-api-key}`.
+- Invite-only: only the owner (GitHub id 14167547) may sign in, as admin
+  ([GitHub sign-in](../auth/github.md#invite-only-sign-in)). There is no
+  operator sign-up token on production.
+- Firewall: besides the NFS rules and the pay-host rule,
+  `allow-internal-from-web-production` gives the subnet the same internal
+  reach the `default` subnet had (coder-serve's pool host).
+
+A later site build: `scripts/deploy/web.sh promote DIGEST` (copies this
+spec, gateway included). A later stack build: `python3
+deploy/production/render.py` with the live service and serving revision
+JSON and `--stack-image` (see its docstring), applied with `gcloud run
+services replace` as `chris@`. Roll back with `scripts/deploy/web.sh
+rollback REVISION`.
+
+The steps it was built with, kept for another environment:
 
 The same design, in its own subnet, server and secrets. With the
 automation account, from the repository root:

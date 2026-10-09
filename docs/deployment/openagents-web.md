@@ -879,3 +879,22 @@ the site. `/api/v1/*` still reaches `coder-serve`.
 
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-w11-1d126aad2b-20261008202124=100`
 (as `chris@`), or `scripts/deploy/web.sh rollback coder-web-w11-1d126aad2b-20261008202124`.
+
+## 2026-10-09: coder-web-accounts-d4f5b07301-b, sign-in on openagents.com (#11094, #11155)
+
+openagents.com signs people in with GitHub, invite-only (the owner alone,
+as admin), with accounts, sessions, API keys, projects and saved keys on
+the production account-store NFS disk ([account
+storage](account-storage.md#production-live-since-2026-10-09-2057-utc)).
+The revision adds the `gateway` sidecar (stack image
+`openagents-stack@sha256:dd3eef4a…`, built from `d4f5b07301`) beside
+`web` (`openagents-web@sha256:10866f41…`, the same image staging tested)
+and `coder-serve`; `/api/v1/*` now goes to the gateway and forwards only
+the public API (#11155). It was applied as a no-traffic candidate, given 1%
+of the traffic so its gateway took the store, smoked on the `new` tag,
+then moved to 100% at 20:57 UTC. Smoke on openagents.com (`--production
+--invite-only`): 51 passed, 0 failed, 3 skipped.
+
+Rollback (as `chris@`): `scripts/deploy/web.sh rollback
+coder-web-10866f41bb-20261009205152` (the same site without accounts;
+sign-in answers 503 again).
