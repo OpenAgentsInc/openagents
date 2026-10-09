@@ -24,7 +24,7 @@ verse-pbr = { path = "../verse-pbr" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 gym-bridge = { path = "../gym-bridge", default-features = false }
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
-pylon = { path = "../pylon" }
+pylon = { path = "../pylon", default-features = false }
 tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"] }
 
 [dev-dependencies]

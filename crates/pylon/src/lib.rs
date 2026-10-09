@@ -22,6 +22,7 @@
 //! ([`market`]).
 //! See `docs/compute/pylon.md`.
 
+#[cfg(feature = "broker")]
 pub mod broker;
 pub mod check;
 pub mod cli;

@@ -7,6 +7,10 @@ publish.workspace = true
 description = "A NIP-PYLON compute provider and client: beacons, free NIP-CJ text jobs on a Psionic model server, receipts, and pool aggregates."
 
 [features]
+default = ["broker"]
+# OpenAgents' broker: brokered sales, order settlement, and provider sweeps
+# in the split ledger (P3/P4). Readers such as the Gym's league don't need it.
+broker = ["dep:pay-ledger"]
 # An in-process relay and a seeded league (`fixture`) for other crates'
 # tests and captures, which must never reach a live relay.
 fixture = ["dep:futures-util", "dep:tokio-tungstenite", "nostr/test-invoice"]
@@ -16,8 +20,10 @@ coder-lease = { path = "../coder-lease" }
 futures-util = { version = "0.3", optional = true }
 tokio-tungstenite = { version = "0.30.0", optional = true }
 nostr = { path = "../nostr" }
-# The central split ledger brokered pylon sales settle in (P3).
-pay-ledger = { path = "../pay-ledger" }
+# The central split ledger brokered pylon sales settle in (P3). Behind the
+# `broker` feature: it links SQLite, which the phone workspace (through
+# verse -> verse-gym) must not pull in alongside Breez's newer SQLite.
+pay-ledger = { path = "../pay-ledger", optional = true }
 # NIP-X402: the native purchase records, the embedded facilitator, and its
 # replay store that paid direct jobs and brokered sales settle through (P3).
 openagents-x402 = { path = "../x402" }

@@ -1041,6 +1041,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bip32"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1072,12 +1081,27 @@ dependencies = [
 
 [[package]]
 name = "bit-set"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
+dependencies = [
+ "bit-vec 0.8.0",
+]
+
+[[package]]
+name = "bit-set"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ddef2995421ab6a5c779542c81ee77c115206f4ad9d5a8e05f4ff49716a3dd"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.9.1",
 ]
+
+[[package]]
+name = "bit-vec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bit-vec"
@@ -1674,6 +1698,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-engine-status"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "coder-history"
 version = "0.1.0"
 dependencies = [
@@ -1690,6 +1722,7 @@ dependencies = [
  "coder-access",
  "coder-boundary",
  "coder-connect",
+ "coder-engine-status",
  "coder-history",
  "coder-host-wire",
  "coder-link",
@@ -1767,6 +1800,7 @@ name = "coder-pty"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-engine-status",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1798,8 +1832,19 @@ dependencies = [
 name = "coder-ui"
 version = "0.1.0"
 dependencies = [
+ "atif",
+ "nostr",
+ "oa-tokens",
+ "pulldown-cmark",
  "rust-native",
  "serde",
+ "serde_json",
+ "syntect",
+ "two-face",
+ "unicode-segmentation",
+ "unicode-width",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -2646,6 +2691,17 @@ name = "fallible-streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
+name = "fancy-regex"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f"
+dependencies = [
+ "bit-set 0.8.0",
+ "regex-automata",
+ "regex-syntax",
+]
 
 [[package]]
 name = "fastrand"
@@ -4501,6 +4557,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4850,7 +4912,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2bf919621e7975acb27d881bae2fb993e0d45c8e0446e85e6272971e00dc8df"
 dependencies = [
  "arrayvec",
- "bit-set",
+ "bit-set 0.9.1",
  "bitflags 2.13.2",
  "cfg-if",
  "cfg_aliases",
@@ -5239,6 +5301,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-tokens"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "objc2"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5402,6 +5471,7 @@ dependencies = [
  "image",
  "nostr",
  "nostr-transport",
+ "oa-tokens",
  "openagents-chat",
  "openagents-connect",
  "playtest",
@@ -5501,6 +5571,21 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "openagents-x402"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "hex",
+ "libc",
+ "model-access",
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -6127,6 +6212,21 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "pylon"
+version = "0.1.0"
+dependencies = [
+ "coder-lease",
+ "nostr",
+ "nostr-transport",
+ "openagents-x402",
+ "reqwest 0.12.28",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "qrcodegen"
@@ -7747,6 +7847,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntect"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925"
+dependencies = [
+ "bincode",
+ "fancy-regex",
+ "flate2",
+ "fnv",
+ "once_cell",
+ "plist",
+ "regex-syntax",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "thiserror 2.0.20",
+ "walkdir",
+ "yaml-rust",
+]
+
+[[package]]
 name = "system-configuration"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8950,6 +9071,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "two-face"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39e51b6e60e545cfdae5a4639ff423818f52372211a8d9a3e892b4b0761f76b2"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "syntect",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9171,6 +9303,7 @@ dependencies = [
  "verse-pbr",
  "verse-private",
  "verse-world",
+ "verse-zone-coast",
  "verse-zone-crypt",
  "verse-zone-everglade",
  "verse-zone-grove",
@@ -9258,6 +9391,7 @@ dependencies = [
  "gym-bridge",
  "gym-leaderboard",
  "nostr",
+ "pylon",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -9335,6 +9469,8 @@ dependencies = [
  "glam",
  "gltf",
  "half",
+ "libc",
+ "miniz_oxide 0.8.9",
  "physics",
  "png",
  "pollster",
@@ -9361,6 +9497,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "verse-water-spells"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "verse-content",
+ "verse-core",
+ "verse-gfx",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-everglade",
+ "verse-zone-grove",
+]
+
+[[package]]
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
@@ -9382,6 +9533,21 @@ dependencies = [
  "verse-engine",
  "wasm-bindgen-futures",
  "web-time",
+]
+
+[[package]]
+name = "verse-zone-coast"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "sha2 0.10.9",
+ "verse-core",
+ "verse-pbr",
+ "verse-water-spells",
+ "verse-world",
+ "verse-zone-everglade",
+ "verse-zone-water",
 ]
 
 [[package]]
@@ -9480,6 +9646,7 @@ dependencies = [
  "verse-core",
  "verse-gfx",
  "verse-pbr",
+ "verse-water-spells",
  "verse-world",
  "verse-zone-everglade",
  "verse-zone-grove",
@@ -9724,8 +9891,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f519832254e56965a9940c4af57dcb75f702b6f6fa4a0b172f685395843a4d7"
 dependencies = [
  "arrayvec",
- "bit-set",
- "bit-vec",
+ "bit-set 0.9.1",
+ "bit-vec 0.9.1",
  "bitflags 2.13.2",
  "bytemuck",
  "cfg_aliases",
@@ -9786,7 +9953,7 @@ dependencies = [
  "android_system_properties",
  "arrayvec",
  "ash",
- "bit-set",
+ "bit-set 0.9.1",
  "bitflags 2.13.2",
  "block2",
  "bytemuck",
@@ -10285,6 +10452,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "yaml-rust"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
+dependencies = [
+ "linked-hash-map",
 ]
 
 [[package]]
