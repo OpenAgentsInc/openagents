@@ -1,0 +1,160 @@
+/* Conversation thread (UI-09): messages in a centered column that scrolls
+   between the header and the docked composer, and the home page's centered
+   composer. Values come from the Apps SDK UI tokens (MIT, see NOTICE); the
+   user bubble uses the product-only message roles from composer.css. */
+
+.oa-thread-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.oa-thread-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 4);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--thread-content-max-width);
+  margin: 0 auto;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+}
+.oa-thread-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-text-md-size);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-thread-links {
+  display: flex;
+  flex: none;
+  gap: calc(var(--spacing) * 1);
+}
+.oa-thread-links a {
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  text-decoration: none;
+}
+.oa-thread-links a:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.oa-thread-links a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.oa-thread-column {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--thread-content-max-width);
+  margin: 0 auto;
+  padding: calc(var(--spacing) * 6) calc(var(--spacing) * 4) calc(var(--spacing) * 4);
+}
+
+.oa-message {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 calc(var(--spacing) * 6);
+  overflow-wrap: anywhere;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
+}
+.oa-message[data-role="user"] {
+  align-items: flex-end;
+}
+.oa-message-author {
+  margin: 0 0 calc(var(--spacing) * 1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+.oa-message-bubble {
+  box-sizing: border-box;
+  max-width: min(var(--user-chat-width, 70%), 100%);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+  border-radius: var(--radius-3xl);
+  background: var(--color-background-user-message);
+  color: var(--color-text-user-message);
+  font-size: var(--font-text-md-size);
+  line-height: var(--font-text-md-line-height);
+  white-space: pre-wrap;
+}
+.oa-message-content {
+  min-width: 0;
+  color: var(--color-text);
+}
+.oa-message-status {
+  margin: 0;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+
+.oa-thread-notice {
+  margin: 0 0 calc(var(--spacing) * 4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+.oa-thread-status {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+.oa-thread-error {
+  margin: 0 0 calc(var(--spacing) * 4);
+  color: var(--color-text-danger);
+}
+
+.oa-composer-feedback {
+  min-height: 1.2em;
+  margin: calc(var(--spacing) * 2) 0 0;
+  padding: 0 calc(var(--spacing) * 3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+/* The home page: the composer centered in the content area. */
+.oa-home-stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60vh;
+  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4);
+}
+.oa-home-stage .oa-composer-panel {
+  max-height: max(7.5rem, calc(50vh - 11rem));
+}
+
+@media (max-width: 40rem) {
+  .oa-thread-header {
+    padding-inline: calc(var(--spacing) * 3);
+  }
+  .oa-thread-links {
+    display: none;
+  }
+  .oa-thread-column {
+    padding-inline: calc(var(--spacing) * 3);
+  }
+  .oa-message-bubble {
+    max-width: 85%;
+  }
+}

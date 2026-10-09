@@ -13,6 +13,9 @@
 //! - [`Composer`]: a plain `<form method="post">` enhanced with HTMX, with
 //!   slots for the repository, branch and environment selectors
 //!   ([`ComposerDropdown`]) and a [`ModelPickerTrigger`].
+//! - [`ComposerAction`], [`ComposerPanel`]: footer icon buttons and the
+//!   panels the selectors load above the composer.
+//! - [`Message`]: one turn of a conversation thread.
 //! - [`ThemeToggle`]: the button the theme script binds through
 //!   [`THEME_TOGGLE_ATTR`].
 //!
@@ -23,10 +26,18 @@ mod composer;
 mod glyph;
 mod layout;
 mod theme;
+mod thread;
 
-pub use composer::{Composer, ComposerDropdown, HxGet, ModelPickerTrigger};
+pub use composer::{
+    Composer, ComposerAction, ComposerDropdown, ComposerPanel, HxGet, ModelPickerTrigger,
+    composer_panel_host,
+};
 pub use layout::{AppShell, Document, MainMode, NavItem, Sidebar, SidebarSection};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
+pub use thread::{Message, MessageRole};
+
+/// The thread stylesheet: messages, the thread column, the home stage.
+pub const THREAD_CSS: &str = include_str!("../../static/components/thread.css");
 
 /// The shell stylesheet: layout, left panel, navigation, header, main frame.
 pub const SHELL_CSS: &str = include_str!("../../static/components/shell.css");

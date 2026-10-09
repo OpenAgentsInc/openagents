@@ -37,7 +37,10 @@ fn enhanced_composer_posts_with_htmx_and_never_swaps_the_draft() {
     let html = chat_composer().render().into_string();
     assert!(html.contains(r#"hx-post="/chat/abc""#));
     assert!(html.contains(r#"hx-swap="none""#));
-    assert!(html.contains(r#"hx-disabled-elt="find button[type=submit]""#));
+    // Absolute, so the selector and picker buttons that inherit it from the
+    // form still name the form's own submit button.
+    assert!(html.contains(r##"hx-disabled-elt="#chat-form button[type=submit]""##));
+    assert!(!html.contains("find button"));
     assert!(html.contains(r#"hx-sync="this:drop""#));
     let plain = chat_composer().enhanced(false).render().into_string();
     assert!(!plain.contains("hx-post") && !plain.contains(r#"hx-swap="none""#));
@@ -220,7 +223,16 @@ fn every_rendered_class_has_a_rule() {
         )
         .render()
         .into_string();
-    let css = format!("{SHELL_CSS}{COMPOSER_CSS}");
+    let extra = html! {
+        (ComposerAction::new(html! { "+" }, "Add").hx(HxGet::new("/x")))
+        (composer_panel_host("composer-panel"))
+        (ComposerPanel::new("Model").close(HxGet::new("/close")).body(html! { p { "x" } }))
+        (Message::user("hi"))
+        (Message::assistant(html! { p { "hello" } }))
+        (Message::status("failed"))
+    };
+    let shell = format!("{shell}{}", extra.into_string());
+    let css = format!("{SHELL_CSS}{COMPOSER_CSS}{THREAD_CSS}");
     let mut missing = Vec::new();
     for chunk in shell.split("class=\"").skip(1) {
         let classes = chunk.split('"').next().unwrap();
@@ -234,8 +246,93 @@ fn every_rendered_class_has_a_rule() {
 }
 
 #[test]
+fn composer_actions_and_panels_load_with_htmx_and_never_submit() {
+    let html = chat_composer()
+        .leading(
+            ComposerAction::new(html! { "+" }, "Add context and tools").hx(HxGet::new(
+                "/composer/context",
+            )
+            .target("#composer-panel")
+            .swap("innerHTML")),
+        )
+        .trailing(
+            ComposerAction::new(html! { "m" }, "Voice input").title("Voice input availability"),
+        )
+        .after(composer_panel_host("composer-panel"))
+        .render()
+        .into_string();
+    assert!(html.contains(r#"class="oa-composer-action" aria-label="Add context and tools""#));
+    assert!(html.contains(r#"hx-get="/composer/context""#));
+    assert!(html.contains(r#"title="Voice input availability""#));
+    assert!(html.contains(r#"<div id="composer-panel" class="oa-composer-panel-host"></div>"#));
+    assert_eq!(html.matches(r#"type="submit""#).count(), 1);
+
+    let panel = ComposerPanel::new("Model")
+        .close(HxGet::new("/composer/close").target("#composer-panel"))
+        .close_label("Close selection")
+        .body(html! { p { "Auto <b>" } })
+        .render()
+        .into_string();
+    assert!(panel.contains(r#"<section class="oa-composer-panel" aria-label="Model">"#));
+    assert!(panel.contains(r#"aria-label="Close selection""#));
+    assert!(panel.contains(r#"hx-get="/composer/close""#));
+    assert!(panel.contains("Auto &lt;b&gt;"));
+    assert!(!panel.contains("aria-haspopup"), "close opens nothing");
+}
+
+#[test]
+fn sidebar_sections_can_be_replaced_and_rows_load_with_htmx() {
+    let section = |oob| {
+        SidebarSection::new("Chats")
+            .id("chat-sidebar")
+            .swap_oob(oob)
+            .item(
+                NavItem::new("First <chat>", "/chat/1")
+                    .current(true)
+                    .hx(HxGet::new("/chat/1/workspace").target("#chat-content")),
+            )
+            .after(html! { p { "note" } })
+            .render()
+            .into_string()
+    };
+    let page = section(false);
+    assert!(page.contains(r#"id="chat-sidebar""#));
+    assert!(!page.contains("hx-swap-oob"));
+    assert!(
+        page.contains(r##"href="/chat/1" hx-get="/chat/1/workspace" hx-target="#chat-content""##)
+    );
+    assert!(page.contains(r#"aria-current="page""#));
+    assert!(page.contains("First &lt;chat&gt;"));
+    assert!(page.find("</ul>").unwrap() < page.find("note").unwrap());
+    assert!(section(true).contains(r#"hx-swap-oob="outerHTML""#));
+    let plain = NavItem::new("Home", "/").render().into_string();
+    assert!(!plain.contains("hx-"));
+}
+
+#[test]
+fn messages_escape_text_and_keep_authors_for_screen_readers() {
+    let user = Message::user("<script>x</script>\nline")
+        .id("m-0")
+        .render()
+        .into_string();
+    assert!(user.contains(r#"<article class="oa-message" data-role="user" id="m-0">"#));
+    assert!(user.contains(r#"<h2 class="oa-message-author oa-visually-hidden">You</h2>"#));
+    assert!(user.contains("&lt;script&gt;x&lt;/script&gt;\nline"));
+    let assistant = Message::assistant(maud::PreEscaped("<p>ok</p>"))
+        .author("OpenAgents")
+        .render()
+        .into_string();
+    assert!(assistant.contains(r#"data-role="assistant""#));
+    assert!(assistant.contains("OpenAgents</h2>"));
+    assert!(assistant.contains(r#"<div class="oa-message-content"><p>ok</p></div>"#));
+    let status = Message::status("Failed").render().into_string();
+    assert!(status.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
+    assert_eq!(Message::status("x").role(), MessageRole::Status);
+}
+
+#[test]
 fn stylesheets_are_balanced_and_use_the_oa_prefix() {
-    for css in [SHELL_CSS, COMPOSER_CSS] {
+    for css in [SHELL_CSS, COMPOSER_CSS, THREAD_CSS] {
         assert_eq!(css.matches('{').count(), css.matches('}').count());
         for line in css.lines() {
             let line = line.trim_start();

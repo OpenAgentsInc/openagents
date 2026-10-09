@@ -2,7 +2,7 @@
 
 use maud::{DOCTYPE, Markup, Render, html};
 
-use super::{Theme, glyph};
+use super::{HxGet, Theme, glyph};
 
 /// The `id` of the left panel; the header toggle targets it.
 const LEFT_PANEL_ID: &str = "oa-left-panel";
@@ -85,6 +85,7 @@ pub struct NavItem {
     icon: Option<Markup>,
     current: bool,
     trailing: Option<Markup>,
+    hx: Option<HxGet>,
 }
 
 impl NavItem {
@@ -97,6 +98,7 @@ impl NavItem {
             icon: None,
             current: false,
             trailing: None,
+            hx: None,
         }
     }
 
@@ -120,13 +122,27 @@ impl NavItem {
         self.trailing = Some(trailing.render());
         self
     }
+
+    /// Also loads the row's view with HTMX (for example a conversation into
+    /// the content area); the plain link still works without JavaScript.
+    #[must_use]
+    pub fn hx(mut self, hx: HxGet) -> Self {
+        self.hx = Some(hx);
+        self
+    }
 }
 
 impl Render for NavItem {
     fn render(&self) -> Markup {
+        let hx = self.hx.as_ref();
         html! {
             li class="oa-nav-row" {
                 a class="oa-nav-item" href=(self.href)
+                    hx-get=[hx.map(|hx| hx.url.as_str())]
+                    hx-target=[hx.and_then(|hx| hx.target.as_deref())]
+                    hx-include=[hx.and_then(|hx| hx.include.as_deref())]
+                    hx-swap=[hx.and_then(|hx| hx.swap.as_deref())]
+                    hx-sync=[hx.and_then(|hx| hx.sync.as_deref())]
                     aria-current=[self.current.then_some("page")] {
                     @if let Some(icon) = &self.icon {
                         span class="oa-nav-item-icon" aria-hidden="true" { (icon) }
@@ -147,6 +163,9 @@ pub struct SidebarSection {
     title: String,
     items: Vec<NavItem>,
     empty: Option<String>,
+    id: Option<String>,
+    swap_oob: bool,
+    after: Option<Markup>,
 }
 
 impl SidebarSection {
@@ -157,6 +176,9 @@ impl SidebarSection {
             title: title.into(),
             items: Vec::new(),
             empty: None,
+            id: None,
+            swap_oob: false,
+            after: None,
         }
     }
 
@@ -180,12 +202,35 @@ impl SidebarSection {
         self.empty = Some(text.into());
         self
     }
+
+    /// The section's id, so a response can replace it.
+    #[must_use]
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Marks this rendering as an HTMX out-of-band replacement
+    /// (`hx-swap-oob="outerHTML"`) of the section with the same id.
+    #[must_use]
+    pub fn swap_oob(mut self, oob: bool) -> Self {
+        self.swap_oob = oob;
+        self
+    }
+
+    /// Content after the rows: a note, an error, a trailing link list.
+    #[must_use]
+    pub fn after(mut self, after: impl Render) -> Self {
+        self.after = Some(after.render());
+        self
+    }
 }
 
 impl Render for SidebarSection {
     fn render(&self) -> Markup {
         html! {
-            section class="oa-sidebar-section" aria-label=(self.title) {
+            section class="oa-sidebar-section" id=[self.id.as_deref()]
+                hx-swap-oob=[self.swap_oob.then_some("outerHTML")] aria-label=(self.title) {
                 h2 class="oa-sidebar-section-title" { (self.title) }
                 @if self.items.is_empty() {
                     @if let Some(empty) = &self.empty {
@@ -196,6 +241,7 @@ impl Render for SidebarSection {
                         @for item in &self.items { (item) }
                     }
                 }
+                @if let Some(after) = &self.after { (after) }
             }
         }
     }

@@ -223,6 +223,217 @@
   opacity: 0.4;
 }
 
+/* Footer icon buttons: add context, voice input. */
+.oa-composer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(var(--spacing) * 8);
+  height: calc(var(--spacing) * 8);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--composer-dropdown-label-color);
+  font: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--transition-duration-basic) var(--transition-ease-basic);
+}
+.oa-composer-action:hover,
+.oa-composer-action[aria-expanded="true"] {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.oa-composer-action:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-composer-action-icon {
+  display: inline-flex;
+  font-size: var(--font-text-lg-size);
+}
+
+/* Selector panels: loaded into the host after the form, they open above the
+   composer. */
+.oa-composer-panel-host {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  z-index: 5;
+  height: 0;
+}
+.oa-composer-panel {
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: calc(var(--spacing) * 2);
+  box-sizing: border-box;
+  width: min(32.5rem, calc(100vw - var(--spacing) * 8));
+  max-height: min(60vh, 37.5rem);
+  overflow: auto;
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-300);
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+}
+.oa-composer-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 3);
+  margin: 0 0 calc(var(--spacing) * 3);
+}
+.oa-composer-panel-title {
+  margin: 0;
+  font-size: var(--font-text-md-size);
+  font-weight: var(--font-weight-semibold);
+}
+.oa-composer-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 7);
+  height: calc(var(--spacing) * 7);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.oa-composer-panel-close:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.oa-composer-panel-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-composer-panel-body p {
+  margin: 0 0 calc(var(--spacing) * 3);
+  line-height: var(--font-text-sm-line-height);
+}
+.oa-composer-panel-body h3 {
+  margin: calc(var(--spacing) * 4) 0 calc(var(--spacing) * 2);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+}
+.oa-composer-panel-body form {
+  margin: 0 0 calc(var(--spacing) * 2);
+}
+.oa-composer-panel-body label {
+  display: block;
+  margin: 0 0 calc(var(--spacing) * 1.5);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size);
+}
+.oa-composer-panel-body a {
+  color: var(--color-text-primary-ghost, var(--color-text));
+  font-size: var(--font-text-xs-size);
+}
+.oa-composer-panel-body [role="alert"] {
+  color: var(--color-text-danger);
+}
+.oa-composer-choice {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+  text-align: start;
+  white-space: normal;
+  cursor: pointer;
+}
+.oa-composer-choice:hover {
+  border-color: var(--color-border);
+  background: var(--color-background-primary-ghost-hover);
+}
+.oa-composer-choice:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-composer-choice:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.oa-composer-choice strong {
+  display: block;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.oa-composer-choice small {
+  display: block;
+  margin-top: calc(var(--spacing) * 1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size);
+  overflow-wrap: anywhere;
+}
+.oa-composer-entry {
+  display: flex;
+  gap: calc(var(--spacing) * 2);
+  margin: 0 0 calc(var(--spacing) * 3);
+}
+.oa-composer-entry input {
+  flex: 1;
+  min-width: 0;
+  padding: calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+.oa-composer-entry input:focus-visible {
+  outline: none;
+  border-color: var(--color-border-strong);
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.oa-composer-entry button {
+  flex: none;
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-background-composer-primary);
+  color: var(--color-text-primary-solid);
+  font: inherit;
+  cursor: pointer;
+}
+.oa-composer-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+  margin: 0 0 calc(var(--spacing) * 4);
+  font-size: var(--font-text-xs-size);
+}
+.oa-composer-details dt {
+  color: var(--color-text-secondary);
+}
+.oa-composer-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.oa-composer-note {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size);
+}
+/* A selection result loaded into the host sits just above the composer. */
+.oa-composer-result {
+  position: absolute;
+  inset-inline-start: calc(var(--spacing) * 3);
+  bottom: calc(var(--spacing) * 1);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size);
+}
+
 /* Status: failure messages; empty takes no space. */
 .oa-composer-status {
   padding: 0 calc(var(--spacing) * 3);

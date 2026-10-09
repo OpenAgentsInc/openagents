@@ -16,11 +16,11 @@ use super::glyph;
 /// do (`hx-get`, `hx-target`, `hx-include`, `hx-swap`, `hx-sync`).
 #[derive(Clone, Debug)]
 pub struct HxGet {
-    url: String,
-    target: Option<String>,
-    include: Option<String>,
-    swap: Option<String>,
-    sync: Option<String>,
+    pub(super) url: String,
+    pub(super) target: Option<String>,
+    pub(super) include: Option<String>,
+    pub(super) swap: Option<String>,
+    pub(super) sync: Option<String>,
 }
 
 impl HxGet {
@@ -312,7 +312,8 @@ impl Composer {
     }
 
     /// Whether to add the HTMX attributes (`hx-post`, `hx-swap="none"`,
-    /// `hx-disabled-elt`, `hx-sync`). On by default; the plain form works
+    /// `hx-disabled-elt` naming this form's submit button, `hx-sync`). On by
+    /// default; the plain form works
     /// either way.
     #[must_use]
     pub fn enhanced(mut self, enhanced: bool) -> Self {
@@ -502,13 +503,17 @@ impl Render for Composer {
             .clone()
             .unwrap_or_else(|| format!("{}-body", self.id));
         let enhanced = self.enhanced;
+        // An absolute selector, not `find ...`: HTMX inherits
+        // `hx-disabled-elt` into the selector and picker buttons inside the
+        // form, where a relative `find` would resolve against the button.
+        let disabled_elt = format!("#{} button[type=submit]", self.id);
         html! {
             section class="oa-composer" aria-label=(self.label) {
                 form id=(self.id) class="oa-composer-root" action=(self.action) method="post"
                     data-oa-composer=""
                     hx-post=[enhanced.then_some(self.action.as_str())]
                     hx-swap=[enhanced.then_some("none")]
-                    hx-disabled-elt=[enhanced.then_some("find button[type=submit]")]
+                    hx-disabled-elt=[enhanced.then_some(disabled_elt.as_str())]
                     hx-sync=[enhanced.then_some("this:drop")]
                     hx-include=[enhanced.then_some(self.hx_include.as_deref()).flatten()] {
                     @for fields in &self.hidden { (fields) }
@@ -555,6 +560,147 @@ impl Render for Composer {
                     }
                 }
                 @if let Some(after) = &self.after { (after) }
+            }
+        }
+    }
+}
+
+/// A round icon button in the composer footer: "add context" before the
+/// dropdowns, voice input before the send button. It never submits the form.
+#[derive(Clone, Debug)]
+pub struct ComposerAction {
+    icon: Markup,
+    label: String,
+    title: Option<String>,
+    hx: Option<HxGet>,
+    popover: Option<String>,
+}
+
+impl ComposerAction {
+    /// A button showing `icon` whose accessible name is `label`.
+    #[must_use]
+    pub fn new(icon: impl Render, label: impl Into<String>) -> Self {
+        Self {
+            icon: icon.render(),
+            label: label.into(),
+            title: None,
+            hx: None,
+            popover: None,
+        }
+    }
+
+    /// A tooltip (`title`), when it says more than the label.
+    #[must_use]
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Loads a panel with HTMX.
+    #[must_use]
+    pub fn hx(mut self, hx: HxGet) -> Self {
+        self.hx = Some(hx);
+        self
+    }
+
+    /// Opens a native popover by id instead.
+    #[must_use]
+    pub fn popover(mut self, id: impl Into<String>) -> Self {
+        self.popover = Some(id.into());
+        self
+    }
+}
+
+impl Render for ComposerAction {
+    fn render(&self) -> Markup {
+        trigger(
+            "oa-composer-action",
+            Some(&self.label),
+            self.title.as_deref(),
+            self.hx.as_ref(),
+            self.popover.as_deref(),
+            html! { span class="oa-composer-action-icon" aria-hidden="true" { (self.icon) } },
+        )
+    }
+}
+
+/// The element the composer's selectors and pickers load their panels into
+/// (their [`HxGet::target`]). Put it in [`Composer::after`]; a loaded
+/// [`ComposerPanel`] opens above the composer.
+#[must_use]
+pub fn composer_panel_host(id: &str) -> Markup {
+    html! { div id=(id) class="oa-composer-panel-host" {} }
+}
+
+/// A panel loaded into the [`composer_panel_host`]: a titled section with a
+/// close button and its content. Inside the body, `oa-composer-choice`
+/// buttons (a `strong` title and `small` details), `oa-composer-entry` rows
+/// (an input and a button), `oa-composer-details` lists and
+/// `oa-composer-note` lines are styled.
+#[derive(Clone, Debug)]
+pub struct ComposerPanel {
+    title: String,
+    close: Option<HxGet>,
+    close_label: String,
+    body: Option<Markup>,
+}
+
+impl ComposerPanel {
+    /// A panel headed `title`; the title also names the region.
+    #[must_use]
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            close: None,
+            close_label: "Close".to_owned(),
+            body: None,
+        }
+    }
+
+    /// The close button's request (usually one that empties the host).
+    #[must_use]
+    pub fn close(mut self, hx: HxGet) -> Self {
+        self.close = Some(hx);
+        self
+    }
+
+    /// The close button's accessible name, "Close" by default.
+    #[must_use]
+    pub fn close_label(mut self, label: impl Into<String>) -> Self {
+        self.close_label = label.into();
+        self
+    }
+
+    /// The panel content.
+    #[must_use]
+    pub fn body(mut self, body: impl Render) -> Self {
+        self.body = Some(body.render());
+        self
+    }
+}
+
+impl Render for ComposerPanel {
+    fn render(&self) -> Markup {
+        let close = self.close.as_ref();
+        html! {
+            section class="oa-composer-panel" aria-label=(self.title) {
+                header class="oa-composer-panel-header" {
+                    h2 class="oa-composer-panel-title" { (self.title) }
+                    @if let Some(close) = close {
+                        button type="button" class="oa-composer-panel-close"
+                            aria-label=(self.close_label) title=(self.close_label)
+                            hx-get=(close.url)
+                            hx-target=[close.target.as_deref()]
+                            hx-include=[close.include.as_deref()]
+                            hx-swap=[close.swap.as_deref()]
+                            hx-sync=[close.sync.as_deref()] {
+                            (glyph::close())
+                        }
+                    }
+                }
+                div class="oa-composer-panel-body" {
+                    @if let Some(body) = &self.body { (body) }
+                }
             }
         }
     }
