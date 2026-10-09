@@ -85,6 +85,39 @@ Budgets: an instant answer shows its first words within 3 s and is whole
 within 3.5 s on the page; a model answer within 10 s and 60 s. The router
 mode's budget for Jev alone is 2 s.
 
+## The launch bar (#11106)
+
+Before a chat deploy, run
+
+```sh
+scripts/chat-goldens.sh local
+```
+
+It exits 0 only when the run meets the set's `gate`
+(`bench/web-chat/goldens-v1.json`):
+
+- **At least 90 % of the cases are right.** A case is right when it passes,
+  or when the person read a right reply that wasn't instant: every failed
+  check is a time, or the model wrote the reply (from the product notes or
+  not) instead of a prepared answer shown whole, and the reply has every
+  required fact, no forbidden word, and no machine talk. The report lists
+  these under **Right but slow**, apart from the **Failures**.
+- **No wrong case in a critical flow:** the four questions under the chat
+  box (`starters`), what models we use (`about.model`), the how-tos
+  (`coder.install`, `coder.login`, `coder.sync`,
+  `account.connect_computer`, `github.connect_repo`), pricing and plans
+  (`pricing`), and privacy and training (`privacy`).
+
+A run with `--flow`, `--golden`, or `--first` exits 1 when any case
+fails. The router mode can't read a written reply, so there a case the
+model would answer counts as wrong; gate on `local`.
+
+When the Vercel AI Gateway can't pay (every call answers 402),
+`CHAT_GOLDENS_NO_GATEWAY=1 scripts/chat-goldens.sh local` keeps it out
+where it can: Jev through OpenRouter and TypeSafe, the notes' embeddings
+and the chat model through OpenRouter (a turn OpenRouter hasn't started
+in 4 s still falls back to the gateway, and fails).
+
 ## Running them
 
 ```sh
@@ -144,8 +177,62 @@ tier, and answer only once the site serves the reply markers.
 
 ## Results, 2026-10-09
 
-All 97 cases. Jev's readings vary from run to run, so numbers move by a
-few cases.
+Jev's readings vary from run to run, so numbers move by a few cases.
+
+### The launch bar (#11106), 113 cases
+
+| Run | Pass | Right (bar) | Critical wrong | Instant first words p50 / p90 |
+| --- | --- | --- | --- | --- |
+| `router`, `main` at `5af7b4257b` | 86 of 113 | - | - | Jev alone 0.5 / 1.2 s |
+| `local`, `main` at `5af7b4257b`, gateway kept out | 87 of 113 | 88 % | 5 | 1.8 / 3.3 s |
+| `local`, after #11106's fixes, gateway kept out | 92 of 113 | 98 %, met | 0 | 1.9 / 3.3 s |
+
+The first `local` run with the shipped configuration failed half its cases
+with "We couldn't answer this time": the Vercel AI Gateway answers every
+call with 402 (no credit), and Space Bunny Alpha, the worker's OpenRouter
+primary, is gone from OpenRouter (404). The runs above keep the gateway out
+(`CHAT_GOLDENS_NO_GATEWAY=1`), so the chat model is Gemini 3.8 Flash on
+OpenRouter.
+
+What #11106 fixed:
+
+- The `product.kb` route says it covers projects, environments, the Claude
+  key in Settings, and getting, installing, and signing in to Coder;
+  `general` leaves a feature named by an everyday word ("what is a
+  project") to it, `work.dispatch` leaves getting Coder to it, `codebase.kb`
+  leaves "where is your source code" to `meta`, and `clarify` leaves a short
+  question about price to `meta`. The route question set is regenerated and
+  the calibration refit by the published eval (held out: route accuracy
+  90.2 %, canned precision 98.6 %, dispatch precision 97.7 %, as before).
+- `openagents.chat-privacy` v11 says it covers training and opting out, so
+  "can I opt out of training" finds it instead of "we have no documented
+  answer".
+- Jev's OpenRouter door asked for `typesafe/jev-latest`, which OpenRouter
+  refuses with a 400 that never fails over: with the gateway down, every
+  routed turn went unrouted. `jev-latest` now asks OpenRouter for
+  `typesafe/jev-1.13`.
+- Goldens: the page draws code without backticks and may show a link
+  without `https://`, so the text checks ignore both; "connect my repo" and
+  "run Claude Code on my repo" accept the connect-your-codebase answer added
+  in #11095.
+
+Still failing in the last run, and why that's acceptable for launch:
+
+- `environments.when#2` "when will environments be available?": the model
+  answered without the note ("no specific release date") instead of "not
+  open yet". Not critical, and environments aren't public.
+- `claude_key.add#4` "can I use my bedrock credentials": OpenRouter didn't
+  start in 4 s and the gateway fallback answered 402. Gone once the gateway
+  has credit.
+
+Nineteen more were right but not instant: a product note the model wrote
+from (3 to 4 s) instead of shown whole, because Jev's whole-answer or
+needs-specifics reading kept it from standing alone (projects, sign-in, the
+Claude key, environments, "connect my repo", "can you read my repo from
+here?"), or a right model reply on another route ("what is the code at
+openagents.com/device", "can you open this link").
+
+### Earlier, 97 cases
 
 | Run | Pass | Instant first words p50 / p90 |
 | --- | --- | --- |
@@ -154,21 +241,7 @@ few cases.
 | `http`, local site → the production chat worker after deploying `42fe20c01b` | 67 of 97 (69 %) | 1.5 s / 8.2 s |
 | `router`, this checkout | 67–68 of 97 | Jev alone 0.3–1.1 s |
 
-Until `42fe20c01b` was deployed on 2026-10-09, the production chat worker ran a release from 2026-10-03: its bank still
-said Coder is "dispatched" to "a computer you've connected", its notes
-still offered a Mac `.dmg`, an account question on the website got
-"download the app", and it had none of the notes on projects, sign-in, the
-Claude key, environments, Coder's sign-in and sync, or deleting chats. Its
-grounded and model replies took 5 to 45 s to show their first words. Jev
-itself was answering: prepared answers showed in about 0.85 to 1 s.
-
-What still fails with this checkout's answers is speed, not wrong claims:
-
-- A product note served as grounded (the model writing from the note, 6 to
-  8 s) instead of whole, when Jev's whole-answer reading is under 0.8 or its
-  needs-specifics reading is 0.3 or more (sign-in, Claude key, environments,
-  "connect my repo", "can you read my repo from here?").
-- A question read as general programming ("what is a project", "what is an
-  environment", "where do i put my claude api key"), or as work ("download
-  coder", "install coder on linux"), gets the model.
-- "where is your source code" reads as a codebase question.
+Until `42fe20c01b` was deployed on 2026-10-09, the production chat worker
+ran a release from 2026-10-03 (Coder "dispatched" to "a computer you've
+connected", a Mac `.dmg`, and none of the notes on projects, sign-in, the
+Claude key, environments, Coder's sign-in and sync, or deleting chats).

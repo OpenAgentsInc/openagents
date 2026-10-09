@@ -11,6 +11,20 @@
 # typesafe.env, ai-gateway.env, and openrouter.env in $OPENAGENTS_SECRETS
 # (default ~/work/.secrets) if those files exist; nothing is printed.
 #
+# CHAT_GOLDENS_NO_GATEWAY=1 keeps the Vercel AI Gateway out where it can
+# (when it can't pay): Jev through OpenRouter and TypeSafe, the product
+# notes' embeddings and the chat model through OpenRouter
+# (OPENROUTER_API_KEY); a turn OpenRouter hasn't started in 4 s still
+# falls back to the gateway.
+#
+# A whole-set router, http, or local run exits 1 below the set's launch bar
+# (the gate in bench/web-chat/goldens-v1.json, #11106), so
+#
+#   scripts/chat-goldens.sh local
+#
+# gates a chat deploy. A filtered run (--flow, --golden, --first) exits 1
+# when any case fails.
+#
 # local starts a chat worker built from this checkout on a fresh key (on
 # relay.openagents.com, answering only the site it starts) and the website
 # on 127.0.0.1:${CHAT_GOLDENS_PORT:-4399} pointed at it, runs the http mode
@@ -50,7 +64,8 @@ router)
     load TYPESAFE_API_KEY typesafe.env
     load AI_GATEWAY_API_KEY ai-gateway.env
     export CODER_AI_GATEWAY_KEY="${CODER_AI_GATEWAY_KEY:-${AI_GATEWAY_API_KEY:-}}"
-    export OPENAGENTS_PRODUCT_KB_EMBEDDINGS="${OPENAGENTS_PRODUCT_KB_EMBEDDINGS:-gateway}"
+    export OPENAGENTS_PRODUCT_KB_EMBEDDINGS="${OPENAGENTS_PRODUCT_KB_EMBEDDINGS-gateway}"
+    [ -z "${CHAT_GOLDENS_NO_GATEWAY:-}" ] || export OPENAGENTS_PRODUCT_KB_EMBEDDINGS=""
     build
     exec "$goldens" router "$@"
     ;;
@@ -71,7 +86,13 @@ local)
         export CODER_RELAY=wss://relay.openagents.com CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
         export CODER_WORKER_USAGE_DIR="$work/usage" CODER_DOOR_KEY="$AI_GATEWAY_API_KEY"
         export CODER_WORKER_MODEL=gemini CODER_PERSONALIZE=openrouter
-        export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents" OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway
+        export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents" OPENAGENTS_PRODUCT_KB_EMBEDDINGS="${OPENAGENTS_PRODUCT_KB_EMBEDDINGS-gateway}"
+        if [ -n "${CHAT_GOLDENS_NO_GATEWAY:-}" ]; then
+            # The gateway can't pay: Jev through OpenRouter and TypeSafe,
+            # the model and the embeddings through OpenRouter.
+            unset AI_GATEWAY_API_KEY
+            export OPENAGENTS_PRODUCT_KB_EMBEDDINGS="" CODER_WORKER_PRIMARY="${CODER_WORKER_PRIMARY:-google/gemini-3.8-flash}"
+        fi
         exec "$target/debug/coder-worker" > "$work/worker.log" 2>&1
     ) &
     worker_pid=$!

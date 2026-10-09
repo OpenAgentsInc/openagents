@@ -1,8 +1,8 @@
 ---
 id: openagents.chat-privacy
-version: 10
+version: 11
 kind: product
-title: "How chat messages travel and who sees them"
+title: "How chat messages travel, who sees them, and whether we train on them"
 summary: >-
   In the apps, chat messages are signed by the device key, encrypted to the
   chat worker, carried by a relay that keeps nothing, and saved only on the
@@ -10,13 +10,15 @@ summary: >-
   no message text and sends the conversation to Jev (TypeSafe, through the
   Vercel AI Gateway), Space Bunny Alpha (OpenRouter), Gemini (Vercel AI
   Gateway) when Space Bunny can't answer, and, for product lookups, an
-  embeddings provider.
-tags: [privacy, encryption, chat, relay, data]
+  embeddings provider. We may train our own models on chats; on a paid plan
+  you can opt out by arrangement.
+tags: [privacy, encryption, chat, relay, data, training, opt-out]
 applies_when: >-
   The user asks whether chat messages are private, encrypted, stored, or
   logged, whether web chats are kept, which services or model providers see
   what they write in the chat, who else can read their chats, whether the
-  chat runs locally, or whether they can turn provider access off.
+  chat runs locally, whether they can turn provider access off, or whether
+  we train on their chats and how to opt out of that.
 answer: >-
   The web chat saves your chats on our servers, and you can delete them.
   In the apps, messages are encrypted to our chat worker and chats stay on
@@ -46,6 +48,7 @@ evidence:
   - "2026-10-09: v9 (#11040, #11042): chat-model requests carry store false plus, by default (CODER_PROVIDER_PRIVACY=strict), OpenRouter provider.data_collection deny and zdr true and the Vercel AI Gateway's providerOptions.gateway.zeroDataRetention true (crates/coder/src/generate.rs ProviderPrivacy; personalization through openrouter::ChatRequest::no_retention); a model with no such endpoint is refused and the turn falls back. Jev's doors and embeddings send none of this. The usage log deletes day files older than 30 days (CODER_WORKER_USAGE_DAYS, crates/coder/src/relay/usage.rs)."
   - "2026-10-09: v8 says we may train on chats, with opt-outs on paid plans by arrangement (owner, #11044)."
   - "2026-10-08: v6 separates the web chat, which saves conversations on our servers (crates/openagents-web/src/chat_store.rs, a private GCS bucket with no lifecycle rule and no delete route), from the apps, which save chats on the device; no code feeds chats into training."
+  - "2026-10-09: v11 (#11106): covers whether we train on chats and how to opt out, which the answer already says; \"can I opt out of training\" found no note and the grounded reply said we had no documented answer."
   - "2026-10-09: v10 (chat goldens): the short answer says we may train on chats, with paid-plan opt-outs by arrangement (#11044), and that web chats can be deleted, so a reply served from it alone is never read as \"we don't train\"."
 ---
 

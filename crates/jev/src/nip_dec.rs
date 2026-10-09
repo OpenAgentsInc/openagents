@@ -273,11 +273,19 @@ pub fn canonical_model(model: &str) -> &str {
 /// OpenRouter's name for a model: the alias of a canonical name, or
 /// `typesafe/<name>` for another bare Jev name (OpenRouter maps bare
 /// System One names onto the `typesafe/` namespace), or the name itself
-/// when it already names a namespace.
+/// when it already names a namespace. `jev-latest`, the default, asks for
+/// the newest Jev OpenRouter carries, the first alias: OpenRouter refuses
+/// `typesafe/jev-latest` ("does not exist", a 400 that never fails over
+/// to the next door; #11106).
 #[must_use]
 pub fn openrouter_model(model: &str) -> std::borrow::Cow<'_, str> {
     if model.contains('/') {
         return model.into();
+    }
+    if model == "jev-latest"
+        && let Some((alias, _)) = MODEL_ALIASES.first()
+    {
+        return (*alias).into();
     }
     if let Some((alias, _)) = MODEL_ALIASES
         .iter()
@@ -488,7 +496,7 @@ mod tests {
         assert_eq!(canonical_model("typesafe/jev-1.13"), "jev-1.13.0");
         assert_eq!(canonical_model("jev-latest"), "jev-latest");
         assert_eq!(openrouter_model("jev-1.13.0"), "typesafe/jev-1.13");
-        assert_eq!(openrouter_model("jev-latest"), "typesafe/jev-latest");
+        assert_eq!(openrouter_model("jev-latest"), "typesafe/jev-1.13");
         assert_eq!(openrouter_model("typesafe/jev-1.13"), "typesafe/jev-1.13");
     }
 

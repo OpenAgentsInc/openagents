@@ -121,7 +121,9 @@ pub fn route(route: RouteId) -> Value {
              which engine it used and why, or a summary or explanation of it, which we answer \
              from its result",
             Some(
-                "Facts about OpenAgents or us (product.kb, meta), including what plugins are \
+                "Facts about OpenAgents or us (product.kb, meta), including a feature named by \
+                 an everyday word, such as a project, an environment, or a Claude or API key, \
+                 asked about in this chat, and what plugins are \
                  or what they do, what a test, a test set, or a tool is in the Gym, which plugins the Gym has, and what one of our \
                  plugins does even when its name sounds like another product's, and what our \
                  own essays and thesis say about general agents, test-time capabilities, \
@@ -143,9 +145,13 @@ pub fn route(route: RouteId) -> Value {
             ],
         ),
         RouteId::ProductKb => option(
-            "How to do something in the OpenAgents app or with OpenAgents services, or what an \
-             OpenAgents feature is: connecting a phone or a computer and what connecting \
-             needs, such as whether Tailscale or another tool is required, the Gym, the Grid, \
+            "How to do something in the OpenAgents app, on openagents.com, or with OpenAgents \
+             services, or what an OpenAgents feature is: projects (a GitHub repository added \
+             on openagents.com) and environments; adding their own Claude key or other model \
+             credentials in Settings; getting, downloading, installing, or signing in to \
+             Coder, and seeing Coder's chats on the website; connecting a phone or a computer \
+             and what connecting needs, such as whether Tailscale or another tool is required, \
+             the Gym, the Grid, \
              the Verse, XP, Pylon, relays, and protocols such as NIP-CJ or NIP-CAP; what plugins \
              are and what they do; and which plugins the Gym has or what one of our plugins does, even when its name sounds \
              like another product's; and what our own essays, Test-Time Capabilities and The \
@@ -199,7 +205,8 @@ pub fn route(route: RouteId) -> Value {
             Some(
                 "The user's own code or repository (work.dispatch); how to use a feature \
                  (product.kb); asking to see how we route messages or our route map, rather \
-                 than where its code lives (meta)",
+                 than where its code lives, or whether we are open source and where our \
+                 source code is published (meta)",
             ),
             &[
                 "where is the chat worker quota implemented",
@@ -227,7 +234,8 @@ pub fn route(route: RouteId) -> Value {
                  contains (codebase.kb); summarizing, explaining, or comparing our own \
                  published essays (product.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
-                 (cli); testing one of our Gym plugins on Coder or running its tests, even \
+                 (cli); asking how to get, download, install, or sign in to Coder itself \
+                 (product.kb); testing one of our Gym plugins on Coder or running its tests, even \
                  when the plugin's name reads like a task, such as Explain this error or \
                  Dependency check (eval.run); making a new plugin with us, even when they \
                  describe in detail what it should do on their computer or in their files, \
@@ -313,7 +321,8 @@ pub fn route(route: RouteId) -> Value {
              the user means",
             Some(
                 "A short but clear question or request, including a short question about us \
-                 or this app such as who built it, or a short request to open our map (meta); \
+                 or this app such as who built it or what it costs, or a short request to open \
+                 our map (meta); \
                  a short request to summarize or compare \"the essays\" or \"both essays\", \
                  which are our two published essays (product.kb); a short answer to our question while \
                  we make a tool or a test set together (eval.author); a short word about their \

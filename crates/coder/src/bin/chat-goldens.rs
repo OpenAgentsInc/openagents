@@ -23,8 +23,11 @@
 //! a model reply's text isn't written in this mode.
 //!
 //! Every run writes `report.json` and `report.md` to `--out` (default
-//! `target/chat-goldens/<mode>-<unix seconds>/`) and exits 1 when a case
-//! fails, 2 on a usage or setup error.
+//! `target/chat-goldens/<mode>-<unix seconds>/`). A run of the whole set
+//! exits 1 when it misses the set's launch bar (`gate`: the share of cases
+//! that must be right, slow ones counted, and no wrong case in a critical
+//! flow; #11106); a filtered run exits 1 when any case fails. 2 is a usage
+//! or setup error.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -255,7 +258,14 @@ async fn main() -> ExitCode {
         Ok(()) => println!("Wrote {}", out.join("report.md").display()),
         Err(e) => eprintln!("couldn't write the report to {}: {e}", out.display()),
     }
-    if report.passed == report.cases {
+    // The set's launch bar decides when it has one and the whole set ran
+    // (#11106); a filtered run, or a set without one, needs every case.
+    let whole = o.flows.is_empty() && o.only.is_empty() && o.first.is_none();
+    let ok = match (&report.gate, whole) {
+        (Some(gate), true) => gate.met,
+        _ => report.passed == report.cases,
+    };
+    if ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)

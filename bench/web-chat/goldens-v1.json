@@ -33,6 +33,21 @@
     "Test reader",
     "Explain this error"
   ],
+  "gate": {
+    "$comment": "The launch bar (#11106): a whole-set run exits 1 below it. min_right is the share of cases that must be right: passing, or right but slow (over a time budget, or written by the model instead of a prepared answer shown whole, with every text check passing). critical: flows and goldens where no case may be wrong: the four questions under the chat box, what models we use, how-tos (install Coder, sign Coder in, sync, connect a computer, connect a repository), pricing and plans, and privacy and training.",
+    "min_right": 0.9,
+    "critical": [
+      "starters",
+      "about.model",
+      "coder.install",
+      "coder.login",
+      "coder.sync",
+      "account.connect_computer",
+      "github.connect_repo",
+      "pricing",
+      "privacy"
+    ]
+  },
   "flows": [
     {
       "id": "starters",
@@ -161,10 +176,10 @@
             "how do i add a private repo"
           ],
           "route": ["meta", "product.kb"],
-          "answers": ["meta.github.website", "openagents.github-projects"],
+          "answers": ["meta.github.website", "openagents.github-projects", "meta.codebase", "openagents.connect-codebase"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["Projects"], ["connect GitHub", "Connect GitHub"], ["https://openagents.com/projects"]],
+          "required": [["Projects"], ["connect GitHub", "sign in with GitHub"], ["https://openagents.com/projects"]],
           "forbidden": ["computer you connect"]
         },
         {
@@ -269,10 +284,10 @@
           "id": "environments.run_claude_code",
           "phrasings": ["how do I run claude code on my repo", "can you run claude code in the cloud on my repository?"],
           "route": ["product.kb", "meta"],
-          "answers": ["openagents.environments"],
+          "answers": ["openagents.environments", "openagents.connect-codebase", "meta.codebase"],
           "tier": ["canned"],
           "speed": "instant",
-          "required": [["environment"]],
+          "required": [["environment", "Coder"]],
           "forbidden": []
         },
         {

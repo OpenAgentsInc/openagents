@@ -45,7 +45,22 @@ pub struct Set {
     /// Words no reply may contain, whatever was asked.
     #[serde(default)]
     pub forbidden: Vec<String>,
+    /// The bar a run must clear to ship (#11106); none means every case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<Gate>,
     pub flows: Vec<Flow>,
+}
+
+/// The launch bar (#11106): the least share of cases that must be right
+/// (a [`Outcome::Slow`] case counts as right), and the flows and goldens
+/// where no case may be wrong.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Gate {
+    /// Between 0 and 1.
+    pub min_right: f64,
+    /// Flow or golden ids.
+    #[serde(default)]
+    pub critical: Vec<String>,
 }
 
 /// How fast each speed must be.
@@ -237,10 +252,56 @@ pub struct Grade {
     pub observed: Observed,
 }
 
+/// What a graded case means for the launch bar.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    /// Every check passed.
+    Pass,
+    /// The person read a right reply, only not as fast as the golden wants
+    /// it: every failed check is a time, or the reply was written by the
+    /// model (from the product notes or not) instead of a prepared answer
+    /// shown whole, and its text passed every text check (the required
+    /// facts, the forbidden words, machine talk).
+    Slow,
+    /// A wrong, missing, or unchecked reply.
+    Fail,
+}
+
+/// The time checks.
+const TIMES: [&str; 3] = ["first_ms", "total_ms", "judge_ms"];
+
 impl Grade {
     /// The checks that failed.
     pub fn failed(&self) -> impl Iterator<Item = &Check> {
         self.checks.iter().filter(|c| c.status == Status::Fail)
+    }
+
+    /// What this case means for the launch bar.
+    #[must_use]
+    pub fn outcome(&self) -> Outcome {
+        if self.pass {
+            return Outcome::Pass;
+        }
+        if self.failed().all(|c| TIMES.contains(&c.name.as_str())) {
+            return Outcome::Slow;
+        }
+        let text_passed = ["required", "forbidden", "machine_talk"]
+            .iter()
+            .all(|name| {
+                self.checks
+                    .iter()
+                    .any(|c| c.name == *name && c.status == Status::Pass)
+            });
+        let only_how = self.failed().all(|c| {
+            TIMES.contains(&c.name.as_str())
+                || ["route", "tier", "answer"].contains(&c.name.as_str())
+        });
+        if text_passed && only_how && self.observed.error.is_none() {
+            Outcome::Slow
+        } else {
+            Outcome::Fail
+        }
     }
 }
 
@@ -250,8 +311,13 @@ pub fn bare(answer: &str) -> &str {
     answer.split_once('@').map_or(answer, |(id, _)| id)
 }
 
+/// Case-insensitive, and blind to Markdown's code marks (the website
+/// draws `` `coder login` `` as code, so the page's text has no
+/// backticks) and to a link's `https://` (the page links
+/// openagents.com/download either way).
 fn contains(text: &str, needle: &str) -> bool {
-    text.to_lowercase().contains(&needle.to_lowercase())
+    let plain = |s: &str| s.replace('`', "").replace("https://", "").to_lowercase();
+    plain(text).contains(&plain(needle))
 }
 
 fn mk(name: &str, status: Status, detail: impl Into<String>) -> Check {
@@ -494,6 +560,23 @@ pub fn check(
             }
         }
     }
+    if let Some(gate) = &set.gate {
+        if !(gate.min_right > 0.0 && gate.min_right <= 1.0) {
+            problems.push(format!(
+                "gate: min_right {} is not in (0, 1]",
+                gate.min_right
+            ));
+        }
+        for id in &gate.critical {
+            let known = set
+                .flows
+                .iter()
+                .any(|f| f.id == *id || f.goldens.iter().any(|g| g.id == *id));
+            if !known {
+                problems.push(format!("gate: {id} is neither a flow nor a golden"));
+            }
+        }
+    }
     problems
 }
 
@@ -529,11 +612,55 @@ pub struct Report {
     pub started_unix: u64,
     pub cases: usize,
     pub passed: usize,
+    /// Right replies over budget ([`Outcome::Slow`]).
+    #[serde(default)]
+    pub slow: usize,
+    /// The launch bar's verdict, when the set has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<GateResult>,
     pub flows: BTreeMap<String, FlowScore>,
     /// Instant cases' first-answer times, when observed.
     pub instant_first_ms: Percentiles,
     pub model_first_ms: Percentiles,
     pub grades: Vec<Grade>,
+}
+
+/// A run against the launch bar.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GateResult {
+    pub min_right: f64,
+    /// Passing and slow cases over all cases.
+    pub right: f64,
+    /// Failed cases in a critical flow or golden.
+    pub critical_failures: Vec<String>,
+    pub met: bool,
+}
+
+impl GateResult {
+    /// `gate` over `grades`.
+    #[must_use]
+    pub fn of(gate: &Gate, grades: &[Grade]) -> Self {
+        let failed: Vec<&Grade> = grades
+            .iter()
+            .filter(|g| g.outcome() == Outcome::Fail)
+            .collect();
+        let right = if grades.is_empty() {
+            0.0
+        } else {
+            (grades.len() - failed.len()) as f64 / grades.len() as f64
+        };
+        let critical_failures: Vec<String> = failed
+            .iter()
+            .filter(|g| gate.critical.iter().any(|c| *c == g.flow || *c == g.golden))
+            .map(|g| g.case.clone())
+            .collect();
+        GateResult {
+            min_right: gate.min_right,
+            right,
+            met: !grades.is_empty() && right >= gate.min_right && critical_failures.is_empty(),
+            critical_failures,
+        }
+    }
 }
 
 /// One flow's numbers.
@@ -603,6 +730,11 @@ impl Report {
             started_unix,
             cases: grades.len(),
             passed: grades.iter().filter(|g| g.pass).count(),
+            slow: grades
+                .iter()
+                .filter(|g| g.outcome() == Outcome::Slow)
+                .count(),
+            gate: set.gate.as_ref().map(|gate| GateResult::of(gate, &grades)),
             flows,
             instant_first_ms: firsts(Speed::Instant),
             model_first_ms: firsts(Speed::Model),
@@ -630,6 +762,22 @@ impl Report {
             self.cases,
             rate(self.passed, self.cases)
         );
+        if let Some(gate) = &self.gate {
+            let _ = writeln!(
+                out,
+                "**Launch bar {}:** {:.0} % right (passing, or right but slow; needs {:.0} %), \
+                 {} wrong in a critical flow{}.\n",
+                if gate.met { "met" } else { "NOT met" },
+                100.0 * gate.right,
+                100.0 * gate.min_right,
+                gate.critical_failures.len(),
+                if gate.critical_failures.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", gate.critical_failures.join(", "))
+                },
+            );
+        }
         let ms = |p: &Percentiles| {
             format!(
                 "n {}, p50 {}, p90 {}, max {}",
@@ -653,10 +801,20 @@ impl Report {
         for (flow, score) in &self.flows {
             let _ = writeln!(out, "| {flow} | {} | {} |", score.passed, score.cases);
         }
-        let failed: Vec<&Grade> = self.grades.iter().filter(|g| !g.pass).collect();
-        if !failed.is_empty() {
-            let _ = writeln!(out, "\n## Failures\n");
-            for grade in failed {
+        for (heading, outcome) in [
+            ("Failures", Outcome::Fail),
+            ("Right but slow", Outcome::Slow),
+        ] {
+            let listed: Vec<&Grade> = self
+                .grades
+                .iter()
+                .filter(|g| g.outcome() == outcome)
+                .collect();
+            if listed.is_empty() {
+                continue;
+            }
+            let _ = writeln!(out, "\n## {heading}\n");
+            for grade in listed {
                 let o = &grade.observed;
                 let _ = writeln!(
                     out,
@@ -827,5 +985,49 @@ mod tests {
         let md = report.markdown();
         assert!(md.contains("1 of 2 cases pass"), "{md}");
         assert!(md.contains("pricing.plan#1"), "{md}");
+    }
+
+    #[test]
+    fn a_right_reply_over_budget_is_slow_and_a_wrong_one_fails_the_bar() {
+        let set = set();
+        let grounded = |text: &str| Observed {
+            route: Some("product.kb".into()),
+            tier: Some("grounded".into()),
+            text: Some(text.into()),
+            first_ms: Some(7_000),
+            total_ms: Some(8_000),
+            ..Observed::default()
+        };
+        let case = case(&set, "coder.login");
+        let right = grade(
+            &set,
+            &case,
+            grounded("Run `coder login` and approve its code at https://openagents.com/device."),
+        );
+        assert_eq!(right.outcome(), Outcome::Slow, "{:?}", right.checks);
+        let wrong = grade(&set, &case, grounded("Open the app's settings."));
+        assert_eq!(wrong.outcome(), Outcome::Fail);
+        // The page draws code without its backticks.
+        let page = grade(
+            &set,
+            &case,
+            Observed {
+                route: Some("product.kb".into()),
+                tier: Some("canned".into()),
+                answer: Some("openagents.coder-sync@2".into()),
+                text: Some(
+                    "Run coder login and approve its code at https://openagents.com/device.".into(),
+                ),
+                first_ms: Some(900),
+                total_ms: Some(900),
+                ..Observed::default()
+            },
+        );
+        assert!(page.pass, "{:?}", page.checks);
+        let gate = set.gate.clone().expect("the set has a launch bar");
+        assert!(GateResult::of(&gate, &[right.clone(), page.clone()]).met);
+        let missed = GateResult::of(&gate, &[right, page, wrong]);
+        assert!(!missed.met);
+        assert_eq!(missed.critical_failures, vec!["coder.login#1".to_string()]);
     }
 }
