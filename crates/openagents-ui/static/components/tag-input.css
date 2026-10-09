@@ -38,11 +38,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .oa-tag-input:not([data-disabled]):hover {
-    box-shadow: 0 0 0 1px var(--gray-300) inset;
-  }
-
-  :where([data-theme="dark"]) .oa-tag-input:not([data-disabled]):hover {
-    box-shadow: 0 0 0 1px var(--gray-500) inset;
+    box-shadow: 0 0 0 1px light-dark(var(--gray-300), var(--gray-500)) inset;
   }
 }
 
@@ -96,33 +92,29 @@
   height: var(--tag-input-height);
   padding: 4px 4px 4px 8px;
   border-radius: var(--radius-md);
-  background-color: var(--color-background-secondary-soft);
-  color: var(--color-text-secondary-soft);
+  background-color: light-dark(
+    var(--color-background-secondary-soft),
+    var(--color-background-secondary-solid)
+  );
+  color: light-dark(var(--color-text-secondary-soft), var(--color-text-secondary-solid));
   line-height: 1.4;
   transition: background-color 0.15s ease;
 }
 
-:where([data-theme="dark"]) .oa-tag-input__tag {
-  background-color: var(--color-background-secondary-solid);
-  color: var(--color-text-secondary-solid);
-}
-
 @media (hover: hover) and (pointer: fine) {
   .oa-tag-input__tag:hover {
-    background-color: var(--color-background-secondary-soft-hover);
-  }
-
-  :where([data-theme="dark"]) .oa-tag-input__tag:hover {
-    background-color: var(--color-background-secondary-solid-hover);
+    background-color: light-dark(
+      var(--color-background-secondary-soft-hover),
+      var(--color-background-secondary-solid-hover)
+    );
   }
 }
 
 .oa-tag-input__tag:focus-within {
-  background-color: var(--color-background-secondary-soft-hover);
-}
-
-:where([data-theme="dark"]) .oa-tag-input__tag:focus-within {
-  background-color: var(--color-background-secondary-solid-hover);
+  background-color: light-dark(
+    var(--color-background-secondary-soft-hover),
+    var(--color-background-secondary-solid-hover)
+  );
 }
 
 .oa-tag-input__tag[data-duplicate] {

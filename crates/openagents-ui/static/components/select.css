@@ -169,10 +169,6 @@
   color: var(--input-placeholder-text-color);
 }
 
-:where([data-theme="dark"]) .oa-select__control {
-  color-scheme: dark;
-}
-
 .oa-select__control option {
   color: var(--color-text);
 }

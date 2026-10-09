@@ -238,7 +238,12 @@ fn stylesheets_use_oa_classes_and_apps_sdk_tokens() {
             !css.contains("spacing("),
             "{name} uses the spacing() function"
         );
-        assert!(!css.contains("light-dark("), "{name} uses light-dark()");
+        // Theme colors use light-dark(), resolved by color-scheme, so the
+        // system theme works too (see the crate-level data-theme test).
+        assert!(
+            !css.contains("[data-theme=\"dark\"]"),
+            "{name} keys colors on data-theme"
+        );
         assert_eq!(
             css.matches('{').count(),
             css.matches('}').count(),

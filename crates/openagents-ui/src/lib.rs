@@ -70,6 +70,14 @@ pub fn script_version() -> &'static str {
 
 /// Vendored and standalone assets.
 pub mod assets {
+    /// Script load order for every page, all `<script src defer>` from
+    /// `'self'`: first [`crate::script()`] (theme toggle, then every
+    /// `static/components/*.js`, such as `forms.js`, whose `alpine:init`
+    /// listeners register `Alpine.data(...)` components), then
+    /// [`ALPINE_CSP_JS`]. Deferred scripts run in document order, so the
+    /// listeners exist before Alpine starts.
+    pub const SCRIPT_LOAD_ORDER: [&str; 2] = ["openagents_ui::script()", ALPINE_CSP_FILE];
+
     /// The theme toggle script alone (also the start of [`crate::script()`]).
     pub const THEME_TOGGLE_JS: &str = include_str!("../static/theme-toggle.js");
 

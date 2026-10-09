@@ -28,16 +28,12 @@
   height: 18px;
   /* Adjust downward for the label line-height; long labels can wrap. */
   top: 1px;
-  border: 1px solid var(--gray-200);
+  border: 1px solid light-dark(var(--gray-200), var(--gray-500));
   border-radius: var(--radius-xs);
   background-color: transparent;
   transition:
     border-color 150ms ease,
     background-color 150ms ease;
-}
-
-:where([data-theme="dark"]) .oa-checkbox__box {
-  border-color: var(--gray-500);
 }
 
 .oa-checkbox__input {
@@ -53,13 +49,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .oa-checkbox:not([data-disabled]) .oa-checkbox__box:hover:has(.oa-checkbox__input:not(:checked)) {
-    border-color: var(--gray-300);
-  }
-
-  :where([data-theme="dark"])
-    .oa-checkbox:not([data-disabled])
-    .oa-checkbox__box:hover:has(.oa-checkbox__input:not(:checked)) {
-    border-color: var(--gray-600);
+    border-color: light-dark(var(--gray-300), var(--gray-600));
   }
 }
 
@@ -75,23 +65,13 @@
 }
 
 .oa-checkbox__box:has(.oa-checkbox__input:disabled) {
-  border-color: var(--gray-150);
-  background: var(--gray-25);
-}
-
-:where([data-theme="dark"]) .oa-checkbox__box:has(.oa-checkbox__input:disabled) {
-  border-color: var(--gray-300);
-  background: var(--gray-200);
+  border-color: light-dark(var(--gray-150), var(--gray-300));
+  background: light-dark(var(--gray-25), var(--gray-200));
 }
 
 .oa-checkbox__box:has(.oa-checkbox__input:disabled:checked) {
-  border-color: var(--gray-300);
-  background-color: var(--gray-300);
-}
-
-:where([data-theme="dark"]) .oa-checkbox__box:has(.oa-checkbox__input:disabled:checked) {
-  border-color: var(--gray-200);
-  background-color: var(--gray-200);
+  border-color: light-dark(var(--gray-300), var(--gray-200));
+  background-color: light-dark(var(--gray-300), var(--gray-200));
 }
 
 /* Check mark: two arms drawn with pseudo elements. */
@@ -136,9 +116,9 @@
 }
 
 /* Pure black is too low contrast to read as disabled. */
-:where([data-theme="dark"]) .oa-checkbox__input:disabled + .oa-checkbox__mark::before,
-:where([data-theme="dark"]) .oa-checkbox__input:disabled + .oa-checkbox__mark::after {
-  background: var(--gray-100);
+.oa-checkbox__input:disabled + .oa-checkbox__mark::before,
+.oa-checkbox__input:disabled + .oa-checkbox__mark::after {
+  background: light-dark(var(--gray-0), var(--gray-100));
 }
 
 .oa-checkbox__mark::before {

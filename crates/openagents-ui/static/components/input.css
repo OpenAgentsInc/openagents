@@ -284,10 +284,6 @@
   opacity: 0.6;
 }
 
-:where([data-theme="dark"]) .oa-input__control[type="date"] {
-  color-scheme: dark;
-}
-
 /* Dynamic pill spacing */
 :where(.oa-input[data-pill]) .oa-input__control {
   padding: 0 calc(var(--input-gutter) * var(--control-gutter-pill-scaling));

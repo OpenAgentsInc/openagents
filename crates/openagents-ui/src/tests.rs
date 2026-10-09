@@ -53,10 +53,58 @@ fn bundled_css_has_no_unlowered_build_functions_outside_comments() {
     }
 }
 
+/// Theme colors come from `light-dark()`, resolved by `color-scheme`, so
+/// "follow the system" works with no `data-theme` set. A rule keyed on
+/// `[data-theme="dark"]` only applies to an explicit choice, so system-dark
+/// users would get light colors. Such selectors may only toggle `display`
+/// (for example, which theme-toggle icon shows).
+#[test]
+fn component_css_themes_through_light_dark_not_data_theme_selectors() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("static/components");
+    let mut failures = Vec::new();
+    for name in component_stylesheets() {
+        let text = std::fs::read_to_string(dir.join(name)).expect("component css");
+        for needle in [
+            "[data-theme=\"dark\"]",
+            "[data-theme=dark]",
+            "[data-theme='dark']",
+            "[data-theme=\"light\"]",
+            "[data-theme=light]",
+            "[data-theme='light']",
+        ] {
+            for (at, _) in text.match_indices(needle) {
+                let Some(open) = text[at..].find('{').map(|i| at + i) else {
+                    continue;
+                };
+                let close = text[open..].find('}').map_or(text.len(), |i| open + i);
+                let body = &text[open + 1..close];
+                let properties: Vec<&str> = body
+                    .split(';')
+                    .filter_map(|decl| decl.split_once(':').map(|(p, _)| p.trim()))
+                    .filter(|p| !p.is_empty() && !p.starts_with("/*"))
+                    .collect();
+                if properties.iter().any(|p| *p != "display") {
+                    let line = text[..at].lines().count() + 1;
+                    failures.push(format!("{name}:{line}: {needle} sets {properties:?}"));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "use light-dark() instead of data-theme selectors:\n{}",
+        failures.join("\n")
+    );
+}
+
 #[test]
 fn script_is_csp_safe_and_matches_the_shell_contract() {
     let js = script();
     assert!(js.starts_with("/* static/theme-toggle.js */"));
+    // Component scripts (Alpine.data registrations) ride in the bundle that
+    // loads before Alpine.
+    assert!(js.contains("/* static/components/forms.js */"));
+    assert_eq!(assets::SCRIPT_LOAD_ORDER[1], assets::ALPINE_CSP_FILE);
     for banned in [
         "eval(",
         "new Function",
