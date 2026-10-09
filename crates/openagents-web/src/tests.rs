@@ -153,6 +153,53 @@ async fn the_docs_list_every_guide_and_their_links_resolve() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// Every docs page opens with its trail: Docs, its section when it has
+/// one (a link to the index anchor, which exists, or to /docs/api), and
+/// itself as the current page. The index shows just "Docs".
+#[tokio::test]
+async fn every_docs_page_shows_its_breadcrumb_trail() {
+    let root = tempfile::tempdir().unwrap();
+    let trail = |html: &str| -> String {
+        let start = html.find(r#"<nav id="oa-breadcrumb""#).expect("breadcrumb");
+        html[start..start + html[start..].find("</nav>").unwrap()].to_owned()
+    };
+    let (_, index) = get(router(config(root.path().into())), "/docs").await;
+    let top = trail(&index);
+    assert!(top.contains(r#"aria-current="page" title="Docs""#), "{top}");
+    assert!(!top.contains("<a "), "{top}");
+    for (slug, _) in pages::DOCS {
+        let (_, html) = get(router(config(root.path().into())), &format!("/docs/{slug}")).await;
+        let t = trail(&html);
+        let section = pages::section_of(slug).expect("every guide is in a section");
+        let anchor = pages::section_anchor(section);
+        assert!(t.contains(r#"href="/docs">Docs</a>"#), "{slug}: {t}");
+        assert!(
+            t.contains(&format!(r#"href="/docs#{anchor}">"#)),
+            "{slug}: {t}"
+        );
+        assert!(index.contains(&format!(r#"<h2 id="{anchor}">"#)), "{slug}");
+        assert!(t.contains(r#"aria-current="page""#), "{slug}: {t}");
+    }
+    for uri in ["/docs/api", "/docs/api/quickstart"] {
+        let (_, html) = get(router(config(root.path().into())), uri).await;
+        let t = trail(&html);
+        assert!(t.contains(r#"href="/docs">Docs</a>"#), "{uri}: {t}");
+        assert_eq!(
+            t.contains(r#"href="/docs/api">API</a>"#),
+            uri != "/docs/api",
+            "{uri}: {t}"
+        );
+    }
+    assert!(index.contains(r#"<h2 id="api">"#));
+    // The Markdown twin is untouched.
+    let (_, md) = get(
+        router(config(root.path().into())),
+        "/docs/api/quickstart.md",
+    )
+    .await;
+    assert!(md.starts_with("# ") && !md.contains("oa-breadcrumb"));
+}
+
 #[tokio::test]
 async fn every_public_page_answers_in_development() {
     let root = tempfile::tempdir().unwrap();

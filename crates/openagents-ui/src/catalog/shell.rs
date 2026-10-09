@@ -8,10 +8,10 @@ use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::overlays::MenuItem;
 use crate::shell::{
-    AccountMenu, AppShell, Breadcrumb, ChatGroup, ChatList, ChatSearch, ChatStatus, Composer, TaskRow, TaskStatus,
+    AccountMenu, AppShell, Breadcrumb, ChatGroup, ChatList, ChatSearch, ChatStatus, Composer,
     ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode,
     Message, ModelPickerTrigger, NavItem, RowAction, RowMenu, RowRename, ScrollToBottom, Sidebar,
-    SidebarSection, SuggestionChip, SuggestionChips, Theme, ThemeToggle,
+    SidebarSection, SuggestionChip, SuggestionChips, TaskRow, TaskStatus, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -167,7 +167,8 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
     let shell = AppShell::new()
         .sidebar(sidebar)
         .breadcrumb(Breadcrumb::new("A long chat title that truncates")
-                .crumb("Chats", "/ui")
+                .crumb("Docs", "/docs")
+                .crumb("Coder", "/docs#coder")
                 .id(pane.id("breadcrumb")),
         )
         .actions(

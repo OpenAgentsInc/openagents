@@ -27,7 +27,7 @@ pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNN
 #[cfg(test)]
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
-pub(crate) use content::DOCS;
+pub(crate) use content::{DOCS, section_anchor, section_of};
 #[cfg(test)]
 pub(crate) use download::{
     CODER_BASE, CODER_PLATFORMS, CODER_PS1, CODER_SH, CODER_VERSION, coder_archive,

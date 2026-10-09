@@ -500,6 +500,21 @@ fn stylesheets_are_balanced_and_use_the_oa_prefix() {
 }
 
 #[test]
+fn breadcrumb_lists_linked_ancestors_in_order_with_the_page_last() {
+    let html = Breadcrumb::new("GitHub issues")
+        .crumb("Docs", "/docs")
+        .crumb("Coder", "/docs#coder")
+        .render()
+        .into_string();
+    let docs = html.find(r#"href="/docs">Docs</a>"#).unwrap();
+    let coder = html.find(r#"href="/docs#coder">Coder</a>"#).unwrap();
+    let page = html.find(r#"aria-current="page""#).unwrap();
+    assert!(docs < coder && coder < page);
+    assert_eq!(html.matches("aria-current").count(), 1);
+    assert!(SHELL_CSS.contains(r#"content: "\203A""#) && SHELL_CSS.contains("max-width: 5.5rem"));
+}
+
+#[test]
 fn breadcrumb_sits_in_the_header_row_before_the_actions() {
     let html = AppShell::new()
         .sidebar(Sidebar::new())

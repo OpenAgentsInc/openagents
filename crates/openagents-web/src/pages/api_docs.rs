@@ -20,6 +20,7 @@ use axum::routing::get;
 use inference::rates::{Card, Kind, Row};
 use maud::{PreEscaped, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::shell::Breadcrumb;
 
 use crate::App;
 use crate::layout::escape;
@@ -244,6 +245,7 @@ Chat Completions at <code>https://api.openagents.com/v1</code>. Beta.</p>\
 to its address, or start from <a href=\"/docs/api/llms.txt\">llms.txt</a>.</p>",
     );
     UiPage::new("API")
+        .breadcrumb(Breadcrumb::new("API").crumb("Docs", "/docs"))
         .section("/docs")
         .path("/docs/api")
         .scriptless()
@@ -317,7 +319,13 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
             }
         }
     });
-    UiPage::new(markdown::title(stored, name))
+    let title = markdown::title(stored, name);
+    UiPage::new(title.clone())
+        .breadcrumb(
+            Breadcrumb::new(title)
+                .crumb("Docs", "/docs")
+                .crumb("API", "/docs/api"),
+        )
         .section("/docs")
         .path(format!("/docs/api/{name}"))
         .scriptless()

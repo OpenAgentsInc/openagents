@@ -14,6 +14,7 @@ use axum::response::{Redirect, Response};
 use axum::routing::get;
 use maud::{PreEscaped, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::shell::Breadcrumb;
 
 use crate::App;
 use crate::layout::escape;
@@ -159,6 +160,45 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
     ),
 ];
 
+/// A section's anchor on the docs index: its title, lowercased, with runs
+/// of other characters as one dash.
+pub(crate) fn section_anchor(title: &str) -> String {
+    let mut out = String::new();
+    for c in title.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_owned()
+}
+
+/// The section a guide sits in: the last section whose first guide is at
+/// or before it in [`DOCS`]. The index groups the guides the same way.
+pub(crate) fn section_of(slug: &str) -> Option<&'static str> {
+    let at = DOCS.iter().position(|(name, _)| *name == slug)?;
+    SECTIONS
+        .iter()
+        .filter_map(|(title, _, first)| {
+            DOCS.iter()
+                .position(|(name, _)| name == first)
+                .map(|start| (start, *title))
+        })
+        .filter(|(start, _)| *start <= at)
+        .max_by_key(|(start, _)| *start)
+        .map(|(_, title)| title)
+}
+
+/// The trail for a guide: Docs, its section on the index, and the guide.
+pub(crate) fn doc_breadcrumb(slug: &str, title: &str) -> Breadcrumb {
+    let mut trail = Breadcrumb::new(title).crumb("Docs", "/docs");
+    if let Some(section) = section_of(slug) {
+        trail = trail.crumb(section, format!("/docs#{}", section_anchor(section)));
+    }
+    trail
+}
+
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/terms", get(terms))
@@ -190,7 +230,8 @@ plugins, and the Gym.</p>",
                 body.push_str("</ol>");
             }
             body.push_str(&format!(
-                "<h2>{}</h2><p class=\"oa-page-meta\">{}</p><ol class=\"oa-item-list\">",
+                "<h2 id=\"{}\">{}</h2><p class=\"oa-page-meta\">{}</p><ol class=\"oa-item-list\">",
+                section_anchor(title),
                 escape(title),
                 escape(lead)
             ));
@@ -205,7 +246,7 @@ plugins, and the Gym.</p>",
         body.push_str("</ol>");
     }
     body.push_str(
-        "<h2>API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
+        "<h2 id=\"api\">API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
 <ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>",
     );
     UiPage::new("Docs")
@@ -248,7 +289,9 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
             }
         }
     });
-    UiPage::new(markdown::title(source, &slug))
+    let title = markdown::title(source, &slug);
+    UiPage::new(title.clone())
+        .breadcrumb(doc_breadcrumb(&slug, &title))
         .section("/docs")
         .path(format!("/docs/{slug}"))
         .scriptless()
@@ -326,6 +369,36 @@ mod tests {
         for (slug, source) in DOCS {
             assert!(source.starts_with("# "), "{slug} has a title");
         }
+    }
+
+    /// Every guide resolves to exactly the section the index lists it
+    /// under, and every section anchor is unique and not the API's.
+    #[test]
+    fn every_guide_resolves_its_index_section() {
+        use maud::Render;
+        let mut current = None;
+        for (slug, _) in DOCS {
+            if let Some((title, _, _)) = SECTIONS.iter().find(|(_, _, first)| *first == slug) {
+                current = Some(*title);
+            }
+            assert_eq!(section_of(slug), current, "{slug}");
+            let trail = doc_breadcrumb(slug, "T").render().into_string();
+            assert!(trail.contains(r#"href="/docs">Docs</a>"#), "{slug}");
+            assert!(trail.contains(r#"aria-current="page""#), "{slug}");
+            let anchor = section_anchor(current.unwrap());
+            assert!(
+                trail.contains(&format!(r#"href="/docs#{anchor}""#)),
+                "{slug}"
+            );
+        }
+        let anchors: Vec<_> = SECTIONS.iter().map(|(t, _, _)| section_anchor(t)).collect();
+        for (i, a) in anchors.iter().enumerate() {
+            assert!(!a.is_empty() && a != "api" && !anchors[..i].contains(a));
+        }
+        assert_eq!(
+            section_anchor("The Gym, the Verse, and the wallet"),
+            "the-gym-the-verse-and-the-wallet"
+        );
     }
 
     /// The plugin guides use the glossary's one vocabulary: a plugin's

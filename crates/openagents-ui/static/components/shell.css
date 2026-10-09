@@ -763,12 +763,23 @@ html:has(> body.oa-body) {
   flex: none;
 }
 .oa-breadcrumb-item + .oa-breadcrumb-item::before {
-  content: "/";
+  content: "\203A";
   color: var(--color-text-tertiary);
 }
 .oa-breadcrumb-link {
   color: var(--color-text-secondary);
   text-decoration: none;
+}
+.oa-breadcrumb-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 40rem) {
+  .oa-breadcrumb-item:not(:last-child) {
+    flex: 0 1 auto;
+    max-width: 5.5rem;
+  }
 }
 .oa-breadcrumb-link:hover {
   color: var(--color-text);
