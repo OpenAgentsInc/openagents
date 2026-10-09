@@ -1,0 +1,27 @@
+# Builds and pushes the staging stack image (the gateway and the chat
+# worker; deploy/staging/Dockerfile). From the repository root:
+#
+#   gcloud builds submit --project openagentsgemini \
+#     --config deploy/staging/cloudbuild.yaml \
+#     --ignore-file deploy/staging/stack.gcloudignore \
+#     --substitutions _TAG=$(git rev-parse --short=10 HEAD) .
+#
+# The site's image is the ordinary openagents-web build
+# (crates/openagents-web/cloudbuild.yaml). See deploy/staging/README.md.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/staging/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack:${_TAG}
+      - .
+images:
+  - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack:${_TAG}
+substitutions:
+  _TAG: latest
+options:
+  machineType: E2_HIGHCPU_32
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

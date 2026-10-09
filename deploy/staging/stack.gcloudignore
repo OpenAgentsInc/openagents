@@ -1,0 +1,53 @@
+# Build context for the staging stack image (deploy/staging/Dockerfile),
+# uploaded from the repository root by deploy/staging/cloudbuild.yaml: the
+# web image's context (crates/openagents-web/web.gcloudignore) plus
+# deploy/staging/ and bench/web-chat/ (the coder crate compiles its goldens
+# in). Keep the two in step.
+/*
+!/Cargo.toml
+!/Cargo.lock
+!/vendor/
+!/.cargo/
+!/crates/
+!/migrations/
+!/nips/
+!/tests/
+!/assets/
+!/scripts/
+/scripts/*
+!/scripts/build-everglade-web.sh
+!/scripts/build-bunny-web.sh
+!/scripts/install/
+/scripts/install/*
+!/scripts/install/coder.sh
+!/scripts/install/coder.ps1
+!/programs/
+!/questions/
+!/plugins/
+!/knowledge/
+!/packages/
+/packages/*
+!/packages/coder-defaults/
+!/deploy/
+/deploy/*
+!/deploy/eval-runner/
+!/deploy/staging/
+!/docs/
+/docs/*
+!/docs/agents/
+!/docs/coder/
+!/docs/cost/
+!/docs/decision-models/
+!/docs/protocol/
+!/docs/sales/
+!/docs/terminal-bench/
+!/docs/transcripts/
+!/bench/
+/bench/*
+!/bench/coder/
+!/bench/efficiency/
+!/bench/web-chat/
+!/bench/terminal-bench/
+/bench/terminal-bench/*
+!/bench/terminal-bench/profiles/
+!/bench/terminal-bench/tests/
