@@ -1,0 +1,211 @@
+{
+  "basic-response": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Say hello in exactly 3 words."
+      }
+    ]
+  },
+  "assistant-phase": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "assistant",
+        "phase": "commentary",
+        "content": "I should answer with the saved number."
+      },
+      {
+        "type": "message",
+        "role": "assistant",
+        "phase": "final_answer",
+        "content": "The number is four."
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Repeat only the number."
+      }
+    ]
+  },
+  "streaming-response": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Count from 1 to 5."
+      }
+    ],
+    "stream": true
+  },
+  "system-prompt": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "system",
+        "content": "You are a pirate. Always respond in pirate speak."
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Say hello."
+      }
+    ]
+  },
+  "tool-calling": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "What's the weather like in San Francisco?"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Get the current weather for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. San Francisco, CA"
+            }
+          },
+          "required": [
+            "location"
+          ]
+        }
+      }
+    ]
+  },
+  "image-input": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "What do you see in this image? Answer in one sentence."
+          },
+          {
+            "type": "input_image",
+            "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+          }
+        ]
+      }
+    ]
+  },
+  "multi-turn": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "My name is Alice."
+      },
+      {
+        "type": "message",
+        "role": "assistant",
+        "content": "Hello Alice! Nice to meet you. How can I help you today?"
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": "What is my name?"
+      }
+    ]
+  },
+  "websocket-continuation": {
+    "model": "gpt-openresponses-1",
+    "store": false,
+    "previous_response_id": "resp_123",
+    "input": [
+      {
+        "type": "function_call_output",
+        "call_id": "call_123",
+        "output": "tool result"
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Now optimize it."
+      }
+    ]
+  },
+  "allowed-tools": {
+    "model": "gpt-openresponses-1",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Summarize the latest sales data and then draft a follow-up email."
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "name": "get_latest_sales_report",
+        "description": "Fetches the most recent sales report for the current quarter.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "region": {
+              "type": "string",
+              "description": "Geographic sales region identifier."
+            }
+          },
+          "required": [
+            "region"
+          ]
+        }
+      },
+      {
+        "type": "function",
+        "name": "send_email",
+        "description": "Sends an email via the CRM.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "to": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "to",
+            "subject",
+            "body"
+          ]
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "allowed_tools",
+      "tools": [
+        {
+          "type": "function",
+          "name": "get_latest_sales_report"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,90 @@
+[
+  {
+    "type": "response.output_item.added",
+    "sequence_number": 11,
+    "output_index": 3,
+    "item": {
+      "id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+      "type": "message",
+      "status": "in_progress",
+      "content": [],
+      "role": "assistant"
+    }
+  },
+  {
+    "type": "response.content_part.added",
+    "sequence_number": 12,
+    "item_id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+    "output_index": 3,
+    "content_index": 0,
+    "part": {
+      "type": "output_text",
+      "annotations": [],
+      "text": ""
+    }
+  },
+  {
+    "type": "response.output_text.delta",
+    "sequence_number": 13,
+    "item_id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+    "output_index": 3,
+    "content_index": 0,
+    "delta": "Here"
+  },
+  {
+    "type": "response.output_text.done",
+    "sequence_number": 25,
+    "item_id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+    "output_index": 3,
+    "content_index": 0,
+    "text": "Here's the current weather for San Francisco, CA."
+  },
+  {
+    "type": "response.content_part.done",
+    "sequence_number": 26,
+    "item_id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+    "output_index": 3,
+    "content_index": 0,
+    "part": {
+      "type": "output_text",
+      "annotations": [],
+      "text": "Here's the current weather for San Francisco, CA."
+    }
+  },
+  {
+    "type": "response.output_item.done",
+    "sequence_number": 27,
+    "output_index": 3,
+    "item": {
+      "id": "msg_0f7983f1618f89d20068efe9b45d748191a5239d49c2971a65",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [],
+          "text": "Here's the current weather for San Francisco, CA."
+        }
+      ],
+      "role": "assistant"
+    }
+  },
+  {
+    "type": "response.output_text.delta",
+    "sequence_number": 10,
+    "item_id": "msg_07315d23576898080068e95daa2e34819685fb0a98a0503f78",
+    "output_index": 0,
+    "content_index": 0,
+    "delta": " a",
+    "logprobs": [],
+    "obfuscation": "Wd6S45xQ7SyQLT"
+  },
+  {
+    "type": "acme:trace_event",
+    "sequence_number": 1,
+    "phase": "tool_resolution",
+    "latency_ms": 34,
+    "related_item_id": "tc_789",
+    "details": "Resolved tool endpoint from local cache."
+  }
+]

@@ -1,7 +1,39 @@
 //! The inference gateway library (`docs/inference/gateway.md`).
 //!
-//! [`meter`] is the measurement half (sections 5 and 6): one record per
-//! upstream attempt, live rates, and the credit ledger with burn-down
-//! alerts. Adapters report each attempt through [`meter::Recorder`].
+//! - [`request`], [`response`], [`item`], [`event`], [`error`]: the Open
+//!   Responses ([`SPEC_VERSION`]) request, response, item, streaming event,
+//!   and error types.
+//! - [`openagents`]: our extensions (the `openagents` request and response
+//!   objects, `openagents:route` and `openagents:cost` events).
+//! - [`sse`]: the server-sent event codec; [`stream`]: sequencing, folding
+//!   a stream into a response, and checking a stream's order.
+//! - [`chat`]: OpenAI Chat Completions types and their translation onto
+//!   the same internal request, both directions, streaming included.
+//! - [`meter`]: the measurement half (sections 5 and 6): one record per
+//!   upstream attempt, live rates, and the credit ledger with burn-down
+//!   alerts. Adapters report each attempt through [`meter::Recorder`].
+//!
+//! The wire modules do no I/O. `docs/inference/gateway.md` is the spec; the
+//! crate README lists what maps 1:1 between the two APIs and what degrades.
 
+mod wire;
+
+pub mod chat;
+pub mod error;
+pub mod event;
+pub mod item;
 pub mod meter;
+pub mod openagents;
+pub mod request;
+pub mod response;
+pub mod sse;
+pub mod stream;
+
+/// The Open Responses specification version these types implement.
+pub const SPEC_VERSION: &str = "2026-04-24";
+
+pub use error::{ApiError, ErrorType};
+pub use event::{Event, EventBody};
+pub use item::{ContentPart, Item, ItemStatus, Message, MessageContent, Role};
+pub use request::{CreateResponse, Input, Tool, ToolChoice};
+pub use response::{Response, ResponseStatus, Usage};

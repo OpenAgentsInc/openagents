@@ -1,0 +1,79 @@
+{
+  "id": "resp_phase_schema",
+  "object": "response",
+  "created_at": 1764967971,
+  "completed_at": 1764967972,
+  "status": "completed",
+  "incomplete_details": null,
+  "model": "gpt-openresponses-1",
+  "previous_response_id": null,
+  "instructions": null,
+  "output": [
+    {
+      "id": "msg_phase_commentary",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "phase": "commentary",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "I am checking the answer.",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "id": "msg_phase_final",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "phase": "final_answer",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "The answer is four.",
+          "annotations": []
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "tools": [],
+  "tool_choice": "auto",
+  "truncation": "disabled",
+  "parallel_tool_calls": true,
+  "text": {
+    "format": {
+      "type": "text"
+    }
+  },
+  "top_p": 1,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "top_logprobs": 0,
+  "temperature": 1,
+  "reasoning": {
+    "effort": null,
+    "summary": null
+  },
+  "usage": {
+    "input_tokens": 1,
+    "output_tokens": 2,
+    "total_tokens": 3,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "max_output_tokens": null,
+  "max_tool_calls": null,
+  "store": true,
+  "background": false,
+  "service_tier": "default",
+  "metadata": {},
+  "safety_identifier": null,
+  "prompt_cache_key": null
+}
