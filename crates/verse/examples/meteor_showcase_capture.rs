@@ -117,6 +117,11 @@ struct Sample {
     solids: f32,
     chunks: usize,
     posed: usize,
+    instanced: usize,
+    detect: f32,
+    solve: f32,
+    awake: usize,
+    contacts: usize,
     sprites: usize,
     ribbons: usize,
     ribbon_segments: usize,
@@ -289,11 +294,16 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "gpu_wait_ms": col(|s| s.gpu),
                 "town_swarm_ms": col(|s| s.swarm),
                 "town_physics_ms": col(|s| s.physics),
+                "physics_detect_ms": col(|s| s.detect),
+                "physics_solve_ms": col(|s| s.solve),
+                "awake_bodies_max": most(|s| s.awake as u64),
+                "contact_points_max": most(|s| s.contacts as u64),
                 "town_sync_ms": col(|s| s.sync),
                 "town_pose_ms": col(|s| s.pose),
                 "town_solids_ms": col(|s| s.solids),
                 "chunks_max": most(|s| s.chunks as u64),
                 "posed_vertices_max": most(|s| s.posed as u64),
+                "instanced_parts_max": most(|s| s.instanced as u64),
                 "sprites_max": most(|s| s.sprites as u64),
                 "ribbons_max": most(|s| s.ribbons as u64),
                 "ribbon_segments_max": most(|s| s.ribbon_segments as u64),
@@ -800,6 +810,11 @@ fn main() -> Result<(), String> {
                     sample.solids += town.solids_ms;
                     sample.chunks = town.chunks;
                     sample.posed = town.posed_vertices;
+                    sample.instanced = town.instances;
+                    sample.detect += town.steps.detect_ms;
+                    sample.solve += town.steps.solve_ms;
+                    sample.awake = sample.awake.max(town.steps.awake);
+                    sample.contacts = sample.contacts.max(town.steps.contacts);
                 }
             }
         }

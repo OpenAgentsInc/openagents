@@ -46,6 +46,7 @@
 use super::carve::{self, Lattice, Split};
 use super::chunks::{self, ChunkMesh};
 use super::hammer::{self, Hammer};
+use super::instanced::Herd;
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
 use super::meteor::{self, Strike, Swarm};
 use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
@@ -53,7 +54,7 @@ use super::{BREAK, HIT, join};
 use crate::controller::{Footprint, PlayerController};
 use crate::mesh::Mesh;
 use crate::pbr::textured::{
-    Figure, IndexRange, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
+    Figure, IndexRange, Instances, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
 };
 use crate::pbr::textured_bake::AmbientProbes;
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
@@ -128,6 +129,22 @@ const WARM_BLOCKS: usize = 2;
 /// How far above the ground a carved block's underside may be and still
 /// stand on it, m.
 const FOOTING: f32 = 0.5;
+/// Chunks at rest that wait before the merged rubble grows, and the
+/// longest any wait, s ([`Town::settle_rubble`]).
+pub const SETTLE_BATCH: usize = 48;
+pub const SETTLE_EVERY: f32 = 1.5;
+
+/// The herd's chunks at rest as merged meshes, which chunks they are, and
+/// when and under which probes they were merged.
+struct Settled {
+    instances: Instances,
+    members: BTreeSet<(usize, usize)>,
+    built: f32,
+    probes: Option<u64>,
+}
+
+/// How much darker a broken piece's chunks draw than the piece did.
+const BROKEN_SHADE: f32 = 0.8;
 /// Where a chunk that is gone, or a pool slot nobody uses, is drawn: a
 /// point under the ground.
 const COLLAPSED: TexturedVertex = TexturedVertex {
@@ -303,6 +320,12 @@ pub struct TownProfile {
     pub solids_ms: f32,
     pub posed_vertices: usize,
     pub chunks: usize,
+    /// Chunk parts drawn as GPU instances rather than posed
+    /// ([`Town::set_instanced`]).
+    pub instances: usize,
+    /// The physics steps' detection and solving, and their awake bodies
+    /// and contact points ([`super::site::Site::step_cost`]).
+    pub steps: super::site::StepCost,
 }
 
 /// Now, where the target has a clock; a browser's has none.
@@ -870,6 +893,19 @@ pub struct Town {
     /// For each site piece, how it looks.
     looks: Vec<Look>,
     pool: Pool,
+    /// The broken chunks' parts as GPU instances, once the zone asks
+    /// ([`Self::set_instanced`]); the pool draws them otherwise.
+    herd: Option<Herd>,
+    /// The herd's chunks at rest, merged ([`Self::settle_rubble`]), and
+    /// when rubble last started waiting to merge.
+    settled: Option<Settled>,
+    settle_since: f32,
+    /// Whether the zone asked for instances, and how many chunk shapes
+    /// were cut when the herd was last built.
+    instancing: bool,
+    herd_shapes: usize,
+    /// The parts the last tick drew as instances.
+    instanced: usize,
     /// The zone's static scene, its edits, and where each building
     /// placement's triangles are in it: the scene placements that draw it,
     /// its own and its far level of detail's, with their ranges.
@@ -1241,6 +1277,12 @@ impl Town {
             materials,
             looks: Vec::new(),
             pool: Pool::new(kit),
+            herd: None,
+            settled: None,
+            settle_since: f32::INFINITY,
+            instancing: false,
+            herd_shapes: usize::MAX,
+            instanced: 0,
             world,
             ranges,
             cells,
@@ -1733,6 +1775,9 @@ impl Town {
         self.sync();
         let sync_done = stamp();
         self.pose();
+        if self.herd.is_some() {
+            self.instanced = self.copies().len();
+        }
         let pose_done = stamp();
         self.profile = TownProfile {
             swarm_ms: between(started, swarm_done),
@@ -1740,6 +1785,8 @@ impl Town {
             sync_ms: between(physics_done, sync_done),
             pose_ms: between(sync_done, pose_done),
             posed_vertices: self.pool.posed.len(),
+            instances: self.instanced,
+            steps: self.wreck.site.step_cost(),
             chunks: self
                 .wreck
                 .site
@@ -1806,7 +1853,6 @@ impl Town {
     /// Brings the drawn pieces, the hidden placements, and the solids up
     /// to the rules.
     fn sync(&mut self) {
-        let site = &self.wreck.site;
         // How each site piece looks.
         self.looks = self
             .wreck
@@ -1814,6 +1860,8 @@ impl Town {
             .iter()
             .map(|&(b, k)| self.wreck.buildings[b].pieces[k].look)
             .collect();
+        self.herd_up();
+        let site = &self.wreck.site;
         let damaged: Vec<usize> = site
             .specs()
             .iter()
@@ -1897,11 +1945,15 @@ impl Town {
             let state = &site.pieces()[piece];
             state.status != Status::Broken || state.chunks.get(chunk).is_some_and(|c| !c.gone)
         };
+        let herd = self.herd.as_ref();
+        let looks = &self.looks;
         let drawn: Vec<usize> = damaged
             .into_iter()
             .filter(|&i| {
                 let state = &site.pieces()[i];
-                state.status != Status::Broken || state.chunks.iter().any(|c| !c.gone)
+                // Broken pieces the herd covers draw as instances.
+                let herded = herd.is_some_and(|h| h.covers(looks[i].shape, looks[i].paint));
+                state.status != Status::Broken || (!herded && state.chunks.iter().any(|c| !c.gone))
             })
             .collect();
         if drawn != self.pool.drawn || self.pool.spans.len() != self.count_spans(&drawn, &live) {
@@ -2092,7 +2144,7 @@ impl Town {
             let piece = &site.pieces()[span.piece];
             let spec = &site.specs()[span.piece];
             let (transform, shade) = match piece.status {
-                Status::Broken => (site.chunk_pose(span.piece, span.chunk), 0.8),
+                Status::Broken => (site.chunk_pose(span.piece, span.chunk), BROKEN_SHADE),
                 _ => {
                     let damage = 1.0 - piece.hit_points as f32 / spec.hit_points.max(1) as f32;
                     let frame = spec.chunks.get(span.chunk).map(Cuboid::frame);
@@ -2183,6 +2235,183 @@ impl Town {
             }
             _ => cast,
         }
+    }
+
+    /// Draws broken chunks as GPU instances from now on: each chunk part
+    /// of every look the buildings break into is kept once, in the
+    /// chunk's space, and a frame writes only each live chunk's transform
+    /// and light ([`super::instanced`]). The pool still poses the pieces
+    /// that are damaged or loose but whole, and any look the herd lacks.
+    pub fn set_instanced(&mut self, on: bool) {
+        self.instancing = on;
+        self.herd = None;
+        self.herd_shapes = usize::MAX;
+        self.instanced = 0;
+        self.sync();
+    }
+
+    /// Builds the herd again when a broken piece's look isn't in it and
+    /// chunk shapes were cut since it was built. Buildings are cut a few
+    /// blocks a frame as the player nears them, or when first struck, so
+    /// the herd is built at the first break with every shape cut by then,
+    /// rather than at every cut; the renderer uploads its meshes then.
+    /// Until it covers a look, the pool draws that look's chunks.
+    fn herd_up(&mut self) {
+        if !self.instancing || self.herd_shapes == self.wreck.meshes.len() {
+            return;
+        }
+        let herd = self.herd.as_ref();
+        let wanted = self
+            .wreck
+            .site
+            .pieces()
+            .iter()
+            .zip(&self.looks)
+            .any(|(piece, look)| {
+                piece.status == Status::Broken
+                    && !herd.is_some_and(|h| h.covers(look.shape, look.paint))
+            });
+        if !wanted {
+            return;
+        }
+        self.herd_shapes = self.wreck.meshes.len();
+        let looks = self
+            .wreck
+            .buildings
+            .iter()
+            .flat_map(|b| b.pieces.iter())
+            .filter(|piece| piece.cut)
+            .map(|piece| (piece.look.shape, piece.look.paint));
+        self.herd = Some(Herd::new(
+            &self.pool.kit,
+            &self.wreck.meshes,
+            &self.materials,
+            looks,
+            BROKEN_SHADE,
+        ));
+    }
+
+    /// This frame's broken chunks as GPU instances, lit by `probes` when
+    /// the bake has them, or `None` without a herd or with nothing to draw.
+    #[must_use]
+    pub fn instances(&self, probes: Option<&AmbientProbes>) -> Vec<Instances> {
+        let Some(herd) = self.herd.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let copies = self.copies();
+        if !copies.is_empty() {
+            out.push(herd.frame(copies, probes));
+        }
+        if let Some(settled) = &self.settled {
+            out.push(settled.instances.clone());
+        }
+        out
+    }
+
+    /// Merges the herd's chunks that came to rest into one mesh a material
+    /// ([`Herd::merged`]), lit by `probes`, so rubble at rest costs a few
+    /// draws and nothing a frame; the herd keeps drawing what moves. The
+    /// merge grows once [`SETTLE_BATCH`] more chunks rest, or any have
+    /// rested [`SETTLE_EVERY`] s, and is made again at once when a merged
+    /// chunk moves or goes, or the probes change, as when a blast relights
+    /// the lot.
+    pub fn settle_rubble(&mut self, probes: Option<&AmbientProbes>) {
+        if self.herd.is_none() {
+            self.settled = None;
+            return;
+        }
+        let site = &self.wreck.site;
+        let parts = self.chunk_parts();
+        let resting: BTreeSet<(usize, usize)> = parts
+            .iter()
+            .filter(|p| site.chunk_at_rest(p.0, p.1))
+            .map(|p| (p.0, p.1))
+            .collect();
+        let version = probes.map(|p| p.grid.version);
+        let rebuild = match &self.settled {
+            Some(settled) => {
+                let new = resting.difference(&settled.members).count();
+                !settled.members.is_subset(&resting)
+                    || settled.probes != version
+                    || new >= SETTLE_BATCH
+                    || (new > 0 && self.clock - settled.built >= SETTLE_EVERY)
+            }
+            None => resting.len() >= SETTLE_BATCH || !resting.is_empty() && self.settle_due(),
+        };
+        if !rebuild {
+            return;
+        }
+        let Some(herd) = self.herd.as_ref() else {
+            return;
+        };
+        self.settled = (!resting.is_empty()).then(|| Settled {
+            instances: herd.merged(
+                parts
+                    .iter()
+                    .filter(|p| resting.contains(&(p.0, p.1)))
+                    .map(|p| (p.2, p.3)),
+                probes,
+            ),
+            members: resting,
+            built: self.clock,
+            probes: version,
+        });
+        self.settle_since = self.clock;
+    }
+
+    /// Whether rubble first came to rest at least [`SETTLE_EVERY`] s ago.
+    fn settle_due(&mut self) -> bool {
+        if self.settle_since > self.clock {
+            self.settle_since = self.clock;
+        }
+        self.clock - self.settle_since >= SETTLE_EVERY
+    }
+
+    /// The herd's chunks that still move: each part's mesh and transform.
+    fn copies(&self) -> Vec<(u32, Mat4)> {
+        let settled = self.settled.as_ref().map(|s| &s.members);
+        self.chunk_parts()
+            .into_iter()
+            .filter(|p| !settled.is_some_and(|m| m.contains(&(p.0, p.1))))
+            .map(|p| (p.2, p.3))
+            .collect()
+    }
+
+    /// Each live chunk part the herd draws: its piece, chunk, mesh, and
+    /// transform.
+    fn chunk_parts(&self) -> Vec<(usize, usize, u32, Mat4)> {
+        let Some(herd) = self.herd.as_ref() else {
+            return Vec::new();
+        };
+        let site = &self.wreck.site;
+        let mut copies = Vec::new();
+        for (i, state) in site.pieces().iter().enumerate() {
+            if state.status != Status::Broken {
+                continue;
+            }
+            let Some(&Look { shape, paint }) = self.looks.get(i) else {
+                continue;
+            };
+            if !herd.covers(shape, paint) {
+                continue;
+            }
+            for (chunk, mesh) in self.wreck.meshes[shape].iter().enumerate() {
+                let Some(transform) = site.chunk_pose(i, chunk) else {
+                    continue;
+                };
+                for (part, (source, _)) in mesh.parts.iter().enumerate() {
+                    let id = self
+                        .materials
+                        .get(&(*source, paint))
+                        .and_then(|&material| herd.mesh(shape, chunk, part, material));
+                    if let Some(id) = id {
+                        copies.push((i, chunk, id, transform));
+                    }
+                }
+            }
+        }
+        copies
     }
 
     /// The town's chunks alone as a figure, for a zone without a

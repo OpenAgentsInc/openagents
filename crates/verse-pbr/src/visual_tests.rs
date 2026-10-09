@@ -188,6 +188,7 @@ fn physical_capture(
             lines: [(&buffer, 0); 2],
             textured: None,
             figure: None,
+            instances: [None, None],
             water: None,
         },
         None,

@@ -85,6 +85,51 @@ p50 and 43.4 ms at p99, and the dynamic mesh to 7 to 9 ms.
 - After the swarm, frames stay at about 25 ms because the 700 resting
   chunks are still simulated and posed every frame.
 
+## Instanced chunks, merged rubble, and cheaper contacts (#10937)
+
+- Broken chunks draw as GPU instances (`Town::set_instanced`, on in the
+  showcase; `demolition::instanced::Herd`). Each chunk part is uploaded
+  once in its own space; a frame writes only each live chunk's transform
+  and its vertices' light, blended once at the chunk's center
+  (`AmbientProbes::at`) and evaluated once per distinct normal. The pool
+  still poses pieces that are damaged or loose but whole.
+- Rubble at rest merges into one world-space mesh a material
+  (`Town::settle_rubble`, `Herd::merged`) once 48 more chunks rest or any
+  have rested 1.5 s, and is merged again when a merged chunk moves or the
+  probes change. The renderer skips writing a set whose records and light
+  are unchanged. Frozen chunks keep their static bodies, so later debris
+  still lands on the pile and a blast still throws it; they no longer cost
+  broadphase queries (below), and static bodies never cost solver time.
+- Physics: only colliders that respond query the broadphase (pairs are
+  visited in the exhaustive order, so contacts are unchanged), the solver
+  finds each contact's warm start among its own pair's contacts instead of
+  scanning all of them (quadratic with 3,700 contacts), and the yard sums
+  impacts per pair through a map. Halving the solver's iterations was
+  tried and dropped: a standing cottage's roof took damage from its own
+  resting contacts.
+- Draws rise during the swarm (about 4,300 at most, against 1,500) because
+  most chunk shapes are unique; they fall again as the rubble merges.
+
+Measured with `--live --settle-light`, three interleaved runs each, medians
+of each run's p50 / p99 frame (sequential CPU and GPU, as above), on this
+Mac with other builds running (load average 11 to 16):
+
+| Phase | Before p50 / p99 (ms) | After p50 / p99 (ms) |
+| --- | --- | --- |
+| Before the cast | 6.5 / 13.2 | 6.6 / 12.8 |
+| Swarm (6 s) | 19.2 / 34.6 | 14.6 / 21.9 |
+| After | 14.8 / 23.8 | 10.2 / 18.4 |
+
+The swarm's physics fell from 6.8 / 18.5 to 5.3 / 9.5 ms and the dynamic
+mesh from 3.6 / 5.7 to 1.3 / 1.8 ms. The film's stills match the posed
+path's to 59 to 63 dB PSNR
+([captures/meteor-showcase/instanced-impact-pair.jpg](captures/meteor-showcase/instanced-impact-pair.jpg),
+committed proxies, before left). The 16.7 ms p99 is not met yet: the GPU
+wait alone reaches 12 ms at p99, and the impact frames' physics 6 to 10 ms.
+Lowering the chunk cap early in the swarm would trade away visible debris
+(the live cast peaks at about 500 chunks, under the 700 cap), so it is not
+done.
+
 ## Relighting what breaks (#10938)
 
 The showcase's light is baked at load: each vertex's sky visibility and one

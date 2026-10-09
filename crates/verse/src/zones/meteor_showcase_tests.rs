@@ -301,3 +301,65 @@ fn the_players_meteor_swarm_calls_down_eight_and_nothing_else_casts() {
     run(&mut runtime, CAST + 0.05);
     assert_eq!(town(&runtime).swarm().meteors_left(), 8);
 }
+
+#[test]
+fn broken_chunks_draw_as_gpu_instances_and_rubble_at_rest_merges() {
+    let vertices = |set: &crate::pbr::textured::Instances| {
+        let counts = set.mesh_vertices();
+        set.records
+            .iter()
+            .map(|r| counts[r.mesh as usize])
+            .sum::<usize>()
+    };
+    let mut runtime = installed();
+    assert!(runtime.stage_meteor_showcase(DELAY));
+    run(&mut runtime, DELAY + CAST + 2.0);
+    // Mid-swarm the broken chunks draw as instances of meshes uploaded
+    // once; the pool poses only what is damaged or loose but whole.
+    let profile = town(&runtime).profile();
+    assert!(profile.chunks > 100, "{} chunks", profile.chunks);
+    let mid = runtime.dynamic_mesh().instances;
+    assert!(!mid.is_empty() && mid.len() <= crate::pbr::textured::INSTANCE_SETS);
+    for set in &mid {
+        set.validate().unwrap();
+    }
+    assert_eq!(mid[0].records.len(), profile.instances);
+    let instanced: usize = mid.iter().map(vertices).sum();
+    assert!(
+        instanced > profile.posed_vertices,
+        "{instanced} instanced vertices, {} posed",
+        profile.posed_vertices
+    );
+    // Long after, the rubble at rest is one merged mesh a material, drawn
+    // in a few draws, and fewer chunks are left to instance.
+    run(&mut runtime, 12.0);
+    let late = runtime.dynamic_mesh().instances;
+    for set in &late {
+        set.validate().unwrap();
+    }
+    let merged = late
+        .iter()
+        .find(|set| {
+            set.records
+                .iter()
+                .all(|r| r.transform == glam::Mat4::IDENTITY)
+        })
+        .expect("the rubble at rest is merged");
+    assert!(
+        merged.records.len() <= 16,
+        "{} merged meshes",
+        merged.records.len()
+    );
+    assert!(vertices(merged) > instanced / 2);
+    let late_profile = town(&runtime).profile();
+    assert!(
+        late_profile.instances < late_profile.chunks,
+        "{} chunk parts still instanced of {} chunks",
+        late_profile.instances,
+        late_profile.chunks
+    );
+    // Restoring the houses leaves nothing to instance or merge.
+    runtime.zone_intent(Intent::Rebuild).unwrap();
+    runtime.tick(&InputState::default(), DT);
+    assert!(runtime.dynamic_mesh().instances.is_empty());
+}

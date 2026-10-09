@@ -498,6 +498,16 @@ impl Everglade {
         }
     }
 
+    /// The town's broken chunks as GPU instances, lit by the probes, when
+    /// the town draws them so ([`demolition::town::Town::set_instanced`]).
+    #[must_use]
+    pub fn town_instances(&self) -> Vec<crate::pbr::textured::Instances> {
+        self.town
+            .as_ref()
+            .map(|town| town.instances(self.probes.as_deref()))
+            .unwrap_or_default()
+    }
+
     /// The town's destructible buildings to act on, once started.
     pub fn town_mut(&mut self) -> Option<&mut demolition::town::Town> {
         self.town.as_deref_mut()
@@ -1472,6 +1482,9 @@ impl Everglade {
             yard.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
         }
         self.poll_bake();
+        if let Some(town) = &mut self.town {
+            town.settle_rubble(self.probes.as_deref());
+        }
     }
 
     /// Takes a finished light bake's probes, and follows the key light with
@@ -1862,6 +1875,7 @@ impl Everglade {
                 }
                 Mesh {
                     figure: Some(figure),
+                    instances: self.town_instances(),
                     ..Mesh::default()
                 }
             }
@@ -1877,6 +1891,7 @@ impl Everglade {
                 if let Some(town) = &self.town {
                     mesh.figure = town.own_figure();
                 }
+                mesh.instances = self.town_instances();
                 mesh
             }
         }

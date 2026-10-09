@@ -770,41 +770,48 @@ impl World {
             .collect();
         for (i, &bounds) in bounds.iter().enumerate() {
             let collider = &self.colliders()[i];
-            let present = collider.filter != Filter::NONE;
-            let responds = self[collider.body].responds();
-            if present {
+            if collider.filter != Filter::NONE {
                 stats.index_updates += usize::from(self.collision_index.set(i, bounds));
             } else {
                 stats.index_updates += usize::from(self.collision_index.remove(i));
             }
-            if present && responds {
-                stats.index_updates += usize::from(self.responding_index.set(i, bounds));
-            } else {
-                stats.index_updates += usize::from(self.responding_index.remove(i));
-            }
         }
-        let mut manifolds = Vec::new();
+        // Only colliders that respond look for partners, in the tree of
+        // every present collider: a pair needs one that responds, so a
+        // fixed, kinematic, or sleeping collider is found by its partner
+        // and never queries itself. A rubble pile frozen at rest so costs
+        // no queries. Pairs are then visited in the exhaustive order, lower
+        // collider first, so the contacts are the same as checking every
+        // pair.
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
         for (i, &bounds) in bounds.iter().enumerate() {
             let a = &self.colliders()[i];
-            if a.filter == Filter::NONE {
+            if a.filter == Filter::NONE || !self[a.body].responds() {
                 continue;
             }
-            let responds = self[a.body].responds();
-            let tree = if responds {
-                &self.collision_index
-            } else {
-                &self.responding_index
-            };
-            for j in tree
-                .query(bounds, &mut stats.scene_nodes)
-                .into_iter()
-                .filter(|&j| j > i)
+            for j in self.collision_index.query(bounds, &mut stats.scene_nodes) {
+                if j == i {
+                    continue;
+                }
+                let other_responds = self[self.colliders()[j].body].responds();
+                // Two that respond: the lower one's query keeps the pair.
+                if other_responds && j < i {
+                    continue;
+                }
+                pairs.push((i.min(j), i.max(j)));
+            }
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+        let mut manifolds = Vec::new();
+        for (i, j) in pairs {
+            let a = &self.colliders()[i];
             {
                 stats.candidate_pairs += 1;
                 let b = &self.colliders()[j];
                 if a.body == b.body
                     || !a.filter.allows(b.filter)
-                    || (!responds && !self[b.body].responds())
+                    || (!self[a.body].responds() && !self[b.body].responds())
                 {
                     continue;
                 }

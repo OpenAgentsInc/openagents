@@ -125,6 +125,7 @@ fn a_roof_blocks_rain_wetness_and_a_removed_roof_opens_the_same_column() {
                 lines: [(&buffer, 0); 2],
                 textured: None,
                 figure: None,
+                instances: [None, None],
                 water: None,
             };
             let mut encoder = device.create_command_encoder(&Default::default());

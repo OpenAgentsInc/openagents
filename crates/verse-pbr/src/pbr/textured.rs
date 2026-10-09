@@ -1437,6 +1437,97 @@ impl Figure {
     }
 }
 
+/// Copies of a set of meshes drawn as GPU instances in a frame's dynamic
+/// mesh, such as the chunks of what a meteor broke: each record places one
+/// mesh with its own transform, and each record's vertices take their own
+/// light. The renderer uploads `scene`'s meshes once for each distinct
+/// `scene` (by [`Arc`] identity) and writes only the records and the light
+/// each frame, so nothing is posed vertex by vertex on the CPU. Records of
+/// one mesh draw together, one indexed draw a mesh.
+///
+/// [`Arc`]: std::sync::Arc
+#[derive(Clone)]
+pub struct Instances {
+    /// Images, materials, and the meshes, each one primitive in mesh space,
+    /// without placements.
+    pub scene: std::sync::Arc<TexturedScene>,
+    /// This frame's copies.
+    pub records: std::sync::Arc<Vec<InstanceOf>>,
+    /// Each record's vertices' light channel ([`TexturedVertex::light`]),
+    /// record after record, as many as each record's mesh has vertices.
+    pub lights: std::sync::Arc<Vec<[u8; 4]>>,
+}
+
+/// Most sets of [`Instances`] a frame draws; the renderer keeps each set's
+/// meshes uploaded in its own slot.
+pub const INSTANCE_SETS: usize = 2;
+
+/// One copy of an [`Instances`] mesh: which mesh, and its mesh-to-world
+/// transform.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InstanceOf {
+    pub mesh: u32,
+    pub transform: Mat4,
+}
+
+impl std::fmt::Debug for Instances {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Instances({:?}, {} records)",
+            self.scene,
+            self.records.len()
+        )
+    }
+}
+
+impl Instances {
+    /// The vertices each of the scene's meshes holds, in all its
+    /// primitives.
+    #[must_use]
+    pub fn mesh_vertices(&self) -> Vec<usize> {
+        self.scene
+            .meshes
+            .iter()
+            .map(|m| m.primitives.iter().map(|p| p.vertices.len()).sum())
+            .collect()
+    }
+
+    /// Checks the scene, that every record names a mesh and has a finite
+    /// transform, and that the light covers every record's vertices.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message naming the first part that is out of bounds.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.scene.placements.is_empty() {
+            return Err("instances' scene has no placements".into());
+        }
+        let counts = self.mesh_vertices();
+        let mut texels = 0usize;
+        for record in self.records.iter() {
+            let Some(count) = counts.get(record.mesh as usize) else {
+                return Err("an instance names a mesh its scene lacks".into());
+            };
+            if !record.transform.is_finite() {
+                return Err("an instance's transform is not finite".into());
+            }
+            texels += count;
+        }
+        if texels != self.lights.len() || texels > u32::MAX as usize {
+            return Err("instances' light does not match their meshes".into());
+        }
+        Ok(())
+    }
+
+    /// Bytes a frame writes for them: the records and the light.
+    #[must_use]
+    pub fn frame_bytes(&self) -> u64 {
+        (self.records.len() * std::mem::size_of::<super::instanced::Instance>()
+            + self.lights.len() * 4) as u64
+    }
+}
+
 /// A merged scene: world-space vertices and indices, and the cells that
 /// draw ranges of them.
 #[derive(Clone, Debug, Default, PartialEq)]

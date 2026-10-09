@@ -343,8 +343,20 @@ impl World {
                 }
             })
             .collect();
+        // Last step's contacts by collider pair, in their order, so a
+        // contact finds its warm start among its own pair's rather than
+        // scanning every contact (quadratic with thousands of contacts, as
+        // in a meteor swarm's rubble).
+        let mut warm_of: std::collections::HashMap<(u32, u32), Vec<usize>> =
+            std::collections::HashMap::with_capacity(self.warm.len());
+        for (k, w) in self.warm.iter().enumerate() {
+            warm_of.entry((w.a.0, w.b.0)).or_default().push(k);
+        }
         let mut rows = Vec::new();
         for manifold in manifolds {
+            let warm_pair = warm_of
+                .get(&(manifold.a.0, manifold.b.0))
+                .map_or(&[][..], Vec::as_slice);
             let (ca, cb) = (
                 self.colliders()[manifold.a.0 as usize],
                 self.colliders()[manifold.b.0 as usize],
@@ -383,10 +395,9 @@ impl World {
                 let twist_k = c.normal.dot(ma.inverse_inertia * c.normal)
                     + c.normal.dot(mb.inverse_inertia * c.normal);
                 // Warm start from last step's nearest point on this pair.
-                let warm = self
-                    .warm
+                let warm = warm_pair
                     .iter()
-                    .filter(|w| w.a == manifold.a && w.b == manifold.b)
+                    .map(|&k| &self.warm[k])
                     .map(|w| (w.point.distance_squared(c.point), w))
                     .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
                     .min_by(|x, y| x.0.total_cmp(&y.0))

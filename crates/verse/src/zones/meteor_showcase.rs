@@ -276,6 +276,9 @@ pub fn build(pack: &ZonePack, player: &PlayerController) -> Result<(World, Everg
     town.set_volley(Volley::SHOWCASE);
     town.set_debris(DEBRIS);
     town.set_numbers(false);
+    // The chunks draw as GPU instances rather than posed on the CPU
+    // (#10937).
+    town.set_instanced(true);
     Ok((world, glade))
 }
 

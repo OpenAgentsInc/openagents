@@ -94,6 +94,18 @@ const FALL_LIMIT: f64 = 8.0;
 const CRASH_SHATTER: f64 = 4.0;
 const CRASH_BREAKS: usize = 12;
 
+/// What one tick's physics steps cost ([`Site::step_cost`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct StepCost {
+    pub steps: u32,
+    /// Contact detection and solving over the steps, ms.
+    pub detect_ms: f32,
+    pub solve_ms: f32,
+    /// The most awake bodies and contact points in a step.
+    pub awake: usize,
+    pub contacts: usize,
+}
+
 /// Plaster, timber, and stone surfaces.
 const MATERIAL: Material = Material {
     friction: 0.7,
@@ -416,6 +428,9 @@ pub struct Site {
     rng: u64,
     /// Simulated time not yet stepped, s.
     pending: f64,
+    /// What the last tick's steps cost: the solver's detection and
+    /// solving, ms, and the most awake bodies and contact points.
+    steps: StepCost,
     /// Bumped whenever a piece stops standing, so blockers are rebuilt.
     revision: u64,
     /// Bodies an explosion threw, and until when they may outrun
@@ -470,6 +485,7 @@ impl Site {
             seed,
             rng: seed,
             pending: 0.0,
+            steps: StepCost::default(),
             revision: 0,
             thrown: Vec::new(),
             falls: Vec::new(),
@@ -2166,8 +2182,15 @@ impl Site {
         self.unsettled = true;
     }
 
+    /// What the last tick's physics steps cost.
+    #[must_use]
+    pub fn step_cost(&self) -> StepCost {
+        self.steps
+    }
+
     /// Advances the yard by `dt` seconds of wall time.
     pub fn tick(&mut self, dt: f32) {
+        self.steps = StepCost::default();
         self.age_dust(dt);
         self.hold_frozen();
         let any_moving = self.pieces.iter().any(|p| match p.status {
@@ -2196,6 +2219,12 @@ impl Site {
         let gravity = Uniform(DVec3::new(0.0, -9.81, 0.0));
         self.wet_debris();
         self.world.step(&gravity);
+        let stats = &self.world.stats;
+        self.steps.steps += 1;
+        self.steps.detect_ms += stats.detect.as_secs_f32() * 1000.0;
+        self.steps.solve_ms += stats.solve.as_secs_f32() * 1000.0;
+        self.steps.awake = self.steps.awake.max(stats.awake);
+        self.steps.contacts = self.steps.contacts.max(stats.contact_points);
         let now = self.world.time();
         self.thrown.retain(|&(_, until)| until > now);
         // Bodies that touch something fixed this step (the ground, a floor,
@@ -2276,16 +2305,22 @@ impl Site {
             }
         }
         // Impacts: the summed contact impulse between each pair of bodies.
+        // In first-contact order, found through a map: a swarm's thousands
+        // of contacts made the linear search quadratic.
         let mut pairs: Vec<(BodyId, BodyId, f64, DVec3)> = Vec::new();
+        let mut seen: BTreeMap<(u32, u32), usize> = BTreeMap::new();
         for report in &self.world.contacts {
             let (a, b) = if report.body_a <= report.body_b {
                 (report.body_a, report.body_b)
             } else {
                 (report.body_b, report.body_a)
             };
-            match pairs.iter_mut().find(|p| p.0 == a && p.1 == b) {
-                Some(pair) => pair.2 += report.impulse.length(),
-                None => pairs.push((a, b, report.impulse.length(), report.point)),
+            match seen.get(&(a.0, b.0)) {
+                Some(&k) => pairs[k].2 += report.impulse.length(),
+                None => {
+                    seen.insert((a.0, b.0), pairs.len());
+                    pairs.push((a, b, report.impulse.length(), report.point));
+                }
             }
         }
         let mut hurt: Vec<(usize, i32, DVec3)> = Vec::new();
@@ -2626,6 +2661,16 @@ impl Site {
             }
             None => pose,
         }
+    }
+
+    /// Whether chunk `index` of a broken piece is frozen where it came to
+    /// rest, until something strikes near it.
+    #[must_use]
+    pub fn chunk_at_rest(&self, piece: usize, index: usize) -> bool {
+        self.pieces[piece]
+            .chunks
+            .get(index)
+            .is_some_and(|chunk| !chunk.gone && self.frozen.contains(&chunk.body.0))
     }
 
     /// The world pose of chunk `index` of a broken piece, or `None` while

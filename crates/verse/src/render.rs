@@ -109,6 +109,11 @@ struct Scene {
     /// The dynamic mesh's figure on the GPU, with the scene it was uploaded
     /// from; a different scene uploads again.
     figure: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
+    /// The dynamic mesh's sets of instances on the GPU, each with the scene
+    /// its meshes were uploaded from (a different scene uploads again) and
+    /// the records and light last written (the same ones are not written
+    /// again, as for settled rubble).
+    instances: [Option<InstanceSlot>; crate::pbr::textured::INSTANCE_SETS],
     /// The world's water surface, waiting for the physical path's first
     /// frame, which uploads it.
     water_pending: Option<std::sync::Arc<crate::pbr::water::WaterSurface>>,
@@ -907,6 +912,7 @@ impl Renderer {
         self.scene.textured_baked = None;
         self.scene.textured_edits = None;
         self.scene.figure = None;
+        self.scene.instances = Default::default();
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
@@ -1296,6 +1302,17 @@ fn validate_extent(width: u32, height: u32, limit: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// One set of a frame's instances on the GPU ([`crate::pbr::textured::Instances`]).
+struct InstanceSlot {
+    scene: std::sync::Arc<TexturedScene>,
+    gpu: TexturedGpu,
+    /// The records and light written last.
+    written: Option<(
+        std::sync::Arc<Vec<crate::pbr::textured::InstanceOf>>,
+        std::sync::Arc<Vec<[u8; 4]>>,
+    )>,
+}
+
 fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String> {
     if !view.view_proj.is_finite() || !view.eye.is_finite() {
         return Err("camera contains nonfinite values".into());
@@ -1316,6 +1333,9 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
     }
     if let Some(figure) = &dynamic.figure {
         figure.validate()?;
+    }
+    for instances in &dynamic.instances {
+        instances.validate()?;
     }
     Ok(())
 }
@@ -1369,6 +1389,25 @@ pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resou
             let image = &scene.images[variant.texture];
             result.texture_bytes += verse_engine::mips::bytes(image.width, image.height, u32::MAX)?;
         }
+    }
+    for instances in &mesh.instances {
+        // Their meshes once, each frame's records, and a light texel a
+        // vertex of every record. Their images are the figure's, which the
+        // renderer shares between them.
+        let (vertices, indices) = instances
+            .scene
+            .meshes
+            .iter()
+            .flat_map(|mesh| &mesh.primitives)
+            .fold((0, 0), |(v, i), p| {
+                (v + p.vertices.len(), i + p.indices.len())
+            });
+        result.geometry_bytes +=
+            (vertices * std::mem::size_of::<crate::pbr::instanced::GpuVertex>()
+                + indices * 4
+                + (instances.records.len() + 1)
+                    * std::mem::size_of::<crate::pbr::instanced::Instance>()) as u64
+                + crate::pbr::instanced::light_bytes(instances.lights.len());
     }
     result.retained_source_bytes = result.geometry_bytes + result.texture_bytes;
     Ok(result)
@@ -1468,6 +1507,9 @@ pub fn fit_frame(
     fitted.lines.truncate(lines);
     fitted.lit.truncate(lit);
     fitted.glow.truncate(glow);
+    if !budget.overrun(frame_with(quality, &fitted)?).fits() {
+        fitted.instances.clear();
+    }
     if !budget.overrun(frame_with(quality, &fitted)?).fits() {
         fitted.figure = None;
     }
@@ -2464,6 +2506,7 @@ impl Scene {
             textured_baked: None,
             textured_edits: None,
             figure: None,
+            instances: Default::default(),
             water_pending: world.water.clone(),
             water: None,
             photo: None,
@@ -2720,6 +2763,28 @@ impl Scene {
                 gpu.write_vertices(queue, &figure.vertices);
             }
         }
+        for (slot, instances) in self.instances.iter_mut().zip(&dynamic.instances) {
+            if slot
+                .as_ref()
+                .is_none_or(|s| !std::sync::Arc::ptr_eq(&s.scene, &instances.scene))
+            {
+                *slot = Some(InstanceSlot {
+                    scene: instances.scene.clone(),
+                    gpu: photo.upload_instances(device, queue, instances),
+                    written: None,
+                });
+            }
+            if let Some(slot) = slot {
+                let same = slot.written.as_ref().is_some_and(|(records, lights)| {
+                    std::sync::Arc::ptr_eq(records, &instances.records)
+                        && std::sync::Arc::ptr_eq(lights, &instances.lights)
+                });
+                if !same {
+                    photo.write_instances(device, queue, &mut slot.gpu, instances);
+                    slot.written = Some((instances.records.clone(), instances.lights.clone()));
+                }
+            }
+        }
         if matches!(stage, Stage::Space(_))
             && let Err(error) = photo.prepare_space(device, queue)
         {
@@ -2787,6 +2852,12 @@ impl Scene {
                 .figure
                 .as_ref()
                 .and(self.figure.as_ref().map(|(_, gpu)| gpu)),
+            instances: std::array::from_fn(|k| {
+                dynamic
+                    .instances
+                    .get(k)
+                    .and(self.instances[k].as_ref().map(|slot| &slot.gpu))
+            }),
             water: self.water.as_ref(),
         };
         photo.headroom = self.headroom;
