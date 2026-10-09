@@ -62,8 +62,17 @@ impl Nav {
 }
 
 /// The destinations the left panel shows, in order. A destination is added
-/// here when its page exists (`Nav::Environments` with `/environments`).
+/// here when its page exists (`Nav::Environments` with `/environments`,
+/// shown on the local address only).
 pub const NAV: &[Nav] = &[Nav::Environments];
+
+/// Whether the left panel offers `nav`: Environments only when a studio is
+/// configured and the request came to the local address.
+fn nav_shown(nav: Nav, studio: bool, local: bool) -> bool {
+    match nav {
+        Nav::Environments => studio && local,
+    }
+}
 
 /// One page: title, current section, content, and optional shell slots.
 #[must_use]
@@ -228,7 +237,14 @@ impl UiPage {
                     .shortcut("Control+N", "⌃N"),
             );
         for nav in NAV {
-            if *nav == Nav::Environments && !crate::environments::shown() {
+            // Environments answer only on the local address (the host
+            // guard refuses them on public hosts), so a public page never
+            // links them: no control that leads to a refusal.
+            if !nav_shown(
+                *nav,
+                crate::environments::shown(),
+                crate::local_request(headers),
+            ) {
                 continue;
             }
             sidebar = sidebar.nav(
@@ -443,6 +459,19 @@ fn sidebar_collapsed(headers: &HeaderMap) -> bool {
 mod tests {
     use super::*;
     use axum::http::{HeaderValue, header};
+
+    #[test]
+    fn environments_is_offered_on_the_local_address_only() {
+        assert!(nav_shown(Nav::Environments, true, true));
+        assert!(!nav_shown(Nav::Environments, true, false), "public host");
+        assert!(!nav_shown(Nav::Environments, false, true), "no studio");
+        // A public page carries no link to it.
+        let html = UiPage::new("OpenAgents")
+            .content(html! { p { "x" } })
+            .render(&HeaderMap::new())
+            .into_string();
+        assert!(!html.contains("href=\"/environments\""));
+    }
 
     #[test]
     fn follows_the_system_without_a_cookie_and_the_cookie_with_one() {
