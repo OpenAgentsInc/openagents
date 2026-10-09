@@ -12,12 +12,12 @@
 //! Credentials never reach this view: the owner projects identities,
 //! states, digests, and user text only.
 
-use super::controls::{self, Context, admitted, digest, hidden, submit};
+use super::controls::{self, Context, admitted, digest, submit};
 use super::operator::{bytes_response, can_operate, cloud_url, decoded, encoded, page};
 use super::session::SessionError;
-use super::{protect, refused, ticket, workspace_shell};
+use super::ui::{self, BoundForm, Details};
+use super::{protect, refused, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{DefaultBodyLimit, Form, Path, Query, State};
@@ -27,6 +27,9 @@ use axum::routing::get;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use coder_access::environment as env;
 use coder_access::protocol::{Operation, Outcome, random_id};
+use maud::{Markup, PreEscaped, Render, html};
+use openagents_ui::actions::{Alert, Color, Variant};
+use openagents_ui::forms::{Field, Textarea};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -88,7 +91,7 @@ async fn native_read(
 }
 
 /// The explicit state a refused read leaves the panel in.
-fn state_section(error: &SessionError, retry: &str) -> Option<String> {
+fn state_section(error: &SessionError, retry: &str) -> Option<Markup> {
     let (title, body) = match error {
         SessionError::Forbidden => (
             "Denied",
@@ -108,10 +111,27 @@ fn state_section(error: &SessionError, retry: &str) -> Option<String> {
         ),
         _ => return None,
     };
-    Some(format!(
-        "<section class=\"cloud-card\" role=\"alert\" aria-labelledby=\"environment-state\"><h2 id=\"environment-state\">{title}</h2><p>{body}</p><p><a href=\"{}\">Read again</a></p></section>",
-        escape(retry)
-    ))
+    // Every refused state is announced (`role="alert"`); a denial is
+    // danger-colored, the others a warning.
+    let denied = matches!(error, SessionError::Forbidden);
+    let mut alert = Alert::new()
+        .color(if denied {
+            Color::Danger
+        } else {
+            Color::Warning
+        })
+        .variant(Variant::Soft)
+        .description(body)
+        .actions(html! { a href=(retry) { "Read again" } });
+    if !denied {
+        alert = alert.attr("role", "alert");
+    }
+    Some(html! {
+        section class="cloud-card" aria-labelledby="environment-state" {
+            h2 id="environment-state" { (title) }
+            (alert)
+        }
+    })
 }
 
 fn state_page(context: &Context<'_>, headers: &HeaderMap, failed: Failed, retry: &str) -> Response {
@@ -119,10 +139,14 @@ fn state_page(context: &Context<'_>, headers: &HeaderMap, failed: Failed, retry:
         Failed::Page(response) => return response,
         Failed::State(error) => error,
     };
-    let Some(mut content) = state_section(&error, retry) else {
+    let Some(section) = state_section(&error, retry) else {
         return refused(error);
     };
-    content.push_str(&controls::link(context.binding));
+    let content = html! {
+        (section)
+        (PreEscaped(controls::link(context.binding)))
+    }
+    .into_string();
     let status = match error {
         SessionError::Forbidden => StatusCode::FORBIDDEN,
         SessionError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
@@ -167,15 +191,17 @@ pub(super) fn when(ms: u64) -> String {
     )
 }
 
-fn short(digest: &str) -> String {
-    escape(&digest[..digest.len().min(12)])
+/// The first 12 characters of a digest (plain text; Maud escapes it).
+fn short(digest: &str) -> &str {
+    digest.get(..digest.len().min(12)).unwrap_or(digest)
 }
 
 fn human(state: &str) -> String {
-    escape(&state.replace('_', " "))
+    state.replace('_', " ")
 }
 
-/// One summary line for the whole environment, with the state named.
+/// One summary line for the whole environment, with the state named. The
+/// line is plain text; the caller escapes it.
 pub(super) fn overall(d: &env::Detail) -> (&'static str, String) {
     let reconciling = d
         .builds
@@ -204,7 +230,7 @@ pub(super) fn overall(d: &env::Detail) -> (&'static str, String) {
                 "failed",
                 format!(
                     "Failed. Verification {} {}. A failed or incomplete verification can never be saved.",
-                    escape(&latest_verify.map(|v| v.id.clone()).unwrap_or_default()),
+                    latest_verify.map(|v| v.id.clone()).unwrap_or_default(),
                     human(latest_verify.map_or("", |v| v.state.as_str()))
                 ),
             );
@@ -264,10 +290,7 @@ pub(super) fn overall(d: &env::Detail) -> (&'static str, String) {
     match &d.active {
         Some(active) => (
             "selected",
-            format!(
-                "Version {} is selected; new jobs for this project start from it.",
-                escape(active)
-            ),
+            format!("Version {active} is selected; new jobs for this project start from it."),
         ),
         None => (
             "draft",
@@ -283,33 +306,25 @@ struct PanelOptions {
     before: Option<u64>,
 }
 
-fn steps(steps: &[env::Step]) -> String {
-    let mut out = String::from("<ol class=\"environment-steps\">");
-    for s in steps {
-        out.push_str(&format!(
-            "<li>{} · <time>{}</time>{}</li>",
-            human(&s.state),
-            when(s.at_ms),
-            s.reason
-                .as_deref()
-                .map(|r| format!(" · {}", escape(r)))
-                .unwrap_or_default()
-        ));
+fn steps(steps: &[env::Step]) -> Markup {
+    html! {
+        ol class="environment-steps" {
+            @for s in steps {
+                li {
+                    (human(&s.state)) " · " time { (when(s.at_ms)) }
+                    @if let Some(r) = &s.reason { " · " (r) }
+                }
+            }
+        }
     }
-    out.push_str("</ol>");
-    out
 }
 
-fn image(i: &env::Image) -> String {
-    format!(
-        "image <code>{}</code>{} · manifest <code>{}</code>",
-        escape(&i.image_id),
-        i.snapshot_id
-            .as_deref()
-            .map(|s| format!(" · snapshot <code>{}</code>", escape(s)))
-            .unwrap_or_default(),
-        short(&i.manifest_digest)
-    )
+fn image(i: &env::Image) -> Markup {
+    html! {
+        "image " code { (i.image_id) }
+        @if let Some(s) = &i.snapshot_id { " · snapshot " code { (s) } }
+        " · manifest " code { (short(&i.manifest_digest)) }
+    }
 }
 
 struct Forms<'a> {
@@ -329,8 +344,8 @@ impl Forms<'_> {
         fence: &str,
         label: &str,
         enabled: bool,
-        field: &str,
-    ) -> Result<String, Response> {
+        field: Option<Markup>,
+    ) -> Result<Markup, Response> {
         let request = random_id();
         let basis = basis(&request, action, self.environment, target, fence);
         let csrf = self
@@ -341,17 +356,19 @@ impl Forms<'_> {
             label,
             self.enabled && enabled,
         )?;
-        Ok(format!(
-            "<form method=\"post\" action=\"{}\">{}{}{}{}{}{}{}{field}{button}</form>",
-            escape(&panel_url(self.context.binding.id(), self.project)),
-            ticket(&csrf),
-            hidden("request", &request),
-            hidden("action", action),
-            hidden("environment", self.environment),
-            hidden("target", target),
-            hidden("fence", fence),
-            hidden("basis", &basis),
-        ))
+        let mut form = BoundForm::new(panel_url(self.context.binding.id(), self.project))
+            .csrf(&csrf)
+            .bind("request", &request)
+            .bind("action", action)
+            .bind("environment", self.environment)
+            .bind("target", target)
+            .bind("fence", fence)
+            .bind("basis", &basis)
+            .submit_with(PreEscaped(button));
+        if let Some(field) = field {
+            form = form.body(field);
+        }
+        Ok(form.render())
     }
 }
 
@@ -365,14 +382,24 @@ fn basis(request: &str, action: &str, environment: &str, target: &str, fence: &s
     }))
 }
 
+/// A job link (` · run <job>`) when the record names one.
+fn job_link(cloud: &str, job: Option<&str>) -> Markup {
+    html! {
+        @if let Some(j) = job {
+            " · " a href=(format!("{cloud}/jobs/{j}")) { "run " (j) }
+        }
+    }
+}
+
 fn render_detail(
     context: &Context<'_>,
     headers: &HeaderMap,
     project: &str,
     d: &env::Detail,
-) -> Result<String, Response> {
+) -> Result<Markup, Response> {
     let binding = context.binding.id();
     let base = panel_url(binding, project);
+    let cloud = cloud_url(context, project);
     let enabled = can_operate(context) && !d.retired;
     let forms = Forms {
         context,
@@ -382,234 +409,57 @@ fn render_detail(
         enabled,
     };
     let (kind, status) = overall(d);
-    let mut out = format!(
-        "<p class=\"environment-status\" role=\"status\" aria-live=\"polite\" data-state=\"{kind}\">{status}</p>"
-    );
-    if !enabled {
-        out.push_str("<p>Promote, Select, and steering need current browser enrollment and native Operate authority on this computer; this page stays read-only.</p>");
-    }
 
-    // Draft and recipe revisions.
-    out.push_str(&format!(
-        "<section aria-labelledby=\"environment-draft\"><h3 id=\"environment-draft\">Draft and recipe revisions</h3><dl><dt>Environment</dt><dd><code>{}</code> · record revision {}</dd><dt>Source</dt><dd>{}<code>{}</code> · digest <code>{}</code></dd><dt>Draft</dt><dd>Recipe revision {} · <code>{}</code></dd></dl><ol reversed>",
-        escape(&d.id),
-        d.revision,
-        d.source
-            .repository
-            .as_deref()
-            .map(|r| format!("{} at ", escape(r)))
-            .unwrap_or_default(),
-        escape(&d.source.revision),
-        short(&d.source.digest),
-        d.draft_revision,
-        short(&d.draft_digest),
-    ));
-    for r in &d.recipes {
-        out.push_str(&format!(
-            "<li>Revision {} · <code>{}</code> · <time>{}</time>{}</li>",
-            r.revision,
-            short(&r.digest),
-            when(r.created_ms),
-            if r.revision == d.draft_revision {
-                " · current draft"
-            } else {
-                ""
-            }
-        ));
-    }
-    out.push_str("</ol></section>");
-
-    // Setup chat.
-    out.push_str("<section aria-labelledby=\"environment-setup\"><h3 id=\"environment-setup\">Setup sessions</h3>");
-    match &d.setup {
-        None => out.push_str("<p>Unavailable. No setup owner is composed with this computer's operator, so setup sessions cannot be read or steered here. Builds, verification, and saved history below come from the environment record itself.</p>"),
-        Some(rows) if rows.is_empty() => out.push_str("<p>No setup session has run for this environment yet.</p>"),
-        Some(rows) => {
-            for s in rows {
-                out.push_str(&format!(
-                    "<article class=\"cloud-card\" aria-labelledby=\"setup-{id}\"><h4 id=\"setup-{id}\">Session <code>{id}</code> · {}</h4><p>Objective: {}</p>",
-                    human(&s.state),
-                    escape(&s.objective),
-                    id = escape(&s.id),
-                ));
-                if let Some(q) = &s.question {
-                    out.push_str(&format!("<p role=\"note\"><strong>Waiting for your input:</strong> {}</p>", escape(q)));
-                }
-                if let Some(r) = &s.reason {
-                    out.push_str(&format!("<p>Reason: {}</p>", escape(r)));
-                }
-                out.push_str("<h5>Steering</h5><ol class=\"environment-chat\">");
-                for t in &s.steering {
-                    out.push_str(&format!(
-                        "<li><time>{}</time> · {}</li>",
-                        when(t.at_ms),
-                        escape(&t.text)
-                    ));
-                }
-                if s.steering.is_empty() {
-                    out.push_str("<li>No steering yet.</li>");
-                }
-                out.push_str("</ol><h5>Commands</h5><ul>");
-                for c in &s.commands {
-                    out.push_str(&format!(
-                        "<li><code>{}</code> · {} · {}</li>",
-                        escape(&c.id),
-                        human(&c.purpose),
-                        human(&c.state)
-                    ));
-                }
-                if s.commands.is_empty() {
-                    out.push_str("<li>No commands yet.</li>");
-                }
-                out.push_str("</ul>");
-                if s.steerable {
-                    let field = format!(
-                        "<label for=\"steer-{id}\">Steer this setup</label><textarea id=\"steer-{id}\" name=\"text\" maxlength=\"{}\" rows=\"3\" required></textarea>",
-                        env::MAX_STEER_BYTES,
-                        id = escape(&s.id)
-                    );
-                    out.push_str(&forms.form("steer", &s.id, &s.updated_ms.to_string(), "Review steering", true, &field)?);
-                } else {
-                    out.push_str("<p>This session has ended; it takes no more steering.</p>");
-                }
-                out.push_str("</article>");
-            }
-        }
-    }
-    out.push_str("</section>");
-
-    // Builds.
-    out.push_str(
-        "<section aria-labelledby=\"environment-builds\"><h3 id=\"environment-builds\">Builds</h3>",
-    );
-    if d.builds.is_empty() {
-        out.push_str(
-            "<p>No build yet. A build rebuilds the pinned recipe on a fresh builder computer.</p>",
-        );
-    }
-    for b in &d.builds {
-        out.push_str(&format!(
-            "<article class=\"cloud-card\" aria-labelledby=\"build-{id}\"><h4 id=\"build-{id}\">Build <code>{id}</code> · {}{}</h4><p>Recipe revision {} · <code>{}</code>{}</p>",
-            human(&b.state),
-            if b.stale { " · stale" } else { "" },
-            b.recipe_revision,
-            short(&b.recipe_digest),
-            b.job
-                .as_deref()
-                .map(|j| format!(" · <a href=\"{}/jobs/{}\">run {}</a>", escape(&cloud_url(context, project)), escape(j), escape(j)))
-                .unwrap_or_default(),
-            id = escape(&b.id),
-        ));
-        if let Some(u) = &b.unresolved {
-            out.push_str(&format!(
-                "<p role=\"note\">Needs reconciliation: {}</p>",
-                escape(u)
-            ));
-        }
-        if let Some(i) = &b.image {
-            out.push_str(&format!("<p>Output {}</p>", image(i)));
-        }
-        out.push_str(&steps(&b.steps));
-        out.push_str("</article>");
-    }
-    out.push_str("</section>");
-
-    // Verification.
-    out.push_str("<section aria-labelledby=\"environment-verify\"><h3 id=\"environment-verify\">Verification</h3>");
-    if d.verifications.is_empty() {
-        out.push_str("<p>No verification yet. A verifier boots the sealed image on a different fresh computer.</p>");
-    }
-    for v in &d.verifications {
-        out.push_str(&format!(
-            "<article class=\"cloud-card\" aria-labelledby=\"verify-{id}\"><h4 id=\"verify-{id}\">Verification <code>{id}</code> · {}</h4><p>Build <code>{}</code>{} · evidence {}{}</p>",
-            human(&v.state),
-            escape(&v.build_id),
-            v.job
-                .as_deref()
-                .map(|j| format!(" · <a href=\"{}/jobs/{}\">run {}</a>", escape(&cloud_url(context, project)), escape(j), escape(j)))
-                .unwrap_or_default(),
-            v.evidence_status.as_deref().map(human).unwrap_or_else(|| "not sealed".into()),
-            v.evidence_digest
-                .as_deref()
-                .map(|e| format!(" · <code>{}</code>", short(e)))
-                .unwrap_or_default(),
-            id = escape(&v.id),
-        ));
-        if let Some(u) = &v.unresolved {
-            out.push_str(&format!(
-                "<p role=\"note\">Needs reconciliation: {}</p>",
-                escape(u)
-            ));
-        }
-        if v.evidence_readable {
-            let q = encoded(&evidence_query(
-                context, project, &d.id, &v.id, None, None, None,
-            ))?;
-            out.push_str(&format!(
-                "<p><a href=\"{}/evidence?q={q}\">Page the retained evidence</a></p>",
-                escape(&base)
-            ));
+    // Forms and links that need a fallible step, prepared before the markup.
+    let mut steer = Vec::new();
+    for s in d.setup.iter().flatten() {
+        steer.push(if s.steerable {
+            let id = format!("steer-{}", s.id);
+            let field = Field::new(id.as_str(), "Steer this setup").required(true);
+            let control = Textarea::new("text")
+                .rows(3)
+                .maxlength(u32::try_from(env::MAX_STEER_BYTES).unwrap_or(u32::MAX))
+                .aria(field.aria());
+            Some(forms.form(
+                "steer",
+                &s.id,
+                &s.updated_ms.to_string(),
+                "Review steering",
+                true,
+                Some(field.control(control).render()),
+            )?)
         } else {
-            out.push_str("<p>Retained evidence is not readable on this computer.</p>");
-        }
-        out.push_str(&steps(&v.steps));
-        if let Some(c) = &v.candidate {
-            out.push_str(&format!(
-                "<h5>Candidate for review</h5><dl><dt>Candidate</dt><dd><code>{}</code></dd><dt>Recipe</dt><dd>Revision {} · <code>{}</code></dd><dt>Source</dt><dd><code>{}</code></dd><dt>Output</dt><dd>{}</dd><dt>Plan</dt><dd><code>{}</code></dd><dt>Evidence</dt><dd><code>{}</code></dd></dl><p>Save and select records exactly this candidate. If anything above changes before the owner applies it, the owner refuses the review as stale.</p>",
-                short(&c.digest),
-                c.recipe_revision,
-                short(&c.recipe_digest),
-                escape(&c.source_revision),
-                image(&c.image),
-                short(&c.plan_digest),
-                short(&c.evidence_digest),
-            ));
-            out.push_str(&forms.form(
+            None
+        });
+    }
+    let mut verify = Vec::new();
+    for v in &d.verifications {
+        let evidence = if v.evidence_readable {
+            Some(encoded(&evidence_query(
+                context, project, &d.id, &v.id, None, None, None,
+            ))?)
+        } else {
+            None
+        };
+        let promote = match &v.candidate {
+            Some(c) => Some(forms.form(
                 "promote",
                 &v.id,
                 &format!("{}:{}", d.selection_revision, c.digest),
                 "Review Save and select this version",
                 true,
-                "",
-            )?);
-        }
-        out.push_str("</article>");
+                None,
+            )?),
+            None => None,
+        };
+        verify.push((evidence, promote));
     }
-    out.push_str("</section>");
-
-    // Saved history.
-    out.push_str("<section aria-labelledby=\"environment-history\"><h3 id=\"environment-history\">Saved versions</h3>");
-    out.push_str(&format!(
-        "<p>Selection revision {} · {}</p>",
-        d.selection_revision,
-        d.active
-            .as_deref()
-            .map(|a| format!("selected <code>{}</code>", escape(a)))
-            .unwrap_or_else(|| "nothing selected".into())
-    ));
-    if d.history.is_empty() {
-        out.push_str("<p>No saved version yet.</p>");
-    }
-    out.push_str("<ol class=\"environment-history\">");
     let selected_number = d.history.iter().find(|x| x.selected).map(|x| x.number);
+    let mut select = Vec::new();
     for h in &d.history {
-        out.push_str(&format!(
-            "<li aria-current=\"{}\"><strong>Version {} · <code>{}</code></strong>{} · <time>{}</time> · recipe revision {} · source <code>{}</code> · {} · evidence <code>{}</code>{}",
-            if h.selected { "true" } else { "false" },
-            h.number,
-            escape(&h.id),
-            if h.selected { " · selected" } else { "" },
-            when(h.created_ms),
-            h.recipe_revision,
-            escape(&h.source_revision),
-            image(&h.image),
-            short(&h.evidence_digest),
-            h.reviewer
-                .as_deref()
-                .map(|r| format!(" · reviewed by <code>{}</code>", short(r)))
-                .unwrap_or_default(),
-        ));
-        if !h.selected {
+        select.push(if h.selected {
+            None
+        } else {
             // An active version missing from this page is newer than it.
             let rollback = selected_number.map_or(d.active.is_some(), |n| h.number < n);
             let label = if rollback {
@@ -617,50 +467,200 @@ fn render_detail(
             } else {
                 "Review selecting this version"
             };
-            out.push_str(&forms.form(
+            Some(forms.form(
                 "select",
                 &h.id,
                 &d.selection_revision.to_string(),
                 label,
                 true,
-                "",
-            )?);
-        }
-        out.push_str("</li>");
+                None,
+            )?)
+        });
     }
-    out.push_str("</ol>");
-    if let Some(before) = d.history_before {
-        out.push_str(&format!(
-            "<p><a href=\"{}?environment={}&amp;before={before}\">Older saved versions</a></p>",
-            escape(&base),
-            escape(&d.id)
-        ));
-    }
-    if !d.changes.is_empty() {
-        out.push_str("<h4>Selection changes</h4><ol reversed>");
-        for c in &d.changes {
-            out.push_str(&format!(
-                "<li>Revision {} · {} <code>{}</code>{} · <time>{}</time></li>",
-                c.revision,
-                human(&c.kind),
-                escape(&c.version_id),
-                c.previous
-                    .as_deref()
-                    .map(|p| format!(" (was <code>{}</code>)", escape(p)))
-                    .unwrap_or_default(),
-                when(c.at_ms)
-            ));
-        }
-        out.push_str("</ol>");
-    }
-    out.push_str("<p>Selecting or rolling back changes only jobs admitted afterwards; running, queued, and continued jobs keep the version they started with. No saved version is ever rewritten.</p></section>");
 
-    // Optional terminal.
-    out.push_str(&format!(
-        "<section aria-labelledby=\"environment-terminal\"><h3 id=\"environment-terminal\">Terminal</h3><p>A terminal on a setup or builder computer is a separately granted native workbench session; this page grants none. <a href=\"/cloud/app/hosts/{}/workbench\">Open the native workbench</a> to enroll and attach where your host grant allows it.</p></section>",
-        escape(binding)
-    ));
-    Ok(out)
+    let source = html! {
+        @if let Some(r) = &d.source.repository { (r) " at " }
+        code { (d.source.revision) } " · digest " code { (short(&d.source.digest)) }
+    };
+    let draft = Details::new()
+        .row(
+            "Environment",
+            html! { code { (d.id) } " · record revision " (d.revision) },
+        )
+        .row("Source", source)
+        .row(
+            "Draft",
+            html! { "Recipe revision " (d.draft_revision) " · " code { (short(&d.draft_digest)) } },
+        );
+
+    Ok(html! {
+        p class="environment-status" role="status" aria-live="polite" data-state=(kind) { (status) }
+        @if !enabled {
+            p { "Promote, Select, and steering need current browser enrollment and native Operate authority on this computer; this page stays read-only." }
+        }
+
+        // Draft and recipe revisions.
+        (ui::section("environment-draft", "Draft and recipe revisions", html! {
+            (draft)
+            ol reversed {
+                @for r in &d.recipes {
+                    li {
+                        "Revision " (r.revision) " · " code { (short(&r.digest)) }
+                        " · " time { (when(r.created_ms)) }
+                        @if r.revision == d.draft_revision { " · current draft" }
+                    }
+                }
+            }
+        }))
+
+        // Setup chat.
+        (ui::section("environment-setup", "Setup sessions", html! {
+            @match &d.setup {
+                None => { p { "Unavailable. No setup owner is composed with this computer's operator, so setup sessions cannot be read or steered here. Builds, verification, and saved history below come from the environment record itself." } }
+                Some(rows) if rows.is_empty() => { p { "No setup session has run for this environment yet." } }
+                Some(rows) => {
+                    @for (s, form) in rows.iter().zip(&steer) {
+                        article class="cloud-card" aria-labelledby=(format!("setup-{}", s.id)) {
+                            h4 id=(format!("setup-{}", s.id)) { "Session " code { (s.id) } " · " (human(&s.state)) }
+                            p { "Objective: " (s.objective) }
+                            @if let Some(q) = &s.question {
+                                p role="note" { strong { "Waiting for your input:" } " " (q) }
+                            }
+                            @if let Some(r) = &s.reason { p { "Reason: " (r) } }
+                            h5 { "Steering" }
+                            ol class="environment-chat" {
+                                @for t in &s.steering {
+                                    li { time { (when(t.at_ms)) } " · " (t.text) }
+                                }
+                                @if s.steering.is_empty() { li { "No steering yet." } }
+                            }
+                            h5 { "Commands" }
+                            ul {
+                                @for c in &s.commands {
+                                    li { code { (c.id) } " · " (human(&c.purpose)) " · " (human(&c.state)) }
+                                }
+                                @if s.commands.is_empty() { li { "No commands yet." } }
+                            }
+                            @if let Some(form) = form {
+                                (form)
+                            } @else {
+                                p { "This session has ended; it takes no more steering." }
+                            }
+                        }
+                    }
+                }
+            }
+        }))
+
+        // Builds.
+        (ui::section("environment-builds", "Builds", html! {
+            @if d.builds.is_empty() {
+                p { "No build yet. A build rebuilds the pinned recipe on a fresh builder computer." }
+            }
+            @for b in &d.builds {
+                article class="cloud-card" aria-labelledby=(format!("build-{}", b.id)) {
+                    h4 id=(format!("build-{}", b.id)) {
+                        "Build " code { (b.id) } " · " (human(&b.state))
+                        @if b.stale { " · stale" }
+                    }
+                    p {
+                        "Recipe revision " (b.recipe_revision) " · " code { (short(&b.recipe_digest)) }
+                        (job_link(&cloud, b.job.as_deref()))
+                    }
+                    @if let Some(u) = &b.unresolved { p role="note" { "Needs reconciliation: " (u) } }
+                    @if let Some(i) = &b.image { p { "Output " (image(i)) } }
+                    (steps(&b.steps))
+                }
+            }
+        }))
+
+        // Verification.
+        (ui::section("environment-verify", "Verification", html! {
+            @if d.verifications.is_empty() {
+                p { "No verification yet. A verifier boots the sealed image on a different fresh computer." }
+            }
+            @for (v, (evidence, promote)) in d.verifications.iter().zip(&verify) {
+                article class="cloud-card" aria-labelledby=(format!("verify-{}", v.id)) {
+                    h4 id=(format!("verify-{}", v.id)) { "Verification " code { (v.id) } " · " (human(&v.state)) }
+                    p {
+                        "Build " code { (v.build_id) }
+                        (job_link(&cloud, v.job.as_deref()))
+                        " · evidence "
+                        (v.evidence_status.as_deref().map(human).unwrap_or_else(|| "not sealed".into()))
+                        @if let Some(e) = &v.evidence_digest { " · " code { (short(e)) } }
+                    }
+                    @if let Some(u) = &v.unresolved { p role="note" { "Needs reconciliation: " (u) } }
+                    @if let Some(q) = evidence {
+                        p { a href=(format!("{base}/evidence?q={q}")) { "Page the retained evidence" } }
+                    } @else {
+                        p { "Retained evidence is not readable on this computer." }
+                    }
+                    (steps(&v.steps))
+                    @if let Some(c) = &v.candidate {
+                        h5 { "Candidate for review" }
+                        (Details::new()
+                            .row("Candidate", html! { code { (short(&c.digest)) } })
+                            .row("Recipe", html! { "Revision " (c.recipe_revision) " · " code { (short(&c.recipe_digest)) } })
+                            .row("Source", html! { code { (c.source_revision) } })
+                            .row("Output", image(&c.image))
+                            .row("Plan", html! { code { (short(&c.plan_digest)) } })
+                            .row("Evidence", html! { code { (short(&c.evidence_digest)) } }))
+                        p { "Save and select records exactly this candidate. If anything above changes before the owner applies it, the owner refuses the review as stale." }
+                        @if let Some(form) = promote { (form) }
+                    }
+                }
+            }
+        }))
+
+        // Saved history.
+        (ui::section("environment-history", "Saved versions", html! {
+            p {
+                "Selection revision " (d.selection_revision) " · "
+                @if let Some(a) = &d.active { "selected " code { (a) } } @else { "nothing selected" }
+            }
+            @if d.history.is_empty() { p { "No saved version yet." } }
+            ol class="environment-history" {
+                @for (h, form) in d.history.iter().zip(&select) {
+                    li aria-current=(if h.selected { "true" } else { "false" }) {
+                        strong { "Version " (h.number) " · " code { (h.id) } }
+                        @if h.selected { " · selected" }
+                        " · " time { (when(h.created_ms)) }
+                        " · recipe revision " (h.recipe_revision)
+                        " · source " code { (h.source_revision) }
+                        " · " (image(&h.image))
+                        " · evidence " code { (short(&h.evidence_digest)) }
+                        @if let Some(r) = &h.reviewer { " · reviewed by " code { (short(r)) } }
+                        @if let Some(form) = form { (form) }
+                    }
+                }
+            }
+            @if let Some(before) = d.history_before {
+                p { a href=(format!("{base}?environment={}&before={before}", d.id)) { "Older saved versions" } }
+            }
+            @if !d.changes.is_empty() {
+                h4 { "Selection changes" }
+                ol reversed {
+                    @for c in &d.changes {
+                        li {
+                            "Revision " (c.revision) " · " (human(&c.kind)) " " code { (c.version_id) }
+                            @if let Some(p) = &c.previous { " (was " code { (p) } ")" }
+                            " · " time { (when(c.at_ms)) }
+                        }
+                    }
+                }
+            }
+            p { "Selecting or rolling back changes only jobs admitted afterwards; running, queued, and continued jobs keep the version they started with. No saved version is ever rewritten." }
+        }))
+
+        // Optional terminal.
+        (ui::section("environment-terminal", "Terminal", html! {
+            p {
+                "A terminal on a setup or builder computer is a separately granted native workbench session; this page grants none. "
+                a href=(format!("/cloud/app/hosts/{binding}/workbench")) { "Open the native workbench" }
+                " to enroll and attach where your host grant allows it."
+            }
+        }))
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -715,41 +715,42 @@ async fn panel(
     let Outcome::EnvironmentRead { view } = &outcome else {
         return refused(SessionError::Conflict);
     };
-    let mut content = format!(
-        "<h2>Project environment · {}</h2><p>Reading this page changes nothing and never drives a builder or verifier. Leaving it detaches; work keeps running on its own computers.</p>",
-        escape(&project)
-    );
-    if view.environments.len() > 1 {
-        content.push_str("<nav aria-label=\"Environments\"><ul>");
-        for e in &view.environments {
-            let current = view.detail.as_ref().is_some_and(|d| d.id == e.id);
-            content.push_str(&format!(
-                "<li><a href=\"{}?environment={}\"{}>{}</a>{}</li>",
-                escape(&base),
-                escape(&e.id),
-                if current {
-                    " aria-current=\"page\""
-                } else {
-                    ""
-                },
-                escape(&e.id),
-                if e.retired { " · retired" } else { "" }
-            ));
-        }
-        content.push_str("</ul></nav>");
-    }
-    match &view.detail {
-        None => content.push_str("<section class=\"cloud-card\" aria-labelledby=\"environment-empty\"><h3 id=\"environment-empty\">No environment yet</h3><p>This project has no repository environment. Jobs start from their admitted profile's runtime until a reviewed version is saved and selected here.</p></section>"),
+    let detail = match &view.detail {
+        None => None,
         Some(detail) => match render_detail(&context, &headers, &project, detail) {
-            Ok(v) => content.push_str(&v),
+            Ok(v) => Some(v),
             Err(r) => return r,
         },
+    };
+    let content = html! {
+        h2 { "Project environment · " (project) }
+        p { "Reading this page changes nothing and never drives a builder or verifier. Leaving it detaches; work keeps running on its own computers." }
+        @if view.environments.len() > 1 {
+            nav aria-label="Environments" {
+                ul {
+                    @for e in &view.environments {
+                        @let current = view.detail.as_ref().is_some_and(|d| d.id == e.id);
+                        li {
+                            a href=(format!("{base}?environment={}", e.id)) aria-current=[current.then_some("page")] { (e.id) }
+                            @if e.retired { " · retired" }
+                        }
+                    }
+                }
+            }
+        }
+        @if let Some(detail) = &detail {
+            (detail)
+        } @else {
+            (ui::card(ui::section(
+                "environment-empty",
+                "No environment yet",
+                html! { p { "This project has no repository environment. Jobs start from their admitted profile's runtime until a reviewed version is saved and selected here." } },
+            )))
+        }
+        p { a href=(cloud_url(&context, &project)) { "Operator Cloud jobs for this project" } }
+        (PreEscaped(controls::link(context.binding)))
     }
-    content.push_str(&format!(
-        "<p><a href=\"{}\">Operator Cloud jobs for this project</a></p>",
-        escape(&cloud_url(&context, &project))
-    ));
-    content.push_str(&controls::link(context.binding));
+    .into_string();
     page(
         &context,
         &headers,
@@ -940,72 +941,29 @@ async fn evidence(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let mut content = format!(
-        "<h2>Retained evidence · verification <code>{}</code>{}</h2><p role=\"status\">Record <code>{}</code> · {} · {} · {} events{}</p><p><a href=\"{base}?environment={}\">Back to the environment</a> · <a href=\"{base}/evidence?q={summary_q}&amp;download=export\">Download the evidence export (JSON)</a></p>",
-        escape(&p.verification),
-        p.child
-            .as_deref()
-            .map(|c| format!(" · machine record <code>{}</code>", escape(c)))
-            .unwrap_or_default(),
-        escape(&p.evidence_id),
-        human(&p.status),
-        if p.complete {
-            "complete"
-        } else {
-            "not complete"
-        },
-        p.head_seq,
-        p.sealed_digest
-            .as_deref()
-            .map(|d| format!(" · sealed <code>{}</code>", short(d)))
-            .unwrap_or_default(),
-        escape(&p.environment),
-        base = escape(&base),
-    );
-    content.push_str("<section aria-labelledby=\"evidence-gaps\"><h3 id=\"evidence-gaps\">Disclosed gaps</h3><ul>");
-    for g in &p.gaps {
-        content.push_str(&format!("<li><code>{}</code></li>", escape(g)));
-    }
-    if p.gaps.is_empty() {
-        content.push_str("<li>None disclosed.</li>");
-    }
-    if p.gaps_omitted {
-        content.push_str("<li>More gaps exist than this page shows; the export lists those this page carries.</li>");
-    }
-    content.push_str("</ul></section>");
-    if !p.children.is_empty() {
-        content.push_str("<section aria-labelledby=\"evidence-children\"><h3 id=\"evidence-children\">Machine records</h3><ul>");
-        for c in &p.children {
-            let q = match encoded(&evidence_query(
-                &context,
-                &project,
-                &p.environment,
-                &p.verification,
-                Some(c),
-                None,
-                None,
-            )) {
-                Ok(v) => v,
-                Err(r) => return r,
-            };
-            content.push_str(&format!(
-                "<li><a href=\"{}/evidence?q={q}\">{}</a></li>",
-                escape(&base),
-                escape(c)
-            ));
+    let mut children = Vec::with_capacity(p.children.len());
+    for c in &p.children {
+        match encoded(&evidence_query(
+            &context,
+            &project,
+            &p.environment,
+            &p.verification,
+            Some(c),
+            None,
+            None,
+        )) {
+            Ok(q) => children.push((c, q)),
+            Err(r) => return r,
         }
-        content.push_str("</ul></section>");
     }
-    content.push_str(
-        "<section aria-labelledby=\"evidence-calls\"><h3 id=\"evidence-calls\">Calls</h3><ul>",
-    );
+    let mut calls = Vec::with_capacity(p.calls.len());
     for c in &p.calls {
-        let mut links = String::new();
+        let mut links = Vec::with_capacity(2);
         for (stream, label, bytes) in [
             (env::Stream::Stdout, "stdout", c.stdout_bytes),
             (env::Stream::Stderr, "stderr", c.stderr_bytes),
         ] {
-            let q = match encoded(&evidence_query(
+            match encoded(&evidence_query(
                 &context,
                 &project,
                 &p.environment,
@@ -1014,71 +972,116 @@ async fn evidence(
                 Some((&c.call, stream)),
                 None,
             )) {
-                Ok(v) => v,
+                Ok(q) => links.push((q, label, bytes)),
                 Err(r) => return r,
-            };
-            links.push_str(&format!(
-                " · <a href=\"{}/evidence?q={q}\">{label} ({bytes} bytes)</a>",
-                escape(&base)
-            ));
+            }
         }
-        content.push_str(&format!(
-            "<li><code>{}</code> · {} · {}{links}</li>",
-            escape(&c.call),
-            escape(&c.tool),
-            human(&c.outcome)
-        ));
+        calls.push((c, links));
     }
-    if p.calls.is_empty() {
-        content.push_str("<li>No calls recorded.</li>");
-    }
-    if p.calls_omitted {
-        content.push_str("<li>More calls exist than this page lists.</li>");
-    }
-    content.push_str("</ul></section>");
-    if let Some(chunk) = &p.chunk {
-        let bytes = match STANDARD.decode(&chunk.data) {
-            Ok(v) => v,
-            Err(_) => return refused(SessionError::Conflict),
-        };
-        let display = std::str::from_utf8(&bytes).map_or_else(
-            |_| format!("Base64: {}", STANDARD.encode(&bytes)),
-            str::to_owned,
-        );
-        content.push_str(&format!(
-            "<section aria-labelledby=\"evidence-bytes\"><h3 id=\"evidence-bytes\">Original bytes · <code>{}</code> {}</h3><p>Byte offset {} · page {} bytes · {} bytes retained so far{} · <code>{}</code>. Pages carry the original retained bytes and may split a UTF-8 character; download a page to keep its exact bytes.</p><p><a href=\"{}&amp;download=yes\">Download these exact bytes</a></p><pre tabindex=\"0\">{}</pre>",
-            escape(&chunk.call),
-            match chunk.stream {
-                env::Stream::Stdout => "stdout",
-                env::Stream::Stderr => "stderr",
-            },
-            chunk.start,
-            bytes.len(),
-            chunk.length,
-            if chunk.closed { " · stream ended" } else { " · stream open" },
-            short(&chunk.digest),
-            escape(&retry),
-            escape(&display)
-        ));
-        if let Some(next) = &chunk.next {
-            let mut q = query.clone();
-            q.cursor = Some(next.clone());
-            let q = match encoded(&q) {
+    let chunk = match &p.chunk {
+        None => None,
+        Some(chunk) => {
+            let bytes = match STANDARD.decode(&chunk.data) {
                 Ok(v) => v,
-                Err(r) => return r,
+                Err(_) => return refused(SessionError::Conflict),
             };
-            content.push_str(&format!(
-                "<p><a href=\"{}/evidence?q={q}\">Next original page</a></p>",
-                escape(&base)
-            ));
-        } else if !chunk.closed {
-            content.push_str(&format!(
-                "<p>The stream is still open. <a href=\"{}\">Read this page again</a> to continue once more bytes are retained.</p>",
-                escape(&retry)
-            ));
+            let display = std::str::from_utf8(&bytes).map_or_else(
+                |_| format!("Base64: {}", STANDARD.encode(&bytes)),
+                str::to_owned,
+            );
+            let next = match &chunk.next {
+                Some(next) => {
+                    let mut q = query.clone();
+                    q.cursor = Some(next.clone());
+                    match encoded(&q) {
+                        Ok(v) => Some(v),
+                        Err(r) => return r,
+                    }
+                }
+                None => None,
+            };
+            Some((chunk, bytes.len(), display, next))
         }
-        content.push_str("</section>");
+    };
+    let content = html! {
+        h2 {
+            "Retained evidence · verification " code { (p.verification) }
+            @if let Some(c) = &p.child { " · machine record " code { (c) } }
+        }
+        p role="status" {
+            "Record " code { (p.evidence_id) } " · " (human(&p.status)) " · "
+            (if p.complete { "complete" } else { "not complete" })
+            " · " (p.head_seq) " events"
+            @if let Some(d) = &p.sealed_digest { " · sealed " code { (short(d)) } }
+        }
+        p {
+            a href=(format!("{base}?environment={}", p.environment)) { "Back to the environment" }
+            " · "
+            a href=(format!("{base}/evidence?q={summary_q}&download=export")) { "Download the evidence export (JSON)" }
+        }
+        (ui::section("evidence-gaps", "Disclosed gaps", html! {
+            ul {
+                @for g in &p.gaps { li { code { (g) } } }
+                @if p.gaps.is_empty() { li { "None disclosed." } }
+                @if p.gaps_omitted { li { "More gaps exist than this page shows; the export lists those this page carries." } }
+            }
+        }))
+        @if !children.is_empty() {
+            (ui::section("evidence-children", "Machine records", html! {
+                ul {
+                    @for (c, q) in &children {
+                        li { a href=(format!("{base}/evidence?q={q}")) { (c) } }
+                    }
+                }
+            }))
+        }
+        (ui::section("evidence-calls", "Calls", html! {
+            ul {
+                @for (c, links) in &calls {
+                    li {
+                        code { (c.call) } " · " (c.tool) " · " (human(&c.outcome))
+                        @for (q, label, bytes) in links {
+                            " · " a href=(format!("{base}/evidence?q={q}")) { (label) " (" (bytes) " bytes)" }
+                        }
+                    }
+                }
+                @if p.calls.is_empty() { li { "No calls recorded." } }
+                @if p.calls_omitted { li { "More calls exist than this page lists." } }
+            }
+        }))
+        @if let Some((chunk, len, display, next)) = &chunk {
+            (ui::section(
+                "evidence-bytes",
+                html! {
+                    "Original bytes · " code { (chunk.call) } " "
+                    (match chunk.stream {
+                        env::Stream::Stdout => "stdout",
+                        env::Stream::Stderr => "stderr",
+                    })
+                },
+                html! {
+                    p {
+                        "Byte offset " (chunk.start) " · page " (len) " bytes · " (chunk.length) " bytes retained so far"
+                        (if chunk.closed { " · stream ended" } else { " · stream open" })
+                        " · " code { (short(&chunk.digest)) }
+                        ". Pages carry the original retained bytes and may split a UTF-8 character; download a page to keep its exact bytes."
+                    }
+                    p { a href=(format!("{retry}&download=yes")) { "Download these exact bytes" } }
+                    pre tabindex="0" { (display) }
+                    @if let Some(q) = next {
+                        p { a href=(format!("{base}/evidence?q={q}")) { "Next original page" } }
+                    } @else if !chunk.closed {
+                        p {
+                            "The stream is still open. "
+                            a href=(retry) { "Read this page again" }
+                            " to continue once more bytes are retained."
+                        }
+                    }
+                },
+            ))
+        }
+        (PreEscaped(controls::link(context.binding)))
     }
-    content.push_str(&controls::link(context.binding));
+    .into_string();
     page(&context, &headers, &content, &operation, &outcome, false)
 }

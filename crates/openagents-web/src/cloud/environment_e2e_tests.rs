@@ -592,10 +592,22 @@ fn accessible(html: &str) {
     );
     // Every control has a programmatic label, and every form submits with
     // a real button.
-    for tail in html.split("<textarea id=\"").skip(1) {
-        let id = tail.split('"').next().unwrap();
+    let labels: Vec<&str> = html
+        .split("<label")
+        .skip(1)
+        .map(|tag| tag.split('>').next().unwrap())
+        .collect();
+    for tag in html.split("<textarea").skip(1) {
+        let tag = tag.split('>').next().unwrap();
+        let id = tag
+            .split(" id=\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| panic!("a textarea without an id: {tag}"));
         assert!(
-            html.contains(&format!("<label for=\"{id}\"")),
+            labels
+                .iter()
+                .any(|label| label.contains(&format!(" for=\"{id}\""))),
             "unlabelled {id}"
         );
     }
