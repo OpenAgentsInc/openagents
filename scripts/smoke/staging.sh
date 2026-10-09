@@ -6,7 +6,7 @@
 # BASE_URL defaults to the staging service
 # (https://staging.openagents.com,
 # deploy/staging/README.md). One PASS/FAIL/SKIP line per check; exit 1 when
-# any check fails. Groups for --only: home, docs, download, agent, github,
+# any check fails. Groups for --only: home, docs, promises, download, agent, github,
 # gates, accounts, signed-in, gateway, traces, terminal. The terminal group runs the
 # site's hosted installer into a scratch HOME and checks `coder --version`.
 # --restart (opt-in) also forces a new revision of the service and checks

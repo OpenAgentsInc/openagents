@@ -248,7 +248,10 @@ plugins, and the Gym.</p>",
     }
     body.push_str(
         "<h2 id=\"api\">API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
-<ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>",
+<ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>\
+<h2 id=\"progress\">What works and what's next</h2><p class=\"oa-page-meta\">Each thing that \
+works today with its proof, and what we're building next.</p><ol class=\"oa-item-list\">\
+<li><a href=\"/promises\">What works today</a></li><li><a href=\"/roadmap\">Roadmap</a></li></ol>",
     );
     UiPage::new("Docs")
         .section("/docs")

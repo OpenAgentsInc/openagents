@@ -45,7 +45,7 @@ const API_SKILL: &str = include_str!("../content/skills/openagents-api/SKILL.md"
 
 /// The Markdown twins and agent documents this module answers. The
 /// upstream guard treats them as the site's own ([`owns`]).
-const PATHS: [&str; 20] = [
+const PATHS: [&str; 22] = [
     "/robots.txt",
     "/sitemap.xml",
     "/llms.txt",
@@ -58,6 +58,8 @@ const PATHS: [&str; 20] = [
     "/download.md",
     "/pricing",
     "/pricing.md",
+    "/promises.md",
+    "/roadmap.md",
     "/openapi.json",
     "/.well-known/api-catalog",
     "/.well-known/ai-catalog.json",
@@ -111,7 +113,8 @@ pub(crate) fn twin(path: &str) -> Option<String> {
         .unwrap_or(path);
     match path {
         "/" => return Some("/index.md".to_owned()),
-        "/docs" | "/docs/api" | "/terms" | "/privacy" | "/download" | "/pricing" => {
+        "/docs" | "/docs/api" | "/terms" | "/privacy" | "/download" | "/pricing" | "/promises"
+        | "/roadmap" => {
             return Some(format!("{path}.md"));
         }
         _ => {}
@@ -345,7 +348,7 @@ fn plain(text: &str) -> String {
     out.replace("**", "").replace('`', "")
 }
 
-fn doc_md(path: &str, source: &str, fallback: &str) -> Response {
+pub(crate) fn doc_md(path: &str, source: &str, fallback: &str) -> Response {
     let canonical = format!("{SITE}{path}");
     markdown_response(
         with_frontmatter(
@@ -400,7 +403,9 @@ fn home_markdown() -> String {
 - [Download](/download.md): the apps and Coder for your computer.\n\
 - [Docs](/docs.md): guides to the chat, Coder, the apps, plugins, and the Gym.\n\
 - [API](/docs/api.md): use our models from your own code. Beta.\n\
-- [Pricing](/pricing.md)\n\n",
+- [Pricing](/pricing.md)\n\
+- [What works today](/promises.md): each thing that works, with its proof.\n\
+- [Roadmap](/roadmap.md): what comes next.\n\n",
         summary(doc_source("what-is-openagents"))
     );
     body.push_str(AGENT_LINKS);
@@ -463,7 +468,9 @@ async fn docs_md() -> Response {
     let canonical = format!("{SITE}/docs");
     let body = format!(
         "# Docs\n\nGuides to OpenAgents: the chat, Coder, the apps, plugins, and the Gym.\n{}\n\
-## API\n\n- [API docs](/docs/api.md): {API_LEAD}\n",
+## API\n\n- [API docs](/docs/api.md): {API_LEAD}\n\n\
+## What works and what's next\n\n- [What works today](/promises.md): each thing that works today, \
+with its proof.\n- [Roadmap](/roadmap.md): what we're building next.\n",
         guide_list(false)
     );
     markdown_response(
@@ -508,6 +515,8 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 ## Optional\n\n\
 - [Everything in one file]({SITE}/llms-full.txt): every guide and API guide.\n\
 - [Pricing]({SITE}/pricing.md)\n\
+- [What works today]({SITE}/promises.md): each thing that works, with its proof.\n\
+- [Roadmap]({SITE}/roadmap.md): what comes next.\n\
 - [Download]({SITE}/download.md)\n\
 - [Terms of service]({SITE}/terms.md)\n\
 - [Privacy policy]({SITE}/privacy.md)\n",
@@ -651,6 +660,8 @@ pub(crate) fn public_paths() -> Vec<String> {
         "/pilot",
         "/live",
         "/stats",
+        "/promises",
+        "/roadmap",
         "/terms",
         "/privacy",
     ]

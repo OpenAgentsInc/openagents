@@ -474,6 +474,23 @@ def run(base, only, install, production=False, restart=None):
         api = site.get("/docs/api")
         record("docs: API docs", api.status == 200, f"{api.status}")
 
+    # What works today and the roadmap, from one registry (#11122).
+    if want("promises"):
+        promises = site.get("/promises")
+        proofs = promises.text.count("Proof:")
+        record("promises: lists what works with its proof",
+               promises.status == 200 and proofs > 0 and 'href="/roadmap"' in promises.text,
+               f"{promises.status}, {proofs} items")
+        roadmap = site.get("/roadmap")
+        issues = len(set(re.findall(r'href="https://github.com/OpenAgentsInc/openagents/issues/(\d+)"',
+                                    roadmap.text)))
+        record("roadmap: lists what's next, each linked to its issue",
+               roadmap.status == 200 and issues > 0 and 'href="/promises"' in roadmap.text,
+               f"{roadmap.status}, {issues} issues")
+        twins = [p for p in ("/promises.md", "/roadmap.md")
+                 if not site.get(p).text.lstrip().startswith("---")]
+        record("promises: Markdown twins", not twins, ", ".join(twins))
+
     # Download: Coder (terminal) one-liners first; desktop downloads hidden.
     if want("download"):
         dl = site.get("/download")

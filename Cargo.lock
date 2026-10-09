@@ -10659,6 +10659,7 @@ dependencies = [
  "tenancy",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "toml",
  "tower 0.5.3",
  "url",
  "workbench",

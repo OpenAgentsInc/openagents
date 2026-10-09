@@ -1,0 +1,1415 @@
+# What OpenAgents promises, one record per claim. openagents.com/promises
+# shows what works today (shipped, launching, partial) and
+# openagents.com/roadmap shows what comes next (next, later, dropped), both rendered from this file
+# (crates/openagents-web/src/promises.rs). How to add or change a promise:
+# docs/promises/README.md. Imported from the Kitchen Sink ledger
+# (docs/kitchen-sink/ledger.md at 31640d9ef4, #11125); the ids are the
+# ledger's (W1-W5 are this registry's own).
+#
+# Each [[promise]]:
+#   id         stable name, never reused
+#   group      one of the
+
+[[group]]
+id = "A"
+title = "Account and identity"
+
+[[group]]
+id = "B"
+title = "Chat with one general agent"
+
+[[group]]
+id = "C"
+title = "Coding with Coder"
+
+[[group]]
+id = "D"
+title = "Across your devices"
+
+[[group]]
+id = "E"
+title = "Models and the OpenAgents API"
+
+[[group]]
+id = "F"
+title = "Plugins and new abilities"
+
+[[group]]
+id = "G"
+title = "Gym, evals, and proof"
+
+[[group]]
+id = "H"
+title = "Traces and your data"
+
+[[group]]
+id = "I"
+title = "Wallet and payments"
+
+[[group]]
+id = "J"
+title = "Markets, compute, and earning"
+
+[[group]]
+id = "K"
+title = "Agent-ready and open"
+
+[[group]]
+id = "L"
+title = "Surfaces"
+
+[[group]]
+id = "M"
+title = "The Verse"
+
+[[group]]
+id = "X"
+title = "Earlier ideas"
+
+
+[[promise]]
+id = "A1"
+group = "A"
+statement = "You have one OpenAgents account, signed in with GitHub, that works on every surface."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "launching"
+link = "/login"
+issues = [11094, 11039]
+episodes = [116, 274, 277, 289]
+evidence = [
+  { smoke = "sign-in: /login offers GitHub" },
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::an_accounts_chats_never_open_with_a_browser_cookie" },
+  { golden = "account.sign_in" },
+]
+
+[[promise]]
+id = "A2"
+group = "A"
+statement = "You sign the terminal or desktop in by approving a short code on the website."
+surfaces = ["terminal", "desktop"]
+status = "launching"
+command = "coder login"
+issues = [11045]
+episodes = [277]
+evidence = [
+  { test = "crates/coder-new/src/account.rs::the_code_text_says_where_to_go_and_what_to_check" },
+  { test = "crates/openagents-web/src/device.rs::the_approval_page_names_the_app_the_computer_and_both_choices" },
+  { golden = "coder.login" },
+]
+
+[[promise]]
+id = "A3"
+group = "A"
+statement = "You can try a chat before you make an account, and those chats move to your account when you sign in."
+surfaces = ["web"]
+status = "launching"
+link = "/"
+issues = [11039]
+episodes = [8, 180, 228]
+evidence = [
+  { test = "crates/openagents-web/src/chat_owner.rs::sign_in_moves_the_browsers_idle_chats_and_nobody_elses" },
+]
+
+[[promise]]
+id = "A4"
+group = "A"
+statement = "You see and manage every computer signed in to your account."
+surfaces = ["web"]
+status = "launching"
+link = "/settings"
+issues = [11045]
+episodes = [281]
+evidence = [
+  { test = "crates/openagents-web/src/device.rs::settings_lists_computers_with_remove_or_says_how_to_add_one" },
+  { doc = "crates/openagents-web/content/docs/manage-computers.md" },
+]
+
+[[promise]]
+id = "A5"
+group = "A"
+statement = "Your username and public profile match your GitHub name."
+surfaces = ["web"]
+status = "next"
+episodes = [274]
+
+[[promise]]
+id = "A6"
+group = "A"
+statement = "One recovery phrase gives you both your identity on the open network and your Bitcoin wallet."
+surfaces = ["mobile", "desktop"]
+status = "next"
+episodes = [82, 143, 144, 207, 208]
+
+[[promise]]
+id = "A7"
+group = "A"
+statement = "Your agents get their own identity and keys."
+surfaces = ["network", "verse"]
+status = "next"
+episodes = [199, 209, 235, 275]
+
+[[promise]]
+id = "A8"
+group = "A"
+statement = "You can export all your data and leave whenever you want."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [129, 227]
+
+[[promise]]
+id = "B1"
+group = "B"
+statement = "You talk in one conversation, and the right agent or model answers, so you don't pick between bots."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+issues = [11106]
+episodes = [86, 87, 100, 211, 269, 289]
+
+[[promise]]
+id = "B2"
+group = "B"
+statement = "You can pick from many top models and switch partway through a chat."
+surfaces = ["web", "terminal", "desktop"]
+status = "next"
+issues = [11097]
+episodes = [67, 84, 89, 118, 150, 256]
+
+[[promise]]
+id = "B3"
+group = "B"
+statement = "If one model provider fails or refuses, the agent keeps working on another."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+issues = [11079]
+episodes = [118, 265]
+
+[[promise]]
+id = "B4"
+group = "B"
+statement = "Answers stream in, and a slow start shows that it's still working instead of failing."
+surfaces = ["web", "terminal"]
+status = "launching"
+link = "/"
+issues = [11087, 11112]
+episodes = [80, 81]
+evidence = [
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::a_streaming_reply_never_shows_half_written_markdown" },
+  { smoke = "chat: answer streams over /chat/{id}/events" },
+]
+
+[[promise]]
+id = "B5"
+group = "B"
+statement = "You can pin, rename, archive, search, and delete chats."
+surfaces = ["web"]
+status = "launching"
+link = "/"
+issues = [11036, 11038]
+episodes = [89]
+evidence = [
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::pin_rename_search_and_archive_work_end_to_end" },
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::delete_asks_first_then_removes_only_the_owners_chat" },
+]
+
+[[promise]]
+id = "B6"
+group = "B"
+statement = "Deleting means deleted, including Delete all chats."
+surfaces = ["web", "terminal"]
+status = "launching"
+link = "/settings"
+issues = [11038, 11046]
+episodes = [227]
+evidence = [
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::delete_all_asks_first_then_removes_only_this_browsers_chats" },
+  { test = "crates/openagents-web/src/coder_sync.rs::status_shows_working_and_a_web_delete_reaches_coder" },
+  { golden = "chats.delete" },
+]
+
+[[promise]]
+id = "B7"
+group = "B"
+statement = "You group chats into projects tied to the GitHub repos you choose."
+surfaces = ["web"]
+status = "launching"
+link = "/projects"
+issues = [11034, 11056]
+episodes = [137, 228]
+evidence = [
+  { test = "crates/openagents-web/src/projects/tests.rs::connecting_github_adds_a_project_that_groups_chats_for_its_owner_only" },
+  { smoke = "signed in: Projects" },
+  { golden = "github.projects" },
+]
+
+[[promise]]
+id = "B8"
+group = "B"
+statement = "You can paste a link or ask a question that needs the web, and the agent reads the page."
+surfaces = ["web", "terminal"]
+status = "next"
+episodes = [67, 69, 73, 76, 44]
+
+[[promise]]
+id = "B9"
+group = "B"
+statement = "You can send images and documents, and answers cite where they came from."
+surfaces = ["web", "mobile"]
+status = "later"
+episodes = [8, 11, 19, 83, 90]
+
+[[promise]]
+id = "B10"
+group = "B"
+statement = "The agent remembers lasting facts about you, and you can see, edit, and delete them."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "later"
+episodes = [5, 20, 113, 270, 274]
+
+[[promise]]
+id = "B11"
+group = "B"
+statement = "Once you allow it, the agent learns how you like to work from your past chats."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "later"
+episodes = [286]
+
+[[promise]]
+id = "B12"
+group = "B"
+statement = "You can talk to the agent and hear it answer."
+surfaces = ["mobile", "desktop", "web"]
+status = "later"
+episodes = [111, 151, 152, 251, 270]
+
+[[promise]]
+id = "B13"
+group = "B"
+statement = "Answers can include live pieces such as slides, tables, and buttons, not only text."
+surfaces = ["web", "desktop"]
+status = "next"
+issues = [11113, 11114]
+episodes = [289]
+
+[[promise]]
+id = "B14"
+group = "B"
+statement = "It is free to start, and a $20 Pro plan unlocks stronger models and more capacity."
+surfaces = ["web", "terminal"]
+status = "next"
+episodes = [119, 164, 242, 277, 280]
+
+[[promise]]
+id = "B15"
+group = "B"
+statement = "You can share a team workspace and its chats with teammates."
+surfaces = ["web"]
+status = "later"
+episodes = [136, 137]
+
+[[promise]]
+id = "C1"
+group = "C"
+statement = "You install the terminal app with one command and type `coder`."
+surfaces = ["terminal"]
+status = "launching"
+command = "curl -fsSL https://openagents.com/cli/install.sh | bash"
+issues = [11091]
+episodes = [218, 275, 277]
+evidence = [
+  { smoke = "terminal: installer installs into a scratch HOME" },
+  { smoke = "terminal: coder --version" },
+  { test = "crates/openagents-web/src/tests.rs::hosted_cli_installers_serve_the_bundled_scripts_without_proxying" },
+  { doc = "crates/openagents-web/content/docs/download.md" },
+]
+
+[[promise]]
+id = "C2"
+group = "C"
+statement = "You see every command and step it runs, including its helper agents and its reasoning."
+surfaces = ["terminal", "desktop", "web"]
+status = "launching"
+command = "coder"
+episodes = [33, 157, 249, 254, 277, 279]
+evidence = [
+  { test = "crates/coder-new/tests/transcript_runtime.rs::live_plugin_calls_show_separate_bounded_input_and_result_blocks" },
+  { test = "crates/coder-new/tests/transcript_runtime.rs::selected_subagent_header_shows_its_own_model_and_reasoning" },
+  { doc = "crates/openagents-web/content/docs/following-coder.md" },
+]
+
+[[promise]]
+id = "C3"
+group = "C"
+statement = "It does what you ask without stopping for permission; you stay in charge."
+surfaces = ["terminal"]
+status = "launching"
+command = "coder"
+episodes = [272, 275, 277, 280]
+evidence = [
+  { test = "crates/coder-new/src/bundled_runtime.rs::acp_permission_requests_are_approved_by_default" },
+]
+
+[[promise]]
+id = "C4"
+group = "C"
+statement = "You can queue and edit your next messages while it works."
+surfaces = ["terminal", "desktop"]
+status = "next"
+issues = [11121]
+episodes = [254, 255]
+
+[[promise]]
+id = "C5"
+group = "C"
+statement = "It shows how far along a task is."
+surfaces = ["terminal"]
+status = "launching"
+command = "coder"
+issues = [11115]
+episodes = [284]
+evidence = [
+  { test = "crates/coder-new/tests/transcript_runtime.rs::a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget" },
+]
+
+[[promise]]
+id = "C6"
+group = "C"
+statement = "Hand it a GitHub issue and get back a tested pull request."
+surfaces = ["terminal", "web"]
+status = "next"
+episodes = [20, 25, 30, 123, 161, 228, 287]
+
+[[promise]]
+id = "C7"
+group = "C"
+statement = "It hands parts of a job to Codex, Claude, Devin, or other agents and combines the results."
+surfaces = ["terminal", "desktop"]
+status = "next"
+issues = [11096]
+episodes = [195, 198, 264, 267, 278]
+
+[[promise]]
+id = "C8"
+group = "C"
+statement = "Give it a list of work and walk away; it keeps going, even overnight."
+surfaces = ["terminal", "desktop"]
+status = "next"
+episodes = [31, 167, 195, 199, 228, 250, 281]
+
+[[promise]]
+id = "C9"
+group = "C"
+statement = "It looks around cheaply before calling an expensive model, so the same work costs less."
+surfaces = ["terminal"]
+status = "next"
+episodes = [285, 286, 287]
+
+[[promise]]
+id = "C10"
+group = "C"
+statement = "It picks the cheapest model that still gets each task done."
+surfaces = ["terminal", "network"]
+status = "next"
+issues = [11079]
+episodes = [219, 287]
+
+[[promise]]
+id = "C11"
+group = "C"
+statement = "You can bring your own keys, subscriptions, models, and computers."
+surfaces = ["terminal", "web"]
+status = "next"
+issues = [11111]
+episodes = [219, 244, 277]
+
+[[promise]]
+id = "C12"
+group = "C"
+statement = "When one of your accounts hits its limit, it moves to the next."
+surfaces = ["terminal", "desktop"]
+status = "next"
+episodes = [225, 246, 250]
+
+[[promise]]
+id = "C13"
+group = "C"
+statement = "It understands your whole repository without you picking files."
+surfaces = ["terminal"]
+status = "next"
+episodes = [23, 107, 122, 156, 160]
+
+[[promise]]
+id = "C14"
+group = "C"
+statement = "You run Coder on a computer you've connected, from your phone or the web."
+surfaces = ["mobile", "web"]
+status = "next"
+issues = [11093]
+episodes = [144, 145, 193, 281]
+
+[[promise]]
+id = "C15"
+group = "C"
+statement = "You can rent cloud computers for your agents and pay by the hour."
+surfaces = ["web", "terminal"]
+status = "next"
+issues = [11101]
+episodes = [106, 276, 281]
+
+[[promise]]
+id = "C16"
+group = "C"
+statement = "Your agent can drive a computer made for agents (browser, screen, phone emulator)."
+surfaces = ["desktop", "terminal"]
+status = "next"
+issues = [11124]
+episodes = [270, 280, 281, 283]
+
+[[promise]]
+id = "C17"
+group = "C"
+statement = "Each agent gets its own workspace with shared build caches, so many agents don't overload your machine."
+surfaces = ["terminal", "desktop"]
+status = "next"
+episodes = [188, 281]
+
+[[promise]]
+id = "C18"
+group = "C"
+statement = "Another model reviews the work and writes tests in the background."
+surfaces = ["terminal"]
+status = "later"
+episodes = [29, 286]
+
+[[promise]]
+id = "C19"
+group = "C"
+statement = "You see every change as a diff before you accept it."
+surfaces = ["terminal", "desktop", "web"]
+status = "next"
+episodes = [117, 119]
+
+[[promise]]
+id = "D1"
+group = "D"
+statement = "Your terminal chats show on the website with live status, and you can reply there while Coder is open."
+surfaces = ["terminal", "web"]
+status = "launching"
+link = "/"
+issues = [11089]
+episodes = [187, 275, 279]
+evidence = [
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::a_coder_chat_opens_read_only_with_its_computer" },
+  { test = "crates/openagents-web/src/pages/chat_tests.rs::a_coder_chat_takes_a_reply_while_its_computer_is_online" },
+  { golden = "coder.sync" },
+]
+
+[[promise]]
+id = "D2"
+group = "D"
+statement = "Sync is off until you turn it on, per computer."
+surfaces = ["terminal"]
+status = "launching"
+command = "coder login"
+issues = [11046]
+episodes = [279, 281]
+evidence = [
+  { test = "crates/coder-sync/src/tests.rs::settings_are_off_by_default_private_and_remember_what_was_sent" },
+  { test = "crates/openagents-web/src/coder_sync.rs::each_computer_keeps_its_own_sync_choice" },
+  { doc = "crates/openagents-web/content/docs/connect-a-computer.md" },
+]
+
+[[promise]]
+id = "D3"
+group = "D"
+statement = "Keys and passwords are caught before a message leaves your computer, and again on our side."
+surfaces = ["terminal", "web"]
+status = "launching"
+command = "coder login"
+issues = [11046]
+episodes = [245, 272]
+evidence = [
+  { test = "crates/openagents-web/src/coder_sync.rs::a_planted_secret_is_refused_and_nothing_is_saved" },
+  { test = "crates/secret-screen/src/lib.rs::claude_logins_are_recognized_and_redacted" },
+]
+
+[[promise]]
+id = "D4"
+group = "D"
+statement = "Your phone shows the same chats as your account."
+surfaces = ["mobile"]
+status = "next"
+issues = [11107]
+episodes = [187, 193, 275, 281]
+
+[[promise]]
+id = "D5"
+group = "D"
+statement = "You pair your phone with your computer by scanning a code."
+surfaces = ["mobile", "desktop", "terminal"]
+status = "next"
+issues = [11093]
+episodes = [193, 194]
+
+[[promise]]
+id = "D6"
+group = "D"
+statement = "You get a phone notification when an agent needs you."
+surfaces = ["mobile"]
+status = "next"
+episodes = [160, 183, 190]
+
+[[promise]]
+id = "D7"
+group = "D"
+statement = "Your progress, levels, and rewards are the same in every app."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "later"
+episodes = [284]
+
+[[promise]]
+id = "E1"
+group = "E"
+statement = "One OpenAI-compatible API key reaches many models, and any coding tool can point at it."
+surfaces = ["network", "terminal"]
+status = "next"
+issues = [11094]
+episodes = [241, 242, 243, 289]
+
+[[promise]]
+id = "E2"
+group = "E"
+statement = "The API has a free tier with real limits."
+surfaces = ["network"]
+status = "next"
+episodes = [119, 242]
+
+[[promise]]
+id = "E3"
+group = "E"
+statement = "Agents can pay per request without an account."
+surfaces = ["network"]
+status = "next"
+issues = [11077, 11085]
+episodes = [62, 63, 70, 86]
+
+[[promise]]
+id = "E4"
+group = "E"
+statement = "You set your own spending limits."
+surfaces = ["network", "web"]
+status = "next"
+issues = [11077]
+episodes = [147, 206]
+
+[[promise]]
+id = "E5"
+group = "E"
+statement = "You say what you care about (cost, speed, privacy) and the agent picks models to match."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+issues = [11079]
+episodes = [269, 286]
+
+[[promise]]
+id = "E6"
+group = "E"
+statement = "We ask model providers not to train on or keep your chats, and delete usage records after 30 days."
+surfaces = ["web", "terminal"]
+status = "launching"
+link = "/privacy"
+issues = [11040, 11041, 11042, 11043, 11044]
+episodes = [46, 245]
+evidence = [
+  { test = "crates/openagents-web/src/pages/content.rs::the_legal_text_is_the_published_text" },
+  { doc = "crates/openagents-web/content/legal/privacy.md" },
+  { golden = "privacy.training" },
+]
+
+[[promise]]
+id = "E7"
+group = "E"
+statement = "A public counter shows tokens served and which models served them."
+surfaces = ["web"]
+status = "later"
+issues = [11081]
+episodes = [243, 244]
+
+[[promise]]
+id = "E8"
+group = "E"
+statement = "The app never claims a model it didn't use; you get the model you picked or a visible failure."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [250]
+
+[[promise]]
+id = "E9"
+group = "E"
+statement = "You can run open models on your own machine or a friend's."
+surfaces = ["terminal", "desktop"]
+status = "next"
+issues = [11080]
+episodes = [145, 194, 219]
+
+[[promise]]
+id = "E10"
+group = "E"
+statement = "You can pay more for private processing of sensitive work."
+surfaces = ["network"]
+status = "later"
+episodes = [242]
+
+[[promise]]
+id = "F1"
+group = "F"
+statement = "When the agent can't do something, it builds the ability with you, tests it, and you approve it."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [211, 289]
+
+[[promise]]
+id = "F2"
+group = "F"
+statement = "An approved ability is shared, so every user's agent gets it."
+surfaces = ["network"]
+status = "later"
+issues = [11096]
+episodes = [49, 53, 87, 211, 269, 289]
+
+[[promise]]
+id = "F3"
+group = "F"
+statement = "Plugin authors are paid in Bitcoin every time someone pays to use their plugin."
+surfaces = ["network"]
+status = "later"
+episodes = [54, 85, 97, 102, 165, 289]
+
+[[promise]]
+id = "F4"
+group = "F"
+statement = "The agent finds the tools it needs itself, ranked by proven results."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [87, 102, 285, 286]
+
+[[promise]]
+id = "F5"
+group = "F"
+statement = "Plugins run sandboxed, with only the access you grant."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [48, 102, 214]
+
+[[promise]]
+id = "F6"
+group = "F"
+statement = "Developers write plugins in many languages."
+surfaces = ["network"]
+status = "next"
+episodes = [48, 53, 68]
+
+[[promise]]
+id = "F7"
+group = "F"
+statement = "You connect outside tools through MCP."
+surfaces = ["terminal", "desktop"]
+status = "next"
+issues = [11084]
+episodes = [144, 165, 168, 195]
+
+[[promise]]
+id = "G1"
+group = "G"
+statement = "Gym measures agents and plugins, and anyone can inspect the results."
+surfaces = ["web", "terminal"]
+status = "next"
+episodes = [65, 287, 289]
+
+[[promise]]
+id = "G2"
+group = "G"
+statement = "We publish benchmark results with the setup, costs, and failures, not only scores."
+surfaces = ["web"]
+status = "next"
+episodes = [120, 121, 186, 287]
+
+[[promise]]
+id = "G3"
+group = "G"
+statement = "You earn experience, levels, and leaderboard places for verified work, never for wasted spending."
+surfaces = ["web", "terminal", "mobile", "desktop", "verse"]
+status = "next"
+episodes = [185, 270, 284]
+
+[[promise]]
+id = "G4"
+group = "G"
+statement = "Leveling up unlocks free credits, better models, and hosting."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "later"
+episodes = [284]
+
+[[promise]]
+id = "G5"
+group = "G"
+statement = "Improvements to how the agent works are published with their evidence, so everyone's agent gets better."
+surfaces = ["network"]
+status = "next"
+episodes = [270, 286, 287]
+
+[[promise]]
+id = "G6"
+group = "G"
+statement = "A public list says which of our claims work today, with proof, and what's coming."
+surfaces = ["web"]
+status = "launching"
+link = "/promises"
+issues = [11122]
+episodes = [234, 237, 246, 248]
+evidence = [
+  { test = "crates/openagents-web/src/promises.rs::every_working_promise_names_evidence_that_exists" },
+  { smoke = "promises: lists what works with its proof" },
+  { doc = "docs/promises/README.md" },
+]
+
+[[promise]]
+id = "G7"
+group = "G"
+statement = "You can report something that doesn't work, and it becomes a tracked fix."
+surfaces = ["mobile", "web", "terminal"]
+status = "next"
+episodes = [234, 246, 254]
+
+[[promise]]
+id = "H1"
+group = "H"
+statement = "Every run is recorded on your computer, and you can open any step."
+surfaces = ["terminal"]
+status = "shipped"
+command = "coder"
+episodes = [33, 34, 61, 80]
+evidence = [
+  { test = "crates/atif/src/log.rs::a_log_round_trips_through_a_document" },
+  { doc = "docs/coder/runtime/traces.md" },
+]
+
+[[promise]]
+id = "H2"
+group = "H"
+statement = "You can upload a trace to your account; it stays private unless you share it."
+surfaces = ["terminal", "web"]
+status = "launching"
+command = "coder trace upload --last"
+issues = [11109]
+episodes = [228, 275]
+evidence = [
+  { test = "crates/coder-new/src/trace_upload.rs::sources_are_chosen_once_and_signed_in_is_needed" },
+  { test = "crates/openagents-web/src/traces.rs::upload_list_share_and_delete" },
+  { smoke = "traces: shared /trace/{id} is public" },
+  { doc = "crates/openagents-web/content/docs/traces.md" },
+]
+
+[[promise]]
+id = "H3"
+group = "H"
+statement = "You can sell scrubbed traces and data, and your agent asks before each sale."
+surfaces = ["network"]
+status = "later"
+episodes = [200, 213, 215, 230, 245, 275]
+
+[[promise]]
+id = "H4"
+group = "H"
+statement = "Free use in exchange for sharing scrubbed traces, with pay when they're reused."
+surfaces = ["web", "terminal"]
+status = "later"
+episodes = [244, 245]
+
+[[promise]]
+id = "H5"
+group = "H"
+statement = "You choose how much of a project is public: nothing, activity, summaries, or everything."
+surfaces = ["web"]
+status = "later"
+episodes = [272]
+
+[[promise]]
+id = "H6"
+group = "H"
+statement = "A plain-words changelog links each change to the work behind it."
+surfaces = ["web"]
+status = "next"
+issues = [11104]
+episodes = [272]
+
+[[promise]]
+id = "I1"
+group = "I"
+statement = "You get a Bitcoin wallet where only you hold the keys, for small amounts."
+surfaces = ["mobile", "desktop"]
+status = "next"
+issues = [11093]
+episodes = [143, 153, 169, 173, 207, 212]
+
+[[promise]]
+id = "I2"
+group = "I"
+statement = "You can send sats just by asking."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "next"
+episodes = [212, 289]
+
+[[promise]]
+id = "I3"
+group = "I"
+statement = "Your agent can pay and get paid, under rules and budgets you approve."
+surfaces = ["mobile", "network"]
+status = "next"
+episodes = [42, 47, 141, 147, 212]
+
+[[promise]]
+id = "I4"
+group = "I"
+statement = "You can pay by card."
+surfaces = ["web"]
+status = "next"
+episodes = [37, 64, 116]
+
+[[promise]]
+id = "I5"
+group = "I"
+statement = "Earnings go to your Lightning address automatically."
+surfaces = ["network"]
+status = "next"
+episodes = [64, 92, 96, 98]
+
+[[promise]]
+id = "I6"
+group = "I"
+statement = "The revenue split between authors, providers, and OpenAgents is published."
+surfaces = ["web"]
+status = "later"
+episodes = [37, 97, 98]
+
+[[promise]]
+id = "I7"
+group = "I"
+statement = "Bring someone in and earn a share of what they pay, for as long as they pay."
+surfaces = ["network"]
+status = "later"
+episodes = [37, 125, 150, 153, 229, 239]
+
+[[promise]]
+id = "I8"
+group = "I"
+statement = "Bitcoin is the only money, and there is no token."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "shipped"
+link = "/docs/wallet"
+episodes = [1, 200, 220, 230]
+evidence = [
+  { doc = "docs/payments/README.md" },
+]
+
+[[promise]]
+id = "I9"
+group = "I"
+statement = "You can hold dollar-pegged balances backed by Bitcoin."
+surfaces = ["network"]
+status = "later"
+episodes = [96, 173, 200]
+
+[[promise]]
+id = "J1"
+group = "J"
+statement = "You can sell your computer's spare power for Bitcoin with one \"Go Online\" switch."
+surfaces = ["desktop", "terminal", "network"]
+status = "next"
+issues = [11080]
+episodes = [144, 174, 178, 201, 214, 221]
+
+[[promise]]
+id = "J2"
+group = "J"
+statement = "Providers are paid for accepted work, not for being online."
+surfaces = ["network"]
+status = "next"
+issues = [11082]
+episodes = [224, 232, 237]
+
+[[promise]]
+id = "J3"
+group = "J"
+statement = "Anyone can join the markets by following open specs, without our permission."
+surfaces = ["network"]
+status = "next"
+episodes = [203, 215, 266, 267, 288]
+
+[[promise]]
+id = "J4"
+group = "J"
+statement = "Anyone can run a relay, and ours works with other Nostr apps."
+surfaces = ["network"]
+status = "shipped"
+link = "https://github.com/OpenAgentsInc/openagents/tree/main/nips"
+episodes = [66, 177, 203, 266]
+evidence = [
+  { test = "crates/nostr-relay/tests/domain_fixtures.rs::nip01_known_event_id_and_signature" },
+]
+
+[[promise]]
+id = "J5"
+group = "J"
+statement = "Your idle agent can take paid jobs from other people and agents."
+surfaces = ["network"]
+status = "later"
+episodes = [213, 215, 230, 246]
+
+[[promise]]
+id = "J6"
+group = "J"
+statement = "A public stats page shows the network's size, work done, and money paid."
+surfaces = ["web"]
+status = "next"
+issues = [11081]
+episodes = [203, 221, 224, 227]
+
+[[promise]]
+id = "J7"
+group = "J"
+statement = "Paid bounties fund outside contributors."
+surfaces = ["web"]
+status = "later"
+episodes = [1, 43, 88, 216]
+
+[[promise]]
+id = "J8"
+group = "J"
+statement = "Fan one job out to many machines at once."
+surfaces = ["network"]
+status = "later"
+episodes = [202, 203, 214]
+
+[[promise]]
+id = "K1"
+group = "K"
+statement = "Any agent can learn to use OpenAgents from one file on the website."
+surfaces = ["web", "network"]
+status = "launching"
+link = "/llms.txt"
+issues = [11083]
+episodes = [230, 231, 235, 237]
+evidence = [
+  { test = "crates/openagents-web/src/agent_ready_tests.rs::pages_answer_markdown_when_asked_and_say_so_in_headers" },
+  { smoke = "llms.txt" },
+]
+
+[[promise]]
+id = "K2"
+group = "K"
+statement = "Agents can read our docs through MCP."
+surfaces = ["network"]
+status = "launching"
+link = "/.well-known/mcp/server-card.json"
+issues = [11086]
+episodes = [165, 168]
+evidence = [
+  { test = "crates/openagents-web/src/agent_ready_tests.rs::the_docs_mcp_server_initializes_lists_and_answers_every_tool" },
+  { smoke = "mcp/docs: initialize and tools/list" },
+]
+
+[[promise]]
+id = "K3"
+group = "K"
+statement = "Everything you can do in an app, you can do from the command line or API."
+surfaces = ["terminal", "network"]
+status = "next"
+episodes = [67, 85, 100, 203, 289]
+
+[[promise]]
+id = "K4"
+group = "K"
+statement = "All of it is open source and built in public."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "shipped"
+link = "https://github.com/OpenAgentsInc/openagents"
+episodes = [1, 47, 125, 173, 242]
+evidence = [
+  { doc = "LICENSE" },
+  { golden = "about.open_source" },
+]
+
+[[promise]]
+id = "K5"
+group = "K"
+statement = "You can run your own copy of the whole thing."
+surfaces = ["network"]
+status = "next"
+episodes = [129, 242, 289]
+
+[[promise]]
+id = "K6"
+group = "K"
+statement = "Agents can buy from us using standard agent payment protocols."
+surfaces = ["network"]
+status = "later"
+issues = [11085]
+episodes = [62, 70]
+
+[[promise]]
+id = "L1"
+group = "L"
+statement = "The website is a full chat app at openagents.com."
+surfaces = ["web"]
+status = "shipped"
+link = "/"
+issues = [11094]
+episodes = [2, 76, 164, 289]
+evidence = [
+  { test = "crates/openagents-web/src/tests.rs::posting_the_homepage_composer_opens_a_chat_page" },
+  { smoke = "home: loads" },
+  { doc = "crates/openagents-web/content/docs/website.md" },
+]
+
+[[promise]]
+id = "L2"
+group = "L"
+statement = "Terminal 1.0 installs on Mac, Linux, and Windows."
+surfaces = ["terminal"]
+status = "launching"
+link = "/download"
+issues = [11091]
+episodes = [277, 289]
+evidence = [
+  { test = "crates/openagents-web/src/tests.rs::the_download_page_offers_every_platform_from_its_table" },
+  { smoke = "download: Coder one-liners for macOS/Linux and Windows" },
+]
+
+[[promise]]
+id = "L3"
+group = "L"
+statement = "A desktop app for Mac, Linux, and Windows that updates itself safely."
+surfaces = ["desktop"]
+status = "next"
+issues = [11092, 11120]
+episodes = [2, 175, 208, 248, 256, 289]
+
+[[promise]]
+id = "L4"
+group = "L"
+statement = "The desktop shows many chats and terminals side by side in panes."
+surfaces = ["desktop"]
+status = "next"
+issues = [11124]
+episodes = [118, 123, 179, 185]
+
+[[promise]]
+id = "L5"
+group = "L"
+statement = "Fast, game-like controls with hotkeys that stay put."
+surfaces = ["desktop", "terminal"]
+status = "next"
+episodes = [170, 171, 246, 249, 251]
+
+[[promise]]
+id = "L6"
+group = "L"
+statement = "An iPhone app on TestFlight."
+surfaces = ["mobile"]
+status = "next"
+issues = [11093]
+episodes = [139, 149, 193, 289]
+
+[[promise]]
+id = "L7"
+group = "L"
+statement = "An Android app."
+surfaces = ["mobile"]
+status = "next"
+issues = [11093]
+episodes = [149, 151, 289]
+
+[[promise]]
+id = "L8"
+group = "L"
+statement = "Light and dark themes that follow your system."
+surfaces = ["web", "desktop", "mobile"]
+status = "launching"
+link = "/"
+issues = [11100]
+evidence = [
+  { smoke = "home: theme toggle in the sidebar corner" },
+]
+
+[[promise]]
+id = "L9"
+group = "L"
+statement = "A crash in one feature never takes down the app or your agents."
+surfaces = ["desktop", "terminal"]
+status = "next"
+episodes = [258]
+
+[[promise]]
+id = "M1"
+group = "M"
+statement = "A shared 3D world where you meet other people and agents."
+surfaces = ["verse", "web", "desktop", "mobile"]
+status = "next"
+episodes = [116, 177, 189, 240, 284]
+
+[[promise]]
+id = "M2"
+group = "M"
+statement = "You watch your agents do real repository work there, and answer them or approve merges."
+surfaces = ["verse"]
+status = "next"
+episodes = [116, 240, 284]
+
+[[promise]]
+id = "M3"
+group = "M"
+statement = "You own named agents with jobs and a place to work in the world."
+surfaces = ["verse"]
+status = "next"
+episodes = [270, 284]
+
+[[promise]]
+id = "M4"
+group = "M"
+statement = "You can see your network's work and payments moving in the world."
+surfaces = ["verse"]
+status = "later"
+episodes = [240, 241, 243, 289]
+
+[[promise]]
+id = "M5"
+group = "M"
+statement = "Guilds, quests, and trades tied to real verified work."
+surfaces = ["verse"]
+status = "next"
+episodes = [116, 200, 284]
+
+[[promise]]
+id = "M6"
+group = "M"
+statement = "You command agents the way you command units in a strategy game."
+surfaces = ["verse", "desktop"]
+status = "next"
+episodes = [170, 171, 178, 199, 283, 284]
+
+[[promise]]
+id = "M7"
+group = "M"
+statement = "A terminal inside the world that you can share."
+surfaces = ["verse"]
+status = "next"
+episodes = [116, 284]
+
+[[promise]]
+id = "W1"
+group = "B"
+statement = "Four starter questions under the chat box answer in about a second."
+surfaces = ["web"]
+status = "launching"
+link = "/"
+issues = [11095]
+evidence = [
+  { smoke = "home: four starter questions" },
+  { golden = "starters.what_is" },
+  { golden = "starters.plugins" },
+]
+
+[[promise]]
+id = "W2"
+group = "B"
+statement = "Answers about OpenAgents are checked against real questions before each release."
+surfaces = ["web"]
+status = "launching"
+link = "/"
+issues = [11106]
+evidence = [
+  { test = "crates/coder/tests/chat_goldens.rs::every_accepted_answer_meets_its_golden" },
+  { doc = "docs/web/chat-goldens.md" },
+]
+
+[[promise]]
+id = "W3"
+group = "K"
+statement = "Guides to every part of OpenAgents, each with a trail back to the index."
+surfaces = ["web"]
+status = "launching"
+link = "/docs"
+issues = [11099]
+evidence = [
+  { test = "crates/openagents-web/src/tests.rs::every_docs_page_shows_its_breadcrumb_trail" },
+  { smoke = "docs: every page loads" },
+]
+
+[[promise]]
+id = "W4"
+group = "K"
+statement = "Every how-to in the docs gives you the link to follow or the command to run."
+surfaces = ["web"]
+status = "launching"
+link = "/docs"
+issues = [11098]
+evidence = [
+  { test = "crates/openagents-web/src/pages/content.rs::every_instruction_carries_a_link_or_a_command" },
+]
+
+[[promise]]
+id = "W5"
+group = "L"
+statement = "The download page offers Coder for every platform it runs on."
+surfaces = ["web", "terminal"]
+status = "launching"
+link = "/download"
+issues = [11103]
+evidence = [
+  { test = "crates/openagents-web/src/tests.rs::the_download_page_offers_every_platform_from_its_table" },
+  { smoke = "download: Coder comes before any other download" },
+]
+
+[[promise]]
+id = "X1"
+group = "X"
+statement = "A drag-and-drop visual builder for agent workflows."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Set aside for chat (076); the agent now writes and tests the ability itself (F1)."
+episodes = [38, 58, 59, 61, 73]
+
+[[promise]]
+id = "X2"
+group = "X"
+statement = "A store of many separate agents to browse and rate."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Replaced by one conversation backed by a network of agents and plugins (086, 289)."
+episodes = [90, 92, 94, 100]
+
+[[promise]]
+id = "X3"
+group = "X"
+statement = "An open replacement for WordPress, and sites built by asking."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "OpenPress and Sites were retired. A site is a coding task for Coder."
+episodes = [126, 127, 129, 180, 229]
+
+[[promise]]
+id = "X4"
+group = "X"
+statement = "A built-in CRM and an all-in-one business suite."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Outside the current product focus; Coder and the general agent come first."
+episodes = [135, 237, 239, 247]
+
+[[promise]]
+id = "X5"
+group = "X"
+statement = "Code hosting to replace GitHub."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "\"Too big an apple\" (281). Back to GitHub."
+episodes = [270, 272, 273, 274]
+
+[[promise]]
+id = "X6"
+group = "X"
+statement = "Paid distributed training on home machines."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Paused; not part of the current product. Our inference engine stays for local use and research."
+episodes = [216, 238]
+
+[[promise]]
+id = "X7"
+group = "X"
+statement = "Liquidity and risk markets."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Speculative, with no buyers."
+episodes = [213, 214, 230]
+
+[[promise]]
+id = "X8"
+group = "X"
+statement = "Ocean-powered data centers."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Out of scope."
+episodes = [194, 227]
+
+[[promise]]
+id = "X9"
+group = "X"
+statement = "One-click security scans of open-source projects."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Stood down in 266."
+episodes = [264, 265]
+
+[[promise]]
+id = "X10"
+group = "X"
+statement = "A named voice agent that runs things for you (Onyx, Sarah)."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Replaced by the one OpenAgents agent (289). Voice returns as B12."
+episodes = [139, 151, 260, 270]
+
+[[promise]]
+id = "X11"
+group = "X"
+statement = "Pay-per-message pricing in sats."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Replaced by a free tier, Pro, and credits."
+episodes = [97, 118]
+
+[[promise]]
+id = "X12"
+group = "X"
+statement = "Paying providers per second online."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Dropped in 224 for paying for accepted work."
+episodes = [214, 223]
+
+[[promise]]
+id = "X13"
+group = "X"
+statement = "Hand-gesture \"Jarvis\" control."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Teaser only."
+episodes = [176, 179, 183]
+
+[[promise]]
+id = "X14"
+group = "X"
+statement = "Desktop with no OpenAgents account."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Replaced by one account everywhere (A1). Local-only use of Coder stays."
+episodes = [248, 251]
+
+[[promise]]
+id = "X15"
+group = "X"
+statement = "Small models running on the phone."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Too slow on Android (149)."
+episodes = [145, 149]
+
+[[promise]]
+id = "X16"
+group = "X"
+statement = "Public investigation agents (Sleuth, OSINT) and public knowledge graph."
+surfaces = ["web", "terminal", "mobile", "desktop"]
+status = "dropped"
+note = "Domain experiments with no follow-up."
+episodes = [43, 44, 146, 154]

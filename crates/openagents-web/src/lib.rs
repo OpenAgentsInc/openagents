@@ -37,6 +37,7 @@ pub mod palette;
 pub mod pilot;
 pub mod plan;
 mod projects;
+mod promises;
 mod purchases;
 pub mod sales_remote;
 mod settings;
@@ -244,6 +245,7 @@ pub fn router(config: Config) -> Router {
         .merge(account::routes())
         .merge(settings::routes())
         .merge(projects::routes())
+        .merge(promises::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
