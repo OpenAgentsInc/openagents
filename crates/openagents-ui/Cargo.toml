@@ -8,3 +8,7 @@ description = "Server-rendered web components in the Apps SDK UI design language
 
 [dependencies]
 maud = "0.27"
+oa-tokens = { path = "../oa-tokens" }
+
+[build-dependencies]
+oa-tokens = { path = "../oa-tokens" }

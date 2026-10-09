@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashMap;
 use std::path::Path;
 
 const SCHEMES: [Scheme; 2] = [Scheme::Light, Scheme::Dark];
@@ -105,10 +106,10 @@ fn noir_overrides_name_real_roles_and_keep_coder_light() {
             .flat_map(|s| s.tokens.iter())
             .map(|(n, v)| (*n, (*v).to_string()))
             .collect();
-        let plain = Resolver { tokens: upstream };
+        let plain = Resolver::from_tokens(upstream);
         assert_eq!(
             resolver.color(name, Scheme::Light),
-            plain.eval(source.1, Scheme::Light, 0),
+            plain.eval(source.1, Scheme::Light),
             "{name} light is Apps SDK UI's"
         );
     }

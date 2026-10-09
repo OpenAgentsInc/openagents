@@ -1,12 +1,12 @@
 //! OpenAgents roles in Apps SDK UI's naming scheme, for surfaces Apps SDK UI
 //! does not cover.
 
-use super::Section;
+use crate::Section;
 
 /// Appended to the component token layer.
 pub const COMPONENTS: &[Section] = &[Section {
     // Terminal panels stay Coder Noir in both themes (adoption plan, phase 4).
-    // Values copied from `coder_noir.rs`; see `noir.rs`.
+    // The same values as `crate::noir`, Coder Noir.
     title: "Terminal (always Coder Noir)",
     tokens: &[
         ("--terminal-background-color", "#0e0e0e"),

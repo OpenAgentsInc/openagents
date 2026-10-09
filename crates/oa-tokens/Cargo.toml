@@ -1,0 +1,12 @@
+[package]
+name = "oa-tokens"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The OpenAgents design token table (Apps SDK UI roles, Coder Light and Coder Noir) as dependency-free data, shared by the web components and the native GUI themes."
+
+[dependencies]
+
+[lints]
+workspace = true

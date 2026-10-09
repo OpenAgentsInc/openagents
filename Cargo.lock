@@ -9630,6 +9630,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-tokens"
+version = "0.1.0"
+
+[[package]]
 name = "oak"
 version = "0.1.0"
 dependencies = [
@@ -10418,6 +10422,7 @@ name = "openagents-ui"
 version = "0.1.0"
 dependencies = [
  "maud",
+ "oa-tokens",
 ]
 
 [[package]]

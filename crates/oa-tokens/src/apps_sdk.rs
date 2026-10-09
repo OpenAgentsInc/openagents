@@ -5,11 +5,11 @@
 //! Values are kept as written upstream, except seven intent text roles
 //! marked `openagents: WCAG AA`, moved one or two ramp steps so they pass
 //! the contrast test in both themes. Upstream syntax is kept, including the `alpha()` and
-//! `spacing()` build functions, which [`super::css_value`] lowers to plain
+//! `spacing()` build functions, which `openagents_ui::tokens::css_value` lowers to plain
 //! CSS. Generated once from the upstream files; edit here, then regenerate
-//! the stylesheets (see `tokens/mod.rs`).
+//! the stylesheets (see `crates/openagents-ui/src/tokens/mod.rs`).
 
-use super::Section;
+use crate::Section;
 
 pub const PRIMITIVE: &[Section] = &[
     Section {

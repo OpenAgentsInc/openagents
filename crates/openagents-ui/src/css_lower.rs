@@ -2,8 +2,8 @@
 //!
 //! Shared by the token generator and `build.rs`, which applies it to every
 //! bundled stylesheet, so component CSS may keep upstream's `alpha()` and
-//! `spacing()` calls. Keep this file free of crate imports: `build.rs`
-//! includes it with `#[path]`.
+//! `spacing()` calls. Keep this file free of `crate::` imports: `build.rs`
+//! includes it with `#[path]` (`oa-tokens` is a build dependency too).
 
 /// Lower Apps SDK UI's build-time functions to plain CSS, as its PostCSS
 /// plugin does: `alpha(c, n%)` becomes `color-mix(in oklab, c n%, transparent)`
@@ -71,41 +71,4 @@ fn find_call<'a>(text: &str, names: &[&'a str]) -> Option<(&'a str, usize)> {
     best
 }
 
-pub(crate) fn matching_paren(text: &str, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, ch) in text[open..].char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(open + index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Split top-level comma-separated arguments.
-pub(crate) fn split_args(text: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut depth = 0i32;
-    let mut current = String::new();
-    for ch in text.chars() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            ',' if depth == 0 => {
-                args.push(current.trim().to_string());
-                current.clear();
-                continue;
-            }
-            _ => {}
-        }
-        current.push(ch);
-    }
-    args.push(current.trim().to_string());
-    args
-}
+pub(crate) use oa_tokens::{matching_paren, split_args};
