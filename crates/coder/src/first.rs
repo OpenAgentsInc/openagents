@@ -25,7 +25,9 @@ use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry, Questions, RetryPolicy, SystemOneResponse};
 use serde_json::Value;
 
-use crate::generate::{DEFAULT_DOOR_URL, Lane as ModelLane, Message, OPENROUTER_DOOR_URL};
+use crate::generate::{
+    DEFAULT_DOOR_URL, Lane as ModelLane, Message, OPENROUTER_DOOR_URL, ProviderPrivacy,
+};
 
 /// The ranking's question set identity, as a `rank` result names it.
 pub const SET: &str = "coder-first-response-v2";
@@ -76,11 +78,33 @@ pub struct Facts {
     pub chat_model: Option<String>,
     /// Where the model is reached: "the Vercel AI Gateway".
     pub chat_model_host: Option<String>,
-    /// What the model's provider may keep of what we send it, as a
-    /// sentence without its full stop, when it is more than the door's
-    /// own terms: Space Bunny Alpha's anonymous provider may keep prompts
-    /// and replies (OpenRouter's notice for the model, 2026-10-01).
+    /// What the primary's provider may keep of what we send it, or what we
+    /// ask of it, as a sentence without its full stop: see
+    /// [`keeps_sentence`] (#11040).
     pub chat_model_keeps: Option<String>,
+}
+
+/// What the privacy answer says about the providers keeping what we send,
+/// at the level the worker's doors ask for ([`ProviderPrivacy`], #11040).
+/// Under `strict` every chat-model request asks for no training and no
+/// retention, and a primary that cannot agree is not used; below it,
+/// Space Bunny Alpha's anonymous provider may keep prompts and replies
+/// (OpenRouter's notice for the model, 2026-10-01).
+#[must_use]
+pub fn keeps_sentence(privacy: ProviderPrivacy) -> &'static str {
+    match privacy {
+        ProviderPrivacy::Strict => {
+            "We ask the model providers not to keep or train on what we send them"
+        }
+        ProviderPrivacy::NoTraining => {
+            "We ask the model providers not to train on what we send them; Space Bunny Alpha's \
+             anonymous provider may still keep the messages it is sent and its replies"
+        }
+        ProviderPrivacy::Off => {
+            "Space Bunny Alpha's anonymous provider may keep the messages it is sent and its \
+             replies, though not to train on them"
+        }
+    }
 }
 
 impl Facts {
@@ -97,11 +121,9 @@ impl Facts {
             ModelLane::Glm => "Z.ai's GLM 5.3 Flash".to_string(),
             ModelLane::SpaceBunny => "Space Bunny Alpha (an anonymous preview model)".to_string(),
         });
-        let chat_model_keeps = lane.filter(|lane| *lane == ModelLane::SpaceBunny).map(|_| {
-            "Space Bunny Alpha's anonymous provider may keep the messages it is sent and its \
-                 replies, though not to train on them"
-                .to_string()
-        });
+        let chat_model_keeps = lane
+            .filter(|lane| *lane == ModelLane::SpaceBunny)
+            .map(|_| keeps_sentence(ProviderPrivacy::from_env()).to_string());
         let chat_model_host = url
             .map(|url| url.trim_end_matches('/'))
             .and_then(|url| match url {
@@ -321,9 +343,16 @@ mod tests {
             primary
                 .chat_model_keeps
                 .as_deref()
-                .is_some_and(|keeps| keeps.contains("not to train")),
+                .is_some_and(|keeps| keeps.contains("train")),
             "{primary:?}"
         );
+        // #11040: the sentence follows what the doors ask for.
+        assert_eq!(
+            keeps_sentence(ProviderPrivacy::Strict),
+            "We ask the model providers not to keep or train on what we send them"
+        );
+        assert!(keeps_sentence(ProviderPrivacy::NoTraining).contains("may still keep"));
+        assert!(keeps_sentence(ProviderPrivacy::Off).contains("not to train on them"));
     }
 
     #[test]

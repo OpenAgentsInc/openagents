@@ -22,10 +22,11 @@ answer: >-
   our servers. In the apps, messages are encrypted to our chat worker, our
   relay keeps nothing, and chats are saved on your device. The worker stores
   no message text. To reply, it sends the conversation to TypeSafe's Jev
-  through the Vercel AI Gateway, to Space Bunny Alpha on OpenRouter, whose
-  provider may keep prompts but not train on them, and to Gemini 3.8 Flash
-  on the Vercel AI Gateway when Space Bunny can't answer. Product lookups
-  also reach an embeddings provider. No setting turns the providers off.
+  through the Vercel AI Gateway, to Space Bunny Alpha on OpenRouter, and to
+  Gemini 3.8 Flash on the Vercel AI Gateway when Space Bunny can't answer.
+  We ask the providers of those two models not to keep or train on what we
+  send them, and don't use a model whose provider can't agree. Product
+  lookups also reach an embeddings provider. No setting turns the providers off.
 status: admitted
 author: openagents
 provenance:
@@ -44,13 +45,14 @@ evidence:
   - "2026-10-02: BYOK (#10176): with **Use my keys for everything** on, messages reach the person's own provider accounts, and the keys travel sealed per message and are never kept."
   - "2026-10-02: on the person's keys, product, codebase, and Gym lookups stay on, embedded and judged on their keys (#10176)."
   - "2026-10-08: v7 (#11038): a web chat can be deleted from its page (GET/POST /chat/{id}/delete in crates/openagents-web/src/pages/chat.rs; Store::delete removes the record and, on a versioned bucket, its older versions). Removal of untouched chats exists behind --chat-retention-days and is off, so the answer says there is no time limit yet. GCS soft delete keeps deleted objects recoverable for its window (7 days by default)."
+  - "2026-10-09: v9 (#11040, #11042): chat-model requests carry store false plus, by default (CODER_PROVIDER_PRIVACY=strict), OpenRouter provider.data_collection deny and zdr true and the Vercel AI Gateway's providerOptions.gateway.zeroDataRetention true (crates/coder/src/generate.rs ProviderPrivacy; personalization through openrouter::ChatRequest::no_retention); a model with no such endpoint is refused and the turn falls back. Jev's doors and embeddings send none of this. The usage log deletes day files older than 30 days (CODER_WORKER_USAGE_DAYS, crates/coder/src/relay/usage.rs)."
   - "2026-10-09: v8 says we may train on chats, with opt-outs on paid plans by arrangement (owner, #11044)."
   - "2026-10-08: v6 separates the web chat, which saves conversations on our servers (crates/openagents-web/src/chat_store.rs, a private GCS bucket with no lifecycle rule and no delete route), from the apps, which save chats on the device; no code feeds chats into training."
 ---
 
 ## Answer
 
-In the web chat, our website reads your messages and saves your chats on our servers. In the apps, messages are encrypted to our chat worker, our relay keeps nothing, and chats are saved on your device. The worker stores no message text. To reply, it sends the conversation to TypeSafe's Jev through the Vercel AI Gateway, to Space Bunny Alpha on OpenRouter, whose provider may keep prompts but not train on them, and to Gemini 3.8 Flash on the Vercel AI Gateway when Space Bunny can't answer. Product lookups also reach an embeddings provider. No setting turns the providers off.
+In the web chat, our website reads your messages and saves your chats on our servers. In the apps, messages are encrypted to our chat worker, our relay keeps nothing, and chats are saved on your device. The worker stores no message text. To reply, it sends the conversation to TypeSafe's Jev through the Vercel AI Gateway, to Space Bunny Alpha on OpenRouter, and to Gemini 3.8 Flash on the Vercel AI Gateway when Space Bunny can't answer. We ask the providers of those two models not to keep or train on what we send them, and don't use a model whose provider can't agree. Product lookups also reach an embeddings provider. No setting turns the providers off.
 
 ## Details
 
@@ -67,7 +69,8 @@ In the web chat, our website reads your messages and saves your chats on our ser
 - We may use chats to train and improve our models. Paid plans can opt out by arrangement with us; free use can't.
 - In the apps there is no account, sign-in, or key to paste: the device key made on first launch signs the request, and the app holds no model key.
 - Jev's doors, in order: the Vercel AI Gateway (`typesafe-ai/jev`), then OpenRouter, then TypeSafe direct.
-- The worker's usage log records each job's time, key, surface, route, model, and timings, never the message text.
+- The worker's usage log records each job's time, key, surface, route, model, and timings, never the message text, and deletes each day's records after 30 days.
+- Requests to the chat models (Space Bunny Alpha, Gemini) and to the OpenRouter model that writes personalized lines ask the provider not to keep or train on them; Jev and the embeddings calls don't ask this yet.
 - When Coder runs on your computer, the coding agent sends what it reads to its model provider, under your sign-in there.
 
 ## Sources

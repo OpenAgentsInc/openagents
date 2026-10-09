@@ -49,7 +49,9 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   whenever `OPENROUTER_API_KEY` is set, so the deployed environment file
   needed no change. OpenRouter's notice for the model says its anonymous
   provider may keep prompts and completions but does not train on them;
-  the privacy answer (`meta.privacy`, `meta.data_retention`) says so, and
+  since #11040 the worker asks for zero retention (below), and the privacy
+  answer (`meta.privacy`, `meta.data_retention`) says what the worker asks
+  (`coder::first::keeps_sentence`), and
   "What model is this?" (`meta.model`) names the model answering now,
   Gemini while the primary's last turn failed before its first words. A
   turn the router sends to a retrieval or a CLI proposal holds the running

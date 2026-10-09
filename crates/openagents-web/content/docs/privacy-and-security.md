@@ -29,7 +29,7 @@
   computer only.
 - **Our chat service doesn't keep your message text.** It records each
   request's time, key, surface, route, model, token counts, and timings for
-  usage statistics.
+  usage statistics, and deletes those records after 30 days.
 - **Training.** We may use your chats to train and improve our models. On a
   paid plan you can ask us to opt you out; we set that up with you.
 - **Reports.** If you send a problem report and choose to share the chat,
@@ -40,8 +40,7 @@
 To answer, our chat service sends your messages to these services:
 
 - **Space Bunny Alpha**, an anonymous preview model reached through
-  OpenRouter, which every turn asks first. Its provider may keep prompts
-  and replies, though not to train on them.
+  OpenRouter, which every turn asks first.
 - **Google's Gemini 3.8 Flash**, through the Vercel AI Gateway, when Space
   Bunny Alpha doesn't answer (and Gemini 2.5 Flash, through the same
   gateway, for some Gym news replies).
@@ -51,6 +50,11 @@ To answer, our chat service sends your messages to these services:
   work to Coder.
 - **OpenAI embeddings, through the Vercel AI Gateway**, when a question is
   answered from our product notes, our code, or the Gym's records.
+
+When we send your messages to Space Bunny Alpha, Gemini, or the
+OpenRouter model that writes personalized lines, we ask the model provider
+not to keep them or train on them. If a model's provider can't agree, we
+don't use that model. We don't ask this of Jev or the embeddings yet.
 
 When you chat on a computer, or from a phone connected to one, each
 message also names that computer and the chat's project folder; after

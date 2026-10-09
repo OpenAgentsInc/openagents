@@ -6473,7 +6473,10 @@ mod tests {
                     "{said}"
                 );
                 assert!(
-                    said.contains("may keep the messages it is sent and its replies, though not to train on them."),
+                    said.contains(&format!(
+                        "{}.",
+                        coder::first::keeps_sentence(coder::generate::ProviderPrivacy::from_env())
+                    )),
                     "{said}"
                 );
             }
