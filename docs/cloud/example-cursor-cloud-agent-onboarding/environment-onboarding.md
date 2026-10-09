@@ -626,6 +626,38 @@ job the operator policy already admits, in Boat Coder mode; other profiles
 are refused while a version is selected. A selection is not customer
 availability.
 
+ENV-07 is the project environment panel in `openagents-web`
+([`cloud/environment.rs`](../../../crates/openagents-web/src/cloud/environment.rs))
+at `/cloud/app/hosts/{binding}/cloud/{project}/environment`, linked from
+the project's operator jobs page. Its native contract is
+[`coder_access::environment`](../../../crates/coder-access/src/environment.rs):
+`environment.read` and `environment.evidence` (Observe, reads only) and
+`environment.promote`, `environment.select`, and `environment.steer`
+(Operate, replies retained by request ID). The coder-cloud operator answers
+them ([`operator_environment.rs`](../../../crates/coder-cloud/src/operator_environment.rs))
+under the same per-device project assignment as Cloud jobs, from
+`<state>/environments` and the verifier evidence under
+`<state>/environment-verify/evidence/<verify job>`; reads open records
+read-only and create nothing. The panel shows draft and recipe revisions,
+setup sessions with their steering and command states, build and
+verification progress with explicit reconciling, failed, cancelled, and
+stale states, the exact candidate behind a reviewed Save and select, saved
+history with Select and rollback, and selection changes. Promote recomputes
+the candidate and refuses unless its digest is the one displayed; a
+repeated original request returns its first result. Evidence pages serve
+verified original bytes by cursor with gaps disclosed, an exact-byte
+download, and a JSON export of coverage and gaps. Effects go through the
+shared request book (WEB-08/09), so a refresh or lost reply recovers the
+original request instead of sending another. The job view shows the
+`VersionPin` a job started with. Setup steering is answered only when a
+setup owner is composed with `Operator::with_setup`
+([`coder_environment_setup::panel::Panel`](../../../crates/coder-environment-setup/src/panel.rs)):
+it retains steering and its evidence before answering and hands wake-ups to
+the owner's loop, which calls `Setup::resume`; without one the panel shows
+setup as unavailable. A terminal is the separately granted native
+workbench. Composing the setup and verify owners into a running operator is
+ENV-08 packaging.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

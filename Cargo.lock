@@ -3128,6 +3128,7 @@ dependencies = [
 name = "coder-environment-setup"
 version = "0.1.0"
 dependencies = [
+ "coder-access",
  "coder-cloud",
  "coder-environment",
  "coder-working-computer",
@@ -10420,6 +10421,7 @@ dependencies = [
  "coder-access",
  "coder-cloud",
  "coder-demo-ui",
+ "coder-environment",
  "coder-host",
  "coder-project",
  "coder-pty",

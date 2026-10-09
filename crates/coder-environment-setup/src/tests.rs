@@ -965,3 +965,58 @@ fn url_credentials_are_detected() {
     assert!(!embeds_url_credential("git clone https://github.com/a/b"));
     assert!(!embeds_url_credential("git log --author=me@example.com"));
 }
+
+#[tokio::test]
+async fn the_panel_lists_sessions_and_retains_steering_before_the_owner_wakes() {
+    use coder_cloud::operator::SetupSessions;
+    let dir = tempfile::tempdir().unwrap();
+    let setup = std::sync::Arc::new(harness(&dir));
+    let environment = request().environment;
+    let (panel, mut wakes) = crate::panel::Panel::new(setup.clone());
+    assert!(panel.sessions(&environment).unwrap().is_empty());
+    setup.open(&request(), &profile(), 1_000).await.unwrap();
+    let cmd = started(
+        setup
+            .run_command(SESSION, "q1", &input("sleep 5"), 1_100)
+            .await
+            .unwrap(),
+    );
+    setup.stop(SESSION, &cmd, 1_150).await.unwrap();
+    let s = setup
+        .pause(SESSION, "Which toolchain?", 1_200)
+        .await
+        .unwrap();
+    assert!(matches!(s.state, SetupState::AwaitingInput { .. }));
+
+    let rows = panel.sessions(&environment).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, "awaiting_input");
+    assert_eq!(rows[0].question.as_deref(), Some("Which toolchain?"));
+    assert!(rows[0].steerable);
+    assert_eq!(rows[0].commands.len(), 1);
+    // The projection never carries a credential value.
+    assert!(!serde_json::to_string(&rows).unwrap().contains(GH_SECRET));
+    assert!(panel.sessions("env-other").unwrap().is_empty());
+
+    // Another environment's panel cannot steer this session.
+    assert_eq!(
+        panel.steer("env-other", SESSION, "Use stable.", 1_300),
+        Err(coder_access::Code::Forbidden)
+    );
+    assert_eq!(
+        panel.steer(&environment, SESSION, "Use stable.", 1_300),
+        Ok("steering_retained_wake_requested".into())
+    );
+    // Retained before the answer, with no provider call on the way.
+    let s = setup.sessions().read(SESSION).unwrap();
+    assert_eq!(s.steering.len(), 1);
+    assert!(matches!(s.state, SetupState::AwaitingInput { .. }));
+    assert_eq!(wakes.try_recv().unwrap(), SESSION);
+    // The owner's loop wakes the dedicated computer for the next turn.
+    let s = setup.resume(SESSION, 1_400).await.unwrap();
+    assert_eq!(s.state, SetupState::Discovering);
+    assert_eq!(
+        panel.sessions(&environment).unwrap()[0].steering[0].text,
+        "Use stable."
+    );
+}

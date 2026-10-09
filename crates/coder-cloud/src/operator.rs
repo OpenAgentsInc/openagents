@@ -601,6 +601,7 @@ struct Inner {
     drivers: Mutex<BTreeMap<String, RegisteredDriver>>,
     authority: Authority,
     serial: Mutex<()>,
+    setup: std::sync::OnceLock<Arc<dyn SetupSessions>>,
 }
 #[derive(Clone)]
 pub struct Operator(Arc<Inner>);
@@ -623,6 +624,7 @@ impl Operator {
             drivers: Mutex::new(BTreeMap::new()),
             authority,
             serial: Mutex::new(()),
+            setup: std::sync::OnceLock::new(),
         })))
     }
     pub fn load(
@@ -659,6 +661,7 @@ impl Operator {
             drivers: Mutex::new(drivers),
             authority,
             serial: Mutex::new(()),
+            setup: std::sync::OnceLock::new(),
         }));
         operator.resume_paused();
         Ok(operator)
@@ -1089,6 +1092,7 @@ impl Operator {
                         .is_some_and(|v| encoded(v).is_ok_and(|b| b.len() > 8192)))
                 || r.error.as_ref().is_some_and(|s| s.len() > 4096),
             originals,
+            environment: r.environment.as_ref().map(environment_panel::pin),
         };
         if job.validate().is_err() {
             job.usage = None;
@@ -1799,6 +1803,20 @@ impl coder_host::cloud::Cloud for Operator {
             Operation::CloudRelease { intent } => Outcome::CloudReleased {
                 released: self.release(principal, intent)?,
             },
+            Operation::EnvironmentRead { query } => Outcome::EnvironmentRead {
+                view: Box::new(self.environment_read(device, query)?),
+            },
+            Operation::EnvironmentEvidence { query } => Outcome::EnvironmentEvidence {
+                page: Box::new(self.environment_evidence(device, query)?),
+            },
+            Operation::EnvironmentPromote { .. }
+            | Operation::EnvironmentSelect { .. }
+            | Operation::EnvironmentSteer { .. } => Outcome::EnvironmentAccepted {
+                accepted: {
+                    let _serial = self.0.serial.lock().map_err(|_| Code::Unavailable)?;
+                    self.environment_effect(request, principal, op)?
+                },
+            },
             _ => return Err(Code::Unsupported),
         };
         outcome.validate().map_err(|e| e.code)?;
@@ -1808,6 +1826,10 @@ impl coder_host::cloud::Cloud for Operator {
         Ok(outcome)
     }
 }
+
+#[path = "operator_environment.rs"]
+mod environment_panel;
+pub use environment_panel::{SetupSessions, VERIFY_EVIDENCE};
 
 #[cfg(test)]
 #[path = "operator_tests.rs"]

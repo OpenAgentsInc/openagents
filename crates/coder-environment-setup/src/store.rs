@@ -82,6 +82,26 @@ impl Store {
     pub fn read(&self, id: &str) -> Result<SetupSession> {
         read_record(&self.path(id)?)
     }
+    /// Every retained session, oldest first. No side effects: a missing
+    /// store is empty and nothing is created.
+    pub fn list(&self) -> Result<Vec<SetupSession>> {
+        let entries = match fs::read_dir(&self.root) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(_) => return Err(StoreError::Io("Cannot list setup sessions.")),
+        };
+        let mut rows = vec![];
+        for entry in entries {
+            let path = entry
+                .map_err(|_| StoreError::Io("Cannot read the setup store."))?
+                .path();
+            if path.extension().and_then(|v| v.to_str()) == Some("json") {
+                rows.push(read_record(&path)?);
+            }
+        }
+        rows.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
+        Ok(rows)
+    }
     pub fn lease(&self, id: &str) -> Result<Lease> {
         let path = self.path(id)?;
         let mut builder = fs::DirBuilder::new();

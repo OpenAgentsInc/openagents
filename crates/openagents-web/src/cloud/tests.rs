@@ -25,6 +25,8 @@ mod agents;
 mod billing;
 #[path = "control_tests.rs"]
 mod controls;
+#[path = "environment_tests.rs"]
+mod environment;
 
 #[path = "../../examples/support/operator_fixture.rs"]
 mod operator_fixture;

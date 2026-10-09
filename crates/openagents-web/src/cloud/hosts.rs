@@ -490,6 +490,8 @@ impl Binding {
                     | Operation::CloudList { .. }
                     | Operation::CloudRead { .. }
                     | Operation::CloudOriginal { .. }
+                    | Operation::EnvironmentRead { .. }
+                    | Operation::EnvironmentEvidence { .. }
                     | Operation::ListAgents {}
                     | Operation::ListAgentJobs { .. }
                     | Operation::ListAgentMemory { .. }

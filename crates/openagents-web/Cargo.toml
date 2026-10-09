@@ -45,6 +45,7 @@ workbench = { path = "../workbench" }
 
 [dev-dependencies]
 atif = { path = "../atif" }
+coder-environment = { path = "../coder-environment" }
 openagents-wallet = { path = "../wallet", default-features = false }
 pay-ledger = { path = "../pay-ledger" }
 retail-qualify = { path = "../retail-qualify" }

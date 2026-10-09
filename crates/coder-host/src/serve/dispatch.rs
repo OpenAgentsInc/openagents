@@ -273,6 +273,11 @@ impl Dispatch for Dispatcher {
             Operation::CloudCancel { intent } => &intent.scope.workspace,
             Operation::CloudFollow { intent } => &intent.scope.workspace,
             Operation::CloudRelease { intent } => &intent.workspace,
+            Operation::EnvironmentRead { query } => &query.workspace,
+            Operation::EnvironmentEvidence { query } => &query.workspace,
+            Operation::EnvironmentPromote { intent } => &intent.workspace,
+            Operation::EnvironmentSelect { intent } => &intent.workspace,
+            Operation::EnvironmentSteer { intent } => &intent.workspace,
             _ => return Err(Code::Unsupported),
         };
         if !self.shared.config.workspaces.contains_key(workspace) {

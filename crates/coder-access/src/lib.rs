@@ -13,6 +13,7 @@ pub mod client;
 pub mod cloud;
 pub mod crew;
 pub mod day_plan;
+pub mod environment;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod media;

@@ -8,6 +8,7 @@ pub(crate) mod composer;
 mod controls;
 pub mod custody;
 mod effects;
+mod environment;
 pub mod hosts;
 mod operator;
 mod private;
@@ -108,6 +109,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(work::routes())
         .merge(controls::routes())
         .merge(operator::routes())
+        .merge(environment::routes())
         .merge(workbench::routes())
         .merge(verse::routes())
         .merge(agents::routes())

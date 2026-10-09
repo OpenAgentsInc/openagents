@@ -154,6 +154,9 @@ pub struct Job {
     pub error: Option<String>,
     pub details_omitted: bool,
     pub originals: Vec<Original>,
+    /// The saved environment version this job started with (ENV-06).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<crate::environment::Pin>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -637,6 +640,9 @@ impl Job {
         }
         for o in &self.originals {
             o.validate()?;
+        }
+        if let Some(pin) = &self.environment {
+            pin.validate()?;
         }
         bound(self)
     }

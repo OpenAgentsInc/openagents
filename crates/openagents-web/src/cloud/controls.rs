@@ -1199,6 +1199,12 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
                 super::operator::job_url(context.binding.id(), scope)
             ));
         }
+        if let Some(url) = super::environment::action_url(context.binding.id(), &snapshot.action) {
+            content.push_str(&format!(
+                "<p><a href=\"{}\">Return to the project environment</a></p>",
+                escape(&url)
+            ));
+        }
     }
     if let Some(task) = action_task(&snapshot.action) {
         content.push_str(&format!(

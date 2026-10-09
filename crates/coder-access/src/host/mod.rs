@@ -422,6 +422,9 @@ impl Recovery {
                 | Operation::CloudContinue { .. }
                 | Operation::CloudCancel { .. }
                 | Operation::CloudFollow { .. }
+                | Operation::EnvironmentPromote { .. }
+                | Operation::EnvironmentSelect { .. }
+                | Operation::EnvironmentSteer { .. }
         ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}))
             || request.op.agent_effect()
             || request.op.studio_intent()
@@ -1241,7 +1244,12 @@ impl Host {
             | Operation::CloudContinue { .. }
             | Operation::CloudCancel { .. }
             | Operation::CloudFollow { .. }
-            | Operation::CloudRelease { .. }) => {
+            | Operation::CloudRelease { .. }
+            | Operation::EnvironmentRead { .. }
+            | Operation::EnvironmentEvidence { .. }
+            | Operation::EnvironmentPromote { .. }
+            | Operation::EnvironmentSelect { .. }
+            | Operation::EnvironmentSteer { .. }) => {
                 // A released credential is held only in the resident's
                 // memory: nothing about it is retained here (BYO-05).
                 if op.retains_reply() {
@@ -1269,6 +1277,11 @@ impl Host {
                             op,
                         )
                         .and_then(|outcome| {
+                            if let Outcome::EnvironmentAccepted { accepted } = &outcome {
+                                if accepted.request != request.request {
+                                    return Err(Code::Malformed);
+                                }
+                            }
                             if let Outcome::CloudAccepted { accepted } = &outcome {
                                 if accepted.request != request.request
                                     || (matches!(op, Operation::CloudSubmit { .. })

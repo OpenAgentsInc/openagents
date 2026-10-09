@@ -583,6 +583,18 @@ pub enum Operation {
     /// (BYO-05). Neither the request nor its reply is retained.
     #[serde(rename = "cloud.release")]
     CloudRelease { intent: crate::cloud::Release },
+    #[serde(rename = "environment.read")]
+    EnvironmentRead { query: crate::environment::Query },
+    #[serde(rename = "environment.evidence")]
+    EnvironmentEvidence {
+        query: crate::environment::EvidenceQuery,
+    },
+    #[serde(rename = "environment.promote")]
+    EnvironmentPromote { intent: crate::environment::Promote },
+    #[serde(rename = "environment.select")]
+    EnvironmentSelect { intent: crate::environment::Select },
+    #[serde(rename = "environment.steer")]
+    EnvironmentSteer { intent: crate::environment::Steer },
     #[serde(rename = "enroll.redeem")]
     Redeem {
         invitation: String,
@@ -1015,6 +1027,8 @@ impl Operation {
                 | Self::CloudList { .. }
                 | Self::CloudRead { .. }
                 | Self::CloudOriginal { .. }
+                | Self::EnvironmentRead { .. }
+                | Self::EnvironmentEvidence { .. }
                 | Self::QueueTaskAtRevision {
                     edit: QueueEdit::List {},
                     ..
@@ -1138,6 +1152,11 @@ impl Operation {
                 | Self::CloudContinue { .. }
                 | Self::CloudCancel { .. }
                 | Self::CloudFollow { .. }
+                | Self::EnvironmentRead { .. }
+                | Self::EnvironmentEvidence { .. }
+                | Self::EnvironmentPromote { .. }
+                | Self::EnvironmentSelect { .. }
+                | Self::EnvironmentSteer { .. }
                 | Self::ListTasks { .. }
                 | Self::ReadTask { .. }
                 | Self::ReadTaskOriginal { .. }
@@ -1210,6 +1229,11 @@ impl Operation {
             Self::CloudCancel { .. } => "cloud.cancel",
             Self::CloudFollow { .. } => "cloud.follow",
             Self::CloudRelease { .. } => "cloud.release",
+            Self::EnvironmentRead { .. } => "environment.read",
+            Self::EnvironmentEvidence { .. } => "environment.evidence",
+            Self::EnvironmentPromote { .. } => "environment.promote",
+            Self::EnvironmentSelect { .. } => "environment.select",
+            Self::EnvironmentSteer { .. } => "environment.steer",
             Self::Redeem { .. } => "enroll.redeem",
             Self::Approve { .. } => "enroll.approve",
             Self::Deny { .. } => "enroll.deny",
@@ -1311,6 +1335,8 @@ impl Operation {
             | Self::CloudList { .. }
             | Self::CloudRead { .. }
             | Self::CloudOriginal { .. }
+            | Self::EnvironmentRead { .. }
+            | Self::EnvironmentEvidence { .. }
             | Self::RequestOperation { .. }
             | Self::ListTasks { .. }
             | Self::ReadTask { .. }
@@ -1339,6 +1365,9 @@ impl Operation {
             | Self::CloudCancel { .. }
             | Self::CloudFollow { .. }
             | Self::CloudRelease { .. }
+            | Self::EnvironmentPromote { .. }
+            | Self::EnvironmentSelect { .. }
+            | Self::EnvironmentSteer { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
             | Self::ArchiveTask { .. }
@@ -1403,6 +1432,11 @@ impl Operation {
             Self::CloudCancel { intent } => intent.validate()?,
             Self::CloudFollow { intent } => intent.validate()?,
             Self::CloudRelease { intent } => intent.validate()?,
+            Self::EnvironmentRead { query } => query.validate()?,
+            Self::EnvironmentEvidence { query } => query.validate()?,
+            Self::EnvironmentPromote { intent } => intent.validate()?,
+            Self::EnvironmentSelect { intent } => intent.validate()?,
+            Self::EnvironmentSteer { intent } => intent.validate()?,
             Self::RequestOperation {
                 request,
                 request_event,
@@ -1838,6 +1872,15 @@ pub enum Outcome {
     CloudReleased {
         released: crate::cloud::Released,
     },
+    EnvironmentRead {
+        view: Box<crate::environment::View>,
+    },
+    EnvironmentEvidence {
+        page: Box<crate::environment::EvidencePage>,
+    },
+    EnvironmentAccepted {
+        accepted: crate::environment::Accepted,
+    },
     Granted {
         authorization: Box<Event>,
     },
@@ -2013,6 +2056,9 @@ impl Outcome {
                 | Self::CloudRead { .. }
                 | Self::CloudOriginal { .. }
                 | Self::CloudAccepted { .. }
+                | Self::EnvironmentRead { .. }
+                | Self::EnvironmentEvidence { .. }
+                | Self::EnvironmentAccepted { .. }
         ) {
             crate::task_read::bounded(self, crate::cloud::MAX_REPLY_BYTES)?;
         }
@@ -2027,6 +2073,9 @@ impl Outcome {
             Self::CloudOriginal { chunk } => chunk.validate()?,
             Self::CloudAccepted { accepted } => accepted.validate()?,
             Self::CloudReleased { released } => released.validate()?,
+            Self::EnvironmentRead { view } => view.validate()?,
+            Self::EnvironmentEvidence { page } => page.validate()?,
+            Self::EnvironmentAccepted { accepted } => accepted.validate()?,
             Self::Tasks { tasks } => tasks.validate()?,
             Self::Task { task } => task.validate()?,
             Self::TaskOriginal { original } => original.validate()?,
@@ -2053,6 +2102,7 @@ impl Outcome {
                             outcome,
                             Self::Dispatched { .. }
                                 | Self::CloudAccepted { .. }
+                                | Self::EnvironmentAccepted { .. }
                                 | Self::QueueAtRevision { .. }
                                 | Self::Published { .. }
                                 | Self::Merged { .. }
@@ -2270,6 +2320,18 @@ impl Outcome {
                     && accepted.scope.source_digest == intent.scope.source_digest
                     && accepted.scope.attempt == intent.scope.attempt
             }
+            (Operation::EnvironmentRead { query }, Self::EnvironmentRead { view }) => {
+                view.answers(query)
+            }
+            (Operation::EnvironmentEvidence { query }, Self::EnvironmentEvidence { page }) => {
+                page.answers(query)
+            }
+            (
+                op @ (Operation::EnvironmentPromote { .. }
+                | Operation::EnvironmentSelect { .. }
+                | Operation::EnvironmentSteer { .. }),
+                Self::EnvironmentAccepted { accepted },
+            ) => accepted.answers(op),
             (Operation::CloudFollow { intent }, Self::CloudAccepted { accepted }) => {
                 accepted.action == "follow"
                     && accepted.scope.workspace == intent.scope.workspace

@@ -306,6 +306,8 @@ fn owner_workspace(operation: &Operation) -> Result<&str, SessionError> {
         Operation::CloudList { query } => Ok(&query.workspace),
         Operation::CloudRead { query } => Ok(&query.workspace),
         Operation::CloudOriginal { query } => Ok(&query.scope.workspace),
+        Operation::EnvironmentRead { query } => Ok(&query.workspace),
+        Operation::EnvironmentEvidence { query } => Ok(&query.workspace),
         _ => Err(SessionError::InvalidRequest),
     }
 }
@@ -1735,6 +1737,7 @@ mod tests {
             error: None,
             details_omitted: false,
             originals: Vec::new(),
+            environment: None,
         };
         let outcome = Outcome::CloudRead {
             job: Box::new(job.clone()),

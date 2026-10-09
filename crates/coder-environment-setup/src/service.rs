@@ -995,6 +995,32 @@ impl<P: Commands> Setup<P> {
     /// `environment.steer`: retain user steering; when the setup awaits
     /// input, wake the computer for the next turn.
     pub async fn steer(&self, id: &str, text: &str, now_ms: u64) -> Result<SetupSession> {
+        let s = self.retain_steering(id, text, now_ms)?;
+        if matches!(s.state, SetupState::AwaitingInput { .. }) {
+            return self.resume(id, now_ms).await;
+        }
+        Ok(s)
+    }
+
+    /// The session store this owner retains sessions in.
+    pub fn sessions(&self) -> &SessionStore {
+        &self.sessions
+    }
+
+    /// Wake a session that awaits input and holds steering for its next
+    /// turn; any other session is returned unchanged.
+    pub async fn resume(&self, id: &str, now_ms: u64) -> Result<SetupSession> {
+        let lease = self.sessions.lease(id)?;
+        let s = self.live_session(&lease, now_ms)?;
+        if matches!(s.state, SetupState::AwaitingInput { .. }) {
+            return self.wake(&lease, now_ms).await;
+        }
+        Ok(s)
+    }
+
+    /// The retention half of `environment.steer`, with no provider call:
+    /// the steering and its evidence are retained before this returns.
+    pub fn retain_steering(&self, id: &str, text: &str, now_ms: u64) -> Result<SetupSession> {
         let lease = self.sessions.lease(id)?;
         let s = self.live_session(&lease, now_ms)?;
         let applied = lease.apply(&Op::Steered { text: text.into() }, now_ms);
@@ -1010,11 +1036,7 @@ impl<P: Commands> Setup<P> {
             &recorded,
             now_ms,
         )?;
-        let s = applied?;
-        if matches!(s.state, SetupState::AwaitingInput { .. }) {
-            return self.wake(&lease, now_ms).await;
-        }
-        Ok(s)
+        Ok(applied?)
     }
 
     /// `environment.await_input`: end this turn for the user. The computer

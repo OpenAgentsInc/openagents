@@ -58,7 +58,7 @@ struct ReadOptions {
     download: Option<String>,
 }
 
-fn encoded(value: &impl Serialize) -> Result<String, Response> {
+pub(super) fn encoded(value: &impl Serialize) -> Result<String, Response> {
     let bytes = serde_json::to_vec(value).map_err(|_| refused(SessionError::Conflict))?;
     if bytes.len() > 4096 {
         return Err(refused(SessionError::InvalidRequest));
@@ -66,7 +66,7 @@ fn encoded(value: &impl Serialize) -> Result<String, Response> {
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
-fn decoded<T: DeserializeOwned>(value: &str) -> Result<T, Response> {
+pub(super) fn decoded<T: DeserializeOwned>(value: &str) -> Result<T, Response> {
     if value.len() > 5500 {
         return Err(refused(SessionError::InvalidRequest));
     }
@@ -89,7 +89,7 @@ fn project_url(context: &Context<'_>, project: &str) -> String {
         context.binding.id()
     )
 }
-fn cloud_url(context: &Context<'_>, project: &str) -> String {
+pub(super) fn cloud_url(context: &Context<'_>, project: &str) -> String {
     format!("/cloud/app/hosts/{}/cloud/{project}", context.binding.id())
 }
 pub(super) fn job_url(binding: &str, scope: &cloud::Scope) -> String {
@@ -119,7 +119,7 @@ async fn read(
     Ok(outcome)
 }
 
-fn page(
+pub(super) fn page(
     context: &Context<'_>,
     headers: &HeaderMap,
     content: &str,
@@ -505,9 +505,13 @@ async fn jobs(
         return refused(SessionError::Conflict);
     };
     let mut content = format!(
-        "<h2>Operator Cloud jobs · {}</h2><p>These are canonical native jobs. Listing and reading never submit, continue, cancel, or drive a worker.</p><p><a href=\"{}/new\">Inspect admitted executor profiles and compose a job</a></p><ul>",
+        "<h2>Operator Cloud jobs · {}</h2><p>These are canonical native jobs. Listing and reading never submit, continue, cancel, or drive a worker.</p><p><a href=\"{}/new\">Inspect admitted executor profiles and compose a job</a> · <a href=\"{}\">Project environment</a></p><ul>",
         escape(&project),
-        cloud_url(&context, &project)
+        cloud_url(&context, &project),
+        escape(&super::environment::panel_url(
+            context.binding.id(),
+            &project
+        ))
     );
     for row in &jobs.rows {
         content.push_str(&format!("<li><a href=\"{}\">{}</a> · {} · attempt {} · executor {} · requested model {} · cleanup {}</li>", job_url(context.binding.id(), &row.scope), escape(&row.scope.job), escape(&row.state), row.scope.attempt, escape(&row.executor), escape(row.model.as_deref().unwrap_or("Unknown")), escape(&row.cleanup)));
@@ -773,6 +777,32 @@ pub(super) async fn job_read(
     Ok((operation, outcome))
 }
 
+/// The saved environment version a job started with (ENV-06). A job keeps
+/// this pin; later selections and rollbacks never reach it.
+pub(super) fn environment_pin(binding: &str, project: &str, value: &cloud::Job) -> String {
+    let Some(pin) = &value.environment else {
+        return "<section aria-labelledby=\"job-environment\"><h3 id=\"job-environment\">Environment</h3><p>This job started without a saved environment version; it uses its admitted profile's runtime.</p></section>".into();
+    };
+    format!(
+        "<section aria-labelledby=\"job-environment\"><h3 id=\"job-environment\">Environment</h3><p>Started from version {} (<code>{}</code>) of environment <a href=\"{}?environment={}\"><code>{}</code></a> at selection revision {} · recipe revision {} · source <code>{}</code> · image <code>{}</code>{} · evidence <code>{}</code>. Continuations and retries keep this exact version; later selections or rollbacks never change it.</p></section>",
+        pin.number,
+        escape(&pin.version_id),
+        escape(&super::environment::panel_url(binding, project)),
+        escape(&pin.environment),
+        escape(&pin.environment),
+        pin.selection_revision,
+        pin.recipe_revision,
+        escape(&pin.source_revision),
+        escape(&pin.image.image_id),
+        pin.image
+            .snapshot_id
+            .as_deref()
+            .map(|s| format!(" · snapshot <code>{}</code>", escape(s)))
+            .unwrap_or_default(),
+        escape(&pin.evidence_digest[..pin.evidence_digest.len().min(12)]),
+    )
+}
+
 fn job_view(context: &Context<'_>, value: &cloud::Job) -> Result<String, Response> {
     let keys: Vec<_> = (0..value.originals.len())
         .map(|index| format!("original-{index}"))
@@ -858,6 +888,7 @@ pub(super) async fn job(
         Ok(v) => v,
         Err(r) => return r,
     };
+    content.push_str(&environment_pin(context.binding.id(), &project, value));
     content.push_str(&format!("<h3>Original job projection</h3><pre>{}</pre><p>Cost and publication remain unknown unless their own canonical records supply evidence. A cancellation request does not establish termination or cleanup. An omitted prompt or detail remains available only through an admitted retained original.</p><h3>Retained originals</h3><ul>", pretty(value)));
     for original in &value.originals {
         let query = cloud::OriginalQuery {
@@ -997,7 +1028,7 @@ async fn stage_job(
     controls::staged(&context, &headers, &form.request, operation).await
 }
 
-fn bytes_response(bytes: Vec<u8>) -> Response {
+pub(super) fn bytes_response(bytes: Vec<u8>) -> Response {
     let mut response = protect(bytes.into_response());
     response.headers_mut().insert(
         header::CONTENT_TYPE,

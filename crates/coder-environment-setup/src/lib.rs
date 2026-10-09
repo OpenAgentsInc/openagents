@@ -45,6 +45,7 @@ use coder_working_computer::{Principal, credential_name_allowed};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod panel;
 pub mod service;
 pub mod source;
 pub mod store;
