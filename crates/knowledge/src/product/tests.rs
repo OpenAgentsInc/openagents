@@ -221,12 +221,13 @@ fn download_guidance_matches_the_published_apps() {
     let corpus = Corpus::load(&default_dir(), Some(&repository())).expect("the corpus loads");
     let download_source = "crates/openagents-web/src/pages/download.rs";
     // The page offers Coder and the command-line program, with one-line
-    // installers, and no Mac disk image.
+    // installers; its desktop downloads stay hidden until the desktop
+    // release is out.
     let page = std::fs::read_to_string(repository().join(download_source)).expect("the page");
-    assert!(page.contains("Download Coder") && page.contains("install.sh"));
+    assert!(page.contains("install.sh"));
     assert!(
-        !page.contains(".dmg"),
-        "the download page offers a .dmg again: update these notes"
+        page.contains("DESKTOP_RELEASED: bool = false"),
+        "the download page offers the desktop apps now: update these notes"
     );
     for (id, minimum_version, claims) in [
         (
