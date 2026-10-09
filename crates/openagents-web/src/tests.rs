@@ -112,7 +112,8 @@ const PAGES: [&str; 43] = [
 ];
 
 /// The docs list every guide, each guide links its neighbors, and every
-/// site link in a guide answers `200`.
+/// site link in a guide (its `<main>`, not the shared navigation) answers
+/// `200`.
 #[tokio::test]
 async fn the_docs_list_every_guide_and_their_links_resolve() {
     let root = tempfile::tempdir().unwrap();
@@ -122,7 +123,8 @@ async fn the_docs_list_every_guide_and_their_links_resolve() {
         let (status, html) =
             get(router(config(root.path().into())), &format!("/docs/{slug}")).await;
         assert_eq!(status, StatusCode::OK, "{slug}");
-        for target in html.split("href=\"").skip(1) {
+        let main = &html[html.find("<main").unwrap()..html.find("</main>").unwrap()];
+        for target in main.split("href=\"").skip(1) {
             let target = &target[..target.find('"').unwrap()];
             if target.starts_with('/') && !target.starts_with("/static/") {
                 let path = target.split('#').next().unwrap();
@@ -164,7 +166,11 @@ async fn every_public_page_answers_in_development() {
         }
         assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
         assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
-        assert!(body.contains("class=\"wordmark\""), "{uri} has the header");
+        // The legacy header's wordmark, or the UiPage shell's (UI-12).
+        assert!(
+            body.contains("class=\"wordmark\"") || body.contains("class=\"oa-wordmark\""),
+            "{uri} has the header"
+        );
         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
         assert!(policy.starts_with("default-src 'none'"), "{uri}: {policy}");
         if script {
@@ -200,7 +206,13 @@ async fn cloud_is_public_but_browser_work_and_purchases_remain_unavailable() {
     assert!(html.contains("Operator Boat · Unavailable in this browser"));
     assert!(html.contains("Operator GCE · Unavailable in this browser"));
     assert!(html.contains("Retail Cloud v1 · Proposed"));
-    assert!(html.contains("disabled aria-describedby=\"workspace-reason\""));
+    // The workspace button is disabled and says why.
+    let reason = html.find("aria-describedby=\"workspace-reason\"").unwrap();
+    let button = &html[html[..reason].rfind('<').unwrap()..reason];
+    assert!(
+        button.starts_with("<button") && button.contains(" disabled"),
+        "{button}"
+    );
     assert!(!html.contains("<form"));
     for path in ["/download", "/grid", "/docs", "/components"] {
         assert!(html.contains(&format!("href=\"{path}\"")), "{path}");
@@ -868,10 +880,11 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
         pages::CODER_VERSION
     ));
     assert_eq!(links, expected, "{body}");
-    assert!(body.contains("[1]</span> Coder + OpenAgents CLI"));
+    assert!(body.contains("<h2 id=\"coder-title\">Coder + OpenAgents CLI</h2>"));
     assert!(body.contains("<title>Download Coder \u{b7} OpenAgents</title>"));
     assert!(body.contains("<h1>Download Coder</h1>"));
-    assert!(body.contains("<a href=\"/download\" aria-current=\"page\">Download</a>"));
+    assert!(body.contains("href=\"/download\" aria-current=\"page\""));
+    assert!(!body.contains("href=\"/docs\" aria-current"));
     let (status, guide) = get(router(config(root.path().into())), "/docs/download").await;
     assert_eq!(status, StatusCode::OK);
     assert!(guide.contains(pages::CODER_SH));
@@ -1929,14 +1942,14 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
         plugins.contains("<td>explain-error</td><td>2</td><td>1,200.5 sats</td><td>900 sats</td>")
     );
     assert!(html.contains(
-        "<td class=\"stats-id\">alice</td><td>1,200.5 sats</td><td>900 sats</td><td>300.5 sats</td>"
+        "<td>alice</td><td>1,200.5 sats</td><td>900 sats</td><td>300.5 sats</td>"
     ));
     // Recent payouts: the author's part only, no treasury-only payout.
     let payouts = &html[html.find("id=\"stats-payouts\"").unwrap()..];
     let payouts = &payouts[..payouts.find("</table>").unwrap()];
     assert_eq!(payouts.matches("<tr>").count(), 2, "{payouts}");
     assert!(payouts.contains(&format!(
-        "<td>{}</td><td>explain-error</td><td class=\"stats-id\">alice</td><td>900 sats</td>",
+        "<td>{}</td><td>explain-error</td><td>alice</td><td>900 sats</td>",
         pages::utc(now + 120_000)
     )));
     // The footing, the series, escaping, and no payer alias anywhere.
@@ -1945,7 +1958,7 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
     let day = &html[html.find("id=\"stats-24h\"").unwrap()..];
     assert_eq!(
         day[..day.find("</figure>").unwrap()]
-            .matches("class=\"stats-bar\"")
+            .matches("class=\"oa-chart-bar\"")
             .count(),
         24
     );

@@ -9,13 +9,16 @@
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use coder::customer::plugins::{Phase, Summary, browse};
 
+use maud::PreEscaped;
+
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::{escape, problem};
+use crate::ui_page::{UiPage, prose};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -73,16 +76,16 @@ fn option(value: Option<&str>) -> String {
 
 pub(crate) fn render_list(list: &[Summary]) -> String {
     let mut body = String::from(
-        "<p class=\"label\">LOCAL / READ ONLY</p><h1>Plugin purchases</h1>\
-<p class=\"hint\">The purchases your installed client made from this machine's customer store. \
-<a href=\"/app/purchases\">[ Refresh ]</a></p><ul class=\"list\">",
+        "<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><h1>Plugin purchases</h1>\
+<p class=\"oa-page-meta\">The purchases your installed client made from this machine's customer store. \
+<a href=\"/app/purchases\">Refresh</a></p><ul class=\"oa-item-list\">",
     );
     if list.is_empty() {
-        body.push_str("<li><p class=\"title\">No purchases</p><p>Use <code>openagents plugin purchase quote</code> on the installed client. The browser shows the result here.</p></li>");
+        body.push_str("<li><p class=\"oa-item-title\">No purchases</p><p>Use <code>openagents plugin purchase quote</code> on the installed client. The browser shows the result here.</p></li>");
     }
     for item in list {
         body.push_str(&format!(
-            "<li><a class=\"task-row\" href=\"/app/purchases/{id}\"><span><span class=\"title\">{plugin}</span><small>{id}</small></span><span class=\"status\">{phase:?} / {price}</span></a></li>",
+            "<li><p><a class=\"oa-item-title\" href=\"/app/purchases/{id}\">{plugin}</a></p><p class=\"oa-page-meta\">{id} \u{b7} {phase:?} / {price}</p></li>",
             id = escape(&item.id),
             plugin = option(item.plugin.as_deref()),
             phase = item.phase,
@@ -97,9 +100,9 @@ pub(crate) fn render_list(list: &[Summary]) -> String {
 pub(crate) fn render_one(item: &Summary) -> String {
     let id = escape(&item.id);
     let mut body = format!(
-        "<p class=\"crumbs\"><a href=\"/app/purchases\">All purchases</a> / {id}</p><h1>{plugin}</h1>\
-<p><a href=\"/app/purchases/{id}\">[ Refresh ]</a></p>\
-<p class=\"label\">LOCAL / READ ONLY</p><dl class=\"facts\">\
+        "<p class=\"oa-page-meta\"><a href=\"/app/purchases\">All purchases</a> / {id}</p><h1>{plugin}</h1>\
+<p><a href=\"/app/purchases/{id}\">Refresh</a></p>\
+<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><dl class=\"oa-facts\">\
 <div><dt>Phase</dt><dd>{phase:?}: {phase_text}</dd></div>\
 <div><dt>Release</dt><dd>{release}</dd></div>\
 <div><dt>Endpoint</dt><dd>{url}</dd></div>\
@@ -179,17 +182,28 @@ pub(crate) fn render_one(item: &Summary) -> String {
     body
 }
 
-async fn purchases(State(app): State<App>) -> Response {
+async fn purchases(State(app): State<App>, headers: HeaderMap) -> Response {
     match load(&app) {
-        Ok(list) => page("Plugin purchases", None, &render_list(&list)),
+        Ok(list) => UiPage::new("Plugin purchases")
+            .path("/app/purchases")
+            .scriptless()
+            .content(prose(PreEscaped(render_list(&list))))
+            .respond(&headers),
         Err(response) => response,
     }
 }
 
-async fn purchase(Path(id): Path<String>, State(app): State<App>) -> Response {
+async fn purchase(Path(id): Path<String>, State(app): State<App>, headers: HeaderMap) -> Response {
     match load(&app) {
         Ok(list) => match list.iter().find(|item| item.id == id) {
-            Some(item) => page("Plugin purchase", None, &render_one(item)),
+            Some(item) => UiPage::new("Plugin purchase")
+                .path(format!(
+                    "/app/purchases/{}",
+                    crate::layout::segment(&item.id)
+                ))
+                .scriptless()
+                .content(prose(PreEscaped(render_one(item))))
+                .respond(&headers),
             None => problem(
                 StatusCode::NOT_FOUND,
                 "Purchase not found",

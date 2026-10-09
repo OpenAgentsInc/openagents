@@ -22,10 +22,30 @@
 (function (root) {
   "use strict";
 
+  // A Coder Noir role as the page's design token (openagents-ui), resolved
+  // to a color the canvas accepts. Tokens are `light-dark()` values, so a
+  // hidden probe element computes them for the current theme.
+  var TOKENS = {
+    canvas: "--color-surface",
+    content: "--color-text",
+    "content-secondary": "--color-text-secondary",
+    "stroke-subtle": "--color-border-subtle",
+    info: "--color-text-info",
+    success: "--color-text-success",
+    warning: "--color-text-warning"
+  };
   function theme(role) {
-    var name = "--noir-" + role;
-    return typeof document === "undefined" || typeof root.getComputedStyle !== "function" ? "var(" + name + ")" :
-      root.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    var name = TOKENS[role] || "--" + role;
+    if (typeof document === "undefined" || typeof root.getComputedStyle !== "function" || !document.body) {
+      return "var(" + name + ")";
+    }
+    var probe = document.createElement("span");
+    probe.hidden = true;
+    probe.style.color = "var(" + name + ")";
+    document.body.appendChild(probe);
+    var color = root.getComputedStyle(probe).color;
+    document.body.removeChild(probe);
+    return color;
   }
   var REQUEST = theme("content");
   var PAYMENT = theme("warning");

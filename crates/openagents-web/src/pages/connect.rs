@@ -19,12 +19,14 @@
 //! with the same association files, policy, and copy.
 
 use axum::Router;
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use maud::html;
+use openagents_ui::content::{MarkdownRoot, PageColumn};
 
 use crate::App;
-use crate::layout::document;
+use crate::ui_page::UiPage;
 
 /// The OpenAgents app's Apple team and bundle, and its Android package.
 pub(crate) const APPLE_APP_ID: &str = "HQWSG26L43.com.openagents.app";
@@ -98,23 +100,37 @@ fn json(value: &serde_json::Value) -> Response {
 
 /// `GET /connect`: the page a phone without the OpenAgents app lands on
 /// when its camera opens the desktop app's QR code.
-pub(crate) async fn connect() -> Response {
-    let body = format!(
-        "<article class=\"box\" id=\"connect\"><h1 class=\"box-title\">Get the OpenAgents app</h1>\
-<p>This code connects your phone to a computer running OpenAgents. \
-Install the OpenAgents app, then scan the code on your computer again.</p>\
-<p>iPhone: <a href=\"{TESTFLIGHT}\">get OpenAgents on TestFlight</a>.</p>\
-<p>Android: the OpenAgents app is in testing and not yet public.</p>\
-<p>Already have the app? Open it, choose Connect a computer, and point it at the code.</p>\
-</article>\
-<p class=\"hint\">On a computer? <a href=\"/download\">Get OpenAgents for Mac</a>, \
-and it shows the code to scan.</p>"
-    );
-    let mut response = (
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        document("Get the OpenAgents app", None, &body),
-    )
-        .into_response();
+pub(crate) async fn connect(headers: HeaderMap) -> Response {
+    let content = PageColumn::new(html! {
+        article.oa-card id="connect" {
+            (MarkdownRoot::new(html! {
+                h1 { "Get the OpenAgents app" }
+                p {
+                    "This code connects your phone to a computer running OpenAgents. \
+    Install the OpenAgents app, then scan the code on your computer again."
+                }
+                p { "iPhone: " a href=(TESTFLIGHT) { "get OpenAgents on TestFlight" } "." }
+                p { "Android: the OpenAgents app is in testing and not yet public." }
+                p {
+                    "Already have the app? Open it, choose Connect a computer, and point it \
+    at the code."
+                }
+            }))
+        }
+        (MarkdownRoot::new(html! {
+            p.oa-page-meta {
+                "On a computer? " a href="/download" { "Get OpenAgents for Mac" }
+                ", and it shows the code to scan."
+            }
+        }))
+    });
+    // No script and no form: the code in the fragment stays in the browser.
+    let mut response = UiPage::new("Get the OpenAgents app")
+        .path("/connect")
+        .scriptless()
+        .without_toggle()
+        .content(content)
+        .respond(&headers);
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
@@ -145,7 +161,7 @@ mod tests {
     /// none, so nothing can read the code in its fragment or send it on.
     #[tokio::test]
     async fn the_connect_page_runs_no_script_and_points_to_the_app() {
-        let (status, headers, body) = read(connect().await).await;
+        let (status, headers, body) = read(connect(HeaderMap::new()).await).await;
         assert_eq!(status, StatusCode::OK);
         let lower = body.to_ascii_lowercase();
         assert!(!lower.contains("<script"), "{body}");

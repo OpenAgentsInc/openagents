@@ -13,20 +13,22 @@
 //! that instead of drawing empty tables.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Request, State};
-use axum::http::{HeaderValue, Method, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use axum::routing::get;
+use maud::{Markup, Render, html};
+use openagents_ui::actions::{Alert, Color};
+use openagents_ui::content::{Facts, MarkdownRoot, PageColumn};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::App;
-use crate::layout::{escape, page};
+use crate::ui_page::{UiPage, action_link};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/stats", get(stats))
@@ -210,12 +212,16 @@ async fn read<T: DeserializeOwned>(app: &App, path: &str) -> Option<T> {
     serde_json::from_slice(&body).ok()
 }
 
-async fn stats(State(app): State<App>) -> Response {
+async fn stats(State(app): State<App>, headers: HeaderMap) -> Response {
     let (stats, snapshot) = tokio::join!(
         read::<Stats>(&app, "/stats"),
         read::<Snapshot>(&app, "/flow/snapshot")
     );
-    let mut response = page("Stats", None, &body(stats.as_ref(), snapshot.as_ref()));
+    let mut response = UiPage::new("Stats")
+        .path("/stats")
+        .scriptless()
+        .content(body(stats.as_ref(), snapshot.as_ref()))
+        .respond(&headers);
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -223,168 +229,161 @@ async fn stats(State(app): State<App>) -> Response {
 }
 
 /// The page's markup from what the pay host answered.
-pub(crate) fn body(stats: Option<&Stats>, snapshot: Option<&Snapshot>) -> String {
-    let mut html = String::from(
-        "<section class=\"stats\" aria-labelledby=\"stats-title\">\
-<h1 id=\"stats-title\">Stats</h1>\
-<p class=\"lede\">What OpenAgents has received for plugin calls and paid out to plugin \
-authors, from the payment ledger. Every number is a settled payment; nothing is \
-estimated.</p>\
-<p><a href=\"/live\">[ Watch it live ]</a></p>",
-    );
+pub(crate) fn body(stats: Option<&Stats>, snapshot: Option<&Snapshot>) -> Markup {
+    let intro = html! {
+        (MarkdownRoot::new(html! {
+            h1 id="stats-title" { "Stats" }
+            p.oa-page-lead {
+                "What OpenAgents has received for plugin calls and paid out to plugin authors, \
+    from the payment ledger. Every number is a settled payment; nothing is estimated."
+            }
+        }))
+        div.oa-page-actions { (action_link("Watch it live", "/live")) }
+    };
+    PageColumn::new(html! {
+        section aria-labelledby="stats-title" {
+            (intro)
+            (numbers(stats, snapshot))
+        }
+    })
+    .wide()
+    .render()
+}
+
+/// Everything under the intro: a notice, or the totals, tables, and series.
+fn numbers(stats: Option<&Stats>, snapshot: Option<&Snapshot>) -> Markup {
     let Some(stats) = stats else {
-        html.push_str(
-            "<p class=\"notice\" id=\"stats-unreachable\">The payment statistics are \
-unreachable right now, so there are no numbers to show. Try again shortly.</p></section>",
-        );
-        return html;
+        return Alert::new()
+            .id("stats-unreachable")
+            .color(Color::Warning)
+            .description(
+                "The payment statistics are unreachable right now, so there are no numbers \
+to show. Try again shortly.",
+            )
+            .render();
     };
     let events = snapshot.map_or(&[][..], |snapshot| &snapshot.events[..]);
     let last = events.iter().map(|event| event.at).max();
     if stats.totals.is_empty() && stats.per_plugin.is_empty() && events.is_empty() {
-        html.push_str(
-            "<p class=\"notice\" id=\"stats-empty\">No payments yet. The first paid plugin \
-call will show here and on the live map.</p>",
-        );
-        push_footing(&mut html, &stats.reconciliation, last);
-        html.push_str("</section>");
-        return html;
+        return html! {
+            (Alert::new()
+                .id("stats-empty")
+                .description(
+                    "No payments yet. The first paid plugin call will show here and on the \
+        live map.",
+                ))
+            (MarkdownRoot::new(footing(&stats.reconciliation, last)))
+        };
     }
     let totals = &stats.totals;
-    let _ = write!(
-        html,
-        "<dl class=\"facts stats-totals\" id=\"stats-totals\">\
-<div><dt>Received</dt><dd>{}</dd></div>\
-<div><dt>Paid out</dt><dd>{}</dd></div>\
-<div><dt>Pending</dt><dd>{}</dd></div>\
-<div><dt>Calls</dt><dd>{}</dd></div>\
-<div><dt>Author earnings</dt><dd>{}</dd></div></dl>",
-        totals.received_sats.sats(),
-        totals.paid_out_sats.sats(),
-        totals.pending_accruals_sats.sats(),
-        grouped(totals.calls),
-        totals.earnings_sats.sats(),
-    );
-    push_footing(&mut html, &stats.reconciliation, last);
+    let facts = Facts::new()
+        .id("stats-totals")
+        .fact("Received", totals.received_sats.sats())
+        .fact("Paid out", totals.paid_out_sats.sats())
+        .fact("Pending", totals.pending_accruals_sats.sats())
+        .fact("Calls", grouped(totals.calls))
+        .fact("Author earnings", totals.earnings_sats.sats());
 
-    html.push_str("<h2>Plugins</h2>");
-    if stats.per_plugin.is_empty() {
-        html.push_str("<p class=\"dim\">No plugin has been called for pay yet.</p>");
-    } else {
-        let mut plugins: Vec<_> = stats.per_plugin.iter().collect();
-        plugins.sort_by(|a, b| {
-            (b.1.earnings_sats, b.1.calls)
-                .cmp(&(a.1.earnings_sats, a.1.calls))
-                .then(a.0.cmp(b.0))
-        });
-        html.push_str(
-            "<table id=\"stats-plugins\"><thead><tr><th>Plugin</th><th>Calls</th>\
-<th>Earned</th><th>Paid out</th></tr></thead><tbody>",
-        );
-        for (name, totals) in plugins {
-            let _ = write!(
-                html,
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                escape(name),
-                grouped(totals.calls),
-                totals.earnings_sats.sats(),
-                totals.paid_out_sats.sats(),
-            );
-        }
-        html.push_str("</tbody></table>");
-    }
-
-    html.push_str("<h2>Authors</h2>");
-    if stats.per_author.is_empty() {
-        html.push_str("<p class=\"dim\">No author has earned yet.</p>");
-    } else {
-        let mut authors: Vec<_> = stats.per_author.iter().collect();
-        authors.sort_by(|a, b| {
-            b.1.paid_out_sats
-                .cmp(&a.1.paid_out_sats)
-                .then(b.1.earnings_sats.cmp(&a.1.earnings_sats))
-                .then(a.0.cmp(b.0))
-        });
-        html.push_str(
-            "<table id=\"stats-authors\"><thead><tr><th>Author</th><th>Earned</th>\
-<th>Paid out</th><th>Pending</th></tr></thead><tbody>",
-        );
-        for (name, totals) in authors {
-            let _ = write!(
-                html,
-                "<tr><td class=\"stats-id\">{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                escape(name),
-                totals.earnings_sats.sats(),
-                totals.paid_out_sats.sats(),
-                totals.pending_accruals_sats.sats(),
-            );
-        }
-        html.push_str("</tbody></table>");
-    }
-
-    html.push_str("<h2>Recent payouts</h2>");
+    let mut plugins: Vec<_> = stats.per_plugin.iter().collect();
+    plugins.sort_by(|a, b| {
+        (b.1.earnings_sats, b.1.calls)
+            .cmp(&(a.1.earnings_sats, a.1.calls))
+            .then(a.0.cmp(b.0))
+    });
+    let mut authors: Vec<_> = stats.per_author.iter().collect();
+    authors.sort_by(|a, b| {
+        b.1.paid_out_sats
+            .cmp(&a.1.paid_out_sats)
+            .then(b.1.earnings_sats.cmp(&a.1.earnings_sats))
+            .then(a.0.cmp(b.0))
+    });
     let mut payouts: Vec<&Event> = events
         .iter()
         .filter(|event| event.kind == "payout" && event.paid_to_author() != Msat::default())
         .collect();
     payouts.sort_by_key(|event| std::cmp::Reverse(event.at));
-    if payouts.is_empty() {
-        html.push_str("<p class=\"dim\">No payouts yet.</p>");
-    } else {
-        html.push_str(
-            "<table id=\"stats-payouts\"><thead><tr><th>When (UTC)</th><th>Plugin</th>\
-<th>Author</th><th>Amount</th></tr></thead><tbody>",
-        );
-        for event in payouts.into_iter().take(RECENT) {
-            let _ = write!(
-                html,
-                "<tr><td>{}</td><td>{}</td><td class=\"stats-id\">{}</td><td>{}</td></tr>",
-                utc(event.at),
-                escape(event.plugin.as_deref().unwrap_or("\u{2014}")),
-                escape(event.author.as_deref().unwrap_or("\u{2014}")),
-                event.paid_to_author().sats(),
-            );
-        }
-        html.push_str("</tbody></table>");
-    }
 
-    html.push_str("<h2>Received over time</h2>");
-    push_series(
-        &mut html,
-        "stats-24h",
-        "The last 24 hours, by hour",
-        &stats.series_24h,
-        false,
-    );
-    push_series(
-        &mut html,
-        "stats-30d",
-        "The last 30 days, by day",
-        &stats.series_30d,
-        true,
-    );
-    html.push_str("</section>");
-    html
+    html! {
+        (facts)
+        (MarkdownRoot::new(html! {
+            (footing(&stats.reconciliation, last))
+            h2 { "Plugins" }
+            @if plugins.is_empty() {
+                p.oa-page-meta { "No plugin has been called for pay yet." }
+            } @else {
+                table id="stats-plugins" {
+                    thead { tr { th { "Plugin" } th { "Calls" } th { "Earned" } th { "Paid out" } } }
+                    tbody {
+                        @for (name, totals) in &plugins {
+                            tr {
+                                td { (name) }
+                                td { (grouped(totals.calls)) }
+                                td { (totals.earnings_sats.sats()) }
+                                td { (totals.paid_out_sats.sats()) }
+                            }
+                        }
+                    }
+                }
+            }
+            h2 { "Authors" }
+            @if authors.is_empty() {
+                p.oa-page-meta { "No author has earned yet." }
+            } @else {
+                table id="stats-authors" {
+                    thead { tr { th { "Author" } th { "Earned" } th { "Paid out" } th { "Pending" } } }
+                    tbody {
+                        @for (name, totals) in &authors {
+                            tr {
+                                td { (name) }
+                                td { (totals.earnings_sats.sats()) }
+                                td { (totals.paid_out_sats.sats()) }
+                                td { (totals.pending_accruals_sats.sats()) }
+                            }
+                        }
+                    }
+                }
+            }
+            h2 { "Recent payouts" }
+            @if payouts.is_empty() {
+                p.oa-page-meta { "No payouts yet." }
+            } @else {
+                table id="stats-payouts" {
+                    thead { tr { th { "When (UTC)" } th { "Plugin" } th { "Author" } th { "Amount" } } }
+                    tbody {
+                        @for event in payouts.iter().take(RECENT) {
+                            tr {
+                                td { (utc(event.at)) }
+                                td { (event.plugin.as_deref().unwrap_or("\u{2014}")) }
+                                td { (event.author.as_deref().unwrap_or("\u{2014}")) }
+                                td { (event.paid_to_author().sats()) }
+                            }
+                        }
+                    }
+                }
+            }
+            h2 { "Received over time" }
+            (series("stats-24h", "The last 24 hours, by hour", &stats.series_24h, false))
+            (series("stats-30d", "The last 30 days, by day", &stats.series_30d, true))
+        }))
+    }
 }
 
 /// The reconciliation state and the time of the last event.
-fn push_footing(html: &mut String, reconciliation: &str, last: Option<i64>) {
+fn footing(reconciliation: &str, last: Option<i64>) -> Markup {
     let state = match reconciliation {
         "ok" => "the ledger matches the wallet",
         "drift" => "the ledger and the wallet disagree; payouts are being checked",
         _ => "not checked yet",
     };
     let last = last.map_or_else(|| "none yet".to_owned(), |at| format!("{} UTC", utc(at)));
-    let _ = write!(
-        html,
-        "<p class=\"dim\" id=\"stats-footing\">Reconciliation: {state}. Last event: {last}.</p>"
-    );
+    html! {
+        p.oa-page-meta id="stats-footing" { "Reconciliation: " (state) ". Last event: " (last) "." }
+    }
 }
 
 /// A bar per bucket of received sats, as an inline SVG (no script, no
 /// inline style), with each bar's exact value in its title.
-fn push_series(html: &mut String, id: &str, caption: &str, points: &[SeriesPoint], daily: bool) {
-    let _ = write!(html, "<figure class=\"stats-series\" id=\"{id}\">");
+fn series(id: &str, caption: &str, points: &[SeriesPoint], daily: bool) -> Markup {
     let received: u64 = points
         .iter()
         .fold(Msat::default(), |sum, p| {
@@ -393,11 +392,9 @@ fn push_series(html: &mut String, id: &str, caption: &str, points: &[SeriesPoint
         .0;
     let calls: u64 = points.iter().map(|p| p.totals.calls).sum();
     if points.is_empty() || (received == 0 && calls == 0) {
-        let _ = write!(
-            html,
-            "<figcaption>{caption}: nothing received.</figcaption></figure>"
-        );
-        return;
+        return html! {
+            figure.oa-chart id=(id) { figcaption { (caption) ": nothing received." } }
+        };
     }
     let max = points
         .iter()
@@ -405,46 +402,42 @@ fn push_series(html: &mut String, id: &str, caption: &str, points: &[SeriesPoint
         .max()
         .unwrap_or(0)
         .max(1);
-    let count = points.len();
-    let (width, height) = (count * 10, 60);
-    let _ = write!(
-        html,
-        "<svg viewBox=\"0 0 {width} {height}\" preserveAspectRatio=\"none\" role=\"img\" \
-aria-label=\"{caption}\">"
-    );
-    for (index, point) in points.iter().enumerate() {
-        let value = point.totals.received_sats.0;
-        // At least a hairline for a bucket with calls but no sats, so
-        // activity is visible without inventing an amount.
-        let bar = if value == 0 {
-            0
-        } else {
-            ((value as u128 * height as u128) / max as u128).max(1) as usize
-        };
-        let when = if daily {
-            utc(point.at)[..10].to_owned()
-        } else {
-            format!("{} UTC", utc(point.at))
-        };
-        let _ = write!(
-            html,
-            "<g><title>{when}: {}, {} calls</title>\
-<rect class=\"stats-slot\" x=\"{x}\" y=\"0\" width=\"9\" height=\"{height}\"></rect>\
-<rect class=\"stats-bar\" x=\"{x}\" y=\"{y}\" width=\"9\" height=\"{bar}\"></rect></g>",
-            point.totals.received_sats.sats(),
-            grouped(point.totals.calls),
-            x = index * 10,
-            y = height - bar,
-        );
+    let (width, height) = (points.len() * 10, 60);
+    html! {
+        figure.oa-chart id=(id) {
+            svg viewBox=(format!("0 0 {width} {height}")) preserveAspectRatio="none" role="img"
+                aria-label=(caption) {
+                @for (index, point) in points.iter().enumerate() {
+                    @let value = point.totals.received_sats.0;
+                    // At least a hairline for a bucket with calls but no
+                    // sats, so activity is visible without inventing an
+                    // amount.
+                    @let bar = if value == 0 {
+                        0
+                    } else {
+                        ((u128::from(value) * height as u128) / u128::from(max)).max(1) as usize
+                    };
+                    @let when = if daily {
+                        utc(point.at)[..10].to_owned()
+                    } else {
+                        format!("{} UTC", utc(point.at))
+                    };
+                    g {
+                        title {
+                            (when) ": " (point.totals.received_sats.sats()) ", "
+                            (grouped(point.totals.calls)) " calls"
+                        }
+                        rect.oa-chart-slot x=(index * 10) y="0" width="9" height=(height) {}
+                        rect.oa-chart-bar x=(index * 10) y=(height - bar) width="9" height=(bar) {}
+                    }
+                }
+            }
+            figcaption {
+                (caption) ": " (Msat(received).sats()) " received over " (grouped(calls))
+                " calls; the tallest bar is " (Msat(max).sats()) "."
+            }
+        }
     }
-    let _ = write!(
-        html,
-        "</svg><figcaption>{caption}: {} received over {} calls; the tallest bar is {}.\
-</figcaption></figure>",
-        Msat(received).sats(),
-        grouped(calls),
-        Msat(max).sats(),
-    );
 }
 
 /// Milliseconds since the epoch as `YYYY-MM-DD HH:MM`, in UTC.

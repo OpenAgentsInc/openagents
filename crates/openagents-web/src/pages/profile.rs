@@ -7,13 +7,17 @@
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
+use maud::html;
+use openagents_ui::actions::Alert;
+use openagents_ui::content::{MarkdownRoot, PageColumn};
 
 use crate::App;
 use crate::backend::NOT_CONNECTED;
-use crate::layout::{escape, page, problem, segment};
+use crate::layout::segment;
+use crate::ui_page::{UiPage, action_link, problem};
 
 /// A GitHub login: 1 to 39 letters, digits, and single inner hyphens.
 fn is_login(login: &str) -> bool {
@@ -28,42 +32,50 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/u/{login}", get(profile))
 }
 
-async fn profile(State(app): State<App>, Path(login): Path<String>) -> Response {
+async fn profile(
+    State(app): State<App>,
+    Path(login): Path<String>,
+    headers: HeaderMap,
+) -> Response {
     if !is_login(&login) {
-        return missing();
+        return missing(&headers);
     }
+    let path = format!("/u/{}", segment(&login));
     let backend = &app.config.backend;
     if !backend.connected() {
-        return page(
-            &format!("@{login}"),
-            None,
-            &format!(
-                "<h1>@{}</h1><p class=\"notice\">{}</p>",
-                escape(&login),
-                escape(NOT_CONNECTED)
-            ),
-        );
+        return UiPage::new(format!("@{login}"))
+            .path(path)
+            .scriptless()
+            .content(PageColumn::new(html! {
+                (MarkdownRoot::new(html! { h1 { "@" (login) } }))
+                (Alert::new().description(NOT_CONNECTED))
+            }))
+            .respond(&headers);
     }
     let Some(profile) = backend.profile(&login).await else {
-        return missing();
+        return missing(&headers);
     };
     let name = profile.name.as_deref().unwrap_or(&profile.login);
-    page(
-        &format!("@{}", profile.login),
-        None,
-        &format!(
-            "<section class=\"box\"><h1 class=\"box-title\">{}</h1><p class=\"loud\">@{}</p>\
-<p class=\"meta\">Joined {}</p><p><a href=\"https://github.com/{}\">[ GitHub profile ]</a></p></section>",
-            escape(name),
-            escape(&profile.login),
-            escape(&profile.joined),
-            segment(&profile.login)
-        ),
-    )
+    let github = format!("https://github.com/{}", segment(&profile.login));
+    UiPage::new(format!("@{}", profile.login))
+        .path(path)
+        .scriptless()
+        .content(PageColumn::new(html! {
+            section.oa-card aria-labelledby="profile-name" {
+                (MarkdownRoot::new(html! {
+                    h1 id="profile-name" { (name) }
+                    p { "@" (profile.login) }
+                    p.oa-page-meta { "Joined " (profile.joined) }
+                }))
+                div.oa-page-actions { (action_link("GitHub profile", &github)) }
+            }
+        }))
+        .respond(&headers)
 }
 
-fn missing() -> Response {
+fn missing(headers: &HeaderMap) -> Response {
     problem(
+        headers,
         StatusCode::NOT_FOUND,
         "Profile not found",
         "No account has that login.",

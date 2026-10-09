@@ -41,8 +41,12 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
+use maud::html;
+use openagents_ui::content::{MarkdownRoot, PageColumn};
+
 use crate::App;
-use crate::layout::{fullscreen, page};
+use crate::layout::fullscreen;
+use crate::ui_page::{UiPage, action_link};
 
 /// The JS glue module's file name in the build directory. It must match
 /// the file `scripts/build-everglade-web.sh` writes: wasm-bindgen names it
@@ -102,10 +106,11 @@ fn build(app: &App) -> Option<&Path> {
     (directory.join(GLUE).is_file() && directory.join(WASM).is_file()).then_some(directory)
 }
 
-/// What a page of the build shows: its heading, its canvas's label, the
-/// name its status line loads, and its content security policy.
+/// What a page of the build shows: its heading, its path, its canvas's
+/// label, the name its status line loads, and its content security policy.
 struct Stage {
     title: &'static str,
+    path: &'static str,
     label: &'static str,
     loading: &'static str,
     policy: &'static str,
@@ -113,6 +118,7 @@ struct Stage {
 
 const EVERGLADE: Stage = Stage {
     title: "Everglade",
+    path: "/everglade",
     label: "The Everglade zone",
     loading: "Everglade",
     policy: EVERGLADE_POLICY,
@@ -120,6 +126,7 @@ const EVERGLADE: Stage = Stage {
 
 const DRUID: Stage = Stage {
     title: "Druid",
+    path: "/druid",
     label: "The Grove, a druid training field",
     loading: "the Grove",
     policy: EVERGLADE_POLICY,
@@ -127,6 +134,7 @@ const DRUID: Stage = Stage {
 
 const GRID: Stage = Stage {
     title: "Grid",
+    path: "/grid",
     label: "The Grid, where players meet",
     loading: "the Grid",
     policy: GRID_POLICY,
@@ -152,30 +160,48 @@ data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PA
     )
 }
 
-const UNAVAILABLE: &str = "<section class=\"everglade\" aria-labelledby=\"everglade-title\">\
-<h1 id=\"everglade-title\">Everglade</h1>\
-<p class=\"lede\">Everglade is unavailable on this server: it was started without the \
-Everglade web build.</p>\
-<p><a href=\"/docs/verse\">[ The Verse ]</a> <span class=\"dim\">The guide to the Verse \
-on your phone and your Mac.</span></p></section>";
+/// The page without the build: it runs no script and keeps the site's
+/// policy.
+fn unavailable(stage: &Stage, headers: &HeaderMap) -> Response {
+    let content = PageColumn::new(html! {
+        section aria-labelledby="everglade-title" {
+            (MarkdownRoot::new(html! {
+                h1 id="everglade-title" { "Everglade" }
+                p.oa-page-lead {
+                    "Everglade is unavailable on this server: it was started without the \
+    Everglade web build."
+                }
+            }))
+            div.oa-page-actions {
+                (action_link("The Verse", "/docs/verse"))
+                span.oa-page-meta { "The guide to the Verse on your phone and your Mac." }
+            }
+        }
+    });
+    UiPage::new(stage.title)
+        .path(stage.path)
+        .scriptless()
+        .content(content)
+        .respond(headers)
+}
 
-async fn everglade(State(app): State<App>) -> Response {
-    stage(&app, &EVERGLADE).await
+async fn everglade(State(app): State<App>, headers: HeaderMap) -> Response {
+    stage(&app, &EVERGLADE, &headers).await
 }
 
 /// `/druid`: the same build, which starts in the Grove on this path.
-async fn druid(State(app): State<App>) -> Response {
-    stage(&app, &DRUID).await
+async fn druid(State(app): State<App>, headers: HeaderMap) -> Response {
+    stage(&app, &DRUID, &headers).await
 }
 
 /// `/grid`: the same build, which opens the shared Grid on this path.
-async fn grid(State(app): State<App>) -> Response {
-    stage(&app, &GRID).await
+async fn grid(State(app): State<App>, headers: HeaderMap) -> Response {
+    stage(&app, &GRID, &headers).await
 }
 
-async fn stage(app: &App, stage: &Stage) -> Response {
+async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
     if build(app).is_none() {
-        return page(stage.title, None, UNAVAILABLE);
+        return unavailable(stage, headers);
     }
     // The loader reports the module's download against its uncompressed
     // size, since a compressed response's length is not what it reads.

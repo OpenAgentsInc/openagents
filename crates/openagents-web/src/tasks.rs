@@ -7,7 +7,7 @@ use std::path::Path as FilePath;
 
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use base64::Engine;
@@ -15,8 +15,11 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use coder::task::{self, Store};
 use serde::Deserialize;
 
+use maud::PreEscaped;
+
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::{escape, problem};
+use crate::ui_page::{UiPage, prose};
 
 const PAGE_SIZE: usize = 50;
 
@@ -60,7 +63,7 @@ fn store_present(directory: &FilePath) -> Result<bool, task::Error> {
     Ok(true)
 }
 
-async fn tasks(State(app): State<App>) -> Response {
+async fn tasks(State(app): State<App>, headers: HeaderMap) -> Response {
     let store = app.config.store.clone();
     let result = tokio::task::spawn_blocking(move || {
         if store_present(&store)? {
@@ -78,16 +81,16 @@ async fn tasks(State(app): State<App>) -> Response {
         }
     };
     let mut body = String::from(
-        "<p class=\"label\">LOCAL / READ ONLY</p><h1>Your tasks</h1>\
-<p class=\"hint\">Your local task store. Open a task to read its status, evidence, and artifacts. \
-<a href=\"/app\">[ Refresh ]</a></p><ul class=\"list\">",
+        "<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><h1>Your tasks</h1>\
+<p class=\"oa-page-meta\">Your local task store. Open a task to read its status, evidence, and artifacts. \
+<a href=\"/app\">Refresh</a></p><ul class=\"oa-item-list\">",
     );
     if list.is_empty() {
-        body.push_str("<li><p class=\"title\">No tasks yet</p><p>Use <code>coder task submit</code> to add work to your local inbox. The browser will show it here.</p></li>");
+        body.push_str("<li><p class=\"oa-item-title\">No tasks yet</p><p>Use <code>coder task submit</code> to add work to your local inbox. The browser will show it here.</p></li>");
     }
     for item in list {
         body.push_str(&format!(
-            "<li><a class=\"task-row\" href=\"/app/tasks/{}\"><span><span class=\"title\">{}</span><small>{}</small></span><span class=\"status\">{:?} / {:?}</span></a></li>",
+            "<li><p><a class=\"oa-item-title\" href=\"/app/tasks/{}\">{}</a></p><p class=\"oa-page-meta\">{} \u{b7} {:?} / {:?}</p></li>",
             escape(&item.task_id),
             escape(&item.intent.title),
             escape(&item.task_id),
@@ -96,13 +99,18 @@ async fn tasks(State(app): State<App>) -> Response {
         ));
     }
     body.push_str("</ul>");
-    page("Tasks", None, &body)
+    UiPage::new("Tasks")
+        .path("/app")
+        .scriptless()
+        .content(prose(PreEscaped(body)))
+        .respond(&headers)
 }
 
 async fn task(
     Path(id): Path<String>,
     Query(query): Query<Cursor>,
     State(app): State<App>,
+    headers: HeaderMap,
 ) -> Response {
     let cursor = match query.cursor {
         Some(encoded) if encoded.len() <= 8192 => {
@@ -134,11 +142,11 @@ async fn task(
     };
     let task = &view.task;
     let mut body = format!(
-        "<p class=\"crumbs\"><a href=\"/app\">All tasks</a> / {}</p><h1>{}</h1>\
-<p><a href=\"/app/tasks/{}\">[ Refresh ]</a></p>\
-<dl class=\"facts\"><div><dt>Queue</dt><dd>{:?}</dd></div><div><dt>Execution</dt><dd>{:?}</dd></div>\
+        "<p class=\"oa-page-meta\"><a href=\"/app\">All tasks</a> / {}</p><h1>{}</h1>\
+<p><a href=\"/app/tasks/{}\">Refresh</a></p>\
+<dl class=\"oa-facts\"><div><dt>Queue</dt><dd>{:?}</dd></div><div><dt>Execution</dt><dd>{:?}</dd></div>\
 <div><dt>Checks</dt><dd>{}</dd></div><div><dt>Integration</dt><dd>{}</dd></div><div><dt>Cost</dt><dd>{}</dd></div></dl>\
-<section class=\"detail\"><h2>Request</h2><pre>{}</pre><p class=\"hint\">Workspace: <code>{}</code> \u{b7} Adapter: <code>{}</code></p></section>",
+<section><h2>Request</h2><pre>{}</pre><p class=\"oa-page-meta\">Workspace: <code>{}</code> \u{b7} Adapter: <code>{}</code></p></section>",
         escape(&task.task_id),
         escape(&task.intent.title),
         escape(&task.task_id),
@@ -153,13 +161,13 @@ async fn task(
         escape(&task.intent.configuration.adapter),
     );
     body.push_str(&format!(
-        "<section class=\"detail\"><h2>Transcript</h2><p class=\"hint\">Evidence: {} \u{b7} {} steps</p>",
+        "<section><h2>Transcript</h2><p class=\"oa-page-meta\">Evidence: {} \u{b7} {} steps</p>",
         escape(&view.evidence.state),
         view.evidence.total_steps
     ));
     if let Some(digest) = &view.evidence.digest {
         body.push_str(&format!(
-            "<p class=\"hint\">Trace digest: <code>{}</code></p>",
+            "<p class=\"oa-page-meta\">Trace digest: <code>{}</code></p>",
             escape(digest)
         ));
     }
@@ -169,13 +177,13 @@ async fn task(
             escape(&fault.to_string())
         ));
     }
-    body.push_str("<ol class=\"steps\">");
+    body.push_str("<ol class=\"oa-event-list\">");
     for step in &view.evidence.steps {
         let source = step["source"].as_str().unwrap_or("event");
         let message = step["message"].as_str().unwrap_or("");
         let number = step["step_id"].as_u64().unwrap_or(0);
         body.push_str(&format!(
-            "<li><span class=\"at\">{} / {}</span><pre>{}</pre><details><summary>Step details</summary><pre>{}</pre></details></li>",
+            "<li><span class=\"oa-page-meta\">{} / {}</span><pre>{}</pre><details><summary>Step details</summary><pre>{}</pre></details></li>",
             number,
             escape(source),
             escape(message),
@@ -186,15 +194,15 @@ async fn task(
     if let Some(next) = view.evidence.next.filter(|_| view.evidence.more_available) {
         let bytes = serde_json::to_vec(&next).unwrap_or_default();
         body.push_str(&format!(
-            "<p><a href=\"/app/tasks/{}?cursor={}\">[ Next 50 steps ]</a></p>",
+            "<p><a href=\"/app/tasks/{}?cursor={}\">Next 50 steps</a></p>",
             escape(&task.task_id),
             URL_SAFE_NO_PAD.encode(bytes)
         ));
     }
-    body.push_str("</section><section class=\"detail\"><h2>Artifacts</h2>");
+    body.push_str("</section><section><h2>Artifacts</h2>");
     if let Some(manifest) = &view.artifacts {
         body.push_str(&format!(
-            "<p class=\"hint\">Snapshot: <code>{}</code> \u{b7} Complete: {} \u{b7} Omitted changes: {}</p>",
+            "<p class=\"oa-page-meta\">Snapshot: <code>{}</code> \u{b7} Complete: {} \u{b7} Omitted changes: {}</p>",
             escape(manifest.candidate_snapshot.as_deref().unwrap_or("unknown")),
             manifest.complete,
             manifest.omitted_changes
@@ -208,7 +216,7 @@ async fn task(
             ));
             if let Some(target) = &entry.link_target {
                 body.push_str(&format!(
-                    "<p class=\"hint\">Link target: <code>{}</code></p>",
+                    "<p class=\"oa-page-meta\">Link target: <code>{}</code></p>",
                     escape(&target.display().to_string())
                 ));
             }
@@ -229,5 +237,12 @@ async fn task(
         body.push_str(&format!("<p>Artifact fault: {}</p>", escape(fault)));
     }
     body.push_str("</section>");
-    page(&task.intent.title, None, &body)
+    UiPage::new(task.intent.title.clone())
+        .path(format!(
+            "/app/tasks/{}",
+            crate::layout::segment(&task.task_id)
+        ))
+        .scriptless()
+        .content(prose(PreEscaped(body)))
+        .respond(&headers)
 }

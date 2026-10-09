@@ -9,13 +9,16 @@
 
 use axum::Router;
 use axum::extract::Path;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Redirect, Response};
 use axum::routing::get;
+use maud::{PreEscaped, html};
+use openagents_ui::content::{MarkdownRoot, PageColumn};
 
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::escape;
 use crate::markdown;
+use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The terms of service, as Markdown.
 pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
@@ -174,9 +177,9 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 /// `/docs`: every guide, in reading order, under its section's title.
-async fn docs_index() -> Response {
+async fn docs_index(headers: HeaderMap) -> Response {
     let mut body = String::from(
-        "<h1>Docs</h1><p class=\"label\">Guides to OpenAgents: the chat, Coder, the apps, \
+        "<h1>Docs</h1><p class=\"oa-page-lead\">Guides to OpenAgents: the chat, Coder, the apps, \
 plugins, and the Gym.</p>",
     );
     let mut open = false;
@@ -186,27 +189,33 @@ plugins, and the Gym.</p>",
                 body.push_str("</ol>");
             }
             body.push_str(&format!(
-                "<h2>{}</h2><p class=\"label\">{}</p><ol class=\"list docs\">",
+                "<h2>{}</h2><p class=\"oa-page-meta\">{}</p><ol class=\"oa-item-list\">",
                 escape(title),
                 escape(lead)
             ));
             open = true;
         }
         body.push_str(&format!(
-            "<li><a class=\"title\" href=\"/docs/{slug}\">{}</a></li>",
+            "<li><a href=\"/docs/{slug}\">{}</a></li>",
             escape(&markdown::title(source, slug))
         ));
     }
     if open {
         body.push_str("</ol>");
     }
-    page("Docs", Some("/docs"), &body)
+    UiPage::new("Docs")
+        .section("/docs")
+        .path("/docs")
+        .scriptless()
+        .content(prose(PreEscaped(body)))
+        .respond(&headers)
 }
 
 /// `/docs/{slug}`: one guide, with the previous and next ones under it.
-async fn doc(Path(slug): Path<String>) -> Response {
+async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
     let Some(index) = DOCS.iter().position(|(name, _)| *name == slug) else {
         return problem(
+            &headers,
             StatusCode::NOT_FOUND,
             "Page not found",
             "No guide has that name.",
@@ -214,51 +223,62 @@ async fn doc(Path(slug): Path<String>) -> Response {
         );
     };
     let (_, source) = DOCS[index];
-    let mut links = String::from("<a href=\"/docs\">[ All docs ]</a>");
-    if let Some((previous, text)) = index.checked_sub(1).map(|i| DOCS[i]) {
-        links.push_str(&format!(
-            " <a href=\"/docs/{previous}\">[ \u{2190} {} ]</a>",
-            escape(&markdown::title(text, previous))
-        ));
-    }
-    if let Some((next, text)) = DOCS.get(index + 1) {
-        links.push_str(&format!(
-            " <a href=\"/docs/{next}\">[ {} \u{2192} ]</a>",
-            escape(&markdown::title(text, next))
-        ));
-    }
-    let title = markdown::title(source, &slug);
-    page(
-        &title,
-        Some("/docs"),
-        &format!(
-            "<article class=\"md\">{}</article><p class=\"meta\">{links}</p>",
-            markdown::render_document(source)
-        ),
+    let previous = index.checked_sub(1).map(|i| DOCS[i]);
+    let next = DOCS.get(index + 1).copied();
+    let content = PageColumn::new(html! {
+        (MarkdownRoot::new(PreEscaped(markdown::render_document(source))))
+        nav.oa-page-actions aria-label="More docs" {
+            (action_link("All docs", "/docs"))
+            @if let Some((name, text)) = previous {
+                (action_link(
+                    &format!("\u{2190} {}", markdown::title(text, name)),
+                    &format!("/docs/{name}"),
+                ))
+            }
+            @if let Some((name, text)) = next {
+                (action_link(
+                    &format!("{} \u{2192}", markdown::title(text, name)),
+                    &format!("/docs/{name}"),
+                ))
+            }
+        }
+    });
+    UiPage::new(markdown::title(source, &slug))
+        .section("/docs")
+        .path(format!("/docs/{slug}"))
+        .scriptless()
+        .content(content)
+        .respond(&headers)
+}
+
+/// One document in the reading column, with a way home under it.
+fn article(title: String, path: &str, source: &str, headers: &HeaderMap) -> Response {
+    let content = PageColumn::new(html! {
+        (MarkdownRoot::new(PreEscaped(markdown::render(source))))
+        div.oa-page-actions { (action_link("Home", "/")) }
+    });
+    UiPage::new(title)
+        .path(path)
+        .scriptless()
+        .content(content)
+        .respond(headers)
+}
+
+async fn terms(headers: HeaderMap) -> Response {
+    article(
+        markdown::title(TERMS, "Terms of Service"),
+        "/terms",
+        TERMS,
+        &headers,
     )
 }
 
-/// One document in its frame, with a way home under it.
-fn article(source: &str) -> String {
-    format!(
-        "<article class=\"md\">{}</article><p class=\"meta\"><a href=\"/\">[ Home ]</a></p>",
-        markdown::render(source)
-    )
-}
-
-async fn terms() -> Response {
-    page(
-        &markdown::title(TERMS, "Terms of Service"),
-        None,
-        &article(TERMS),
-    )
-}
-
-async fn privacy() -> Response {
-    page(
-        &markdown::title(PRIVACY, "Privacy Policy"),
-        None,
-        &article(PRIVACY),
+async fn privacy(headers: HeaderMap) -> Response {
+    article(
+        markdown::title(PRIVACY, "Privacy Policy"),
+        "/privacy",
+        PRIVACY,
+        &headers,
     )
 }
 

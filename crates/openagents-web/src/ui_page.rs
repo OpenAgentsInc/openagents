@@ -316,7 +316,10 @@ mod tests {
             .render(&HeaderMap::new())
             .into_string()
             .to_ascii_lowercase();
-        assert!(!html.contains("<form") && !html.contains("<script"), "{html}");
+        assert!(
+            !html.contains("<form") && !html.contains("<script"),
+            "{html}"
+        );
         assert!(!html.contains("data-oa-theme-toggle"), "{html}");
     }
 

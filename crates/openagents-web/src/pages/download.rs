@@ -3,12 +3,15 @@
 //! `/install` and `/desktop` redirect here permanently (`308`).
 
 use axum::Router;
-use axum::http::header;
+use axum::http::{HeaderMap, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
+use maud::{Markup, html};
+use openagents_ui::actions::TextLink;
+use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
 
 use crate::App;
-use crate::layout::page;
+use crate::ui_page::UiPage;
 
 /// The Coder terminal and companion OpenAgents CLI test release.
 pub(crate) const CODER_VERSION: &str = "1.0.0-rc.5";
@@ -63,68 +66,87 @@ fn installer(script: &'static str) -> Response {
         .into_response()
 }
 
-/// A numbered section: `[1] Title`, a line under it, and its body.
-fn section(number: u8, title: &str, lead: &str, body: &str) -> String {
-    format!(
-        "<section class=\"dl-section\"><h2><span class=\"dim\">[{number}]</span> {title}</h2>\
-<p class=\"label\">{lead}</p>{body}</section>"
-    )
-}
-
-async fn download() -> Response {
-    let coder = format!(
-        "<p class=\"hint\">macOS and Linux:</p><pre><code>{CODER_SH}</code></pre>\
-<p class=\"hint\">Windows, in PowerShell:</p><pre><code>{CODER_PS1}</code></pre>\
-<p>Installs <code>coder</code>, <code>openagents</code>, and <code>microcoder</code> together. \
-Run <code>coder</code> to open the new terminal, or <code>openagents --help</code> for the CLI. \
-Run the install command again to update.</p>\
-<p class=\"hint\">Windows RC: local task services and background automation require macOS or Linux.</p>\
-<details><summary>Download binaries manually</summary>{}</details>",
-        coder_binaries(),
-    );
-    let body = format!(
-        "<h1>Download Coder</h1>{}",
-        section(
-            1,
-            "Coder + OpenAgents CLI",
-            &format!("Release candidate {CODER_VERSION}."),
-            &coder
-        ),
-    );
-    page("Download Coder", Some("/download"), &body)
-}
-
-fn coder_binaries() -> String {
-    let mut body = String::from("<ul class=\"dl-list\">");
-    for (label, platform) in CODER_PLATFORMS {
-        let extension = if platform.starts_with("windows-") {
-            ".exe"
-        } else {
-            ""
-        };
-        body.push_str(&format!(
-            "<li class=\"dl-row\"><span class=\"dl-name\"><strong>{label}</strong></span>\
-<span><a href=\"{CODER_BASE}/coder-{CODER_VERSION}-{platform}{extension}\">[ Coder ]</a> \
-<a href=\"{CODER_BASE}/openagents-{CODER_VERSION}-{platform}{extension}\">[ CLI ]</a> \
-<a href=\"{CODER_BASE}/microcoder-{CODER_VERSION}-{platform}{extension}\">[ Microcoder ]</a>"
-        ));
-        if platform.starts_with("windows-") {
-            body.push_str(&format!(
-                " <a href=\"{CODER_BASE}/coder-boundary-{CODER_VERSION}-{platform}.exe\">[ Launcher ]</a>"
-            ));
+async fn download(headers: HeaderMap) -> Response {
+    let content = PageColumn::new(html! {
+        (MarkdownRoot::new(html! {
+            h1 { "Download Coder" }
+            section aria-labelledby="coder-title" {
+                h2 #coder-title { "Coder + OpenAgents CLI" }
+                p.oa-page-meta { "Release candidate " (CODER_VERSION) "." }
+                p { "macOS and Linux:" }
+                pre { code { (CODER_SH) } }
+                p { "Windows, in PowerShell:" }
+                pre { code { (CODER_PS1) } }
+                p {
+                    "Installs " code { "coder" } ", " code { "openagents" } ", and "
+                    code { "microcoder" } " together. Run " code { "coder" }
+                    " to open the new terminal, or " code { "openagents --help" }
+                    " for the CLI. Run the install command again to update."
+                }
+                p.oa-page-meta {
+                    "Windows RC: local task services and background automation require macOS or Linux."
+                }
+            }
+        }))
+        details.oa-disclosure {
+            summary { "Download binaries manually" }
+            (coder_binaries())
         }
-        body.push_str("</span></li>");
+    });
+    UiPage::new("Download Coder")
+        .section("/download")
+        .path("/download")
+        .scriptless()
+        .content(content)
+        .respond(&headers)
+}
+
+/// A link to one release file, opening in place (a download, not a tab).
+fn file(label: &str, name: &str) -> TextLink {
+    TextLink::new(label, format!("{CODER_BASE}/{name}")).force_external(false)
+}
+
+fn coder_binaries() -> Markup {
+    let mut table = Table::new()
+        .label("Coder release files")
+        .header(["Platform", "Files"]);
+    for (label, platform) in CODER_PLATFORMS {
+        let windows = platform.starts_with("windows-");
+        let extension = if windows { ".exe" } else { "" };
+        table = table.row([
+            html! { strong { (label) } },
+            html! {
+                (file("Coder", &format!("coder-{CODER_VERSION}-{platform}{extension}")))
+                " \u{b7} "
+                (file("CLI", &format!("openagents-{CODER_VERSION}-{platform}{extension}")))
+                " \u{b7} "
+                (file("Microcoder", &format!("microcoder-{CODER_VERSION}-{platform}{extension}")))
+                @if windows {
+                    " \u{b7} "
+                    (file("Launcher", &format!("coder-boundary-{CODER_VERSION}-{platform}.exe")))
+                }
+            },
+        ]);
     }
-    body.push_str(&format!(
-        "</ul><p class=\"hint\">The installers verify the \
-<a href=\"{CODER_BASE}/SHA256SUMS-coder-{CODER_VERSION}\">SHA-256 checksums</a> \
-and install the companion commands. For a manual install, download every file in your \
-platform's row into <code>~/.openagents/bin</code>. On macOS and Linux, rename the \
-files to <code>coder</code>, <code>openagents</code>, and <code>microcoder</code>, then run \
-<code>chmod +x ~/.openagents/bin/coder ~/.openagents/bin/openagents \
-~/.openagents/bin/microcoder</code>. On Windows, use \
-<code>coder.exe</code>, <code>openagents.exe</code>, <code>microcoder.exe</code>, and \
-<code>coder-boundary.exe</code>. Add that directory to PATH or run Coder by its full path.</p>"
-    ));
-    body
+    html! {
+        (table)
+        (MarkdownRoot::new(html! {
+            p.oa-page-meta {
+                "The installers verify the "
+                (file("SHA-256 checksums", &format!("SHA256SUMS-coder-{CODER_VERSION}")))
+                " and install the companion commands. For a manual install, download every \
+    file in your platform's row into "
+                code { "~/.openagents/bin" }
+                ". On macOS and Linux, rename the files to " code { "coder" } ", "
+                code { "openagents" } ", and " code { "microcoder" } ", then run "
+                code {
+                    "chmod +x ~/.openagents/bin/coder ~/.openagents/bin/openagents \
+    ~/.openagents/bin/microcoder"
+                }
+                ". On Windows, use " code { "coder.exe" } ", " code { "openagents.exe" } ", "
+                code { "microcoder.exe" } ", and " code { "coder-boundary.exe" }
+                ". Add that directory to PATH or run Coder by its full path."
+            }
+        }))
+    }
 }

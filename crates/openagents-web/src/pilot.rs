@@ -18,8 +18,11 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
+use maud::PreEscaped;
+
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::{escape, problem};
+use crate::ui_page::{UiPage, prose};
 
 const COOKIE: &str = "oa_pilot";
 
@@ -396,14 +399,16 @@ async fn submit(
             "No confirmation is available. Retry the same unchanged form to recover its acknowledgment. If this persists, use the named support contact on the offer. Do not assume delivery or payment from this request.",
         );
     };
-    private(page(
-        "Pilot request received",
-        None,
-        &format!(
-            "<h1>Pilot request received</h1><p>Your private request reference is <code class=\"pilot-reference\">{}</code>. Keep this acknowledgment. A repeated request about this offer preserves the first private lead and its source.</p><p>This receipt confirms private intake only. Follow-up needs current recorded email permission and human review. This acknowledgment creates no qualification, invoice, purchase, or delivery commitment.</p><p><a href=\"/\">Home</a></p>",
+    private(
+        UiPage::new("Pilot request received")
+            .path("/")
+            .scriptless()
+            .content(prose(PreEscaped(format!(
+            "<h1>Pilot request received</h1><p>Your private request reference is <code>{}</code>. Keep this acknowledgment. A repeated request about this offer preserves the first private lead and its source.</p><p>This receipt confirms private intake only. Follow-up needs current recorded email permission and human review. This acknowledgment creates no qualification, invoice, purchase, or delivery commitment.</p><p><a href=\"/\">Home</a></p>",
             escape(&ack.reference)
-        ),
-    ))
+        ))))
+            .respond(&headers),
+    )
 }
 
 #[cfg(test)]

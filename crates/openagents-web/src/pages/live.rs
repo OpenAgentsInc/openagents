@@ -14,12 +14,14 @@
 //! so and draws no dots.
 
 use axum::Router;
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::Response;
 use axum::routing::get;
+use maud::{Markup, Render, html};
+use openagents_ui::content::{Facts, MarkdownRoot, PageColumn};
 
 use crate::App;
-use crate::layout::page;
+use crate::ui_page::{UiPage, action_link};
 
 /// Where the page reads the snapshot and the stream.
 pub(crate) const SNAPSHOT: &str = "/api/flow/snapshot";
@@ -35,36 +37,59 @@ const LIVE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'
 script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
 frame-ancestors 'none'";
 
-fn body() -> String {
-    format!(
-        "<section class=\"live\" aria-labelledby=\"live-title\">\
-<h1 id=\"live-title\">Live</h1>\
-<p class=\"lede\">Payments, plugin calls, payouts, and Coder runs on OpenAgents as they \
-happen, on the route map. Nothing here is simulated.</p>\
-<div class=\"flow\" id=\"flow\" data-snapshot=\"{SNAPSHOT}\" data-stream=\"{STREAM}\">\
-<canvas id=\"flow-map\" role=\"img\" aria-label=\"The route map with live traffic\"></canvas>\
-</div>\
-<p class=\"flow-status\" id=\"flow-status\" aria-live=\"polite\">Connecting to the flow \
-stream.</p>\
-<dl class=\"flow-totals\" id=\"flow-totals\">\
-<div><dt>Received</dt><dd id=\"flow-received\">\u{2014}</dd></div>\
-<div><dt>Paid out</dt><dd id=\"flow-paid\">\u{2014}</dd></div>\
-<div><dt>Calls</dt><dd id=\"flow-calls\">\u{2014}</dd></div></dl>\
-<p class=\"dim\">Neutral dots are calls and runs going out from the router. Warning-colored dots are \
-payments coming back, shares going on to a plugin's author, and payouts to the author's \
-wallet; a warning-colored dot with a ring is a bonus. Payers show only as a daily alias.</p>\
-<h2>Recent events</h2>\
-<ol class=\"flow-recent\" id=\"flow-recent\"><li class=\"dim\">None yet.</li></ol>\
-<p><a href=\"/stats\">[ Stats ]</a> <span class=\"dim\">The totals, plugins, authors, and payouts \
-as tables.</span></p>\
-<noscript><p class=\"dim\">Turn on JavaScript to see the live map, or read the numbers on <a href=\"/stats\">Stats</a>.</p></noscript>\
-</section>\
-<script src=\"/static/flow.js\" defer></script>"
-    )
+fn body() -> Markup {
+    let totals = Facts::new()
+        .id("flow-totals")
+        .fact_with_id("Received", "\u{2014}", "flow-received")
+        .fact_with_id("Paid out", "\u{2014}", "flow-paid")
+        .fact_with_id("Calls", "\u{2014}", "flow-calls");
+    PageColumn::new(html! {
+        section aria-labelledby="live-title" {
+            (MarkdownRoot::new(html! {
+                h1 id="live-title" { "Live" }
+                p.oa-page-lead {
+                    "Payments, plugin calls, payouts, and Coder runs on OpenAgents as they \
+happen, on the route map. Nothing here is simulated."
+                }
+            }))
+            div.oa-canvas-panel id="flow" data-snapshot=(SNAPSHOT) data-stream=(STREAM) {
+                canvas id="flow-map" role="img" aria-label="The route map with live traffic" {}
+            }
+            p.oa-page-meta id="flow-status" aria-live="polite" {
+                "Connecting to the flow stream."
+            }
+            (totals)
+            (MarkdownRoot::new(html! {
+                p.oa-page-meta {
+                    "Neutral dots are calls and runs going out from the router. Warning-colored \
+dots are payments coming back, shares going on to a plugin's author, and payouts to the \
+author's wallet; a warning-colored dot with a ring is a bonus. Payers show only as a daily alias."
+                }
+                h2 { "Recent events" }
+                ol.oa-event-list id="flow-recent" { li { "None yet." } }
+                noscript {
+                    p.oa-page-meta {
+                        "Turn on JavaScript to see the live map, or read the numbers on "
+                        a href="/stats" { "Stats" } "."
+                    }
+                }
+            }))
+            div.oa-page-actions {
+                (action_link("Stats", "/stats"))
+                span.oa-page-meta { "The totals, plugins, authors, and payouts as tables." }
+            }
+        }
+        script src="/static/flow.js" defer {}
+    })
+    .render()
 }
 
-async fn live() -> Response {
-    let mut response = page("Live", None, &body());
+async fn live(headers: HeaderMap) -> Response {
+    let mut response = UiPage::new("Live")
+        .path("/live")
+        .scriptless()
+        .content(body())
+        .respond(&headers);
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(LIVE_POLICY),

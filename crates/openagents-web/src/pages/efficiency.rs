@@ -10,13 +10,16 @@
 use std::sync::OnceLock;
 
 use axum::Router;
+use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
 use coder::efficiency;
+use maud::PreEscaped;
 use serde_json::Value;
 
 use crate::App;
-use crate::layout::{escape, page};
+use crate::layout::escape;
+use crate::ui_page::{UiPage, wide_prose};
 
 const REPO: &str = "https://github.com/OpenAgentsInc/openagents/blob/main/";
 
@@ -27,7 +30,7 @@ pub(crate) fn routes() -> Router<App> {
 fn ratio(v: &Value) -> String {
     match (v["point"].as_f64(), v["low"].as_f64(), v["high"].as_f64()) {
         (Some(p), Some(l), Some(h)) => {
-            format!("{p:.2}× <span class=\"dim\">({l:.2}–{h:.2})</span>")
+            format!("{p:.2}× <span class=\"oa-page-meta\">({l:.2}–{h:.2})</span>")
         }
         _ => "\u{2014}".into(),
     }
@@ -36,7 +39,12 @@ fn ratio(v: &Value) -> String {
 fn estimate(v: &Value, f: fn(f64) -> String) -> String {
     match (v["point"].as_f64(), v["low"].as_f64(), v["high"].as_f64()) {
         (Some(p), Some(l), Some(h)) => {
-            format!("{} <span class=\"dim\">({}–{})</span>", f(p), f(l), f(h))
+            format!(
+                "{} <span class=\"oa-page-meta\">({}–{})</span>",
+                f(p),
+                f(l),
+                f(h)
+            )
         }
         _ => "\u{2014}".into(),
     }
@@ -67,7 +75,7 @@ fn arms_table(study: &Value, arms: &Value, ratios: bool) -> String {
             a["passed"],
             a["checked"],
             match (a["pass_rate"]["low"].as_f64(), a["pass_rate"]["high"].as_f64()) {
-                (Some(l), Some(h)) => format!("<span class=\"dim\">({:.0}–{:.0}%)</span>", l * 100.0, h * 100.0),
+                (Some(l), Some(h)) => format!("<span class=\"oa-page-meta\">({:.0}–{:.0}%)</span>", l * 100.0, h * 100.0),
                 _ => String::new(),
             },
             estimate(&a["cost_per_checked_usd"], |x| format!("${x:.3}")),
@@ -97,7 +105,7 @@ fn arms_table(study: &Value, arms: &Value, ratios: bool) -> String {
 
 fn study_section(study: &Value, latest: bool) -> String {
     let mut out = format!(
-        "<h{h}>{}</h{h}><p class=\"dim\">{} \u{b7} {} runs on {} tasks \u{b7} <a href=\"{REPO}{}\">rows and write-up</a></p>",
+        "<h{h}>{}</h{h}><p class=\"oa-page-meta\">{} \u{b7} {} runs on {} tasks \u{b7} <a href=\"{REPO}{}\">rows and write-up</a></p>",
         escape(study["name"].as_str().unwrap_or("")),
         escape(study["label"].as_str().unwrap_or("")),
         study["runs"],
@@ -135,7 +143,7 @@ proposes a new threshold and adopts it only when it beats the default on held-ou
         .collect();
     if measured.is_empty() {
         out.push_str(
-            "<p class=\"dim\">Not enough data yet: no decision has 20 checked runs. \
+            "<p class=\"oa-page-meta\">Not enough data yet: no decision has 20 checked runs. \
 Accuracy and reliability appear here once one does.</p>",
         );
     } else {
@@ -165,7 +173,7 @@ Accuracy and reliability appear here once one does.</p>",
     for s in p["settings"].as_array().into_iter().flatten() {
         let name = s["setting"].as_str().unwrap_or("");
         let flag = if s["unmeasured_default"] == serde_json::json!(true) {
-            " <span class=\"dim\">(default never measured)</span>"
+            " <span class=\"oa-page-meta\">(default never measured)</span>"
         } else {
             ""
         };
@@ -179,7 +187,7 @@ Accuracy and reliability appear here once one does.</p>",
         ));
     }
     out.push_str(&format!(
-        "</tbody></table><p class=\"dim\">Accuracy is measured against the run's independent \
+        "</tbody></table><p class=\"oa-page-meta\">Accuracy is measured against the run's independent \
 check, a proxy for whether each decision was right; the hard decision is measured against \
 whether the run took more than 10 minutes. See <a href=\"{REPO}docs/research/typesafe/2026-10-03-calibration.md\">\
 the calibration plan</a>.</p>"
@@ -194,7 +202,7 @@ fn body() -> &'static str {
         let findings = efficiency::findings(&studies);
         let mut out = String::from(
             "<section aria-labelledby=\"efficiency-title\"><h1 id=\"efficiency-title\">Efficiency</h1>\
-<p class=\"lede\">Does routing work through OpenAgents beat handing it straight to Claude Code or \
+<p class=\"oa-page-lead\">Does routing work through OpenAgents beat handing it straight to Claude Code or \
 Codex? The same pinned tasks run through each, an independent check decides every pass, and \
 these are the numbers, wins and losses alike.</p><h2>Findings</h2><ul>",
         );
@@ -202,13 +210,13 @@ these are the numbers, wins and losses alike.</p><h2>Findings</h2><ul>",
             out.push_str(&format!("<li>{}</li>", escape(f)));
         }
         out.push_str(
-            "</ul><p class=\"dim\">A ratio below 1 favors the arm. \u{201c}No measurable difference\u{201d} \
+            "</ul><p class=\"oa-page-meta\">A ratio below 1 favors the arm. \u{201c}No measurable difference\u{201d} \
 means the 95% interval includes 1.</p>",
         );
         if let Some((latest, earlier)) = studies.split_last() {
             out.push_str(&study_section(latest, true));
             if !earlier.is_empty() {
-                out.push_str("<h2>Earlier studies</h2><p class=\"dim\">Each compared only within itself: \
+                out.push_str("<h2>Earlier studies</h2><p class=\"oa-page-meta\">Each compared only within itself: \
 the code, arms, and tasks changed between them.</p>");
                 for s in earlier.iter().rev() {
                     out.push_str(&study_section(s, false));
@@ -246,8 +254,12 @@ the rows behind every number on this page are in the repository. On your own com
     })
 }
 
-async fn efficiency_page() -> Response {
-    page("Efficiency", None, body())
+async fn efficiency_page(headers: HeaderMap) -> Response {
+    UiPage::new("Efficiency")
+        .path("/efficiency")
+        .scriptless()
+        .content(wide_prose(PreEscaped(body())))
+        .respond(&headers)
 }
 
 #[cfg(test)]

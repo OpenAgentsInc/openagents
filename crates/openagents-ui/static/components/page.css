@@ -17,6 +17,7 @@
   max-width: 64rem;
 }
 
+.oa-page .oa-page-eyebrow,
 .oa-page-eyebrow {
   margin: 0 0 calc(var(--spacing) * 2);
   color: var(--color-text-secondary);
@@ -65,6 +66,7 @@
   margin-bottom: 0;
 }
 
+.oa-markdown .oa-item-list,
 .oa-item-list {
   margin: calc(var(--spacing) * 4) 0;
   padding: 0;
@@ -87,9 +89,33 @@
   margin-bottom: 0;
 }
 
+.oa-markdown .oa-item-title,
 .oa-item-title {
   color: var(--color-text);
   font-weight: var(--font-weight-semibold);
+}
+
+.oa-disclosure {
+  margin: calc(var(--spacing) * 6) 0;
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+}
+
+.oa-disclosure > summary {
+  cursor: pointer;
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-disclosure[open] > summary {
+  margin-bottom: calc(var(--spacing) * 3);
+}
+
+.oa-disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .oa-facts {
@@ -165,6 +191,7 @@
   height: 100%;
 }
 
+.oa-markdown .oa-event-list,
 .oa-event-list {
   margin: calc(var(--spacing) * 3) 0 calc(var(--spacing) * 6);
   padding: 0;
