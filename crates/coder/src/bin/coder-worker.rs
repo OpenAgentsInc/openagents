@@ -6493,12 +6493,12 @@ mod tests {
         assert!(ordered(gateway(), Some("space-bunny"), None).is_err());
     }
 
-    /// "What model is this?" names the model answering now: the primary
-    /// and OpenRouter, or the fallback and the gateway while the primary
-    /// misses its turns. The privacy answer names both doors and what the
+    /// "What models does this use?" names no single model: a router picks
+    /// the best fit per message across many (2026-10-09). The privacy
+    /// answer names both doors and what the
     /// primary's provider may keep, whichever is answering (#10109).
     #[test]
-    fn the_model_answer_names_the_model_answering_now() {
+    fn the_model_answer_names_no_single_model() {
         let door = Door::Fallback(Box::new(coder::generate::FallbackDoor::openrouter(
             Lane::SpaceBunny.model(),
             "test",
@@ -6511,21 +6511,12 @@ mod tests {
                 .and_then(|entry| entry.render(facts))
                 .unwrap_or_else(|| panic!("{id} renders"))
         };
-        let model = render(&config.facts, "meta.model");
-        assert!(
-            model.starts_with(
-                "Our chat runs on Space Bunny Alpha (an anonymous preview model) through OpenRouter."
-            ),
-            "{model}"
-        );
         let fell_back = config.fell_back.as_ref().expect("a fallback's facts");
-        let model = render(fell_back, "meta.model");
-        assert!(
-            model.starts_with(
-                "Our chat runs on Google's Gemini 3.8 Flash through the Vercel AI Gateway."
-            ),
-            "{model}"
-        );
+        for facts in [&config.facts, fell_back] {
+            let model = render(facts, "meta.model");
+            assert!(model.starts_with("There isn't one model."), "{model}");
+            assert!(!model.contains("Gemini") && !model.contains("OpenRouter"), "{model}");
+        }
         for facts in [&config.facts, fell_back] {
             for id in ["meta.privacy", "meta.data_retention"] {
                 let said = render(facts, id);

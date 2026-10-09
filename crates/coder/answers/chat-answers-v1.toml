@@ -66,12 +66,11 @@ followups = ["meta.capabilities", "meta.github", "meta.pricing"]
 
 [[answer]]
 id = "meta.model"
-version = 1
+version = 2
 routes = ["meta"]
-when = "The user asks what AI model or LLM powers this chat, or whether we are ChatGPT, Claude, Gemini, or another named assistant; not who made or built us"
-text = "Our chat runs on {chat_model} through {chat_model_host}. A small, fast model, Jev from TypeSafe, reads each message first to choose how we answer."
-facts = { chat_model = "worker.lane.display", chat_model_host = "worker.door.display" }
-chip = "What model is this?"
+when = "The user asks what AI model or models power this chat, or whether we are ChatGPT, Claude, Gemini, or another named assistant; not who made or built us"
+text = "There isn't one model. A fast router reads each message and sends it to whatever answers it best, from quick built-in answers to many models across providers, through our own gateway. The pool keeps growing, so the best fit can change from one message to the next."
+chip = "What models does this use?"
 sources = ["crates/coder/src/generate.rs", "crates/coder/src/router.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.jev", "meta.privacy", "meta.pricing"]
 

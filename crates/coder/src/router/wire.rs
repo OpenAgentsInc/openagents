@@ -669,7 +669,7 @@ mod tests {
                 "judge_ms"
             ]
         );
-        assert_eq!(value["answer"], "meta.model@1");
+        assert_eq!(value["answer"], "meta.model@2");
         assert_eq!(value["decided"], "canned");
         assert_eq!(value["set"], set_id());
         assert_eq!(value["calibration"], Value::Null);

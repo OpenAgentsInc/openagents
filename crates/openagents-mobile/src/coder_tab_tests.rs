@@ -1799,7 +1799,7 @@ fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
         "{shown:?}"
     );
     assert_eq!(shown.len(), 4);
-    assert_eq!(shown[3].1, "What model is this?");
+    assert_eq!(shown[3].1, "What models does this use?");
     // "Test a plugin" sends its question, and neither shows again.
     fixture.tap("coder-suggest-gym.test");
     assert_eq!(hand.asked()[1], ["Which plugin should I try?"]);
@@ -1827,7 +1827,7 @@ fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
         [
             "What can you do?",
             "What's new in the Gym?",
-            "What model is this?",
+            "What models does this use?",
             "How do I earn XP?"
         ]
     );
@@ -1895,7 +1895,7 @@ fn a_used_followup_chip_never_shows_again() {
     assert!(
         !shown
             .iter()
-            .any(|(_, label)| label == "What model is this?"),
+            .any(|(_, label)| label == "What models does this use?"),
         "{shown:?}"
     );
 }

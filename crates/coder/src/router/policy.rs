@@ -1727,7 +1727,7 @@ mod tests {
             panic!("{tier:?}");
         };
         assert_eq!(answer.id, "meta.model");
-        assert!(text.starts_with("Our chat runs on Google's Gemini 3.8 Flash"));
+        assert!(text.starts_with("There isn't one model."));
         assert_eq!(offer, &None);
         assert_eq!((tier.word(), tier.number()), ("canned", 0));
         assert!(!tier.keeps_model());

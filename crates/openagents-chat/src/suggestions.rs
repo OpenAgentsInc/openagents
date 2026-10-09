@@ -61,8 +61,8 @@ pub const SUGGESTIONS: &[Suggestion] = &[
     },
     Suggestion {
         id: "meta.model",
-        label: "What model is this?",
-        message: "What model is this?",
+        label: "What models does this use?",
+        message: "What models does this use?",
     },
     Suggestion {
         id: "eval.credit.how",
