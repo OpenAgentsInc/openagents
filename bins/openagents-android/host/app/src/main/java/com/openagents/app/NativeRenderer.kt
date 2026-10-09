@@ -32,6 +32,13 @@ class NativeRenderer(
     private val scrolling: Boolean = false,
     /** Draws a surface the host registered (`gym-card:<id>`); null draws the refusal. */
     private val surfaces: ((String) -> View?)? = null,
+    /**
+     * The composer floats over the conversation (#11126): in the root
+     * stack, what follows the transcript (the composer and anything above
+     * it) is a group at the bottom, over the transcript, which scrolls under
+     * it and keeps its last row clear of it.
+     */
+    private val floating: Boolean = false,
 ) {
     private class Mounted(val kind: String, val view: View) {
         var value: String? = null
@@ -39,6 +46,10 @@ class NativeRenderer(
         var rows: LinearLayout? = null
         var transcript: RustTranscript? = null
         var composer: Composer? = null
+        /** A floating root stack's transcript area and bottom group. */
+        var area: FrameLayout? = null
+        var group: LinearLayout? = null
+        var floated: RustTranscript? = null
     }
 
     private val mounts = HashMap<String, Mounted>()
@@ -98,6 +109,8 @@ class NativeRenderer(
             elementKind == "stack" && style.textOrNull("menu") == "context" &&
                 props.getJSONArray("children").length() > 1 -> "stack:menu"
             elementKind == "stack" && props.getString("axis") == "wrap" -> "stack:wrap"
+            floating && depth == 0 && elementKind == "stack" && props.getString("axis") == "vertical" &&
+                floatSplit(props.getJSONArray("children").objects()) != null -> "stack:float"
             else -> elementKind
         }
         val mounted = mounts[key]?.takeIf { it.kind == kind } ?: create(kind, props).also { mounts[key] = it }
@@ -122,6 +135,30 @@ class NativeRenderer(
                     if (horizontal) params.gravity = Gravity.CENTER_VERTICAL
                     node(child, depth + 1) to params
                 })
+            }
+            "stack:float" -> (view as LinearLayout).let { outer ->
+                val gap = space(style.textOrNull("gap"))
+                val children = props.getJSONArray("children").objects()
+                val split = floatSplit(children)!!
+                val area = mounted.area!!
+                val group = mounted.group!!
+                val before = children.take(split).mapIndexed { index, child ->
+                    node(child, depth + 1) to LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = gap }
+                }
+                replaceChildren(outer, before + (area to LinearLayout.LayoutParams(-1, 0, 1f).apply {
+                    if (split > 0) topMargin = gap }))
+                val transcript = node(children[split], depth + 1)
+                if (area.getChildAt(0) !== transcript) {
+                    (transcript.parent as? ViewGroup)?.removeView(transcript)
+                    area.removeAllViews()
+                    area.addView(transcript, FrameLayout.LayoutParams(-1, -1))
+                    area.addView(group, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+                }
+                replaceChildren(group, children.drop(split + 1).mapIndexed { index, child ->
+                    node(child, depth + 1) to LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = gap }
+                })
+                mounted.floated = mounts[children[split].getString("key")]?.transcript
+                mounted.floated?.setBottomInset(group.height)
             }
             "stack:wrap" -> (view as NativeFlow).apply {
                 gap = space(style.textOrNull("gap"))
@@ -208,7 +245,8 @@ class NativeRenderer(
                 if (frame.childCount != 1 || frame.getChildAt(0) !== drawn) {
                     (drawn.parent as? android.view.ViewGroup)?.removeView(drawn)
                     frame.removeAllViews()
-                    frame.addView(drawn, FrameLayout.LayoutParams(-1, -2))
+                    // A stretched surface fills its frame, as the new chat's cards.
+                    frame.addView(drawn, FrameLayout.LayoutParams(-1, if (style.optBoolean("fill_height")) -1 else -2))
                 }
             }
             "transcript" -> mounted.transcript!!.update(props)
@@ -302,6 +340,20 @@ class NativeRenderer(
         kind == "stack:wrap" -> Mounted(kind, NativeFlow(context))
         kind == "stack:menu" -> Mounted(kind, FrameLayout(context))
         kind == "stack" -> Mounted(kind, context.column())
+        kind == "stack:float" -> {
+            val group = context.column().apply {
+                // A soft fade from the conversation into the theme's background.
+                background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(clearOf(Palette.BACKGROUND), Palette.BACKGROUND, Palette.BACKGROUND))
+                setPadding(0, context.dp(20), 0, 0)
+            }
+            val mounted = Mounted(kind, context.column())
+            group.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+                if (bottom - top != oldBottom - oldTop) mounted.floated?.setBottomInset(bottom - top)
+            }
+            mounted.also { it.area = FrameLayout(context); it.group = group }
+        }
         kind == "list" -> {
             val rows = context.column()
             val outer: View = if (scrolling) rows else ScrollView(context).apply {
@@ -311,7 +363,7 @@ class NativeRenderer(
         }
         kind == "surface" -> Mounted(kind, FrameLayout(context))
         kind == "transcript" -> {
-            val transcript = RustTranscript(context) { key -> activateNode(key) }
+            val transcript = RustTranscript(context, surfaces) { key -> activateNode(key) }
             Mounted(kind, transcript.root).also { it.transcript = transcript }
         }
         kind == "composer" -> {
@@ -351,11 +403,22 @@ class NativeRenderer(
             node.optJSONObject("style")?.textOrNull("align") == "end"
     }
 
+    /**
+     * In a floating root stack, the transcript's index when something
+     * follows it (the composer); null when the stack doesn't float.
+     */
+    private fun floatSplit(children: List<JSONObject>): Int? {
+        val index = children.indexOfFirst { kindOf(it) == "transcript" }
+        return index.takeIf { it >= 0 && it < children.size - 1 }
+    }
+
     /** A node that takes the remaining height in a vertical stack. */
     private fun fills(node: JSONObject): Boolean {
         val element = node.getJSONObject("element")
         return when (element.getString("kind")) {
             "list", "transcript" -> true
+            // A surface the application stretches, as the new chat's cards.
+            "surface" -> node.optJSONObject("style")?.optBoolean("fill_height") == true
             "stack" -> element.getJSONObject("props").let { props ->
                 props.getString("axis") == "vertical" && props.getJSONArray("children").objects().any { fills(it) }
             }

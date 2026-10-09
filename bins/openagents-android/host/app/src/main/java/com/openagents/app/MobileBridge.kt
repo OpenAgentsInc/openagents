@@ -62,6 +62,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                     "native_computers" to true,
                     // Its transcript painter reads chat rows from Rust.
                     "pulled_transcripts" to true,
+                    // It draws the shell (#11126): the top bar, the drawer, the cards.
+                    "shell" to true,
                     // The chat router's context names the build.
                     "app_build" to "${ReportDevice.version} (${ReportDevice.build})")
                 // The iroh key beside the device key: connecting a computer
@@ -165,6 +167,13 @@ class MobileBridge(private val context: Context, private val computersFixture: B
 
     /** Profile, from Account: Rust shows the Profile sheet on the Chat tab (`coder_go` is `chat`). */
     fun profile() = send(json("op" to "profile"))
+
+    /**
+     * A shell action (`coder_tab::ShellAction`, #11126): the Chat / Code
+     * switch, the drawer, a recent chat, See all, or a card's Try it.
+     */
+    fun shell(action: String, vararg fields: Pair<String, Any?>) =
+        send(json("op" to "shell", "shell" to json("action" to action, *fields)))
 
     /** Text Rust asked the system share sheet to open, until it shows. */
     var gymShare: String? = null

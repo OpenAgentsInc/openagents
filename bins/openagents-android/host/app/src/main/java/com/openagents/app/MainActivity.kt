@@ -33,13 +33,14 @@ import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
 /**
- * The four tabs, shown as icons; each keeps a spoken name for TalkBack.
+ * The app's places. The drawer (#11126) opens each; the chat is the home
+ * place, and Settings holds the screens that used to be tabs.
  */
-enum class AppTab(val title: String, val icon: Int) {
-    CODER("Chat", R.drawable.ic_tab_chat),
-    VERSE("Verse", R.drawable.ic_tab_verse),
-    WALLET("Wallet", R.drawable.ic_tab_wallet),
-    ACCOUNT("Account", R.drawable.ic_tab_account),
+enum class AppTab(val title: String) {
+    CODER("Chat"),
+    VERSE("Verse"),
+    WALLET("Wallet"),
+    ACCOUNT("Settings"),
 }
 
 /** A screen that the Account tab opens. */
@@ -121,10 +122,18 @@ class MainActivity : ComponentActivity() {
     private var statusTop = 0
 
     private lateinit var root: FrameLayout
-    private lateinit var tabDivider: View
     private val pages = mutableMapOf<AppTab, FrameLayout>()
-    private val tabButtons = mutableMapOf<AppTab, ImageButton>()
-    private lateinit var tabBar: LinearLayout
+
+    // The shell (#11126): the chat's top bar, the drawer, and the new
+    // chat's feature cards. Rust's `shell` packet says what they show.
+    private lateinit var body: LinearLayout
+    private lateinit var shellBar: ShellTopBar
+    private lateinit var drawer: ShellDrawer
+    private lateinit var scrim: View
+    private lateinit var homeCards: HomeCards
+    private var drawerOpen = false
+    private val walletMenu by lazy { FrameLayout(this) }
+    private val verseMenu by lazy { FrameLayout(this) }
 
     private lateinit var wallet: WalletScreen
     private lateinit var payments: AgentPayments
@@ -197,9 +206,12 @@ class MainActivity : ComponentActivity() {
             BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false)) { render() }
         bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
+        homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
-            { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
-                if (resource.startsWith("image:")) imageViews.getOrPut(resource) { ChatImages.card(this, bridge, resource) }
+            { token, value -> bridge.submit("coder", token, value) }, floating = true, surfaces = { resource ->
+                if (resource == "home-cards") homeCards.root
+                else if (resource.startsWith("link:")) LinkCards.card(this, bridge, resource) { openLink(it) }
+                else if (resource.startsWith("image:")) imageViews.getOrPut(resource) { ChatImages.card(this, bridge, resource) }
                 else resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
                     bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { card ->
                         // Rebuild a card only when its content changes: the
@@ -222,40 +234,44 @@ class MainActivity : ComponentActivity() {
         connect = ConnectScreen(this, bridge, scanner)
 
         root = FrameLayout(this).apply { setBackgroundColor(Palette.BACKGROUND) }
-        val body = column()
+        body = column().apply { setBackgroundColor(Palette.BACKGROUND) }
         val pageHost = FrameLayout(this)
         body.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
-        tabBar = row().apply {
-            setBackgroundColor(Palette.BACKGROUND)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        tabDivider = View(this).apply { setBackgroundColor(Palette.BORDER) }
-        body.addView(tabDivider, LinearLayout.LayoutParams(-1, 1))
-        body.addView(tabBar, LinearLayout.LayoutParams(-1, dp(56)))
+        // The Verse's page is built, but the drawer offers it only in a preview build.
         for (value in AppTab.entries) {
-            val button = ImageButton(this).apply {
-                setImageResource(value.icon)
-                background = null
-                setColorFilter(Palette.PRIMARY)
-                contentDescription = value.title
-                tag = "tab-${value.name.lowercase()}"
-                setOnClickListener { select(value) }
-                // A long press on the tab bar reports the screen on view.
-                setOnLongClickListener { report(); true }
-            }
-            tabButtons[value] = button
-            // The Verse's page is built but has no tab outside a preview build.
-            if (Preview.shows(value)) tabBar.addView(button, LinearLayout.LayoutParams(0, -1, 1f))
             val page = FrameLayout(this).apply { visibility = View.GONE }
             pages[value] = page
             pageHost.addView(page, FrameLayout.LayoutParams(-1, -1))
         }
-        pages.getValue(AppTab.CODER).addView(coderContent, FrameLayout.LayoutParams(-1, -1))
-        pages.getValue(AppTab.CODER).addView(gymContent, FrameLayout.LayoutParams(-1, -1))
+        shellBar = ShellTopBar(this, bridge, { openDrawer(true) }) { report() }
+        val coderPage = column()
+        coderPage.addView(shellBar.root, LinearLayout.LayoutParams(-1, -2))
+        val coderStack = FrameLayout(this)
+        coderStack.addView(coderContent, FrameLayout.LayoutParams(-1, -1))
+        coderStack.addView(gymContent, FrameLayout.LayoutParams(-1, -1))
+        coderPage.addView(coderStack, LinearLayout.LayoutParams(-1, 0, 1f))
+        pages.getValue(AppTab.CODER).addView(coderPage, FrameLayout.LayoutParams(-1, -1))
         buildVerse(pages.getValue(AppTab.VERSE))
-        buildWallet(pages.getValue(AppTab.WALLET))
+        val walletPage = column()
+        walletPage.addView(walletMenu, LinearLayout.LayoutParams(-1, -2))
+        val walletBody = FrameLayout(this)
+        walletPage.addView(walletBody, LinearLayout.LayoutParams(-1, 0, 1f))
+        pages.getValue(AppTab.WALLET).addView(walletPage, FrameLayout.LayoutParams(-1, -1))
+        buildWallet(walletBody)
+        pages.getValue(AppTab.VERSE).addView(verseMenu, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
+        // The drawer lies under the app; opening it slides the app aside.
+        drawer = ShellDrawer(this, bridge) { place -> go(place) }
+        drawer.root.visibility = View.GONE
+        root.addView(drawer.root, FrameLayout.LayoutParams(drawerWidth(), -1))
         root.addView(body, FrameLayout.LayoutParams(-1, -1))
+        scrim = View(this).apply {
+            visibility = View.GONE
+            contentDescription = "Close menu"; tag = "shell-close"
+            setOnClickListener { openDrawer(false) }
+        }
+        root.addView(scrim, FrameLayout.LayoutParams(-1, -1))
+        menus()
         root.addView(terminal.root, FrameLayout.LayoutParams(-1, -1))
         // Connect a computer shows over every tab.
         root.addView(connect.root, FrameLayout.LayoutParams(-1, -1))
@@ -267,9 +283,10 @@ class MainActivity : ComponentActivity() {
             val typing = insets.isVisible(WindowInsetsCompat.Type.ime())
             statusTop = bars.top
             body.setPadding(bars.left, 0, bars.right, maxOf(bars.bottom, keyboard.bottom))
+            drawer.root.setPadding(bars.left, bars.top, 0, maxOf(bars.bottom, keyboard.bottom))
             terminal.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
             connect.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
-            tabBar.visibility = if (typing) View.GONE else View.VISIBLE
+            verseMenu.setPadding(dp(16), bars.top + dp(4), 0, 0)
             // Every page but Verse starts below the status bar; the world
             // fills the screen behind it and keeps its controls below.
             for ((value, page) in pages) if (value != AppTab.VERSE) page.setPadding(0, bars.top, 0, 0)
@@ -283,6 +300,7 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    drawerOpen -> openDrawer(false)
                     connect.showing -> connect.back()
                     tab == AppTab.ACCOUNT && route == AccountRoute.COMPUTERS && bridge.packet != null &&
                         bridge.packet?.objectOrNull("computers_home") == null -> bridge.computersGo("home")
@@ -332,7 +350,14 @@ class MainActivity : ComponentActivity() {
             }
             intent.getStringExtra("gym_script")?.let { script -> gymScript(script.split("|").filter { it.isNotEmpty() }, 0) }
         }
-        tabBar.setOnLongClickListener { report(); true }
+        // Debug builds only, for screenshots: `--es shell_mode code` opens
+        // Code mode, `--ez drawer true` opens the drawer, and `--es
+        // appearance light|dark|system` picks the theme (saved).
+        if (BuildConfig.DEBUG) {
+            if (intent.getStringExtra("shell_mode") == "code") bridge.shell("mode", "code" to true)
+            intent.getStringExtra("appearance")?.let { bridge.theme(it) }
+            if (intent.getBooleanExtra("drawer", false)) main.postDelayed({ openDrawer(true) }, 1500)
+        }
         // Debug builds only: `--ez report true` opens Report a problem for the first screen.
         if (BuildConfig.DEBUG && intent.getBooleanExtra("report", false)) main.postDelayed({ report() }, 1500)
     }
@@ -388,16 +413,73 @@ class MainActivity : ComponentActivity() {
         }
         tab = value
         for ((key, page) in pages) page.visibility = if (key == value) View.VISIBLE else View.GONE
-        for ((key, button) in tabButtons) {
-            button.alpha = if (key == value) 1f else 0.45f
-            button.isSelected = key == value
-        }
         world.setShown(value == AppTab.VERSE)
         if (value == AppTab.WALLET) wallet.appeared() else wallet.disappeared()
         bridge.coderShown(value == AppTab.CODER)
         if (value == AppTab.CODER && !bridge.busy) bridge.refreshComputers()
         screenChanged()
         render()
+    }
+
+    // The shell (#11126)
+
+    /** The drawer's width: most of the screen, at most 360 dp. */
+    private fun drawerWidth() = minOf((resources.displayMetrics.widthPixels * 0.82f).toInt(), dp(360))
+
+    /** The menu buttons over the Wallet and the Verse, which have no top bar of their own. */
+    private fun menus() {
+        walletMenu.removeAllViews()
+        walletMenu.setPadding(dp(16), dp(4), dp(16), dp(4))
+        walletMenu.setBackgroundColor(Palette.BACKGROUND)
+        walletMenu.addView(menuButton({ openDrawer(true) }) { report() }, FrameLayout.LayoutParams(dp(44), dp(44)))
+        verseMenu.removeAllViews()
+        if (Preview.on) verseMenu.addView(menuButton({ openDrawer(true) }) { report() }, FrameLayout.LayoutParams(dp(44), dp(44)))
+    }
+
+    /** Opens or closes the drawer, sliding the app aside; Rust lists its chats while it is open. */
+    private fun openDrawer(open: Boolean) {
+        if (open == drawerOpen) return
+        drawerOpen = open
+        bridge.shell("drawer", "open" to open)
+        currentFocus?.let { focus ->
+            getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(focus.windowToken, 0)
+            focus.clearFocus()
+        }
+        val width = drawerWidth()
+        drawer.root.layoutParams = (drawer.root.layoutParams as FrameLayout.LayoutParams).apply { this.width = width }
+        if (open) {
+            drawer.update(bridge.packet?.objectOrNull("shell"))
+            drawer.root.visibility = View.VISIBLE
+            scrim.visibility = View.VISIBLE
+            scrim.alpha = 0f
+            scrim.setBackgroundColor(if (Palette.LIGHT) 0x1F000000 else 0x59000000)
+        } else drawer.closed()
+        // The app beside the drawer is hidden from TalkBack while it is open.
+        body.importantForAccessibility = if (open) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        val to = if (open) width.toFloat() else 0f
+        val duration = if (android.animation.ValueAnimator.areAnimatorsEnabled()) 250L else 0L
+        body.animate().translationX(to).setDuration(duration).start()
+        scrim.animate().translationX(to).alpha(if (open) 1f else 0f).setDuration(duration).withEndAction {
+            if (!drawerOpen) { scrim.visibility = View.GONE; drawer.root.visibility = View.GONE }
+        }.start()
+    }
+
+    /** Opens a place from the drawer. */
+    private fun go(place: String) {
+        when (place) {
+            "code" -> {
+                bridge.shell("mode", "code" to true)
+                bridge.shell("new_chat")
+                select(AppTab.CODER)
+            }
+            "computers" -> { select(AppTab.ACCOUNT); open(AccountRoute.COMPUTERS) }
+            "wallet" -> select(AppTab.WALLET)
+            "verse" -> if (Preview.on) select(AppTab.VERSE)
+            "settings" -> { select(AppTab.ACCOUNT); open(null) }
+            else -> select(AppTab.CODER)
+        }
+        openDrawer(false)
     }
 
     private fun buildWallet(page: FrameLayout) {
@@ -522,8 +604,8 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(48)
         }
-        routeBack = text("‹ Account", 17f).apply {
-            setPadding(dp(12), dp(10), dp(16), dp(10)); contentDescription = "Back to Account"; tag = "account-back"
+        routeBack = text("‹ Settings", 17f).apply {
+            setPadding(dp(12), dp(10), dp(16), dp(10)); contentDescription = "Back to Settings"; tag = "account-back"
             setOnClickListener {
                 if (route == AccountRoute.COMPUTERS && bridge.packet?.objectOrNull("computers_home") == null) bridge.computersGo("home")
                 else open(null)
@@ -625,7 +707,11 @@ class MainActivity : ComponentActivity() {
     private fun accountList(): View = ScrollView(this).apply {
         addView(column().apply {
             setPadding(dp(16), dp(12), dp(16), dp(24))
-            addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+            addView(row().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(menuButton({ openDrawer(true) }) { report() }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                addView(text("Settings", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { marginStart = dp(14) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
             if (Preview.on) addView(group(listOf(
                 "★  ${AccountRoute.TRAINER.title}" to "account-trainer" to { open(AccountRoute.TRAINER) },
                 // Train Coder opened a test of the Gym's sample plugins, which are no longer shown; it comes back when the Gym has a real plugin to test.
@@ -697,8 +783,8 @@ class MainActivity : ComponentActivity() {
     /** The Computers header: the list's menu and Add, or back to the list past it. */
     private fun computersHeader(home: JSONObject?) {
         val actions = routeActions ?: return
-        routeBack?.text = if (home == null && bridge.packet != null) "‹ Computers" else "‹ Account"
-        routeBack?.contentDescription = if (home == null && bridge.packet != null) "Back to Computers" else "Back to Account"
+        routeBack?.text = if (home == null && bridge.packet != null) "‹ Computers" else "‹ Settings"
+        routeBack?.contentDescription = if (home == null && bridge.packet != null) "Back to Computers" else "Back to Settings"
         routeTitle?.text = if (home != null) "Computers" else ""
         val wanted = if (home != null) "list" else "none"
         if (actions.tag == wanted) return
@@ -821,8 +907,13 @@ class MainActivity : ComponentActivity() {
         // A computer that comes online connects Everglade's studio.
         if (::studio.isInitialized) studio.sync()
         if (::connect.isInitialized) connect.update(packet?.objectOrNull("connect"))
+        val shell = packet?.objectOrNull("shell")
+        homeCards.update(shell)
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         renderGym(packet?.objectOrNull("gym"))
+        val gymScreen = packet?.objectOrNull("gym")?.optString("screen") ?: "chat"
+        shellBar.update(shell?.takeIf { gymScreen == "chat" })
+        if (drawerOpen) drawer.update(shell)
         when (route) {
             AccountRoute.COMPUTERS -> {
                 val home = packet?.objectOrNull("computers_home")
@@ -906,8 +997,6 @@ class MainActivity : ComponentActivity() {
             if (drawn != null) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS else android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
         gymContent.visibility = if (drawn != null) View.VISIBLE else View.GONE
         coderContent.visibility = if (drawn != null) View.GONE else View.VISIBLE
-        // The first run is a guided path: no tabs until it reaches the chat.
-        if (tab == AppTab.CODER) tabBar.visibility = if (screen == "first_run") View.GONE else View.VISIBLE
         gym.sheet(gymPacket?.objectOrNull("sheet"))
         bridge.gymShare?.let { text -> bridge.gymShare = null; gym.share(text) }
     }
@@ -1023,9 +1112,12 @@ class MainActivity : ComponentActivity() {
         restyleWindow()
         if (!::root.isInitialized) return
         root.setBackgroundColor(Palette.BACKGROUND)
-        tabBar.setBackgroundColor(Palette.BACKGROUND)
-        tabDivider.setBackgroundColor(Palette.BORDER)
-        for (button in tabButtons.values) button.setColorFilter(Palette.PRIMARY)
+        body.setBackgroundColor(Palette.BACKGROUND)
+        shellBar.update(bridge.packet?.objectOrNull("shell"), force = true)
+        drawer.build()
+        drawer.update(bridge.packet?.objectOrNull("shell"))
+        homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
+        menus()
         coderRenderer.clear()
         coderContent.removeAllViews()
         cardViews.clear()

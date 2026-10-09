@@ -11,8 +11,29 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 
 ## What the app has
 
+**Shell (#11126).** The app has no tab bar, as on iOS. A top bar holds the
+menu button, a **Chat** / **Code** switch on a new chat, and **New chat** in
+a conversation; the menu opens a drawer with **Coder**, **Computers**,
+**Wallet**, **Verse** (preview builds), **Settings** (formerly Account), the
+recent chats with search and **See all…**, a **Chat** pill for a new chat,
+and the account button. A new chat in Chat mode shows the four feature
+cards (`openagents-chat` `home_cards.rs`) to swipe through, each with **Try
+it**, over the composer (**Ask OpenAgents**); Code mode's new chat (**Work
+with Coder**) starts Coder on the ready computer. A reply that took time
+starts with **Worked for 6s**, which opens the steps, and a reply that names
+web links shows a card for each under it: the page's title, its site, and its
+preview picture when the page names one (`og:image`), which Rust reads within
+size and time limits and re-encodes (`openagents-chat-app` `links.rs`,
+`openagents-mobile` `link_fetch.rs`); a tap opens the link in the browser.
+The composer floats over the conversation, which scrolls under it. A long
+press on any menu button opens **Report a problem**. Rust owns the state
+(`coder_tab/shell.rs`, the packet's `shell` and `links`); `Shell.kt` draws
+it. Debug builds take `--es shell_mode code`, `--ez drawer true`, and `--es
+appearance light|dark|system` for screenshots. Where the text below says
+tab, read place in the drawer.
+
 **Release gate (2026-10-09).** A release or normal debug build has three
-tabs, **Chat**, **Wallet**, and **Account**. The Verse tab, the Gym in chat
+places, **Chat**, **Wallet**, and **Settings**. The Verse, the Gym in chat
 (Train Coder, Profile, its intro, menu, cards, and Gym starter chips),
 **Trainer**, **Playtest** and **My reports**, **Tailnet**, and the display
 name are preview features, shown only when the Rust library is built with
@@ -158,8 +179,8 @@ The app has four tabs, shown as white icons on black:
   from the playtest referee; **Playtest logging**, on only in a preview build or
   one built with `OPENAGENTS_PLAYTEST_LOGGING=on`, with one line saying
   so, the log's lines, and **Delete the log**; and **My reports**), **Report a problem**,
-  and links to the source code and to OpenAgents on X. A long press on the
-  tab bar opens **Report a problem** for the screen on view. Rust fills in
+  and links to the source code and to OpenAgents on X. A long press on a
+  menu button opens **Report a problem** for the screen on view. Rust fills in
   and checks the report (platform `android`), seals it to the triage key
   under the Verse world key, and keeps the playtest log; the host only
   collects the text, the kind, and the choices. A screenshot is off by

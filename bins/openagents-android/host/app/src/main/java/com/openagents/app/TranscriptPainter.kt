@@ -375,6 +375,8 @@ internal class RowView(context: Context) : FrameLayout(context) {
     var model: RowModel? = null; private set
     var toggle: (String) -> Unit = {}
     var loadEarlier: () -> Unit = {}
+    /** Draws a surface the layout reserved a box for, such as a link card. */
+    var surface: ((String) -> View?)? = null
     /** Called when this row's selection starts, changes, or ends, and when a scroller moves under it. */
     var selectionChanged: (RowView) -> Unit = {}
     /** The selected range, ordered, or null. */
@@ -509,6 +511,9 @@ internal class RowView(context: Context) : FrameLayout(context) {
         "earlier" -> if (widget.json.optBoolean("loading")) null else View(context).apply {
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             setOnClickListener { loadEarlier() }
+        }
+        "surface" -> surface?.invoke(widget.json.optString("resource"))?.also { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
         }
         else -> null
     }
@@ -690,7 +695,8 @@ internal class WorkingDots(context: Context) : View(context) {
  * transcript source (`rust_native::layout::source`), the rows never cross
  * the view: the update names the source, and Rust reads them.
  */
-class RustTranscript(private val context: Context, private val activate: (String) -> Unit) {
+class RustTranscript(private val context: Context, private val surfaces: ((String) -> View?)? = null,
+                     private val activate: (String) -> Unit) {
     private data class Item(val key: String, val version: Long, val index: Int, val height: Float, val top: Float)
 
     val root = FrameLayout(context)
@@ -746,6 +752,7 @@ class RustTranscript(private val context: Context, private val activate: (String
             val view = holder.itemView as RowView
             val item = items[position]
             val started = System.nanoTime()
+            view.surface = surfaces
             model(item)?.let { view.bind(it, frameEpoch) }
             worstBind = maxOf(worstBind, System.nanoTime() - started)
             view.toggle = { key -> if (!expanded.remove(key)) expanded.add(key); dirty = true; sync() }
@@ -975,6 +982,21 @@ class RustTranscript(private val context: Context, private val activate: (String
         if (wanted.isEmpty()) return
         val frame = frame
         prefetcher.execute { for (item in wanted) if (!models.containsKey("${item.key}/${item.version}")) build(frame, item) }
+    }
+
+    /**
+     * Room under the last row for what floats over the transcript's bottom
+     * (the composer, #11126), in pixels; the scroll-to-bottom button sits
+     * above it.
+     */
+    fun setBottomInset(pixels: Int) {
+        if (list.paddingBottom == pixels) return
+        list.setPadding(0, 0, 0, pixels)
+        (jump.layoutParams as? FrameLayout.LayoutParams)?.let {
+            it.bottomMargin = pixels + context.dp(12)
+            jump.layoutParams = it
+        }
+        if (following) pin()
     }
 
     private fun distanceFromBottom() =
