@@ -517,13 +517,25 @@ fn default_webhook_skew() -> u64 {
 /// staying off.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Accounts {
-    /// The tenant self-serve sign-up provisions accounts onto: a
-    /// `POST /v1/accounts` call creates the account, its personal
-    /// workspace bound to this tenant, and its first `oak_` key.
-    /// Absent disables sign-up; the rest of the surface still serves
-    /// operator-provisioned accounts.
+    /// The tenant new accounts' personal workspaces are bound to, whether
+    /// they come from GitHub sign-in or (with `open_signup`) from
+    /// `POST /v1/accounts`. Absent disables both; the rest of the surface
+    /// still serves operator-provisioned accounts.
     #[serde(default)]
     pub signup_tenant: Option<String>,
+    /// Whether `POST /v1/accounts` makes an account (with its first
+    /// `oak_` key and session) for anyone who asks, without GitHub.
+    /// Off by default: on openagents.com accounts are made only by
+    /// signing in with GitHub (#11094). Local development and tests turn
+    /// it on.
+    #[serde(default)]
+    pub open_signup: bool,
+    /// With `open_signup` off, the environment variable holding an
+    /// operator token: a `POST /v1/accounts` carrying it as its bearer
+    /// still makes an account. For a staging smoke suite's test account;
+    /// production leaves it unset, so only GitHub sign-in makes accounts.
+    #[serde(default)]
+    pub operator_signup_token_env: Option<String>,
     /// How long a session stands from issue, in seconds. Default eight
     /// hours — a workday, not a standing credential.
     #[serde(default = "default_session_ttl")]

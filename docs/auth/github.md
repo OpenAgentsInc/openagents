@@ -41,7 +41,11 @@ never committed or logged. The owner keeps them at
   ```
 
   `signup_tenant` must be set: new accounts get a personal workspace bound
-  to it.
+  to it. GitHub sign-in is the only way accounts are made: `POST
+  /v1/accounts` (open sign-up, no GitHub) stays refused (`signup_disabled`)
+  unless `"open_signup": true`, which only local development sets. A
+  staging smoke suite can name `operator_signup_token_env`, an environment
+  variable whose token, sent as the bearer, makes one test account.
 
 ## Flow
 

@@ -36,6 +36,8 @@ fn review_answer(safe: f64, coherent: f64, score: f64) -> Value {
 fn account_config() -> config::Accounts {
     config::Accounts {
         signup_tenant: Some("acme".to_string()),
+        open_signup: true,
+        operator_signup_token_env: None,
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,

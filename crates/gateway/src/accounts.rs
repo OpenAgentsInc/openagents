@@ -1035,11 +1035,44 @@ async fn logout(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Res
     }
 }
 
+/// Whether the request carries the operator sign-up token
+/// (`accounts.operator_signup_token_env`), compared in constant time.
+fn operator_signup(state: &ServeState, headers: &HeaderMap) -> bool {
+    let Some(expected) = accounts_config(state)
+        .operator_signup_token_env
+        .as_deref()
+        .and_then(|name| std::env::var(name).ok())
+        .filter(|token| token.len() >= 32)
+    else {
+        return false;
+    };
+    let Some(given) = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+    else {
+        return false;
+    };
+    let (a, b) = (given.as_bytes(), expected.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 /// `POST /v1/accounts` — self-serve sign-up: the account, its personal
 /// workspace bound to the configured sign-up tenant, its first `oak_`
 /// key, and its first session, in one call. The key secret and the
 /// session token exist only in this response.
-async fn sign_up(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) -> Response {
+async fn sign_up(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if !accounts_config(&state).open_signup && !operator_signup(&state, &headers) {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "signup_disabled",
+            "Accounts are made by signing in with GitHub.",
+        );
+    }
     let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
         return refused(
             StatusCode::FORBIDDEN,

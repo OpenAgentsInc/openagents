@@ -46,6 +46,8 @@ struct Deployment {
 fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
     config::Accounts {
         signup_tenant: Some("acme".to_string()),
+        open_signup: true,
+        operator_signup_token_env: None,
         session_ttl_secs: 28_800,
         recovery_ttl_secs: 3_600,
         github: None,
@@ -1769,6 +1771,8 @@ async fn signup_and_anonymous_off_when_not_configured() {
     let deployment = deploy(
         Some(config::Accounts {
             signup_tenant: None,
+            open_signup: false,
+            operator_signup_token_env: None,
             session_ttl_secs: 28_800,
             recovery_ttl_secs: 3_600,
             github: None,
@@ -1784,6 +1788,41 @@ async fn signup_and_anonymous_off_when_not_configured() {
     let (status, body) = post(&deployment, "/v1/sessions", None, &json!({})).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(code(&body), "anonymous_disabled");
+}
+
+#[tokio::test]
+async fn open_signup_is_off_unless_configured_and_the_operator_token_still_signs_up() {
+    // A sign-up tenant alone (what GitHub sign-in needs) keeps
+    // `POST /v1/accounts` closed: accounts come from GitHub sign-in.
+    const VAR: &str = "GATEWAY_TEST_OPERATOR_SIGNUP_TOKEN";
+    let token = "o".repeat(48);
+    // SAFETY: this test alone reads and writes this variable.
+    unsafe { std::env::set_var(VAR, &token) };
+    let mut accounts = account_config(None);
+    accounts.open_signup = false;
+    accounts.operator_signup_token_env = Some(VAR.to_string());
+    let deployment = deploy(Some(accounts), false).await;
+    let (status, body) = post(&deployment, "/v1/accounts", None, &json!({"label": "ada"})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(code(&body), "signup_disabled");
+    let wrong = "x".repeat(48);
+    let (status, body) = post(
+        &deployment,
+        "/v1/accounts",
+        Some(&wrong),
+        &json!({"label": "ada"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, body) = post(
+        &deployment,
+        "/v1/accounts",
+        Some(&token),
+        &json!({"label": "smoke"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(body["session_token"].as_str().unwrap().starts_with("sess_"));
 }
 
 #[tokio::test]
@@ -1845,6 +1884,8 @@ async fn stores_install_under_accounts_config_and_validate() {
         inference: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
+            open_signup: true,
+            operator_signup_token_env: None,
             session_ttl_secs: 28_800,
             github: None,
             github_app: None,

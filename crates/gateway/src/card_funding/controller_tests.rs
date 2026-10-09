@@ -152,7 +152,7 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
     }
     let gateway:crate::config::Config=serde_json::from_value(json!({
         "v":crate::config::SCHEMA,"listen":"127.0.0.1:0","registry":root.path(),"require_workspace_membership":true,
-        "accounts":{"signup_tenant":"fixture"},"billing":{"provider":"stripe","prepaid":config},
+        "accounts":{"signup_tenant":"fixture","open_signup":true},"billing":{"provider":"stripe","prepaid":config},
         "doors":{"fixture":{"endpoint":"http://127.0.0.1:1"}},
         "money":{"ledger":root.path().join("money.jsonl"),"doors":{"fixture":{
             "price":{"version":"fixture-price","currency":"USD","model":"fixture-model","capacity":"shared","policy":crate::money::POLICY,

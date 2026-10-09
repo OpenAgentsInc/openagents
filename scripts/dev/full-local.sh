@@ -223,6 +223,7 @@ start() {
   "registry": "$state/gateway/registry",
   "accounts": {
     "signup_tenant": "signup",
+    "open_signup": true,
     "github": {
       "credentials": "$oauth",
       "redirect_url": "http://127.0.0.1:$web_port/auth/github/callback"
