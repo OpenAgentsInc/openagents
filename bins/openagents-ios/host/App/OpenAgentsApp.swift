@@ -32,6 +32,10 @@ struct OpenAgentsApp: App {
                     // `--connect-link URL` opens the app as the link would,
                     // for a simulator that cannot verify openagents.com.
                     if let link = AppTabLaunch.wallet("--connect-link") { bridge.connectLink(link) }
+                    // Screenshots: `--appearance light|dark|system` picks the
+                    // theme (saved), and `--shell-mode code` opens Code mode.
+                    if let theme = AppTabLaunch.wallet("--appearance") { bridge.chooseTheme(theme) }
+                    if AppTabLaunch.wallet("--shell-mode") == "code" { bridge.shell("mode", ["code": true]) }
                     #endif
                 }
                 // The desktop app's QR code is a universal link,
@@ -308,6 +312,10 @@ private struct ComputerRow: View {
 /// Gym menu (`SCR-01`). Rust says which one shows (`gym.screen`).
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
+    /// Opens the shell's drawer (#11126).
+    var openDrawer: () -> Void = {}
+    /// Report a problem with the screen on view (a long press on the menu).
+    var report: () -> Void = {}
     @Environment(\.appColors) private var appColors
     /// The sheet this host is showing, to tell a swipe from Rust closing it.
     @State private var shownSheet: String?
@@ -333,6 +341,11 @@ struct CoderTab: View {
                     NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
                                    followChanged: nil,
                                    surface: { resource, label in
+                                       if resource == "home-cards" {
+                                           return AnyView(HomeCardsSurface(cards: bridge.packet?.shell?.cards ?? []) {
+                                               bridge.shell("try_card", ["id": $0])
+                                           })
+                                       }
                                        if resource.hasPrefix("image:") {
                                            return AnyView(ChatImageSurface(resource: resource, label: label,
                                                                            bridge: bridge))
@@ -351,6 +364,12 @@ struct CoderTab: View {
             }
         }
         .toolbar(gym?.screen == "first_run" ? .hidden : .visible, for: .tabBar)
+        // The shell's top bar over the chat; every chat lists its own.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if (gym?.screen ?? "chat") == "chat", let shell = bridge.packet?.shell, shell.screen != "list" {
+                ShellTopBar(state: shell, bridge: bridge, openDrawer: openDrawer, report: report)
+            }
+        }
         // **Attach image**: the system photo picker; Rust decodes the photo.
         // Mounted only while the chat takes images; the phone is text only
         // since #10093 (`coder_tab::ATTACHMENTS_ENABLED`).

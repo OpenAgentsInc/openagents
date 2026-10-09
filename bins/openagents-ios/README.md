@@ -42,15 +42,25 @@ The app has four tabs, shown as icons:
   draws them (`GymViews.swift`) and sends back only the ID tapped.
   `--gym-first-run choose|end_card|chat|done` starts the first run at a
   step and `--gym-script "tap:ID|send:TEXT|sleep:N"` walks a flow, for
-  simulator checks. The chat itself opens on a new chat with OpenAgents, ready
-  to type: the composer (**Message OpenAgents**) has the cursor under a
-  header with the previous-chats button and the **OpenAgents** title.
-  Every chat goes to OpenAgents, even while a computer is ready; nothing on
-  the screen picks where (build 29 removed the **Cloud** selector). Above
-  the field sit only questions to send, on every new chat: up to four not
-  yet used on this phone, from an ordered list of ten; one tapped or typed
-  never shows again (build 30). Previous chats stay
-  behind the menu button, and Coder on a computer comes only from an offer
+  simulator checks. The app has no tab bar since #11126: a top bar with
+  the menu button, a **Chat** / **Code** switch on a new chat, and **New
+  chat** in a conversation; the menu opens a drawer with **Coder**,
+  **Computers**, **Wallet**, **Verse** (preview builds), **Settings**, the
+  recent chats with search and **See all…**, a **Chat** pill for a new
+  chat, and the account button. Rust owns the shell's state
+  (`openagents-chat-app` `coder_tab/shell.rs`); `Shell.swift` draws it.
+  `--drawer` opens on the drawer, `--shell-mode code` on Code mode, and
+  `--appearance light|dark|system` picks the theme, for screenshots. The
+  chat itself opens on a new chat with OpenAgents, ready to type: the
+  composer (**Ask OpenAgents**) under four feature cards to swipe through
+  (the list in `openagents-chat` `home_cards.rs`, shared with the
+  website), each with **Try it**, which starts a chat with its question.
+  Every chat goes to OpenAgents, even while a computer is ready. Code mode's
+  new chat (**Work with Coder**) starts Coder on the ready computer, with
+  the computer's recent Coder chats and its projects above the field and a
+  line naming where Coder runs; without a computer it offers **Connect a
+  computer**. A reply that took time starts with **Worked for 6s**, which
+  opens the steps. Coder on a computer otherwise comes only from an offer
   under a reply. The chat worker's `rank` job may order the questions once
   each time the tab shows; the phone's own order stands
   when it does not answer. Chat with OpenAgents needs no computer: each message

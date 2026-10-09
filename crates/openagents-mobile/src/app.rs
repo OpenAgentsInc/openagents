@@ -61,6 +61,12 @@ pub struct Launch {
     /// length is not bounded by the view's size.
     #[serde(default)]
     pub pulled_transcripts: bool,
+    /// The host draws the phone's shell (#11126): the top bar with the
+    /// Chat / Code switch, the drawer, and the feature cards, from the
+    /// packet's `shell`. The iOS host sets it; the Android host draws the
+    /// tab's own header.
+    #[serde(default)]
+    pub shell: bool,
     /// Run the Wallet tab on an offline fixture wallet, for simulator
     /// screenshots. Honored only in debug builds; it holds no money and
     /// reaches no network.
@@ -467,6 +473,10 @@ pub enum Request {
     /// **Profile**, from Account: the Chat tab shows the Profile sheet, and
     /// `coder_go` is `chat` so the host switches to it.
     Profile,
+    /// The phone's shell (#11126): the switch, the drawer, and the cards.
+    Shell {
+        shell: crate::coder_tab::ShellAction,
+    },
     /// The trainer's Verse world key (64 hex characters from the platform's
     /// protected store): it names the trainer on the menu, reads their XP,
     /// and signs their hosted test requests. Kept in memory only.
@@ -697,6 +707,8 @@ pub struct Packet {
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
     pub coder: Option<serde_json::Value>,
+    /// The phone's shell, when the host draws it (`Launch::shell`).
+    pub shell: Option<crate::coder_tab::ShellView>,
     /// The open Coder chat changes on its own, as while its task runs: ask
     /// for a packet again soon.
     pub coder_live: bool,
@@ -1066,6 +1078,7 @@ impl App {
                 .with_remote_cli(remote_cli)
                 .with_script(launch.chat_script.clone())
                 .with_pulled_transcripts(launch.pulled_transcripts)
+                .with_shell(launch.shell)
                 .with_basic(basic)
                 .with_threads(
                     openagents_chat_app::host_threads::HostThreads::new(Arc::new(
@@ -1698,6 +1711,10 @@ impl App {
             }
             Request::GymTrain => self.coder.train_coder(),
             Request::Profile => self.coder.show_profile(),
+            Request::Shell { shell } => {
+                self.coder
+                    .shell(shell, self.computers.as_mut(), &mut self.chats)
+            }
             Request::GymWorld { world_secret_hex } => {
                 if let Ok(world) = SecretKey::from_str(&world_secret_hex) {
                     self.world = Some(world);
@@ -2111,6 +2128,7 @@ impl App {
             self.coder.gym.standing = self.trainer.standing(&world);
         }
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
+        let shell = self.coder.shell_view(self.computers.as_ref(), &self.chats);
         let gym = self.coder.gym_view();
         for code in self.coder.gym.take_logged() {
             self.playtest.event(code);
@@ -2171,6 +2189,7 @@ impl App {
                         .collect(),
                 }),
             coder,
+            shell,
             // A payment request on the sheet keeps packets coming too.
             coder_live,
             chat_streaming: self.coder.streaming(),

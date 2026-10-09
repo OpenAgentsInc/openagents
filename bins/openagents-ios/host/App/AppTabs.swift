@@ -11,7 +11,7 @@ enum AppTab: String, CaseIterable {
         case .coder: "Chat"
         case .verse: "Verse"
         case .wallet: "Wallet"
-        case .account: "Account"
+        case .account: "Settings"
         }
     }
 
@@ -71,6 +71,15 @@ enum AppTabLaunch {
         return []
     }
 
+    /// `--drawer`: open on the drawer, for screenshots.
+    static var drawer: Bool {
+        #if DEBUG || targetEnvironment(simulator)
+        return ProcessInfo.processInfo.arguments.contains("--drawer")
+        #else
+        return false
+        #endif
+    }
+
     /// Wallet screenshots: `--wallet-section send`, `--wallet-method spark`,
     /// `--wallet-send TEXT` (reviewed once the wallet runs), and
     /// `--wallet-invoice AMOUNT` (made once the wallet runs), `--amount-format btc`
@@ -108,27 +117,45 @@ struct AppTabs: View {
     @State private var tab = AppTabLaunch.tab
     @StateObject private var place = PlaytestPlace()
     @StateObject private var reporter = ReportCoordinator()
+    /// The drawer (#11126) is open over the place on view.
+    @State private var drawer = AppTabLaunch.drawer
+    /// Settings opens on its first screen when this changes.
+    @State private var settingsHome = 0
+    @Environment(\.appColors) private var appColors
 
     var body: some View {
-        TabView(selection: $tab) {
-            CoderTab(bridge: bridge)
-                .tabIcon(.coder)
-            // The Verse and the Wallet are dark only for now (#11028). The
-            // Verse is a preview feature.
-            if Preview.on {
-                VerseTab(app: bridge, selected: tab == .verse, studioComputer: bridge.studioComputer,
-                         connectStudio: bridge.studioConnect) { bridge.gymTrain() }
-                    .environment(\.colorScheme, .dark)
-                    .tabIcon(.verse)
+        GeometryReader { proxy in
+            let width = min(proxy.size.width * 0.82, 360)
+            ZStack(alignment: .leading) {
+                if drawer {
+                    ShellDrawer(state: bridge.packet?.shell, bridge: bridge, go: go, close: closeDrawer)
+                        .frame(width: width)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+                current
+                    .clipShape(RoundedRectangle(cornerRadius: drawer ? 32 : 0, style: .continuous))
+                    .overlay {
+                        if drawer {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .fill(Color.black.opacity(appColors.scheme == .dark ? 0.35 : 0.12))
+                                .ignoresSafeArea()
+                                .onTapGesture(perform: closeDrawer)
+                                .accessibilityLabel("Close menu")
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityIdentifier("shell-close")
+                        }
+                    }
+                    .offset(x: drawer ? width : 0)
             }
-            WalletTab(bridge: bridge)
-                .environment(\.colorScheme, .dark)
-                .tabIcon(.wallet)
-            AccountTab(bridge: bridge)
-                .tabIcon(.account)
+            .animation(.snappy(duration: 0.3), value: drawer)
+            .background(appColors.background.ignoresSafeArea())
         }
-        // A long press on the tab bar reports the screen on view.
-        .background(TabBarLongPress { reporter.start(bridge: bridge, place: place) })
+        .onChange(of: drawer, initial: true) { _, open in
+            bridge.shell("drawer", ["open": open])
+            if open {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        }
         .sheet(item: $reporter.session) { session in
             ReportSheet(session: session, bridge: bridge)
         }
@@ -207,19 +234,69 @@ struct AppTabs: View {
     }
 }
 
-private extension View {
-    func tabIcon(_ tab: AppTab) -> some View {
-        tabItem {
-            Image(systemName: tab.symbol)
-                .accessibilityLabel(tab.title)
+extension AppTabs {
+    /// The place on view, each with the menu button that opens the drawer.
+    @ViewBuilder var current: some View {
+        switch tab {
+        case .coder:
+            CoderTab(bridge: bridge, openDrawer: openDrawer,
+                     report: { reporter.start(bridge: bridge, place: place) })
+        case .verse where Preview.on:
+            // The Verse and the Wallet are dark only for now (#11028). The
+            // Verse is a preview feature.
+            VerseTab(app: bridge, selected: true, studioComputer: bridge.studioComputer,
+                     connectStudio: bridge.studioConnect) { bridge.gymTrain() }
+                .environment(\.colorScheme, .dark)
+                .overlay(alignment: .topLeading) { menuButton.padding(.leading, 16).padding(.top, 4) }
+        case .wallet, .verse:
+            WalletTab(bridge: bridge)
+                .environment(\.colorScheme, .dark)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    HStack { menuButton; Spacer() }
+                        .padding(.horizontal, 16).padding(.top, 4)
+                        .background(Color.black.ignoresSafeArea())
+                        .environment(\.colorScheme, .dark)
+                }
+        case .account:
+            AccountTab(bridge: bridge, home: settingsHome, menu: { AnyView(menuButton) })
         }
-        .tag(tab)
+    }
+
+    private var menuButton: some View {
+        ShellMenuButton(open: openDrawer, report: { reporter.start(bridge: bridge, place: place) })
+    }
+
+    private func openDrawer() { drawer = true }
+    private func closeDrawer() { drawer = false }
+
+    /// Open a place from the drawer.
+    func go(_ id: String) {
+        switch id {
+        case "code":
+            bridge.shell("mode", ["code": true])
+            bridge.shell("new_chat")
+            tab = .coder
+        case "computers":
+            tab = .account
+            bridge.showNativeComputers()
+        case "wallet": tab = .wallet
+        case "verse" where Preview.on: tab = .verse
+        case "settings":
+            settingsHome += 1
+            tab = .account
+        default: tab = .coder
+        }
+        drawer = false
     }
 }
 
 /// Settings and the screens that used to be tabs.
 struct AccountTab: View {
     @ObservedObject var bridge: MobileBridge
+    /// Back to the first screen when it changes (the drawer's Settings).
+    var home = 0
+    /// The menu button that opens the drawer, on the first screen.
+    var menu: (() -> AnyView)?
     @Environment(\.appColors) private var appColors
     @State private var path = AppTabLaunch.route
     @EnvironmentObject private var place: PlaytestPlace
@@ -302,7 +379,12 @@ struct AccountTab: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(appColors.background.ignoresSafeArea())
-            .navigationTitle("Account")
+            .navigationTitle("Settings")
+            .toolbar {
+                if let menu {
+                    ToolbarItem(placement: .topBarLeading) { menu() }
+                }
+            }
             .navigationDestination(for: AccountRoute.self) { route in
                 destination(route)
                     .navigationBarTitleDisplayMode(.inline)
@@ -310,6 +392,7 @@ struct AccountTab: View {
             }
         }
         .onChange(of: bridge.computersRequested) { _, _ in path = [.computers] }
+        .onChange(of: home) { _, _ in path = [] }
         .onChange(of: bridge.screenRequest) { _, request in
             switch request.screen {
             case "keys": path = [.identity]

@@ -1,7 +1,7 @@
 // The release gate before a TestFlight build goes to testers (#11093): a
 // fresh install, signed out, against the live chat. It asks the questions
-// testers and Apple's reviewer start with, opens Wallet, and opens every
-// Account row, keeping a screenshot and the screen's text for each step so
+// testers and Apple's reviewer start with, opens Wallet and Settings from
+// the drawer (#11126), and opens every Settings row, keeping a screenshot and the screen's text for each step so
 // a person can check them. It needs the network, so it runs only when
 // `OPENAGENTS_UITEST_LIVE` is set (pass `TEST_RUNNER_OPENAGENTS_UITEST_LIVE=1`
 // and `TEST_RUNNER_OPENAGENTS_UITEST_SHOTS=DIR` to `xcodebuild test
@@ -29,7 +29,7 @@ final class ReleaseGateUITests: XCTestCase {
     }
 
     private func ask(_ app: XCUIApplication, _ question: String, _ name: String) {
-        let field = app.textViews["Message OpenAgents"]
+        let field = app.textViews["Ask OpenAgents"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         field.tap()
         field.typeText(question)
@@ -44,6 +44,17 @@ final class ReleaseGateUITests: XCTestCase {
         app.swipeDown()
         sleep(1)
         record(app, name + "-top")
+    }
+
+    /// Open a place from the drawer.
+    private func open(_ app: XCUIApplication, _ place: String) {
+        let menu = app.buttons["shell-menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        let row = app.buttons[place].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        sleep(1)
     }
 
     func testFreshInstallChatWalletAndAccount() throws {
@@ -63,40 +74,37 @@ final class ReleaseGateUITests: XCTestCase {
             "Can you help me write a short note to my team about a deadline moving to Friday?",
         ]
         for (index, question) in questions.enumerated() {
-            if index > 0, app.buttons["New chat"].exists { app.buttons["New chat"].tap() }
+            if index > 0, app.buttons["shell-new-chat"].exists { app.buttons["shell-new-chat"].tap() }
             ask(app, question, String(format: "%02d-ask", index + 1))
         }
 
-        // Put the keyboard away to reach the tab bar.
+        // Put the keyboard away, then open the drawer for Wallet.
         app.swipeDown()
-        let wallet = app.tabBars.buttons["Wallet"]
-        XCTAssertTrue(wallet.waitForExistence(timeout: 10))
-        wallet.tap()
+        open(app, "shell-place-wallet")
         sleep(6)
         record(app, "10-wallet")
 
-        let account = app.tabBars.buttons["Account"]
-        account.tap()
+        open(app, "shell-place-settings")
         sleep(3)
         record(app, "20-account")
         let rows = app.buttons.allElementsBoundByIndex
-            .filter { $0.isHittable && !$0.label.isEmpty }
+            .filter { $0.isHittable && !$0.label.isEmpty && $0.identifier != "shell-menu" }
             .map(\.label)
-            .filter { !["Chat", "Wallet", "Account"].contains($0) }
         for (index, row) in rows.enumerated() {
             if app.state != .runningForeground { app.activate(); sleep(2) }
-            if !app.tabBars.buttons["Account"].isSelected { app.tabBars.buttons["Account"].tap(); sleep(1) }
+            if !app.navigationBars["Settings"].exists { open(app, "shell-place-settings"); sleep(1) }
             let button = app.buttons[row].firstMatch
             guard button.waitForExistence(timeout: 5) else { continue }
             if !button.isHittable { app.swipeUp() }
             button.tap()
             sleep(3)
             record(app, String(format: "%02d-account-%@", 21 + index, row.replacingOccurrences(of: " ", with: "-")))
-            // Back to Account: from another app, a pushed screen, or a sheet.
+            // Back to Settings: from another app, a pushed screen, or a sheet.
             if app.state != .runningForeground {
                 app.activate()
                 sleep(2)
-            } else if app.navigationBars.buttons.firstMatch.exists, app.navigationBars.buttons.firstMatch.isHittable {
+            } else if app.navigationBars.buttons.firstMatch.exists, app.navigationBars.buttons.firstMatch.isHittable,
+                      app.navigationBars.buttons.firstMatch.identifier != "shell-menu" {
                 app.navigationBars.buttons.firstMatch.tap()
             } else {
                 app.swipeDown(velocity: .fast)

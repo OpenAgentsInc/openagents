@@ -75,6 +75,9 @@ use rust_native::{
 };
 use serde::{Deserialize, Serialize};
 
+mod shell;
+pub use shell::{ShellAction, ShellView};
+
 /// The largest message, as NIP-HOST `task.create` allows.
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
 const SHOWN_TASKS: usize = 50;
@@ -202,6 +205,12 @@ pub enum Intent {
     RefreshChanges,
     /// Publish the reviewed change on the computer (`task.publish`).
     PublishChanges,
+    /// Code mode (#11126): new Coder work goes to this project on this
+    /// computer.
+    CodeProject {
+        host: String,
+        workspace: String,
+    },
 }
 
 /// The chat card menu's choices the phone carries out. Rename needs a text
@@ -478,6 +487,9 @@ pub struct CoderTab {
     /// by task and sequence, so each is read once.
     outcome_read: Option<OutcomeRead>,
     outcome_tried: std::collections::BTreeSet<(String, u64)>,
+    /// The phone's shell (#11126): the host draws the top bar, the drawer,
+    /// and the feature cards, from [`CoderTab::shell_view`].
+    shell: shell::Shell,
 }
 
 /// A read of an ended Coder task's chat for the one line its start card
@@ -553,6 +565,7 @@ impl CoderTab {
             outcome_read: None,
             outcome_tried: std::collections::BTreeSet::new(),
             attachments: ATTACHMENTS_ENABLED,
+            shell: shell::Shell::default(),
         }
     }
 
@@ -1545,6 +1558,11 @@ impl CoderTab {
         else {
             return;
         };
+        self.run_intent(intent, computers, chats);
+    }
+
+    /// Carry out `intent`, from a tap on the view or from the shell.
+    fn run_intent(&mut self, intent: Intent, computers: Option<&mut Computers>, chats: &mut Chats) {
         match intent {
             Intent::Open { host, task } => {
                 self.drawer = false;
@@ -1705,6 +1723,7 @@ impl CoderTab {
                 self.run_offer(id, argv, runs_on, computers.as_deref());
             }
             Intent::Hub => self.hub(),
+            Intent::CodeProject { host, workspace } => self.choose_project(host, &workspace),
             Intent::Starter { id } => {
                 let Some(suggestion) = crate::first_run::SUGGESTIONS
                     .iter()
@@ -2349,7 +2368,7 @@ impl CoderTab {
         token: &str,
         value: &str,
         computers: Option<&mut Computers>,
-        _chats: &mut Chats,
+        chats: &mut Chats,
     ) {
         let Some(view) = self.current.as_ref() else {
             return;
@@ -2364,6 +2383,17 @@ impl CoderTab {
         // Text only while attachments are off: a draft that still holds
         // images sends its words alone.
         self.text_only();
+        // Code mode's new chat: Coder work on a computer (#11126).
+        if self.shell.on
+            && self.shell.code
+            && self.open.is_none()
+            && self.talk.is_none()
+            && self.threads.opened().is_none()
+            && !self.drawer
+        {
+            self.start_code(prompt, computers, chats);
+            return;
+        }
         // A Coder chat whose turn has ended, started from a conversation
         // here: the follow-up goes to that conversation, whose router
         // answers it from the run's result or hands it back to Coder
@@ -2908,8 +2938,11 @@ impl CoderTab {
                     let id = id.clone();
                     self.talk_view(&id, computers)
                 }
-                (None, None) => self.landing(),
+                (None, None) => self.landing(computers),
             };
+            if self.shell.on && !self.drawer {
+                shell::strip_header(&mut root);
+            }
             let detached = !self.pulled || source::detach(&mut root, &self.instance).is_ok();
             match View::new(self.instance.clone(), self.revision, root)
                 .validate()
@@ -3203,7 +3236,10 @@ impl CoderTab {
     /// sit only suggested questions (see [`CoderTab::candidates`]); previous
     /// chats stay behind the menu, and Coder on a computer comes only from
     /// an offer under a reply.
-    fn landing(&self) -> Node<Intent> {
+    fn landing(&self, computers: Option<&Computers>) -> Node<Intent> {
+        if self.shell.on {
+            return self.shell_landing(computers);
+        }
         let mut top = vec![];
         top.extend(self.back_button());
         top.extend([
@@ -3250,7 +3286,7 @@ impl CoderTab {
         children.extend(self.attachments());
         // The tab exists to write a message: it opens ready to type.
         children.push(self.composer_with(
-            "Message OpenAgents".to_owned(),
+            self.ask_words().to_owned(),
             true,
             false,
             &[],
@@ -3453,6 +3489,9 @@ impl CoderTab {
             },
         );
         let failed = rows.last().is_some_and(|row| row.key == "talk-failed");
+        if self.shell.on {
+            shell::worked(&mut rows, self.basic.turns(id), skipped);
+        }
         // What a proposed command printed scrolls with the conversation,
         // so a long result never pushes the composer off the screen.
         if let Some((talk, ran, CliOutcome::Output(lines))) = &self.cli
@@ -3567,7 +3606,7 @@ impl CoderTab {
         let focus = compose.is_some();
         children.extend(self.attachments());
         children.push(self.composer_with(
-            "Message OpenAgents".to_owned(),
+            self.ask_words().to_owned(),
             true,
             busy,
             &[],
@@ -3582,7 +3621,7 @@ impl CoderTab {
     /// computer when this device may operate it.
     fn thread_view(&mut self, computers: Option<&Computers>) -> Node<Intent> {
         let Some(shown) = self.threads.shown() else {
-            return self.landing();
+            return self.landing(computers);
         };
         let label = computers
             .and_then(|c| c.snapshot().host(&shown.host))

@@ -149,6 +149,9 @@ struct AppPacket: Decodable {
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
     let coder: NativeView?
+    /// The phone's shell (#11126): the Chat / Code switch, the feature
+    /// cards, and the drawer's rows while it is open.
+    let shell: ShellState?
     /// The open Coder chat changes on its own; ask for a packet sooner.
     let coder_live: Bool?
     /// A basic Coder reply is streaming; ask for packets every few hundred
@@ -455,6 +458,8 @@ final class MobileBridge: ObservableObject {
                 "native_computers": true,
                 // Its transcript layout reads chat rows from Rust.
                 "pulled_transcripts": true,
+                // It draws the shell: the top bar, the drawer, the cards.
+                "shell": true,
                 // The chat router's context names the build.
                 "app_build": "\(ReportDevice.version) (\(ReportDevice.build))",
             ]
@@ -563,6 +568,14 @@ final class MobileBridge: ObservableObject {
     /// Profile, from Account: Rust shows the Profile sheet on the Chat tab
     /// (`coder_go` is `chat`).
     func profile() { send(["op": "profile"]) }
+
+    /// A shell action (`coder_tab::ShellAction`): the switch, the drawer,
+    /// a recent chat, See all, or a card's Try it.
+    func shell(_ action: String, _ fields: [String: Any] = [:]) {
+        var shell = fields
+        shell["action"] = action
+        send(["op": "shell", "shell": shell])
+    }
 
     /// Text for the system share sheet, which Rust asked to open.
     @Published var gymShare: String?

@@ -28,7 +28,7 @@ final class SharedContractsUITests: XCTestCase {
     }
 
     private func field(_ app: XCUIApplication) -> XCUIElement {
-        let field = app.textViews["Message OpenAgents"]
+        let field = app.textViews["Ask OpenAgents"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         return field
     }
