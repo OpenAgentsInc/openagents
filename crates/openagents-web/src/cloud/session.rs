@@ -121,6 +121,10 @@ pub struct WorkspaceSelection {
 pub struct Viewer {
     pub account_id: String,
     pub account_label: String,
+    /// The verified email from the linked GitHub profile.
+    pub email: Option<String>,
+    /// The linked GitHub profile's picture, on GitHub's avatar host.
+    pub avatar_url: Option<String>,
     pub workspaces: Vec<Workspace>,
     pub workspace: Option<WorkspaceSelection>,
     pub session_id: String,
@@ -559,6 +563,12 @@ impl CloudSession {
         Ok(Viewer {
             account_id: account.clone(),
             account_label: label(details.account.label.as_deref().unwrap_or(&account))?,
+            email: details.account.email.clone(),
+            avatar_url: details
+                .account
+                .avatar_url
+                .clone()
+                .filter(|url| url.starts_with("https://avatars.githubusercontent.com/")),
             workspaces,
             workspace: selection,
             session_id: session.id,

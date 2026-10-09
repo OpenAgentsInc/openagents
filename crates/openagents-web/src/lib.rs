@@ -203,6 +203,7 @@ pub fn router(config: Config) -> Router {
         .merge(environments::routes(&app))
         .merge(cloud::routes())
         .merge(auth::routes())
+        .merge(account::routes())
         .merge(settings::routes())
         .merge(pilot::routes())
         .merge(ask::routes())

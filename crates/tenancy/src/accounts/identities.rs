@@ -122,6 +122,14 @@ impl GithubProfile {
             .map(|e| e.email.as_str())
     }
 
+    /// The account's picture on GitHub, when it is GitHub's own avatar host.
+    #[must_use]
+    pub fn avatar(&self) -> Option<&str> {
+        self.avatar_url
+            .as_deref()
+            .filter(|url| url.starts_with("https://avatars.githubusercontent.com/"))
+    }
+
     /// The bounds a record must keep before the store accepts it.
     pub fn validate(&self) -> Result<(), String> {
         let text = |value: &str| value.len() <= MAX_FIELD && !value.chars().any(char::is_control);
@@ -196,6 +204,12 @@ impl Book {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.github.is_empty()
+    }
+
+    /// The GitHub identity linked to `account`, if any.
+    #[must_use]
+    pub fn github_of(&self, account: &str) -> Option<&GithubIdentity> {
+        self.github.values().find(|identity| identity.account == account)
     }
 
     pub(super) fn validate(&self, store: &Store) -> Result<(), String> {

@@ -1103,6 +1103,9 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
                 "label": record.label,
                 "principals": record.principals,
                 "created": record.created,
+                "email": store.identities.github_of(&record.id)
+                    .and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())),
+                "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()),
             },
             "workspaces": workspaces,
         }),

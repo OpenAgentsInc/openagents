@@ -59,6 +59,7 @@ fn page(
     let account = Account::SignedIn {
         name: viewer.account_label.clone(),
         sign_out: service.logout_csrf(headers, viewer).ok(),
+        picture: viewer.avatar_url.is_some(),
     };
     protect(
         UiPage::new(title)

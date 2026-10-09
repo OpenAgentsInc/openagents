@@ -240,12 +240,19 @@ impl UiPage {
         let log_in = crate::auth::login_href(&self.return_to, false);
         let sign_up = crate::auth::login_href(&self.return_to, true);
         let sidebar = match account {
-            Account::SignedIn { name, sign_out } => {
+            Account::SignedIn {
+                name,
+                sign_out,
+                picture,
+            } => {
                 let mut menu = AccountMenu::new(name)
                     .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
                     .item(MenuItem::separator())
                     .item(MenuItem::link("Docs", DOCS).icon(Icon::Book))
                     .item(MenuItem::link("Download", DOWNLOAD).icon(Icon::Download));
+                if picture {
+                    menu = menu.picture(crate::account::AVATAR);
+                }
                 let sign_out = sign_out.filter(|_| forms);
                 if sign_out.is_some() {
                     menu = menu.item(MenuItem::separator()).item(
@@ -526,6 +533,7 @@ mod tests {
         let html = page(Account::SignedIn {
             name: "Ada <Lovelace>".into(),
             sign_out: Some("token".into()),
+            picture: false,
         });
         let footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
         let account = html.find("<div class=\"oa-account\">").expect("account");
@@ -551,6 +559,7 @@ mod tests {
             .account(Account::SignedIn {
                 name: "a".into(),
                 sign_out: Some("t".into()),
+                picture: true,
             })
             .render(&HeaderMap::new())
             .into_string();

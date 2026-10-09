@@ -377,6 +377,12 @@ pub struct AccountInfo {
     /// When it was created.
     #[serde(default)]
     pub created: Option<String>,
+    /// The verified address from the linked GitHub profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// The linked GitHub profile's picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
 }
 
 /// One workspace as the member may see it.

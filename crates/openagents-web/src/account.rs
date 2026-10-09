@@ -11,12 +11,108 @@
 //! [`crate::cloud::session::shared`], so a Cloud page's own
 //! `authenticate` reuses the view this lookup read (docs/auth).
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+use axum::Router;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, Method, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
 
 use crate::App;
+
+/// Where the signed-in account's picture is served from this site, so the
+/// page's image policy (`img-src 'self'`) allows it.
+pub const AVATAR: &str = "/account/avatar";
+
+/// The largest picture kept, in bytes.
+const AVATAR_MAX_BYTES: usize = 512 * 1024;
+
+pub(crate) fn routes() -> Router<App> {
+    Router::new().route(AVATAR, get(avatar))
+}
+
+/// Pictures already fetched from GitHub, by picture address.
+fn pictures() -> &'static Mutex<HashMap<String, (String, Vec<u8>)>> {
+    static PICTURES: OnceLock<Mutex<HashMap<String, (String, Vec<u8>)>>> = OnceLock::new();
+    PICTURES.get_or_init(Default::default)
+}
+
+/// The signed-in account's GitHub picture, fetched once and kept.
+async fn avatar(State(app): State<App>, headers: HeaderMap) -> Response {
+    let Some(service) = app.config.cloud.as_deref() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Ok(viewer) = service.authenticate(&headers).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(url) = viewer.avatar_url else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let kept = pictures().lock().ok().and_then(|p| p.get(&url).cloned());
+    let (kind, bytes) = match kept {
+        Some(found) => found,
+        None => match fetch_picture(&url).await {
+            Some(found) => {
+                if let Ok(mut kept) = pictures().lock() {
+                    if kept.len() > 1024 {
+                        kept.clear();
+                    }
+                    kept.insert(url, found.clone());
+                }
+                found
+            }
+            None => return StatusCode::NOT_FOUND.into_response(),
+        },
+    };
+    let mut response = bytes.into_response();
+    let headers = response.headers_mut();
+    if let Ok(kind) = HeaderValue::from_str(&kind) {
+        headers.insert(header::CONTENT_TYPE, kind);
+    }
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=3600"),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    response
+}
+
+async fn fetch_picture(url: &str) -> Option<(String, Vec<u8>)> {
+    if !url.starts_with("https://avatars.githubusercontent.com/") {
+        return None;
+    }
+    let sized = if url.contains('?') {
+        format!("{url}&s=64")
+    } else {
+        format!("{url}?s=64")
+    };
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .ok()?
+        .get(sized)
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let kind = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| matches!(*v, "image/png" | "image/jpeg" | "image/gif" | "image/webp"))?
+        .to_owned();
+    let bytes = response.bytes().await.ok()?;
+    (bytes.len() <= AVATAR_MAX_BYTES).then(|| (kind, bytes.to_vec()))
+}
 
 /// The Cloud session cookie ([`crate::cloud::session`]).
 const SESSION_COOKIE: &str = "oa_cloud_session";
@@ -30,10 +126,12 @@ pub enum Account {
     Unknown,
     /// Sign-in is available and the visitor is not signed in.
     SignedOut,
-    /// Signed in as `name`; `sign_out` is the sign-out form's CSRF token.
+    /// Signed in as `name`; `sign_out` is the sign-out form's CSRF token;
+    /// `picture` when the account has a profile picture ([`AVATAR`]).
     SignedIn {
         name: String,
         sign_out: Option<String>,
+        picture: bool,
     },
 }
 
@@ -78,6 +176,7 @@ async fn resolve(app: &App, method: &Method, headers: &HeaderMap) -> Account {
     match service.authenticate(headers).await {
         Ok(viewer) => Account::SignedIn {
             sign_out: service.logout_csrf(headers, &viewer).ok(),
+            picture: viewer.avatar_url.is_some(),
             name: viewer.account_label,
         },
         Err(_) => Account::SignedOut,

@@ -85,6 +85,7 @@ impl Render for Breadcrumb {
 pub struct AccountMenu {
     id: String,
     name: String,
+    picture: Option<String>,
     items: Vec<MenuItem>,
 }
 
@@ -95,6 +96,7 @@ impl AccountMenu {
         Self {
             id: "oa-account-menu".to_owned(),
             name: name.into(),
+            picture: None,
             items: Vec::new(),
         }
     }
@@ -103,6 +105,14 @@ impl AccountMenu {
     #[must_use]
     pub fn id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();
+        self
+    }
+
+    /// The account's picture, served from this site; the initial shows
+    /// without one.
+    #[must_use]
+    pub fn picture(mut self, url: impl Into<String>) -> Self {
+        self.picture = Some(url.into());
         self
     }
 
@@ -117,7 +127,10 @@ impl AccountMenu {
 impl Render for AccountMenu {
     fn render(&self) -> Markup {
         let trigger = html! {
-            (Avatar::new().name(&self.name).size(AvatarSize::Px28))
+            (match &self.picture {
+                Some(url) => Avatar::new().name(&self.name).image_url(url).size(AvatarSize::Px28),
+                None => Avatar::new().name(&self.name).size(AvatarSize::Px28),
+            })
             span class="oa-account-name" { (self.name) }
         };
         html! {
