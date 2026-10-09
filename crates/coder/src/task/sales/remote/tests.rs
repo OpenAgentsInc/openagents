@@ -294,6 +294,7 @@ fn a_journaled_unsettled_effect_reconciles_once_and_revocation_refuses_everythin
     journal.entries.insert(
         "lost-reply".into(),
         Entry {
+            ledger: Ledger::Pipeline,
             digest: digest(&bytes),
             command: String::from_utf8(bytes.clone()).unwrap(),
             at: 1000,

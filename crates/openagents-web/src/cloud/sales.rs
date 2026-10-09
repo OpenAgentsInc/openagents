@@ -728,8 +728,12 @@ fn stage_value(stage: Stage) -> String {
 
 // ---- Routes ---------------------------------------------------------------
 
+#[path = "sales_floor.rs"]
+mod floor;
+
 pub(super) fn routes() -> Router<App> {
     Router::new()
+        .merge(floor::routes())
         .route(PAGE, get(index))
         .route("/cloud/app/sales/{id}/leads/{lead}", get(record))
         .route(
@@ -824,6 +828,9 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
                     effects_label(&standing.effects),
                 ));
                 content.push_str(&views::nav(delegation.id(), ""));
+                if standing.supervise {
+                    content.push_str(&floor::floor_link(delegation.id()));
+                }
             }
             Err(Failure::Session(error)) => return refused(error),
             Err(error) => {

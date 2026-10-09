@@ -144,6 +144,7 @@ impl Store {
                     (Severity::Immediate, "authentication_failure")
                 }
                 outbox::IncidentKind::HardBounce => (Severity::Review, "hard_bounce"),
+                outbox::IncidentKind::OwnerStop => (Severity::Review, "owner_stop"),
             };
             all.push(Escalation {
                 severity,

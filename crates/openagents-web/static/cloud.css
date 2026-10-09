@@ -9,3 +9,4 @@
 .cloud button:active{background:var(--noir-control-pressed)}
 .cloud input,.cloud textarea{caret-color:var(--noir-cursor);accent-color:var(--noir-accent)}
 .cloud input::placeholder,.cloud textarea::placeholder{color:var(--noir-content-secondary)}
+.cloud .sales-board-live{animation:sales-board-expire 1ms step-end 3s forwards}@keyframes sales-board-expire{to{visibility:hidden}}

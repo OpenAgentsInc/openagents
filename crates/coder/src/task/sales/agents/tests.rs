@@ -5,6 +5,7 @@ mod helpers;
 #[path = "../paul/tests.rs"]
 mod paul;
 mod qualification;
+mod remote_floor;
 mod replies;
 mod training;
 fn now() -> u64 {

@@ -534,6 +534,37 @@ verified cleanup record exists). `"weekly":{"input":...,"evidence_root":...}`
 names the owner's private weekly manifest; the review is rebuilt on each read
 and refused when its sources are stale against current custody.
 
+### Sales floor supervision
+
+A binding may also carry `"supervise": true`, an optional private
+`"hires"` crew hiring book (read only), an optional `"mailbox_key"` (kept on
+the owner host; without it an approval refuses), and the outbox effects
+`outbox_decide` and `outbox_stop`. Supervision answers only when the bound
+principal is the pipeline owner. `/cloud/app/sales/{id}/floor` then shows
+Paul's queue, the crew and stations, certification, model reservations with
+unknown holds, the floor report and escalations, outbox states (unknown
+delivery is never resent), untrusted replies (no payload; they authorize
+nothing), and meeting proposals (they book nothing), all without contacts or
+message bodies, against the America/Chicago business day and the fixed USD 5
+floor-wide ceiling.
+
+`/cloud/app/sales/{id}/outbox/{proposal}` shows one exact subject verbatim
+and offers no editing. **Approve** or **Reject** binds that subject digest and
+the original outbox revision in the form and its CSRF target; the site
+rereads the proposal before dispatch, and the owner rechecks the subject, the
+controller, the reserved day, and current authority. Approval is not
+dispatch. **Stop dispatch** pauses the outbox controller (an `owner_stop`
+incident): pending handoffs are fenced and unknown deliveries keep their
+state; restart stays an owner correction on the sales host. Both effects use
+the same request journal, exact retry, and **Outcome unknown** recovery as
+stage changes (`directory/sales-requests/outbox-*.json`).
+
+The private Agora board (`.../floor/board`, refreshed every second) shows
+counts only, never a bell event, record, or person-linked amount. An
+observation older than three seconds, a failed refresh, or a lost session
+renders a cleared board, and the page hides any board three seconds after it
+arrived, so an inactive view does not keep one.
+
 ## Billing statements and commercial lanes
 
 `/cloud/app/billing` is reachable once a workspace is selected. Each lane is

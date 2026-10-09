@@ -71,7 +71,7 @@ Older sales gap tables and runbooks retain their dated context.
 | Alice and Devin | Local Devin ACP execution exists. Alice identity, memory, steering, and jobs use the workshop host. | Alice-on-Devin [#10929](https://github.com/OpenAgentsInc/openagents/issues/10929), placement on two computers [#10930](https://github.com/OpenAgentsInc/openagents/issues/10930), and parallel queue [#10931](https://github.com/OpenAgentsInc/openagents/issues/10931) remain open. |
 | Accounts and finance | Canonical attribution [#10826](https://github.com/OpenAgentsInc/openagents/issues/10826), native funding controls [#10830](https://github.com/OpenAgentsInc/openagents/issues/10830), and joined original statements [#10831](https://github.com/OpenAgentsInc/openagents/issues/10831) are code-complete. | Bind the web session to current native authority. Common BTC, native USD, retail credit, service invoices, and payouts retain their original policies. |
 | Teams | [#10847–#10850](https://github.com/OpenAgentsInc/openagents/issues/10850) provide scoped limits, policy, reports, and joined recovery. | Qualify each enabled browser route. Existing native qualification does not establish enforcement on every cloud, plugin, or customer host. |
-| Sales floor | Paul, approvals, outbox, reply review, meetings, and private boards landed. REV-64, REV-65, and REV-70–REV-72 also landed hiring, reporting, day plans, earned aggregates, and partner/referral desks. | Browser controls are new integration. Exact reviewed batches [#10873](https://github.com/OpenAgentsInc/openagents/issues/10873) and conditional follow-up/channel/voice/jurisdiction work retain their existing issues and qualification. |
+| Sales floor | Paul, approvals, outbox, reply review, meetings, and private boards landed. REV-64, REV-65, and REV-70–REV-72 also landed hiring, reporting, day plans, earned aggregates, and partner/referral desks. | WEB-15 supervises them in the browser through the sales-owner adapter (floor, exact outbox decisions, stop dispatch, private board); hire/retire and reply-review controls stay on the sales host. Exact reviewed batches [#10873](https://github.com/OpenAgentsInc/openagents/issues/10873) and conditional follow-up/channel/voice/jurisdiction work retain their existing issues and qualification. |
 
 Closed implementation issues remain closed while owner qualification is pending.
 Display each lane as **Unavailable**, **Proposed**, **Qualified**, or **Available**
@@ -514,7 +514,7 @@ private events behind it.
 
 Native hiring/retirement REV-64, reporting REV-65, Bob/day plans REV-70, earned
 bell/aggregates REV-71, and partner/referral integration REV-72 are code-complete.
-Their browser projections remain new work. Reviewed batches REV-66 remain open.
+WEB-15 projects them read-only in the browser beside exact outbox decisions and Stop dispatch; hiring, retirement, and reply review stay on the sales host. Reviewed batches REV-66 remain open.
 Standing follow-ups,
 another public-reply channel, voice participation, and another jurisdiction
 (REV-73–REV-76) retain their conditional scope and owner gates. Browser support

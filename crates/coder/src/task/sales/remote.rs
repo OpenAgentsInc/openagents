@@ -19,7 +19,7 @@
 use super::claims::{Decision, RegisterEntry};
 use super::{
     Audit, CustomerDecision, DataBoundary, Lead, PermissionState, Receipt, Result, Role, Stage,
-    Store, digest,
+    Store, digest, outbox,
 };
 use receipts::sales_funnel::Journey;
 use receipts::service_sale::Sale;
@@ -33,6 +33,9 @@ use std::sync::Mutex;
 pub const CONFIG_SCHEMA: &str = "openagents.sales.remote-bindings.v1";
 pub const REQUEST_SCHEMA: &str = "openagents.sales.remote-request.v1";
 pub const RESPONSE_SCHEMA: &str = "openagents.sales.remote-response.v1";
+/// The receipt an outbox decision or stop answers with; its revision is the
+/// outbox book's revision after the command.
+pub const OUTBOX_RECEIPT_SCHEMA: &str = "openagents.sales.remote-outbox-receipt.v1";
 const JOURNAL_SCHEMA: &str = "openagents.sales.remote-journal.v1";
 /// One command plus its envelope.
 pub const BODY_MAX: usize = super::MAX_COMMAND + 8 * 1024;
@@ -43,6 +46,16 @@ const BINDINGS_MAX: usize = 64;
 const AUDIT_MAX: usize = 200;
 const HISTORY_MAX: usize = 300;
 const WEEKLY_MAX: u64 = 1024 * 1024;
+
+#[path = "remote/floor.rs"]
+mod floor;
+pub use floor::{
+    Attachment, Certification, Escalation, Incident, MeetingRow, Member, Outbox, OutboxRow, Paul,
+    PaulRow, ReplyRow, Reservation, TIMEZONE,
+};
+pub use floor::{
+    BOARD_SCHEMA, BOARD_TTL_SECONDS, Board, FLOOR_SCHEMA, Floor, PROPOSAL_SCHEMA, Proposal,
+};
 
 /// The effects a binding may admit. Operations outside this set (service
 /// sales, acquisition, partners, funnel journeys) need their own reviewed
@@ -57,6 +70,10 @@ pub enum Effect {
     RejectHandoff,
     Suppress,
     Delete,
+    /// Decide one exact outbox subject at its original outbox revision.
+    OutboxDecide,
+    /// Stop outbound dispatch: pause the outbox controller (REV-62).
+    OutboxStop,
 }
 
 impl Effect {
@@ -73,6 +90,26 @@ impl Effect {
             _ => return None,
         })
     }
+
+    fn of_outbox(operation: &outbox::Operation) -> Option<Self> {
+        match operation {
+            outbox::Operation::Decide { .. } => Some(Self::OutboxDecide),
+            outbox::Operation::Pause {
+                incident: outbox::IncidentKind::OwnerStop,
+                ..
+            } => Some(Self::OutboxStop),
+            _ => None,
+        }
+    }
+}
+
+/// Which canonical book a journaled command belongs to.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum Ledger {
+    #[default]
+    Pipeline,
+    Outbox,
 }
 
 #[derive(Deserialize)]
@@ -118,6 +155,17 @@ struct Binding {
     /// The narrowing allowlist. Empty means observation only.
     #[serde(default)]
     effects: Vec<Effect>,
+    /// Admit owner-only floor supervision reads (floor, exact outbox
+    /// subjects, private board). The principal must still be the owner.
+    #[serde(default)]
+    supervise: bool,
+    /// A private crew hiring book naming confirmed hires, read only.
+    #[serde(default)]
+    hires: Option<PathBuf>,
+    /// The sales mailbox key the owner's approval rechecks; without it an
+    /// approval refuses and only rejection is possible.
+    #[serde(default)]
+    mailbox_key: Option<PathBuf>,
 }
 
 impl Binding {
@@ -192,6 +240,14 @@ pub enum Op {
     /// The owner's earned-sale ledger over original settlements and
     /// reconciled delivery. Reading it rings no bell. Owner only.
     Earned,
+    /// Owner-only floor supervision projection.
+    Floor,
+    /// One exact outbox subject for review.
+    Proposal { proposal: String },
+    /// The private Agora board, current for three seconds.
+    Board,
+    /// One exact outbox command (decide or stop); its `id` must equal `request`.
+    Outbox { request: String, command: String },
 }
 
 /// One record's commercial projection without contact, source text, or the
@@ -440,6 +496,8 @@ pub struct Standing {
     pub principal: String,
     pub role: Role,
     pub effects: Vec<Effect>,
+    /// Floor supervision reads are admitted for this binding.
+    pub supervise: bool,
 }
 
 /// The answer to a reconcile request.
@@ -532,6 +590,8 @@ impl Reply {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
+    #[serde(default)]
+    ledger: Ledger,
     digest: String,
     /// Exact bytes while unsettled, held beside the owner so reconciliation
     /// never needs the site. Cleared once a receipt is recorded.
@@ -624,7 +684,37 @@ impl Service {
                 } else {
                     binding.effects.clone()
                 },
+                supervise: binding.supervise && role == Role::Owner,
             })),
+            Op::Floor => {
+                supervising(binding, role)?;
+                let floor = store
+                    .remote_floor(&access, binding.hires.as_deref())
+                    .map_err(|_| Code::Unavailable)?;
+                serde_json::to_value(floor).map_err(|_| Code::Unavailable)
+            }
+            Op::Proposal { proposal } => {
+                supervising(binding, role)?;
+                super::id(&proposal).map_err(|_| Code::InvalidRequest)?;
+                // Absent, minimized, and unreadable subjects answer alike.
+                let proposal = store
+                    .remote_proposal(&access, &proposal)
+                    .map_err(|_| Code::AccessDenied)?;
+                serde_json::to_value(proposal).map_err(|_| Code::Unavailable)
+            }
+            Op::Board => {
+                supervising(binding, role)?;
+                let board = store.remote_board(&access).map_err(|_| Code::Unavailable)?;
+                serde_json::to_value(board).map_err(|_| Code::Unavailable)
+            }
+            Op::Outbox { request, command } => {
+                if role != Role::Owner {
+                    return Err(Code::AccessDenied);
+                }
+                let receipt =
+                    self.outbox(&config, binding, &mut store, &access, &request, command)?;
+                Ok(json!(receipt))
+            }
             Op::List { after, limit } => {
                 if after.as_deref().is_some_and(|a| !record_id(a)) {
                     return Err(Code::InvalidRequest);
@@ -816,9 +906,22 @@ impl Service {
                     return Ok(json!(Settled::Recorded { receipt }));
                 }
                 // The binding may have narrowed since this was journaled.
-                let parsed: super::Command =
-                    serde_json::from_str(&entry.command).map_err(|_| Code::Unavailable)?;
-                if !Effect::of(&parsed.operation).is_some_and(|e| binding.effects.contains(&e)) {
+                let effect = match entry.ledger {
+                    Ledger::Pipeline => {
+                        let parsed: super::Command =
+                            serde_json::from_str(&entry.command).map_err(|_| Code::Unavailable)?;
+                        Effect::of(&parsed.operation)
+                    }
+                    Ledger::Outbox => {
+                        if role != Role::Owner {
+                            return Err(Code::AccessDenied);
+                        }
+                        let parsed: outbox::Command =
+                            serde_json::from_str(&entry.command).map_err(|_| Code::Unavailable)?;
+                        Effect::of_outbox(&parsed.operation)
+                    }
+                };
+                if !effect.is_some_and(|e| binding.effects.contains(&e)) {
                     return Err(Code::AccessDenied);
                 }
                 let receipt = dispatch(
@@ -857,10 +960,70 @@ impl Service {
         if !binding.effects.contains(&effect) {
             return Err(Code::AccessDenied);
         }
+        self.admit(
+            config,
+            binding,
+            store,
+            access,
+            request,
+            command,
+            Ledger::Pipeline,
+        )
+    }
+
+    /// One exact owner outbox command: decide an exact subject or stop
+    /// dispatch. Nothing else in the outbox book is reachable remotely.
+    fn outbox(
+        &self,
+        config: &Config,
+        binding: &Binding,
+        store: &mut Store,
+        access: &super::Access,
+        request: &str,
+        command: String,
+    ) -> std::result::Result<Receipt, Code> {
+        super::id(request).map_err(|_| Code::InvalidRequest)?;
+        if command.len() > super::MAX_COMMAND {
+            return Err(Code::InvalidRequest);
+        }
+        let parsed: outbox::Command =
+            serde_json::from_str(&command).map_err(|_| Code::InvalidRequest)?;
+        if parsed.id != request || parsed.schema != outbox::COMMAND_SCHEMA {
+            return Err(Code::InvalidRequest);
+        }
+        let effect = Effect::of_outbox(&parsed.operation).ok_or(Code::AccessDenied)?;
+        if !binding.effects.contains(&effect) {
+            return Err(Code::AccessDenied);
+        }
+        self.admit(
+            config,
+            binding,
+            store,
+            access,
+            request,
+            command,
+            Ledger::Outbox,
+        )
+    }
+
+    /// Journal an exact command's retry identity, then dispatch it once.
+    #[allow(clippy::too_many_arguments)]
+    fn admit(
+        &self,
+        config: &Config,
+        binding: &Binding,
+        store: &mut Store,
+        access: &super::Access,
+        request: &str,
+        command: String,
+        ledger: Ledger,
+    ) -> std::result::Result<Receipt, Code> {
         let exact = digest(command.as_bytes());
         let mut journal = Journal::load(&config.journal, binding)?;
         match journal.entries.get(request) {
-            Some(entry) if entry.digest != exact => return Err(Code::Conflict),
+            Some(entry) if entry.digest != exact || entry.ledger != ledger => {
+                return Err(Code::Conflict);
+            }
             Some(Entry {
                 receipt: Some(receipt),
                 ..
@@ -883,6 +1046,7 @@ impl Service {
                 journal.entries.insert(
                     request.into(),
                     Entry {
+                        ledger,
                         digest: exact,
                         command: command.clone(),
                         at: (self.clock)(),
@@ -915,7 +1079,14 @@ fn dispatch(
     request: &str,
     command: &str,
 ) -> std::result::Result<Receipt, Code> {
-    let result = store.apply(access, command.as_bytes());
+    let ledger = journal
+        .entries
+        .get(request)
+        .map_or(Ledger::Pipeline, |e| e.ledger);
+    let result = match ledger {
+        Ledger::Pipeline => store.apply(access, command.as_bytes()),
+        Ledger::Outbox => dispatch_outbox(binding, store, access, command),
+    };
     let receipt = match result {
         Ok(receipt) => receipt,
         Err(message) => {
@@ -944,6 +1115,65 @@ fn dispatch(
     }
     journal.save(&config.journal, binding)?;
     Ok(receipt)
+}
+
+/// A mailbox key source that is never present: an approval then refuses.
+struct NoMailbox;
+
+impl super::email::MailboxCredentials for NoMailbox {
+    fn load(&self, _account: &str) -> Result<super::email::MailboxSecret> {
+        Err("sales mailbox key is not bound to this remote binding".into())
+    }
+}
+
+/// Apply one outbox command through the canonical owner book and phrase its
+/// result as a receipt. The mailbox key stays on the owner host.
+fn dispatch_outbox(
+    binding: &Binding,
+    store: &mut Store,
+    access: &super::Access,
+    command: &str,
+) -> Result<Receipt> {
+    let parsed: outbox::Command =
+        serde_json::from_str(command).map_err(|_| "malformed outbox command")?;
+    let keys: Box<dyn super::email::MailboxCredentials> = match &binding.mailbox_key {
+        Some(path) => {
+            let view = store.email_view(access)?;
+            let current = view["current"]
+                .as_str()
+                .ok_or("email configuration unavailable")?;
+            let account = view["configurations"]
+                .as_array()
+                .and_then(|rows| rows.iter().find(|r| r["sha256"].as_str() == Some(current)))
+                .and_then(|r| r["config"]["credential_account"].as_str())
+                .ok_or("email account unavailable")?;
+            Box::new(super::email::FileAccount::new(account, path)?)
+        }
+        None => Box::new(NoMailbox),
+    };
+    let revision = store.apply_sales_outbox(access, command.as_bytes(), keys.as_ref())?;
+    let (lead, outcome) = match &parsed.operation {
+        outbox::Operation::Decide {
+            proposal, approve, ..
+        } => (
+            proposal.clone(),
+            if *approve {
+                "outbox_approved"
+            } else {
+                "outbox_rejected"
+            },
+        ),
+        _ => ("outbox".to_string(), "outbox_stopped"),
+    };
+    Ok(Receipt {
+        schema: OUTBOX_RECEIPT_SCHEMA.into(),
+        command_digest: digest(command.as_bytes()),
+        lead,
+        revision,
+        sequence: 0,
+        at: (store.clock)(),
+        outcome: outcome.into(),
+    })
 }
 
 impl Journal {
@@ -1018,12 +1248,17 @@ fn load(path: &Path) -> Result<Config> {
                 .bytes()
                 .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
             || b.members_epoch > 9_007_199_254_740_991
-            || b.effects.len() > 7
+            || b.effects.len() > 9
         {
             return Err("invalid sales remote binding".into());
         }
-        if b.credential.starts_with(&config.root) || b.credential.starts_with(&root) {
-            return Err("sales credentials must be outside the host task root".into());
+        for path in std::iter::once(&b.credential)
+            .chain(b.mailbox_key.as_ref())
+            .chain(b.hires.as_ref())
+        {
+            if !path.is_absolute() || path.starts_with(&config.root) || path.starts_with(&root) {
+                return Err("sales credentials must be outside the host task root".into());
+            }
         }
     }
     Ok(config)
@@ -1041,6 +1276,15 @@ pub fn record_id(value: &str) -> bool {
 /// Compare equal-length digests without an early exit.
 fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// Floor supervision reads need the binding's grant and the owner role.
+fn supervising(binding: &Binding, role: Role) -> std::result::Result<(), Code> {
+    if binding.supervise && role == Role::Owner {
+        Ok(())
+    } else {
+        Err(Code::AccessDenied)
+    }
 }
 
 #[cfg(test)]

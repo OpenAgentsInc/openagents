@@ -228,6 +228,8 @@ pub enum IncidentKind {
     SuppressionBreach,
     AuthenticationFailure,
     HardBounce,
+    /// The owner stopped outbound dispatch; nothing failed.
+    OwnerStop,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
