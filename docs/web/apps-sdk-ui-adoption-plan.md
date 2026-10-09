@@ -17,6 +17,7 @@ mode. Coder Noir stays as the dark theme.
 | `~/work/projects/repos/apps-sdk-ui` (`@openai/apps-sdk-ui` 0.2.2, commit `0f00143`, MIT) | The reference design system: React components over CSS modules, Tailwind 4 tokens, 755 icons | Read-only reference |
 | `~/work/autopilot4-deprecated/src/apps_sdk_icons.rs` (commit `b94fe7a`, "Add Apps SDK icon component gallery") | All 755 icons already converted to a dependency-free Rust and Maud module (3,043 lines; `AppsSdkIcon { name, svg }`, `apps_sdk_icon_named`) | Pull in (phase 1) |
 | `~/work/autopilot4-deprecated/src/ui_components/` and `static/styles/foundations/` | Earlier Maud components and tokens | **Do not reuse.** They follow shadcn and an older `--oa-*` palette, not Apps SDK UI |
+| A saved snapshot of the live ChatGPT web app (Codex view, dark), studied with `scripts/web-ui-snapshot-reference.py` | How the shipping product applies the same design language | Reference only: [chatgpt-ui-reference.md](chatgpt-ui-reference.md). The snapshot is not committed (it carries account identifiers), and its stylesheet is not licensed to us, so values and CSS come from Apps SDK UI |
 
 Apps SDK UI is MIT licensed. Ported token values, component CSS and icon paths
 carry its copyright notice in a `NOTICE` file in the crate that holds them,
@@ -53,6 +54,52 @@ as `crates/coder-ui/NOTICE` already does for its sources.
   SegmentedControl, Select, Slider, Switch and Tooltip use Radix for focus,
   keyboard and positioning. Those are the components that need care without
   React (see "Behavior without React").
+
+## What the live ChatGPT app shows
+
+[chatgpt-ui-reference.md](chatgpt-ui-reference.md) is generated from a saved
+page of the ChatGPT web app. Regenerate it with:
+
+```sh
+scripts/web-ui-snapshot-reference.py SNAPSHOT.html --out docs/web/chatgpt-ui-reference.md
+```
+
+The script reads only tag names, class names, roles and enum-like `data-*`
+values, maps each utility to its compiled rule and tokens, and groups usage by
+page area and component. What it shows:
+
+- **Same token system.** The page defines all 723 Apps SDK UI tokens, plus
+  about 1,000 product-only properties. Its utilities resolve to those tokens:
+  `bg-secondary-soft` is `background-color: var(--color-background-secondary-soft)`,
+  `border-default` is `var(--color-border)`, `rounded-button-action` is
+  `var(--radius-button-action)`. Our plan to build on these tokens matches how
+  the product itself is styled.
+- **Tailwind classes survive in the DOM.** Tailwind 4.3.3, with utilities left
+  readable on the elements (607 distinct), so real usage per surface can be
+  studied: sidebar, navigation, header, main content, composer form, tables,
+  code blocks.
+- **Utilities plus CSS-module components.** 55 hashed module components
+  (`Button`, `Paragraph`, `Heading`, `TableCell`, `CodeBlock`, `Icon`,
+  `ConversationSidebar`, `Workspace`, and others) sit next to the utilities.
+  This is the split this plan already takes: components own their look,
+  utilities handle layout.
+- **Buttons take the Apps SDK UI options as data attributes**
+  (`data-color`, `data-variant`, `data-size`, `data-pill`). Per-platform tweaks
+  override component tokens instead of adding classes, for example
+  `browser:[--button-text-color:var(--color-text-tertiary)]`. Our builders
+  should emit the same attributes and expose the same component tokens.
+- **Product-only roles** extend the semantic layer for chat surfaces:
+  `--color-background-composer-surface`, `--color-background-user-message`,
+  `--color-text-user-message`, `--color-text-composer-primary`,
+  `--markdown-space`, `--font-content`. We define our own equivalents in the
+  same naming scheme rather than overloading generic roles.
+- **Platform variants** `browser:` and `electron:` style the web and desktop
+  builds from one stylesheet. Our equivalents would be `web:` and `desktop:`
+  if the desktop app ever renders this HTML.
+- **Heavy use of state variants**: `focus-visible:` (197), `hover:` (132),
+  `disabled:`/`aria-disabled:` (86 each), `data-[state=open]:` (43). Our
+  components must carry the same states, and HTMX and Alpine must set the same
+  `data-state` and ARIA attributes the variants key off.
 
 ## Where our web UI is today
 
@@ -218,9 +265,14 @@ files.
 
 ### Phase 4: native alignment
 
-- Point `coder-ui` (Rust Native, Wasm catalog, desktop and mobile) at the same
-  token table so native surfaces also get Coder Light. That is a separate,
-  larger change. The web migration does not depend on it.
+- Point `coder-ui` (Rust Native, Wasm catalog, desktop and mobile GUI) at the
+  same token table so those graphical surfaces also get Coder Light. That is a
+  separate, larger change. The web migration does not depend on it.
+- **Terminal UIs stay dark only.** Light mode is not offered in any TUI
+  (`coder-new`'s terminal interface, OpenAgents Terminal, and other
+  terminal-rendered surfaces). They keep Coder Noir, and the token generator
+  does not need a light output for them. Terminal panels embedded in web
+  pages also stay dark (decision 6's nested `data-theme`).
 
 ## Checks
 
@@ -244,3 +296,4 @@ files.
   toggle (decision 6).
 - **Fonts**: system sans and system mono on the web (decision 7). Geist and
   Paper Mono were removed from `openagents-web`.
+- **No light mode in terminal UIs**: TUIs keep Coder Noir only (phase 4).
