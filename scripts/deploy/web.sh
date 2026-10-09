@@ -231,8 +231,8 @@ for c in spec["containers"]:
         continue
     dropped = [e["name"] for e in c.get("env", []) if e["name"] in THIRD_PARTY_ANALYTICS]
     c["env"] = [e for e in c.get("env", []) if e["name"] not in THIRD_PARTY_ANALYTICS]
-    for name in dropped:
-        sys.stderr.write(f"  coder-serve {name} removed (no third-party analytics)\n")
+    for var in dropped:
+        sys.stderr.write(f"  coder-serve {var} removed (no third-party analytics)\n")
     for e in c.get("env", []):
         if e["name"] in SIDECAR_SECRETS and "value" in e:
             del e["value"]
