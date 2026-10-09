@@ -1,0 +1,147 @@
+/*
+ * Menu. Ported from Apps SDK UI Menu.module.css (MIT, see NOTICE). The list
+ * is a native popover; the shared box reset, placement and transition live
+ * in popover.css. Highlight follows [data-highlighted] (set by overlays.js
+ * on keyboard and pointer focus) and plain :hover, so the menu reads the
+ * same without JavaScript.
+ */
+
+.oa-menu-list {
+  overflow: auto;
+  box-sizing: border-box;
+  width: var(--menu-width, auto);
+  min-width: var(--menu-min-width, 300px);
+  max-width: calc(100vw - 16px);
+  max-height: min(calc(100dvh - 16px), var(--menu-max-height, 1200px));
+  padding: var(--menu-gutter);
+  border-radius: var(--menu-radius);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow), var(--shadow-hairline);
+  color: var(--color-text);
+  font-size: var(--menu-font-size);
+  line-height: var(--menu-line-height);
+  -webkit-overflow-scrolling: touch;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.oa-menu-item {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--menu-item-padding);
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  user-select: none;
+
+  &:focus {
+    outline: none;
+  }
+
+  &:hover {
+    /* Prevent links from changing colors */
+    color: var(--color-text);
+  }
+
+  &::before {
+    position: absolute;
+    inset: 0;
+    display: block;
+    border-radius: calc(var(--menu-radius) - var(--menu-gutter));
+    background: var(--menu-item-background-color);
+    content: "";
+    opacity: 0;
+    transform: scale(var(--scale, 0.98));
+    transition-duration: var(--transition-duration-basic);
+    transition-property: opacity, background-color, transform;
+    transition-timing-function: var(--cubic-enter);
+    will-change: opacity, transform;
+  }
+
+  &[data-state="open"],
+  &[data-highlighted],
+  &:focus-visible,
+  &:hover {
+    &::before {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    &:active::before {
+      transform: scale(var(--scale, 0.98));
+    }
+  }
+
+  &[data-disabled] {
+    cursor: not-allowed;
+    opacity: 0.5;
+
+    &::before {
+      display: none;
+    }
+  }
+}
+
+/* PressableInner: keeps the content above the highlight layer. */
+.oa-menu-item-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--menu-item-gap);
+}
+
+.oa-menu-item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.oa-menu-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.oa-menu-check {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--menu-checkbox-indicator-size);
+  height: var(--menu-checkbox-indicator-size);
+  opacity: 0;
+}
+
+[aria-checked="true"] > .oa-menu-item-inner > .oa-menu-check {
+  animation: oa-menu-fade-in 0.4s var(--cubic-enter);
+  opacity: 1;
+}
+
+.oa-menu-separator {
+  height: 1px;
+  margin: var(--menu-separator-gutter);
+  background: var(--menu-separator-background-color);
+}
+
+.oa-menu-heading {
+  padding: var(--menu-item-padding);
+  color: var(--color-text-secondary);
+}
+
+@keyframes oa-menu-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}

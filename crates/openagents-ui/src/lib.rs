@@ -33,6 +33,7 @@ pub mod content;
 mod css_lower;
 pub mod forms;
 pub mod icons;
+pub mod overlays;
 pub mod shell;
 pub mod tokens;
 

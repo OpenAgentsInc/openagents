@@ -1,0 +1,150 @@
+/*
+ * Dialog. A native <dialog> opened with showModal() (by an invoker button's
+ * command="show-modal", or by overlays.js where invoker commands are
+ * missing) and closed by Escape, its close form (method="dialog"), or a
+ * backdrop click. Sizes and backdrop use the Apps SDK UI --dialog-* tokens
+ * (MIT, see NOTICE); the surface matches popover.css.
+ */
+
+.oa-dialog {
+  box-sizing: border-box;
+  width: calc(100vw - 32px);
+  min-width: min(var(--dialog-min-width), calc(100vw - 32px));
+  max-width: min(var(--dialog-max-width), calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-2xl, var(--popover-radius));
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow), var(--shadow-hairline);
+  color: var(--color-text);
+
+  &[data-size="sm"] {
+    --dialog-max-width: 360px;
+  }
+
+  &[data-size="lg"] {
+    --dialog-max-width: 640px;
+  }
+
+  &::backdrop {
+    background: var(--dialog-backdrop-dim-background);
+  }
+
+  &:focus {
+    outline: none;
+  }
+}
+
+/* Fills the dialog so a click on the dialog element itself is a backdrop click. */
+.oa-dialog-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+  padding: var(--dialog-container-inner-padding);
+}
+
+.oa-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 3);
+}
+
+.oa-dialog-title {
+  margin: 0;
+  font-size: var(--font-heading-xs-size, 1.125rem);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--font-heading-xs-line-height, 1.4);
+}
+
+.oa-dialog-description {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.oa-dialog-close-form {
+  margin: calc(var(--spacing) * -1) calc(var(--spacing) * -1) 0 0;
+}
+
+.oa-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-size-sm);
+  height: var(--control-size-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-primary-ghost-hover);
+    color: var(--color-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 1px;
+  }
+}
+
+.oa-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: calc(var(--spacing) * 2);
+}
+
+/* Enter and exit, the Popover transition values. */
+@supports selector(:modal) {
+  .oa-dialog {
+    opacity: 0;
+    transform: scale(0.95);
+    transition-behavior: allow-discrete;
+    transition-duration: 0.2s;
+    transition-property: opacity, transform, overlay, display;
+    transition-timing-function: var(--cubic-exit);
+
+    &::backdrop {
+      opacity: 0;
+      transition-behavior: allow-discrete;
+      transition-duration: 0.2s;
+      transition-property: opacity, overlay, display;
+    }
+
+    &[open] {
+      opacity: 1;
+      transform: scale(1);
+      transition-duration: 0.35s;
+      transition-timing-function: var(--cubic-enter);
+
+      &::backdrop {
+        opacity: 1;
+      }
+    }
+  }
+
+  @starting-style {
+    .oa-dialog[open] {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    .oa-dialog[open]::backdrop {
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-dialog,
+  .oa-dialog::backdrop {
+    transition: none;
+  }
+}

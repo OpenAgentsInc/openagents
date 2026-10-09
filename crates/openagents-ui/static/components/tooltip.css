@@ -1,0 +1,75 @@
+/*
+ * Tooltip. Ported from Apps SDK UI Tooltip.module.css (MIT, see NOTICE). A
+ * manual popover shown by overlays.js on hover and keyboard focus; the box
+ * reset and placement come from popover.css (data-side defaults to top).
+ */
+
+.oa-tooltip {
+  max-width: 300px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow), var(--shadow-hairline);
+  font-size: 14px;
+  line-height: 1.45;
+  cursor: default;
+
+  &[data-gutter-size="sm"] {
+    padding: 8px 12px;
+  }
+
+  &[data-gutter-size="md"] {
+    padding: 12px 16px;
+  }
+
+  &[data-gutter-size="lg"] {
+    padding: 14px 18px;
+  }
+
+  &[data-compact="true"] {
+    padding: 2px 8px;
+    background: var(--gray-700);
+    color: var(--gray-0);
+    font-size: 14px;
+  }
+}
+
+@supports selector(:popover-open) {
+  .oa-tooltip {
+    opacity: 0;
+    transform: scale(0.95);
+    transition-behavior: allow-discrete;
+    transition-duration: 0.2s;
+    transition-property: opacity, transform, overlay, display;
+    transition-timing-function: var(--cubic-exit);
+
+    &:popover-open {
+      opacity: 1;
+      transform: scale(1);
+      transition-timing-function: var(--cubic-enter);
+    }
+  }
+
+  @starting-style {
+    .oa-tooltip:popover-open {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-tooltip {
+    transition: none;
+  }
+}
+
+/* TriggerDecorator: a dotted underline on a text trigger while open. */
+.oa-tooltip-root[data-decorated] > :first-child {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-color: transparent;
+}
+
+.oa-tooltip-root[data-decorated][data-state="open"] > :first-child {
+  text-decoration-color: var(--color-text-tertiary);
+}

@@ -1,0 +1,208 @@
+/*
+ * Popover surface shared by every overlay in crates/openagents-ui (UI-05).
+ * Ported from Apps SDK UI Popover.module.css and Transition (MIT, see
+ * NOTICE). Shown and light-dismissed by the native Popover API; placed next
+ * to its trigger with CSS anchor positioning (the invoker is the popover's
+ * implicit anchor), or by static/components/overlays.js where anchor
+ * positioning is missing. Enter and exit use @starting-style in place of the
+ * React Transition component.
+ */
+
+.oa-overlay-root {
+  display: contents;
+}
+
+/* Bare trigger when no button class is supplied. */
+.oa-overlay-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.oa-overlay-trigger:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Reset the user-agent [popover] box for every overlay panel. Zero
+   specificity, so each component's own file (bundled in any order) wins. */
+:where(.oa-popover, .oa-menu-list, .oa-select-list, .oa-tooltip) {
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--color-text);
+}
+
+.oa-popover {
+  overflow: auto;
+  width: var(--popover-width, auto);
+  min-width: var(--popover-min-width, 300px);
+  max-width: min(var(--popover-max-width, 700px), calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  border-radius: var(--popover-radius);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow), var(--shadow-hairline);
+  -webkit-overflow-scrolling: touch;
+
+  &:focus {
+    outline: none;
+  }
+
+  &[data-animate="shake"] {
+    animation: oa-shake 0.4s ease;
+  }
+}
+
+/* Placed by script: hidden for the frame before overlays.js measures it. */
+[data-oa-placing] {
+  visibility: hidden;
+}
+
+/* =============================================
+  Anchor positioning (data-side, data-align)
+============================================= */
+@supports (position-area: block-end) {
+  .oa-popover,
+  .oa-menu-list,
+  .oa-select-list,
+  .oa-tooltip {
+    --oa-overlay-offset: 4px;
+
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    margin-block: var(--oa-overlay-offset);
+
+    &[data-align="center"] {
+      position-area: block-end;
+    }
+
+    &[data-align="end"] {
+      position-area: block-end span-inline-start;
+    }
+
+    &[data-side="top"] {
+      position-area: block-start span-inline-end;
+
+      &[data-align="center"] {
+        position-area: block-start;
+      }
+
+      &[data-align="end"] {
+        position-area: block-start span-inline-start;
+      }
+    }
+
+    &[data-side="left"],
+    &[data-side="right"] {
+      margin-block: 0;
+      margin-inline: var(--oa-overlay-offset);
+    }
+
+    &[data-side="left"] {
+      position-area: inline-start span-block-end;
+
+      &[data-align="center"] {
+        position-area: inline-start;
+      }
+
+      &[data-align="end"] {
+        position-area: inline-start span-block-start;
+      }
+    }
+
+    &[data-side="right"] {
+      position-area: inline-end span-block-end;
+
+      &[data-align="center"] {
+        position-area: inline-end;
+      }
+
+      &[data-align="end"] {
+        position-area: inline-end span-block-start;
+      }
+    }
+  }
+
+  .oa-tooltip {
+    --oa-overlay-offset: 6px;
+  }
+}
+
+/* =============================================
+  Enter and exit (Transition)
+============================================= */
+@supports selector(:popover-open) {
+  .oa-popover,
+  .oa-menu-list,
+  .oa-select-list {
+    opacity: 0;
+    transform: scale(0.95);
+    transform-origin: top left;
+    transition-behavior: allow-discrete;
+    transition-duration: 0.2s;
+    transition-property: opacity, transform, overlay, display;
+    transition-timing-function: var(--cubic-exit);
+
+    &[data-side="top"] {
+      transform-origin: bottom left;
+    }
+
+    &[data-side="left"] {
+      transform-origin: top right;
+    }
+
+    &:popover-open {
+      opacity: 1;
+      transform: scale(1);
+      transition-duration: 0.35s;
+      transition-timing-function: var(--cubic-enter);
+    }
+  }
+
+  @starting-style {
+    .oa-popover:popover-open,
+    .oa-menu-list:popover-open,
+    .oa-select-list:popover-open {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-popover,
+  .oa-menu-list,
+  .oa-select-list,
+  .oa-tooltip {
+    transition: none;
+  }
+}
+
+@keyframes oa-shake {
+  0% {
+    transform: translateX(0);
+  }
+
+  20%,
+  60% {
+    transform: translateX(-5px);
+  }
+
+  40%,
+  80% {
+    transform: translateX(5px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
