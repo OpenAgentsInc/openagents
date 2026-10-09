@@ -1543,7 +1543,7 @@ async fn workspace_shell_keeps_keyboard_and_screen_reader_basics() {
         assert_eq!(page.status, StatusCode::OK, "{}", page.body);
         let body = &page.body;
         assert!(body.contains("<html lang=\"en\""));
-        assert!(body.contains("<a class=\"skip\" href=\"#content\">"));
+        assert!(body.contains("<a class=\"oa-skip-link\" href=\"#content\">"));
         assert!(body.contains("<main id=\"content\""));
         assert!(body.contains("<nav aria-label=\"Workspace\">"));
         assert_eq!(body.matches("aria-current=\"page\"").count(), 1, "{path}");

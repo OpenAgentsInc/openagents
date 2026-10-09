@@ -37,7 +37,8 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::App;
-use crate::layout::{document, escape, problem};
+use crate::layout::problem;
+use maud::{Markup, PreEscaped, html};
 use session::{CloudSession, SessionError, Viewer};
 
 const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
@@ -258,24 +259,14 @@ fn render(view: &rust_native::View<workspace::WorkspaceIntent>) -> Result<String
 }
 
 fn ticket(token: &str) -> String {
-    format!(
-        "<input type=\"hidden\" name=\"csrf\" value=\"{}\">",
-        escape(token)
-    )
+    ui::csrf(token).into_string()
 }
 
+/// A Cloud page from already-escaped HTML, for pages not yet built with
+/// Maud. Without the request headers the theme follows the system setting;
+/// prefer [`ui::document`].
 fn page(body: &str) -> Response {
-    let body = format!(
-        "<div class=\"cloud\">{body}</div><script type=\"module\" src=\"/cloud/assets/start.js\"></script>"
-    );
-    let html = document("Workspace", Some("/cloud"), &body).replace(
-        "</head>",
-        &format!(
-            "{}<link rel=\"stylesheet\" href=\"/cloud/assets/cloud.css\"><link rel=\"stylesheet\" href=\"/cloud/assets/native.css\"></head>",
-            crate::chat_html::head().into_string()
-        ),
-    );
-    protect(axum::response::Html(html).into_response())
+    ui::document(&HeaderMap::new(), PreEscaped(body))
 }
 
 async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -302,15 +293,24 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut response = page(&format!(
-        "<h1>Sign in to your workspace</h1><p>Use an existing native account API key. The selected account service issues a revocable session. This form creates no computer, execution, sales, or spending grant.</p><form method=\"post\" action=\"/cloud/sign-in\">{}{field}<p><button type=\"submit\">Sign in</button></p></form><p class=\"dim\">Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key.{}</p>",
-        ticket(&csrf.token),
-        if team::lane(&app, team::Lane::Recovery) {
-            " <a href=\"/cloud/recover\">Redeem a recovery token</a>"
-        } else {
-            ""
-        }
-    ));
+    let recovery = team::lane(&app, team::Lane::Recovery);
+    let mut response = ui::document(
+        &headers,
+        html! {
+            h1 { "Sign in to your workspace" }
+            p { "Use an existing native account API key. The selected account service issues a revocable session. This form creates no computer, execution, sales, or spending grant." }
+            (ui::BoundForm::new("/cloud/sign-in")
+                .csrf(&csrf.token)
+                .body(ui::native(&field))
+                .submit("Sign in"))
+            p class="dim" {
+                "Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key."
+                @if recovery {
+                    " " a href="/cloud/recover" { "Redeem a recovery token" }
+                }
+            }
+        },
+    );
     for cookie in csrf.legacy_cookies {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -502,69 +502,62 @@ fn workspace_shell(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let mut switcher = String::new();
+    let mut switcher = Vec::with_capacity(viewer.workspaces.len());
     for workspace in &viewer.workspaces {
-        let csrf = match service.csrf(headers, &viewer, "select-workspace", &workspace.id) {
+        let csrf = match service.csrf(headers, viewer, "select-workspace", &workspace.id) {
             Ok(value) => value,
             Err(error) => return refused(error),
         };
-        switcher.push_str(&format!("<form method=\"post\" action=\"/cloud/select-workspace\">{}<input type=\"hidden\" name=\"workspace\" value=\"{}\"><button type=\"submit\">{} · {}</button></form>", ticket(&csrf), escape(&workspace.id), escape(&workspace.name), escape(&workspace.role)));
+        switcher.push(
+            ui::BoundForm::new("/cloud/select-workspace")
+                .csrf(&csrf)
+                .bind("workspace", &workspace.id)
+                .submit_with(ui::submit(
+                    &format!("{} \u{b7} {}", workspace.name, workspace.role),
+                    false,
+                )),
+        );
     }
-    let csrf = match service.logout_csrf(headers, &viewer) {
+    let csrf = match service.logout_csrf(headers, viewer) {
         Ok(value) => value,
         Err(error) => return refused(error),
     };
-    let mut nav = String::from("<a href=\"/cloud/app\">Overview</a>");
+    let hosts_configured = app
+        .config
+        .cloud_hosts
+        .as_ref()
+        .is_some_and(|hosts| !hosts.current(viewer).is_empty());
+    // One entry per section: a link when it is available to this viewer,
+    // else its reason. Screen readers announce which section this page is.
+    let mut nav: Vec<(&str, String, Option<&str>)> =
+        vec![("Overview", "/cloud/app".to_owned(), None)];
     for (label, slug, reason) in SECTIONS {
-        if matches!(slug, "tasks" | "computers" | "projects" | "agents")
-            && app
-                .config
-                .cloud_hosts
-                .as_ref()
-                .is_some_and(|hosts| !hosts.current(viewer).is_empty())
-        {
-            nav.push_str(&format!("<a href=\"/cloud/app/{slug}\">{label}</a>"));
-        } else if slug == "workbench" && workbench::available(app, viewer) {
-            nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
-        } else if slug == "billing" && billing::available(viewer) {
-            nav.push_str("<a href=\"/cloud/app/billing\">Billing</a>");
-        } else if slug == "partners" && partners::available(viewer) {
-            nav.push_str("<a href=\"/cloud/app/partners\">Partners</a>");
-        } else if slug == "team" && team::available(app) {
-            nav.push_str("<a href=\"/cloud/app/team\">Team</a>");
-        } else if slug == "sales" && sales::available(app, viewer) {
-            nav.push_str("<a href=\"/cloud/app/sales\">Sales</a>");
-        } else if slug == "settings" {
-            nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
-        } else if slug == "verse" {
-            // Public worlds keep this page useful without any host connection.
-            nav.push_str("<a href=\"/cloud/app/verse\">Verse</a>");
-        } else {
-            nav.push_str(&format!(
-                "<span aria-disabled=\"true\" title=\"{}\">{} · Unavailable</span>",
-                escape(reason),
-                label
-            ));
-        }
+        let available = match slug {
+            "tasks" | "computers" | "projects" | "agents" => hosts_configured,
+            "workbench" => workbench::available(app, viewer),
+            "billing" => billing::available(viewer),
+            "partners" => partners::available(viewer),
+            "team" => team::available(app),
+            "sales" => sales::available(app, viewer),
+            // Public worlds keep Verse useful without any host connection.
+            "settings" | "verse" => true,
+            _ => false,
+        };
+        nav.push((
+            label,
+            format!("/cloud/app/{slug}"),
+            (!available).then_some(reason),
+        ));
     }
-    // Screen readers announce which section this page is.
     let current = if selected == "overview" {
-        "<a href=\"/cloud/app\">".to_owned()
+        "/cloud/app".to_owned()
     } else {
-        format!("<a href=\"/cloud/app/{selected}\">")
+        format!("/cloud/app/{selected}")
     };
-    let nav = nav.replacen(
-        &current,
-        &current.replace("<a ", "<a aria-current=\"page\" "),
-        1,
-    );
-    let mut content = String::new();
-    if selected == "overview" {
-        let configured = app
-            .config
-            .cloud_hosts
-            .as_ref()
-            .is_some_and(|hosts| !hosts.current(viewer).is_empty());
+    let content: Markup = if let Some(supplied) = supplied_content {
+        PreEscaped(supplied.to_owned())
+    } else if selected == "overview" {
+        let mut cards = Vec::new();
         for (key, label, reason) in [
             (
                 "world",
@@ -593,12 +586,12 @@ fn workspace_shell(
                     "Not checked",
                     "A host world is configured for this workspace. Open Verse to check its admission and join. Joining grants no private-work right.",
                 )
-            } else if configured && key == "computer" {
+            } else if hosts_configured && key == "computer" {
                 (
                     "Not checked",
                     "This account has an explicit resident binding. Open Computers to verify the current native grant and resident generation.",
                 )
-            } else if configured && key == "private-work" {
+            } else if hosts_configured && key == "private-work" {
                 (
                     "Not checked",
                     "Canonical task observation is configured. Open Tasks to check current Observe authority. Browser enrollment and every effect require their own exact review.",
@@ -613,60 +606,111 @@ fn workspace_shell(
                 reason,
                 colors(),
             )) {
-                Ok(value) => {
-                    content.push_str(&format!("<section class=\"cloud-card\">{value}</section>"))
-                }
+                Ok(value) => cards.push(ui::card(ui::native(&value))),
                 Err(response) => return response,
             }
         }
-        content.push_str("<p>No connected work to report. Costs, waiting tasks, outcomes, and unread counts are unavailable until their canonical owners are connected.</p><p><a href=\"/cloud/app/verse\">Verse connections</a> · <a href=\"/grid\">Open the Grid</a> · <a href=\"/components\">Explore shared components</a></p>");
+        html! {
+            @for card in &cards { (card) }
+            p { "No connected work to report. Costs, waiting tasks, outcomes, and unread counts are unavailable until their canonical owners are connected." }
+            (ui::links([
+                ("/cloud/app/verse", "Verse connections"),
+                ("/grid", "Open the Grid"),
+                ("/components", "Explore shared components"),
+            ]))
+        }
     } else if selected == "tasks" {
-        content.push_str("<h2>Resident tasks</h2><p>Choose an explicitly bound resident host. Every task page checks current native Observe authority.</p><ul>");
         let bindings = app
             .config
             .cloud_hosts
             .as_ref()
             .map_or_else(Vec::new, |hosts| hosts.current(viewer));
-        if bindings.is_empty() {
-            content.push_str(
-                "<li>No resident task connection is admitted for this account and workspace.</li>",
-            );
+        html! {
+            h2 { "Resident tasks" }
+            p { "Choose an explicitly bound resident host. Every task page checks current native Observe authority." }
+            ul {
+                @if bindings.is_empty() {
+                    li { "No resident task connection is admitted for this account and workspace." }
+                }
+                @for binding in &bindings {
+                    li {
+                        a href=(format!("/cloud/app/hosts/{}/tasks", binding.id())) {
+                            "Open resident connection " (binding.id())
+                        }
+                    }
+                }
+            }
         }
-        for binding in bindings {
-            content.push_str(&format!(
-                "<li><a href=\"/cloud/app/hosts/{}/tasks\">Open resident connection {}</a></li>",
-                escape(binding.id()),
-                escape(binding.id())
-            ));
-        }
-        content.push_str("</ul>");
     } else if selected == "settings" {
-        content.push_str("<h2>Account and sessions</h2><p>This is your current native session. The selected native account API does not offer browser session enumeration or recovery-token issuance. Use the native account owner's recovery and credential controls; recovery, rotation, and revoked membership fence this browser on its next standing check.</p><h2>Integrations and sync</h2><p>Host enrollment, provider custody, notifications, private-memory sync, and disclosure are unavailable until separately admitted. Signing in enables none of them.</p>");
-        if byo::available(app) {
-            content.push_str("<h2>Claude credential</h2><p>Add your own Anthropic API key or Bedrock, Vertex, or Foundry credential for your own computers and parallel Claude Code tasks. Usage bills to your own Anthropic or cloud account. <a href=\"/cloud/app/settings/claude\">Manage Claude credential</a></p>");
+        html! {
+            h2 { "Account and sessions" }
+            p { "This is your current native session. The selected native account API does not offer browser session enumeration or recovery-token issuance. Use the native account owner's recovery and credential controls; recovery, rotation, and revoked membership fence this browser on its next standing check." }
+            h2 { "Integrations and sync" }
+            p { "Host enrollment, provider custody, notifications, private-memory sync, and disclosure are unavailable until separately admitted. Signing in enables none of them." }
+            @if byo::available(app) {
+                h2 { "Claude credential" }
+                p {
+                    "Add your own Anthropic API key or Bedrock, Vertex, or Foundry credential for your own computers and parallel Claude Code tasks. Usage bills to your own Anthropic or cloud account. "
+                    a href="/cloud/app/settings/claude" { "Manage Claude credential" }
+                }
+            }
         }
     } else if let Some((label, _, reason)) = SECTIONS.iter().find(|(_, slug, _)| *slug == selected)
     {
-        content = format!("<h2>{label} · Unavailable</h2><p>{}</p>", escape(reason));
-    }
-    if let Some(supplied) = supplied_content {
-        content = supplied.into();
-    }
-    let initial = escape(&standing_value(&viewer).to_string());
-    let resource = resource.map_or_else(String::new, |value| {
-        format!(
-            "<pre id=\"cloud-resource-standing\" hidden>{}</pre>",
-            escape(&value.to_string())
-        )
-    });
-    let local_logout = format!(
-        "<form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out of this browser</button></form>",
-        ticket(&csrf)
-    );
-    page(&format!(
-        "<section id=\"cloud-resume\" aria-live=\"polite\"><h1>Workspace</h1><p>Reopen this view to check current account standing.</p><p><a href=\"/cloud/app\">Reopen workspace</a></p>{local_logout}</section><div id=\"cloud-private\" hx-history=\"false\" hidden><pre id=\"cloud-standing\" hidden>{initial}</pre>{resource}<div class=\"cloud-layout\"><aside class=\"cloud-sidebar\"><h1>Workspace</h1><nav aria-label=\"Workspace\">{nav}</nav><h2>Choose workspace</h2><div class=\"cloud-switcher\">{switcher}</div><form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out</button></form></aside><section class=\"cloud-main\">{summary}<hr>{content}</section></div></div>",
-        ticket(&csrf)
-    ))
+        html! {
+            h2 { (label) " \u{b7} Unavailable" }
+            p { (reason) }
+        }
+    } else {
+        html! {}
+    };
+    let initial = standing_value(viewer).to_string();
+    let resource = resource.map(|value| value.to_string());
+    ui::document(
+        headers,
+        html! {
+            section id="cloud-resume" aria-live="polite" {
+                h1 { "Workspace" }
+                p { "Reopen this view to check current account standing." }
+                p { a href="/cloud/app" { "Reopen workspace" } }
+                (ui::BoundForm::new("/cloud/sign-out")
+                    .csrf(&csrf)
+                    .submit_with(ui::submit("Sign out of this browser", false)))
+            }
+            div id="cloud-private" hx-history="false" hidden {
+                pre id="cloud-standing" hidden { (initial) }
+                @if let Some(resource) = &resource {
+                    pre id="cloud-resource-standing" hidden { (resource) }
+                }
+                div class="cloud-layout" {
+                    aside class="cloud-sidebar" {
+                        h1 { "Workspace" }
+                        nav aria-label="Workspace" {
+                            @for (label, href, reason) in &nav {
+                                @if let Some(reason) = reason {
+                                    span aria-disabled="true" title=(reason) { (label) " \u{b7} Unavailable" }
+                                } @else {
+                                    a aria-current=[(*href == current).then_some("page")] href=(href) { (label) }
+                                }
+                            }
+                        }
+                        h2 { "Choose workspace" }
+                        div class="cloud-switcher" {
+                            @for form in &switcher { (form) }
+                        }
+                        (ui::BoundForm::new("/cloud/sign-out")
+                            .csrf(&csrf)
+                            .submit_with(ui::submit("Sign out", false)))
+                    }
+                    section class="cloud-main" {
+                        (ui::native(&summary))
+                        hr;
+                        (content)
+                    }
+                }
+            }
+        },
+    )
 }
 
 fn standing_value(viewer: &Viewer) -> serde_json::Value {
