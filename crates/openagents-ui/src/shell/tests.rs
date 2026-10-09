@@ -656,3 +656,74 @@ fn chat_rows_organize_with_plain_forms_and_a_search_box() {
         assert!(script.contains(hook), "{hook}");
     }
 }
+
+#[test]
+fn project_groups_sit_between_pinned_and_chats_and_fold_after_five() {
+    let rows = |prefix: &str, n: usize| {
+        (0..n)
+            .map(|i| NavItem::new(format!("{prefix} {i}"), format!("/chat/{prefix}{i}")))
+            .collect::<Vec<_>>()
+    };
+    let html = ChatList::new()
+        .id("chat-sidebar")
+        .pinned(rows("Pinned", 1))
+        .project(
+            ChatGroup::new(
+                "prj_0123456789abcdef",
+                "storefront",
+                "/?project=prj_0123456789abcdef",
+            )
+            .items(rows("Store", 7)),
+        )
+        .project(
+            ChatGroup::new(
+                "prj_fedcba9876543210",
+                "docs",
+                "/?project=prj_fedcba9876543210",
+            )
+            .open(false)
+            .note("Reconnect GitHub", "/projects"),
+        )
+        .items(rows("Loose", 2))
+        .render()
+        .into_string();
+    let at = |text: &str| html.find(text).unwrap_or_else(|| panic!("{text}: {html}"));
+    assert!(at(">Pinned<") < at(">Projects<"));
+    assert!(at(">Projects<") < at("storefront"));
+    assert!(at("storefront") < at("docs"));
+    assert!(at("docs") < at(">Chats<"));
+    assert!(at(">Chats<") < at("Loose 0"));
+    // Five rows, then the rest behind Show more.
+    assert!(at("Store 4") < at("Show more"));
+    assert!(at("Show more") < at("Store 5"));
+    assert_eq!(html.matches("Show more").count(), 1);
+    assert!(html.contains(
+        r#"<details class="oa-chat-project" data-oa-project="prj_0123456789abcdef" open>"#
+    ));
+    assert!(
+        html.contains(
+            r#"<details class="oa-chat-project" data-oa-project="prj_fedcba9876543210">"#
+        )
+    );
+    assert!(html.contains(r#"href="/?project=prj_0123456789abcdef">New chat</a>"#));
+    assert!(html.contains(r#"href="/projects">Reconnect GitHub</a>"#));
+    // A group with no chats leaves the list empty of rows.
+    assert!(
+        ChatList::new()
+            .project(ChatGroup::new("p", "x", "/"))
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_select_can_belong_to_a_form_it_sits_outside() {
+    let html = crate::forms::Select::new("project")
+        .form("chat-form")
+        .option("", "No project")
+        .render()
+        .into_string();
+    assert!(
+        html.contains(r#"name="project" form="chat-form""#),
+        "{html}"
+    );
+}

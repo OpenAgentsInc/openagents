@@ -48,8 +48,8 @@ pub use composer::{
     composer_panel_host,
 };
 pub use layout::{
-    AppShell, ChatList, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE,
-    SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
+    AppShell, ChatGroup, ChatList, Document, GROUP_ROWS, LegalLinks, MainMode, NavItem,
+    SIDEBAR_COOKIE, SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
 };
 pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
 pub use status::ChatStatus;

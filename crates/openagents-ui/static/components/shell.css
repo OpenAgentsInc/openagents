@@ -367,6 +367,83 @@ html:has(> body.oa-body) {
   color: var(--color-text-tertiary);
 }
 
+.oa-chat-projects {
+  gap: calc(var(--spacing) * 2);
+}
+
+/* A project's group: its name opens and closes it; "New chat" and a
+   "Reconnect GitHub" note sit under the name; rows after the first five
+   wait behind "Show more". */
+.oa-chat-project,
+.oa-chat-project-more {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.oa-chat-project-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: calc(var(--spacing) * 1) var(--padding-row-x);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: var(--font-text-sm-size);
+  font-weight: 600;
+  list-style: none;
+}
+.oa-chat-project-summary::-webkit-details-marker {
+  display: none;
+}
+.oa-chat-project-summary::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-right: calc(var(--spacing) * 2);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  opacity: 0.6;
+  transition: transform 120ms ease;
+}
+.oa-chat-project[open] > .oa-chat-project-summary::before {
+  transform: rotate(90deg);
+}
+.oa-chat-project-summary:hover {
+  background: var(--color-background-primary-ghost-hover);
+}
+.oa-chat-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-chat-project-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 3);
+  padding: 0 var(--padding-row-x) calc(var(--spacing) * 1);
+  font-size: var(--font-text-sm-size);
+}
+.oa-chat-project-links .oa-chat-list-link {
+  color: var(--color-text-tertiary);
+}
+.oa-chat-project-links .oa-chat-project-note {
+  color: var(--color-text-warning);
+}
+.oa-chat-project-more > summary {
+  padding: 0 var(--padding-row-x);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-sm-size);
+  list-style: none;
+}
+.oa-chat-project-more > summary::-webkit-details-marker {
+  display: none;
+}
+.oa-chat-project-more[open] > summary {
+  display: none;
+}
+
 /* The Archived chats page: one row per chat with its Restore button. */
 .oa-chat-archive-list {
   display: flex;

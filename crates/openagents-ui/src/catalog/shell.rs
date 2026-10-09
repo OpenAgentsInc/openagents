@@ -8,9 +8,9 @@ use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::overlays::MenuItem;
 use crate::shell::{
-    AccountMenu, AppShell, Breadcrumb, ChatList, ChatSearch, ChatStatus, Composer, ComposerAction,
-    ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message,
-    ModelPickerTrigger, NavItem, RowAction, RowMenu, RowRename, ScrollToBottom, Sidebar,
+    AccountMenu, AppShell, Breadcrumb, ChatGroup, ChatList, ChatSearch, ChatStatus, Composer,
+    ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode,
+    Message, ModelPickerTrigger, NavItem, RowAction, RowMenu, RowRename, ScrollToBottom, Sidebar,
     SidebarSection, SuggestionChip, SuggestionChips, Theme, ThemeToggle,
 };
 
@@ -126,12 +126,14 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
                         .action(RowAction::get("Rename", "/ui").icon(Icon::Pencil))
                         .action(RowAction::post("Archive", "/ui").icon(Icon::Archive)),
                 )])
-                .chat("Catalog review", "/ui#app-shell", true)
-                .item(
-                    NavItem::new("Fix the login redirect", "/ui#colors")
-                        .detail("acme/storefront · main")
-                        .trailing(ChatStatus::Working),
+                .project(
+                    ChatGroup::new("prj_0000000000000001", "storefront", "/ui").items([
+                        NavItem::new("Fix the login redirect", "/ui#colors")
+                            .detail("fix-login")
+                            .trailing(ChatStatus::Working),
+                    ]),
                 )
+                .chat("Catalog review", "/ui#app-shell", true)
                 .item(
                     NavItem::new("Upgrade the database driver", "/ui#icons")
                         .detail("acme/api · deps-bump")
@@ -144,7 +146,7 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
                 (RowRename::new(pane.id("rename-row"), "/ui", "Renaming this chat", "/ui#app-shell"))
             }
         })
-        .section(SidebarSection::new("Projects").empty("No projects yet"))
+        .section(SidebarSection::new("Environments").empty("No environments yet"))
         .bottom(
             NavItem::new("Docs", "/docs")
                 .icon(Icon::Code)
@@ -194,7 +196,7 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         .mode(MainMode::App)
         .main_id(pane.id("shell-app-main"));
     html! {
-        (specimen("AppShell Sidebar SidebarSection NavItem ChatList ChatSearch RowMenu RowAction RowRename LegalLinks Breadcrumb AccountMenu", "Scroll mode with sidebar", preview(pane, &shell)))
+        (specimen("AppShell Sidebar SidebarSection NavItem ChatList ChatGroup ChatSearch RowMenu RowAction RowRename LegalLinks Breadcrumb AccountMenu", "Scroll mode with sidebar", preview(pane, &shell)))
         (specimen("AppShell Composer ScrollToBottom", "App mode with docked composer", preview(pane, &app)))
     }
 }

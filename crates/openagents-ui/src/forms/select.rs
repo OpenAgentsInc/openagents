@@ -20,6 +20,7 @@ pub struct Select {
     disabled: bool,
     aria: FieldAria,
     aria_label: Option<String>,
+    form: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,7 +44,15 @@ impl Select {
             disabled: false,
             aria: FieldAria::default(),
             aria_label: None,
+            form: None,
         }
+    }
+
+    /// The id of the `<form>` this control belongs to, when it sits
+    /// outside it (the `form` attribute).
+    pub fn form(mut self, form: impl Into<String>) -> Self {
+        self.form = Some(form.into());
+        self
     }
 
     pub fn option(mut self, value: impl Into<String>, label: impl Into<String>) -> Self {
@@ -173,6 +182,7 @@ impl Render for Select {
                 select.oa-select__control
                     id=(id)
                     name=(self.name)
+                    form=[self.form.as_deref()]
                     aria-label=[self.aria_label.as_deref()]
                     aria-describedby=[self.aria.described_by.as_deref()]
                     aria-invalid=[self.aria.invalid_attr()]

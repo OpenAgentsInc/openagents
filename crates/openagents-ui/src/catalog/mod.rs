@@ -116,6 +116,7 @@ pub const COMPONENTS: &[&str] = &[
     "Sidebar",
     "SidebarSection",
     "ChatList",
+    "ChatGroup",
     "ChatSearch",
     "RowMenu",
     "RowAction",

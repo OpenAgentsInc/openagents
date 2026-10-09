@@ -339,6 +339,7 @@ pub struct ChatList {
     swap_oob: bool,
     items: Vec<NavItem>,
     pinned: Vec<NavItem>,
+    projects: Vec<ChatGroup>,
     search: Option<Markup>,
     notice: Option<Markup>,
     empty: Option<String>,
@@ -361,6 +362,7 @@ impl ChatList {
             swap_oob: false,
             items: Vec::new(),
             pinned: Vec::new(),
+            projects: Vec::new(),
             search: None,
             notice: None,
             empty: None,
@@ -372,6 +374,14 @@ impl ChatList {
     #[must_use]
     pub fn pinned(mut self, items: impl IntoIterator<Item = NavItem>) -> Self {
         self.pinned.extend(items);
+        self
+    }
+
+    /// A project's group, shown under a "Projects" heading between the
+    /// pinned rows and the chats.
+    #[must_use]
+    pub fn project(mut self, group: ChatGroup) -> Self {
+        self.projects.push(group);
         self
     }
 
@@ -446,10 +456,12 @@ impl ChatList {
         self
     }
 
-    /// Whether the list has no rows (pinned or not).
+    /// Whether the list has no rows (pinned, in a project, or not).
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty() && self.pinned.is_empty()
+        self.items.is_empty()
+            && self.pinned.is_empty()
+            && self.projects.iter().all(|group| group.items.is_empty())
     }
 }
 
@@ -459,7 +471,8 @@ impl Render for ChatList {
             && self.notice.is_none()
             && self.empty.is_none()
             && self.after.is_none()
-            && self.pinned.is_empty();
+            && self.pinned.is_empty()
+            && self.projects.is_empty();
         let rows_id = self.id.as_ref().map(|id| format!("{id}-rows"));
         html! {
             section class="oa-sidebar-section oa-chat-list" id=[self.id.as_deref()]
@@ -485,6 +498,12 @@ impl Render for ChatList {
                                 }
                             }
                         }
+                        @if !self.projects.is_empty() {
+                            div class="oa-chat-list-group oa-chat-projects" {
+                                h2 class="oa-sidebar-section-title" { "Projects" }
+                                @for group in &self.projects { (group) }
+                            }
+                        }
                         @if !self.items.is_empty() {
                             div class="oa-chat-list-group" {
                                 h2 class="oa-sidebar-section-title" { (self.title) }
@@ -500,6 +519,122 @@ impl Render for ChatList {
                         }
                     }
                     @if let Some(after) = &self.after { (after) }
+                }
+            }
+        }
+    }
+}
+
+/// One project's chats in the left panel: a collapsible group headed by the
+/// project's name, with a "New chat" link, the first five rows, and the
+/// rest behind "Show more".
+///
+/// The group is a `<details>` element marked `data-oa-project` with the
+/// project's id, so it opens and closes without JavaScript; `shell.js`
+/// remembers closed groups in the `oa_project_groups` cookie, which the
+/// server reads back into [`ChatGroup::open`]. A note such as "Reconnect
+/// GitHub" links under the heading.
+///
+/// ```
+/// use maud::Render;
+/// use openagents_ui::shell::{ChatGroup, NavItem};
+/// let html = ChatGroup::new("prj_1", "storefront", "/?project=prj_1")
+///     .items((0..7).map(|i| NavItem::new(format!("Chat {i}"), format!("/chat/{i}"))))
+///     .render()
+///     .into_string();
+/// assert!(html.contains(r#"data-oa-project="prj_1""#));
+/// assert!(html.contains("Show more"));
+/// ```
+#[derive(Clone, Debug)]
+pub struct ChatGroup {
+    id: String,
+    name: String,
+    new_chat: String,
+    open: bool,
+    more_open: bool,
+    note: Option<(String, String)>,
+    items: Vec<NavItem>,
+}
+
+/// How many rows a project group shows before "Show more".
+pub const GROUP_ROWS: usize = 5;
+
+impl ChatGroup {
+    /// An open, empty group for project `id` named `name`; `new_chat`
+    /// starts a chat in it.
+    #[must_use]
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        new_chat: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            new_chat: new_chat.into(),
+            open: true,
+            more_open: false,
+            note: None,
+            items: Vec::new(),
+        }
+    }
+
+    /// Whether the group starts open (the default).
+    #[must_use]
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = open;
+        self
+    }
+
+    /// Whether the rows after the first five start shown (when the open
+    /// chat is among them).
+    #[must_use]
+    pub fn more_open(mut self, open: bool) -> Self {
+        self.more_open = open;
+        self
+    }
+
+    /// A link under the heading, such as ("Reconnect GitHub", "/projects").
+    #[must_use]
+    pub fn note(mut self, text: impl Into<String>, href: impl Into<String>) -> Self {
+        self.note = Some((text.into(), href.into()));
+        self
+    }
+
+    /// The group's rows, newest first.
+    #[must_use]
+    pub fn items(mut self, items: impl IntoIterator<Item = NavItem>) -> Self {
+        self.items.extend(items);
+        self
+    }
+}
+
+impl Render for ChatGroup {
+    fn render(&self) -> Markup {
+        let (first, rest) = self.items.split_at(self.items.len().min(GROUP_ROWS));
+        html! {
+            details class="oa-chat-project" data-oa-project=(self.id) open[self.open] {
+                summary class="oa-chat-project-summary" {
+                    span class="oa-chat-project-name" { (self.name) }
+                }
+                div class="oa-chat-project-links" {
+                    a class="oa-chat-list-link" href=(self.new_chat) { "New chat" }
+                    @if let Some((text, href)) = &self.note {
+                        a class="oa-chat-list-link oa-chat-project-note" href=(href) { (text) }
+                    }
+                }
+                @if !first.is_empty() {
+                    ul class="oa-nav-list" role="list" {
+                        @for item in first { (item) }
+                    }
+                }
+                @if !rest.is_empty() {
+                    details class="oa-chat-project-more" open[self.more_open] {
+                        summary class="oa-chat-list-link" { "Show more" }
+                        ul class="oa-nav-list" role="list" {
+                            @for item in rest { (item) }
+                        }
+                    }
                 }
             }
         }

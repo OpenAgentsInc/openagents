@@ -305,6 +305,21 @@
     selectRename();
   }
 
+  // Project groups remember being closed in this browser: the ids of the
+  // closed ones go in the oa_project_groups cookie, which the server reads
+  // when it draws the sidebar.
+  document.addEventListener("toggle", function (event) {
+    var group = event.target;
+    if (!group || !group.matches || !group.matches("details[data-oa-project]")) return;
+    var closed = [];
+    document.querySelectorAll("details[data-oa-project]").forEach(function (each) {
+      var id = each.getAttribute("data-oa-project");
+      if (!each.open && /^prj_[0-9a-f]{16}$/.test(id) && closed.indexOf(id) < 0) closed.push(id);
+    });
+    document.cookie = "oa_project_groups=" + closed.slice(0, 50).join(".") +
+      "; Path=/; Max-Age=31536000; SameSite=Lax";
+  }, true);
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     if (!target || !target.closest) return;
