@@ -202,6 +202,36 @@ fn the_amount_format_is_saved_and_reaches_the_wallet() {
     );
 }
 
+/// Account > Appearance: the choice is saved, and System follows the
+/// appearance the host reports. It stays on dark schemes: the scheme is
+/// process-wide and other tests read it.
+#[test]
+fn the_theme_is_saved_and_system_follows_the_phone() {
+    let (mut app, dir) = app();
+    let request: Request =
+        serde_json::from_str(r#"{"op":"theme","theme":"system"}"#).expect("request");
+    let packet = app.call(request);
+    assert_eq!(packet.appearance.choice, "system");
+    let request: Request =
+        serde_json::from_str(r#"{"op":"system_appearance","dark":true}"#).expect("request");
+    let packet = app.call(request);
+    assert_eq!(packet.appearance.scheme, "dark");
+    assert_eq!(
+        packet.appearance.palette,
+        crate::appearance::HostPalette::DARK
+    );
+    drop(app);
+    let mut reopened = App::open(
+        Config {
+            state_dir: dir.path().to_path_buf(),
+            secret_hex: "11".repeat(32),
+        },
+        crate::app::Launch::default(),
+    )
+    .expect("app");
+    assert_eq!(reopened.call(Request::Snapshot).appearance.choice, "system");
+}
+
 #[test]
 fn lists_tailnet_devices_with_names_and_types() {
     let (mut app, _dir) = app();

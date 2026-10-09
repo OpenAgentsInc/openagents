@@ -34,15 +34,29 @@ pub enum Screen {
     Failed(String),
 }
 
-const WHITE: Color = Color::rgb(255, 255, 255);
-const GRAY: Color = Color::rgb(153, 153, 153);
-const GREEN: Color = Color::rgb(52, 199, 89);
+// The theme seam's inks (`openagents_chat_app::visual::inks`): white,
+// gray, and the system green on the dark look, Coder Light's roles on the
+// light one (#11028).
+fn white() -> Color {
+    openagents_chat_app::visual::inks().text
+}
+
+fn gray() -> Color {
+    openagents_chat_app::visual::inks().quiet
+}
+
+fn green() -> Color {
+    match openagents_chat_app::visual::scheme() {
+        openagents_chat_app::visual::Scheme::Dark => Color::rgb(52, 199, 89),
+        openagents_chat_app::visual::Scheme::Light => openagents_chat_app::visual::inks().done,
+    }
+}
 
 pub fn root(screen: &Screen, admits: &BTreeMap<String, Admit>) -> Node<Intent> {
     match screen {
         Screen::Loading => page(vec![
             heading("tailnet-title", "Tailnet"),
-            status("loading", "Checking your tailnet…", GRAY),
+            status("loading", "Checking your tailnet…", gray()),
         ]),
         Screen::SignIn(_) => page(vec![
             heading("tailnet-title", "Connect to a tailnet"),
@@ -80,32 +94,32 @@ fn devices(tailnet: &Tailnet, admits: &BTreeMap<String, Admit>) -> Node<Intent> 
         .enumerate()
         .map(|(index, device)| {
             let (state, color) = match device.online {
-                Some(true) => ("Online", GREEN),
-                Some(false) => ("Offline", GRAY),
-                None => ("Status unknown", GRAY),
+                Some(true) => ("Online", green()),
+                Some(false) => ("Offline", gray()),
+                None => ("Status unknown", gray()),
             };
             let mut lines = vec![
                 text(
                     &format!("device-{index}-name"),
                     &device.name,
                     TextRole::Body,
-                    WHITE,
+                    white(),
                     true,
                 ),
                 status(
                     &format!("device-{index}-detail"),
                     &format!("{} · {}", device.os, device.address),
-                    GRAY,
+                    gray(),
                 ),
                 status(&format!("device-{index}-state"), state, color),
             ];
             let admit = match admits.get(&device.address) {
-                Some(Admit::Checking) => Some(("Looking for OpenAgents…", GRAY)),
-                Some(Admit::Connected) => Some(("OpenAgents connected", GREEN)),
+                Some(Admit::Checking) => Some(("Looking for OpenAgents…", gray())),
+                Some(Admit::Connected) => Some(("OpenAgents connected", green())),
                 Some(Admit::Refused(code)) if code == "not_owner" => {
-                    Some(("Another Tailscale user's device", GRAY))
+                    Some(("Another Tailscale user's device", gray()))
                 }
-                Some(Admit::Refused(_)) => Some(("OpenAgents refused this phone", GRAY)),
+                Some(Admit::Refused(_)) => Some(("OpenAgents refused this phone", gray())),
                 Some(Admit::NotRunning) | None => None,
             };
             if let Some((line, color)) = admit {
@@ -116,7 +130,7 @@ fn devices(tailnet: &Tailnet, admits: &BTreeMap<String, Admit>) -> Node<Intent> 
         .collect();
     let mut children = vec![
         heading("tailnet-title", "Tailnet"),
-        status("devices-summary", &summary, GRAY),
+        status("devices-summary", &summary, gray()),
         Node {
             key: "devices".into(),
             style: Style::default(),
@@ -128,14 +142,14 @@ fn devices(tailnet: &Tailnet, admits: &BTreeMap<String, Admit>) -> Node<Intent> 
         status(
             "tailnet-hint",
             "Computers running `coder host serve --tailnet-admission standard` connect automatically.",
-            GRAY,
+            gray(),
         ),
     ];
     if let Some(this) = &tailnet.this_device {
         children.push(status(
             "this-device",
             &format!("This app appears on the tailnet as {this}."),
-            GRAY,
+            gray(),
         ));
     }
     children.push(button("refresh", "Refresh", Intent::Refresh));
@@ -181,11 +195,11 @@ fn text(key: &str, value: &str, role: TextRole, foreground: Color, bold: bool) -
 }
 
 fn heading(key: &str, value: &str) -> Node<Intent> {
-    text(key, value, TextRole::Heading, WHITE, true)
+    text(key, value, TextRole::Heading, white(), true)
 }
 
 fn body(value: &str) -> Node<Intent> {
-    text("message", value, TextRole::Body, WHITE, false)
+    text("message", value, TextRole::Body, white(), false)
 }
 
 fn status(key: &str, value: &str, color: Color) -> Node<Intent> {
@@ -196,7 +210,7 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     Node {
         key: key.into(),
         style: Style {
-            foreground: Some(WHITE),
+            foreground: Some(white()),
             ..Style::default()
         },
         element: Element::Button {

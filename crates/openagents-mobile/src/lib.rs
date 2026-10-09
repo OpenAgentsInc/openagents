@@ -17,6 +17,7 @@
 
 mod account;
 mod amounts;
+mod appearance;
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod app;
