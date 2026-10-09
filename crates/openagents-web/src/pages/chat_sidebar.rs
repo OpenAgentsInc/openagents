@@ -175,7 +175,8 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>) -> NavItem {
         RowMenu::new(format!("chat-menu-{id}"), chat.title.clone())
             .action(pin)
             .action(rename)
-            .action(archive),
+            .action(archive)
+            .action(RowAction::open("Delete", format!("/chat/{id}/delete")).icon(Icon::Trash)),
     )
 }
 

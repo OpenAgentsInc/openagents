@@ -14,9 +14,8 @@ use hmac::{Hmac, Mac};
 use maud::{Markup, PreEscaped, Render, html};
 use openagents_chat::basic_coder::{self, Reply, Turn};
 use openagents_chat::router::{Context, Surface};
-use openagents_ui::actions::{Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize};
+use openagents_ui::actions::{Button, ButtonType, Color};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
-use openagents_ui::icons::Icon;
 // Disabled until the composer's context, model and voice controls do
 // something (see `composer`):
 // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
@@ -402,7 +401,6 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .path(format!("/chat/{id}"))
         .app()
         .breadcrumb(Breadcrumb::new(chat.title.clone()))
-        .actions(delete_link(&chat.id, false))
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
@@ -445,29 +443,13 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     )
     .await;
     let chips = crate::suggestions::reply_chips(&app, chat).await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (delete_link(&chat.id, true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
         HeaderValue::from_str(&format!("/chat/{id}")).expect("UUID URL"),
     );
     response
-}
-
-/// The chat page's "Delete chat" link in the header row. A chat opened
-/// from the sidebar replaces it (`oob`) so it always names the open chat.
-fn delete_link(id: &str, oob: bool) -> Markup {
-    let mut link = ButtonLink::new("Delete chat", format!("/chat/{id}/delete"))
-        .id("chat-delete")
-        .color(Color::Secondary)
-        .variant(ButtonVariant::Ghost)
-        .size(ControlSize::Sm)
-        .pill(true)
-        .icon_start(Icon::Trash);
-    if oob {
-        link = link.attr("hx-swap-oob", "outerHTML");
-    }
-    link.render()
 }
 
 /// The visitor's own chat as stored, without the checks that only matter

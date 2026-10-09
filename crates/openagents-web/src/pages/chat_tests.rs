@@ -744,7 +744,9 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
     assert!(!html.contains("/workspace"));
     assert_eq!(sidebar::clean_title("  Fine  ").as_deref(), Some("Fine"));
     assert_eq!(sidebar::clean_title("tab\there"), None);
+}
 
+#[tokio::test]
 async fn delete_asks_first_then_removes_only_the_owners_chat() {
     let fixture = Fixture::new();
     fixture.record(None).await;
@@ -755,12 +757,12 @@ async fn delete_asks_first_then_removes_only_the_owners_chat() {
         async move { store.load(OWNER, CHAT).await.unwrap() }
     };
 
-    // The chat page links to the confirm step; the confirm step asks once.
+    // The chat's row menu opens the confirm step; the confirm step asks once.
     let (status, body) = fixture
         .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(body.contains(&format!("href=\"{delete}\"")), "{body}");
+    assert!(body.contains(&format!("action=\"{delete}\"")), "{body}");
     let (status, body) = fixture.request(Method::GET, &delete, OWNER, &[]).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(

@@ -25,6 +25,7 @@ pub struct RowAction {
     target: Option<String>,
     swap: Option<String>,
     confirm: Option<String>,
+    navigate: bool,
 }
 
 impl RowAction {
@@ -38,6 +39,17 @@ impl RowAction {
             target: None,
             swap: None,
             confirm: None,
+            navigate: false,
+        }
+    }
+
+    /// A page to open, such as Delete's confirm step: a plain `GET` link
+    /// the browser follows, without HTMX.
+    #[must_use]
+    pub fn open(label: impl Into<String>, action: impl Into<String>) -> Self {
+        Self {
+            navigate: true,
+            ..Self::with(label.into(), action.into(), false)
         }
     }
 
@@ -157,7 +169,7 @@ impl Render for RowMenu {
                         method=(if action.post { "post" } else { "get" })
                         action=(action.action)
                         hx-post=[action.post.then_some(action.action.as_str())]
-                        hx-get=[(!action.post).then_some(action.action.as_str())]
+                        hx-get=[(!action.post && !action.navigate).then_some(action.action.as_str())]
                         hx-target=[action.target.as_deref()]
                         hx-swap=[action.swap.as_deref()]
                         hx-confirm=[action.confirm.as_deref()] {
