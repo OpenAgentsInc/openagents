@@ -219,6 +219,9 @@ struct Fake {
     /// The saved image each provision started from (ENV-06).
     provisioned: Arc<Mutex<Vec<Option<String>>>>,
     image_missing: Arc<AtomicBool>,
+    /// The first Claude turn ends on a usage limit with this reset, or on
+    /// a sign-in failure when it is zero.
+    limit: Option<u64>,
 }
 impl Backend for Fake {
     async fn resolve(&self, r: &mut Record) -> crate::Result<()> {
@@ -252,6 +255,26 @@ impl Backend for Fake {
         }))
     }
     async fn poll(&self, _: &Record) -> crate::Result<crate::Observation> {
+        if let Some(reset) = self
+            .limit
+            .filter(|_| self.dispatches.load(Ordering::SeqCst) == 1)
+        {
+            // What the in-computer bridge (coder-new claude_print) fails with.
+            let error = if reset == 0 {
+                "Claude Code is not signed in on this computer, or its login expired. Please run /login: use Sign in to Claude for this computer, then continue the task.".to_string()
+            } else {
+                format!(
+                    "Claude Code reached a usage limit on this computer's Claude sign-in. Claude AI usage limit reached|{reset}"
+                )
+            };
+            return Ok(crate::Observation {
+                events: vec![
+                    json!({"event":"tool","name":"acp_subagent","input":null,"output":{"error":error},"running":false}),
+                ],
+                cursor: None,
+                end: Some(Err("The remote Coder runtime exited with status 1.".into())),
+            });
+        }
         if self.running {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -973,3 +996,186 @@ fn a_claude_plan_login_runs_one_turn_while_own_keys_run_in_parallel() {
 
 #[path = "operator_environment_tests.rs"]
 mod environment;
+
+fn claude_fixture(limit: u64) -> Fixture {
+    fixture_with(
+        Fake {
+            limit: Some(limit),
+            ..Fake::default()
+        },
+        |_, p| p.executor = crate::claude::ENGINE.into(),
+    )
+}
+
+fn now_seconds() -> u64 {
+    crate::now_ms() / 1000
+}
+
+/// Waits generously: these tests sleep through a reset under a loaded
+/// parallel test run, and a read racing a save is retried.
+fn wait_until(f: &Fixture, id: &str, done: impl Fn(&dto::Job) -> bool) -> dto::Job {
+    for _ in 0..1200 {
+        let query = Operation::CloudRead {
+            query: dto::ReadQuery {
+                workspace: "checkout".into(),
+                project: "synthetic".into(),
+                job: id.into(),
+                revision: None,
+            },
+        };
+        if let Ok(Outcome::CloudRead { job }) = f.owner.execute("read", &f.principal, &query) {
+            if done(&job) {
+                return *job;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("Synthetic Claude job did not settle: {:?}", read(f, id))
+}
+
+fn wait_long(f: &Fixture, id: &str, state: &str) -> dto::Job {
+    wait_until(f, id, |job| {
+        job.state == state
+            && (!matches!(state, "completed" | "failed" | "cancelled")
+                || job.cleanup == "confirmed")
+    })
+}
+
+#[test]
+fn a_claude_usage_limit_pauses_until_the_reset_then_continues_the_session() {
+    let f = claude_fixture(now_seconds() + 5);
+    accepted(f.owner.execute("first", &f.principal, &submit(&f)).unwrap());
+    // A loaded run may pass the reset before the first read; the events
+    // below still prove the pause.
+    let seen = wait_until(&f, "first", |job| {
+        job.state == "paused" || (job.state == "completed" && job.cleanup == "confirmed")
+    });
+    if seen.state == "paused" {
+        assert!(
+            seen.error
+                .as_deref()
+                .unwrap()
+                .contains("resumes automatically")
+        );
+        // The plan stays one turn at a time while the task waits.
+        assert_eq!(
+            f.owner.execute("second", &f.principal, &submit(&f)),
+            Err(Code::Conflict)
+        );
+    }
+    // Recorded through the capacity owner in this computer's book.
+    let book = f.owner.0.root.join("claude-capacity/fixture");
+    assert!(
+        !microcoder_loop::capacity::Book::load_with(&book, |_| None)
+            .refusals
+            .is_empty()
+    );
+    let job = wait_long(&f, "first", "completed");
+    assert_eq!(job.error, None);
+    assert_eq!(f.backend.dispatches.load(Ordering::SeqCst), 2);
+    assert_eq!(f.backend.restarts.load(Ordering::SeqCst), 1);
+    let record = f.owner.store().unwrap().read("first").unwrap();
+    assert!(record.spec.task.contains("Original explicit operator task"));
+    assert!(record.events.iter().any(|e| e["event"] == "paused"));
+    assert!(record.events.iter().any(|e| e["event"] == "resumed"));
+    // Evidence: engine, pinned version, credential type; never a credential.
+    assert_eq!(
+        record.events[0],
+        json!({"event":"engine","engine":"claude","version":crate::claude::VERSION,"credential":"claude_plan_login"})
+    );
+}
+
+#[test]
+fn a_paused_claude_task_survives_an_operator_restart() {
+    let f = claude_fixture(now_seconds() + 3600);
+    accepted(f.owner.execute("first", &f.principal, &submit(&f)).unwrap());
+    wait_long(&f, "first", "paused");
+    // The reset passes while the old operator's policy refuses: its worker
+    // gives up and the job stays paused and retained, as across a restart.
+    f.authority.store(false, Ordering::SeqCst);
+    let store = f.owner.store().unwrap();
+    let lease = (0..200)
+        .find_map(|_| {
+            store.lease("first").ok().or_else(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                None
+            })
+        })
+        .unwrap();
+    let mut record = lease.read("first").unwrap();
+    assert_eq!(record.state, State::Paused);
+    record.binding["claude"]["pause"]["until"] = json!(now_seconds());
+    lease.save(&record).unwrap();
+    drop(lease);
+    std::thread::sleep(Duration::from_secs(
+        crate::claude_task::CHECK_EVERY_SECONDS + u64::from(crate::claude_task::ADMIT_TRIES) + 2,
+    ));
+    assert_eq!(store.read("first").unwrap().state, State::Paused);
+    assert_eq!(f.backend.dispatches.load(Ordering::SeqCst), 1);
+    f.authority.store(true, Ordering::SeqCst);
+    let check = f.authority.clone();
+    let restarted = Operator::new(
+        f.owner.0.root.clone(),
+        f.policy.clone(),
+        Arc::new(move |_| check.load(Ordering::SeqCst)),
+    )
+    .unwrap()
+    .with_backend("fixture", f.backend.clone())
+    .unwrap();
+    assert_eq!(restarted.resume_paused(), 1);
+    let g = Fixture {
+        _root: tempfile::tempdir().unwrap(),
+        owner: restarted,
+        principal: f.principal.clone(),
+        backend: f.backend.clone(),
+        authority: f.authority.clone(),
+        source: f.source.clone(),
+        policy: f.policy.clone(),
+    };
+    wait_long(&g, "first", "completed");
+    assert_eq!(f.backend.dispatches.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_paused_claude_task_can_be_cancelled() {
+    let f = claude_fixture(now_seconds() + 3600);
+    accepted(f.owner.execute("first", &f.principal, &submit(&f)).unwrap());
+    let job = wait_long(&f, "first", "paused");
+    accepted(
+        f.owner
+            .execute(
+                "stop",
+                &f.principal,
+                &Operation::CloudCancel {
+                    intent: dto::Cancel {
+                        scope: job.scope,
+                        reason: "synthetic".into(),
+                    },
+                },
+            )
+            .unwrap(),
+    );
+    wait_long(&f, "first", "cancelled");
+}
+
+#[test]
+fn a_missing_claude_login_stops_the_task_with_a_sign_in_prompt() {
+    let f = claude_fixture(0);
+    accepted(f.owner.execute("first", &f.principal, &submit(&f)).unwrap());
+    let job = wait_until(&f, "first", |job| {
+        job.error.as_deref() == Some(crate::claude_task::SIGN_IN_PROMPT)
+    });
+    assert_eq!(job.state, "failed");
+    assert_eq!(
+        job.error.as_deref(),
+        Some(crate::claude_task::SIGN_IN_PROMPT)
+    );
+    assert_eq!(job.continuation, "available");
+    let record = f.owner.store().unwrap().read("first").unwrap();
+    assert!(
+        record
+            .events
+            .iter()
+            .any(|e| e["event"] == "sign_in_required" && e["action"] == "Sign in to Claude")
+    );
+}

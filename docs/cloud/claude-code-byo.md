@@ -136,6 +136,35 @@ October 8, 2026. Recheck both before each availability decision.
   `/cloud/app/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
   states that usage bills to the user's own Anthropic or cloud account.
 
+## Implemented (BYO-03, #11010)
+
+- A Cloud job whose engine is `claude` runs the Coder runtime in the user's
+  computer, which drives the pinned, unmodified binary as `claude -p
+  --output-format stream-json` with the task on standard input
+  (`coder_new::bundled_runtime::claude_print`). It runs on the sign-in that
+  computer holds: the login made there, or an own credential the run
+  admitted. No `CLAUDE_CODE_OAUTH_TOKEN` is passed and no login file is read.
+- Concurrency is BYO-04's `claude::admit_turns`; a paused task still counts
+  as the plan's one turn, so a plan never fans out while it waits.
+- A usage limit does not fail the task. The bridge reports the reset Claude
+  Code gave; `coder_cloud::claude_task` marks the job `paused` with that
+  reset, records the limit through the capacity owner
+  (`microcoder_loop::capacity`) in a book per computer under the operator
+  state (`claude-capacity/PROFILE`, no account fingerprint is read), and the
+  operator continues the same session with a resume turn after the reset.
+  The pause lives in the job record, so `Operator::load` (`resume_paused`)
+  picks it up after a restart; a follow picks it up too, and cancel works
+  while paused. A reset that already passed resumes at once; no reported
+  reset holds for the capacity owner's default.
+- A missing or expired login stops the task with a prompt to use Sign in
+  to Claude for that computer (BYO-01's terminal action) and a
+  `sign_in_required` event; the job can continue after sign-in.
+- Evidence: the job's first event and binding name the engine, the pinned
+  version, and the credential type (`claude_plan_login`,
+  `anthropic_api_key`, `bedrock`, `vertex`, `foundry`); the bridge's answer
+  adds the version and credential type Claude Code reported. Never a
+  credential. Tests use a fixture `claude` stand-in only.
+
 ## Existing docs this supersedes
 
 - `2026-10-02-boat-sdk-plan.md` describes connecting Claude Pro or Max on Boat's

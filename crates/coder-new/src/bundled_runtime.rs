@@ -84,7 +84,13 @@ pub enum AgentTransport {
     Acp,
     /// The built-in bridge to Codex's native JSON event stream.
     CodexCli,
+    /// The built-in bridge to the unmodified Claude Code binary in print
+    /// mode, `claude -p` (BYO-03, [`claude_print`]).
+    ClaudeCli,
 }
+
+#[path = "claude_print.rs"]
+pub mod claude_print;
 
 /// A detected or configured local agent executable, addressed by its stable ID.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,6 +143,11 @@ impl AcpAgent {
             && (self.id != "codex" || !self.arguments.is_empty() || self.mode.is_some())
         {
             return Err("The built-in Codex bridge requires the codex agent ID and does not accept ACP arguments or modes.".into());
+        }
+        if self.transport == AgentTransport::ClaudeCli
+            && (self.id != claude_print::ID || !self.arguments.is_empty() || self.mode.is_some())
+        {
+            return Err("The built-in Claude Code bridge requires the claude agent ID and does not accept ACP arguments or modes.".into());
         }
         if self.transport == AgentTransport::CodexCli
             && cfg!(windows)
@@ -485,6 +496,9 @@ pub async fn acp(
     if agent.transport == AgentTransport::CodexCli {
         let sandbox = codex_sandbox()?;
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
+    }
+    if agent.transport == AgentTransport::ClaudeCli {
+        return claude_print::run(&program, task, cwd, cancel, emit).await;
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();

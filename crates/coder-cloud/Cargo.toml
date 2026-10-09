@@ -16,6 +16,7 @@ libc = "0.2"
 sha2 = "0.10"
 secret-screen = { path = "../secret-screen" }
 coder-engine-status = { path = "../coder-engine-status" }
+microcoder-loop = { path = "../microcoder-loop" }
 boat = { path = "../boat" }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }

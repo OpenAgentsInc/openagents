@@ -377,10 +377,91 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
         mut record: Record,
         check: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> std::result::Result<(), String> {
+        loop {
+            // A paused Claude job waits for its reset without holding the
+            // job's lease, so reads, follows, and cancellation still work.
+            if let Some(pause) = store
+                .read(&record.id)
+                .ok()
+                .and_then(|r| crate::claude_task::pause(&r))
+            {
+                loop {
+                    if store.cancellation_requested(&record.id).unwrap_or(false) {
+                        break;
+                    }
+                    let now = crate::now_ms() / 1000;
+                    if now >= pause.until {
+                        // Resume only under the current policy. A refusal
+                        // that persists leaves the job paused and retained:
+                        // a follow or a restarted operator picks it up.
+                        let admitted = (0..crate::claude_task::ADMIT_TRIES).any(|_| {
+                            (check)() || {
+                                std::thread::sleep(Duration::from_secs(1));
+                                false
+                            }
+                        });
+                        if !admitted {
+                            return Err("The current operator policy, source, or native grant refused execution.".into());
+                        }
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(
+                        (pause.until - now).min(crate::claude_task::CHECK_EVERY_SECONDS),
+                    ));
+                }
+            }
+            let lease = match self.lease(&store, &record.id) {
+                Ok(lease) => lease,
+                // A paused job keeps trying: a reader, or a child process
+                // that briefly inherited the lock, must not strand it.
+                Err(_)
+                    if store
+                        .read(&record.id)
+                        .is_ok_and(|r| r.state == State::Paused) =>
+                {
+                    std::thread::sleep(Duration::from_millis(250));
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            record = lease.read(&record.id)?;
+            if record.state == State::Paused {
+                if record.cancel_requested || lease.cancelled() {
+                    record.cancel_requested = true;
+                    record.state = State::Cancelled;
+                    record.updated_ms = crate::now_ms();
+                    return lease.save(&record);
+                }
+                if !crate::claude_task::resume(&mut record, crate::now_ms() / 1000) {
+                    return Ok(());
+                }
+                lease.save(&record)?;
+            }
+            let result = self.drive(&lease, &mut record, check.clone());
+            if result.is_err() {
+                return result;
+            }
+            // A Claude turn that ended on a usage limit pauses until the
+            // reset; one whose login needs the person stops with the
+            // sign-in prompt (BYO-03).
+            let root = store.root().parent().unwrap_or(store.root());
+            let book = crate::claude_task::book(root, &record);
+            match crate::claude_task::settle(&mut record, &book, crate::now_ms() / 1000) {
+                Ok(Some(crate::claude_task::Outcome::Limited { .. })) => {
+                    lease.save(&record)?;
+                }
+                Ok(Some(crate::claude_task::Outcome::SignIn)) => return lease.save(&record),
+                Ok(None) | Err(_) => return result,
+            }
+        }
+    }
+}
+impl<B: Backend + Send + Sync + 'static> BackendDriver<B> {
+    fn lease(&self, store: &Store, id: &str) -> std::result::Result<crate::Lease, String> {
         let started = std::time::Instant::now();
-        let lease = loop {
-            match store.lease(&record.id) {
-                Ok(lease) => break lease,
+        loop {
+            match store.lease(id) {
+                Ok(lease) => return Ok(lease),
                 Err(error)
                     if error == "Another process is using this remote job."
                         && started.elapsed() < Duration::from_secs(2) =>
@@ -389,8 +470,14 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
                 }
                 Err(error) => return Err(error),
             }
-        };
-        record = lease.read(&record.id)?;
+        }
+    }
+    fn drive(
+        &self,
+        lease: &crate::Lease,
+        record: &mut Record,
+        check: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> std::result::Result<(), String> {
         let backend = Checked {
             inner: &self.0,
             check,
@@ -401,15 +488,15 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
             .map_err(|_| "Cannot start the explicit operator runtime.")?;
         let result = runtime.block_on(crate::drive(
             &backend,
-            &lease,
-            &mut record,
+            lease,
+            record,
             &AtomicBool::new(false),
             Duration::from_millis(250),
             &mut |_| {},
         ));
         if result.is_err() && !record.state.terminal() {
             record.error=Some("The operator execution is unresolved. Reconcile this original job; another task was not submitted.".into());
-            let _ = lease.save(&record);
+            let _ = lease.save(record);
         }
         result
     }
@@ -547,13 +634,37 @@ impl Operator {
                 drivers.insert(name.clone(), RegisteredDriver { revision, driver });
             }
         }
-        Ok(Self(Arc::new(Inner {
+        let operator = Self(Arc::new(Inner {
             root,
             policy: source,
             drivers: Mutex::new(drivers),
             authority,
             serial: Mutex::new(()),
-        })))
+        }));
+        operator.resume_paused();
+        Ok(operator)
+    }
+    /// Pick up every Claude job a usage limit paused, as a restarted
+    /// operator does: each waits for its retained reset and then continues
+    /// under the job's original admission (BYO-03). Returns how many.
+    pub fn resume_paused(&self) -> usize {
+        let Ok(records) = self
+            .store()
+            .and_then(|s| s.list().map_err(|_| Code::Unavailable))
+        else {
+            return 0;
+        };
+        let mut resumed = 0;
+        for record in records {
+            if record.state != State::Paused {
+                continue;
+            }
+            if let Ok(a) = self.job_admission(&record.id) {
+                self.start(&a.admission.profile.clone(), record, a);
+                resumed += 1;
+            }
+        }
+        resumed
     }
     /// Inject a backend without reading a login, environment variable, or pool.
     pub fn with_backend<B: Backend + Send + Sync + 'static>(
@@ -1226,6 +1337,10 @@ impl Operator {
             Operation::CloudFollow { intent } => self.exact(&principal.device, &intent.scope)?.0,
             _ => return Err(Code::Unsupported),
         };
+        if matches!(op, Operation::CloudSubmit { .. }) {
+            // Engine, pinned version, and credential type: never a credential.
+            crate::claude_task::admit(&mut record, &admission.profile);
+        }
         let mut journal = Effect {
             principal: principal.clone(),
             admission: admission.clone(),

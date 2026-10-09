@@ -2622,7 +2622,7 @@ pub async fn delegate<E: Executor>(
 /// login that expired or will soon. Only the typed notice is kept, never
 /// the text. A normal run clears it. Nothing is kept unless the Coder run
 /// names the computer's notice directory.
-fn remember_engine_notice(agent: &str, report: &Report) {
+pub fn remember_engine_notice(agent: &str, report: &Report) {
     use coder_engine_status::claude;
     let Some(dir) = std::env::var_os(claude::NOTICE_DIR_ENV) else {
         return;
@@ -2643,7 +2643,11 @@ fn remember_engine_notice(agent: &str, report: &Report) {
 }
 
 /// The notice a Claude Code run's errors carry, if any.
-fn engine_notice(agent: &str, report: &Report, now: u64) -> Option<coder_engine_status::Notice> {
+pub fn engine_notice(
+    agent: &str,
+    report: &Report,
+    now: u64,
+) -> Option<coder_engine_status::Notice> {
     if let Some(limit) = report.limit(agent) {
         return Some(coder_engine_status::Notice::Limited {
             resets_at: limit.resets_at,

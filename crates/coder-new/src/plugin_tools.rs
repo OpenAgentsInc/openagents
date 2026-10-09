@@ -345,10 +345,19 @@ impl ExecutionSettings {
                 let args: AcpArguments = serde_json::from_value(arguments).map_err(
                     |_| "acp_subagent requires an agent ID and task, with no other fields.",
                 )?;
+                // A Cloud computer's background task names the engine
+                // `claude`: the unmodified binary in print mode on the login
+                // that computer holds (BYO-03), unless an agent of that id
+                // is configured.
+                let builtin = (args.agent == bundled_runtime::claude_print::ID
+                    && !self.agents.iter().any(|agent| agent.id == args.agent))
+                .then(bundled_runtime::claude_print::agent)
+                .flatten();
                 let agent = self
                     .agents
                     .iter()
                     .find(|agent| agent.id == args.agent && agent.enabled)
+                    .or(builtin.as_ref())
                     .ok_or("The requested ACP agent is not configured or is turned off.")?;
                 let mut child = |event| emit(event);
                 bundled_runtime::acp(

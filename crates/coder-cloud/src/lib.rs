@@ -12,6 +12,7 @@ use std::{
 
 pub mod boat_backend;
 pub mod claude;
+pub mod claude_task;
 pub mod gce_backend;
 pub mod operator;
 mod operator_adapters;
@@ -95,6 +96,9 @@ pub enum State {
     Ready,
     Dispatching,
     Running,
+    /// A Claude Code usage limit stopped the turn; the operator continues
+    /// it after the reset Claude Code reported ([`claude_task`]).
+    Paused,
     Completed,
     Failed,
     Cancelled,
