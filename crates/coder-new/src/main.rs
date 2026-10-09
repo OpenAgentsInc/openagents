@@ -66,6 +66,9 @@ fn run() -> io::Result<()> {
     if args.first().is_some_and(|command| command == "trace") {
         return trace_command(&args[1..]);
     }
+    if args.first().is_some_and(|command| command == "update") {
+        return update_command(&args[1..]);
+    }
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
@@ -133,6 +136,13 @@ fn run() -> io::Result<()> {
     }
     app.interactive_disclosures = true;
     let openagents_root = model_access::store::openagents_dir();
+    let update = state
+        .clone()
+        .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
+        .and_then(|dir| start_update(&dir, &mut app));
+    let update_events = update
+        .as_ref()
+        .and_then(|context| coder_new::update::spawn_check(context.clone()));
     if let Some(store) = state
         .clone()
         .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
@@ -242,6 +252,12 @@ fn run() -> io::Result<()> {
             .map(coder_new::plugin_catalog::Loader::new);
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
+            if let Some(Ok(coder_new::update::Event::Notice(line))) = update_events
+                .as_ref()
+                .map(std::sync::mpsc::Receiver::try_recv)
+            {
+                app.update_line = Some(line);
+            }
             app.follow_tick();
             background.sync(&mut app);
             app.persist_session(false);
@@ -284,7 +300,76 @@ fn run() -> io::Result<()> {
     app.persist_session(true);
     let extra_restore = restore_extras();
     ratatui::restore();
+    // A version downloaded and verified this session installs now (#11128).
+    if let Some(context) = &update
+        && context.config.mode == coder_new::update::Mode::Auto
+    {
+        match coder_new::update::install_staged(context) {
+            Ok(Some(version)) => {
+                eprintln!("Updated Coder to {version}. It runs next time you start coder.");
+            }
+            Ok(None) => {}
+            Err(message) => eprintln!("coder: {message}"),
+        }
+    }
     result.and(extra_restore)
+}
+
+/// Prepares automatic updates for this TUI session: none under CI, with
+/// `CODER_UPDATE=off`, or in a debug build. A version an earlier session
+/// downloaded but did not install is installed first, and on Unix the new
+/// `coder` then runs in this one's place.
+fn start_update(dir: &std::path::Path, app: &mut App) -> Option<coder_new::update::Context> {
+    use coder_new::update::{self, InstallKind, Mode};
+    let context = update::Context::from_env(dir).ok()?;
+    let env = |name: &str| std::env::var(name).ok();
+    if !context.config.automatic(&env, cfg!(debug_assertions))
+        || context.kind == InstallKind::Source
+    {
+        return None;
+    }
+    if context.config.mode == Mode::Auto
+        && let InstallKind::Standalone(bin) = &context.kind
+    {
+        match update::install_staged(&context) {
+            Ok(Some(version)) => {
+                eprintln!("Updated Coder to {version}.");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::CommandExt;
+                    let coder = bin.join(update::commands(&context.platform).swap_remove(0));
+                    let error = std::process::Command::new(&coder)
+                        .args(std::env::args_os().skip(1))
+                        .exec();
+                    eprintln!("coder: cannot start Coder {version}: {error}");
+                }
+                #[cfg(not(unix))]
+                let _ = bin;
+                app.update_line = Some(format!(
+                    "Coder {version} is installed. Restart Coder to use it."
+                ));
+                return None;
+            }
+            Ok(None) => {}
+            Err(message) => app.notice = Some(message),
+        }
+    }
+    app.update_line = context.cached_notice();
+    Some(context)
+}
+
+/// `coder update [--check | --rollback | --mode MODE | --channel NAME]` (#11128).
+fn update_command(rest: &[String]) -> io::Result<()> {
+    let dir = model_access::store::openagents_dir()
+        .map(|root| root.join("coder-new"))
+        .ok_or_else(|| io::Error::other("Set HOME to update Coder."))?;
+    coder_new::update::command(rest, &dir, &mut io::stdout()).map_err(|message| {
+        if message.starts_with("Unknown option") || message.starts_with("Choose") {
+            io::Error::new(io::ErrorKind::InvalidInput, message)
+        } else {
+            io::Error::other(message)
+        }
+    })
 }
 
 /// `coder login [--pair CODE] [--state DIR]` and `coder logout [--state DIR]`.
@@ -387,6 +472,7 @@ Usage:
   coder logout           Sign this computer out.
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.
+  coder update           Install the newest Coder now (coder update --help).
 
 Options:
   --in DIR            Work in DIR instead of this directory.
@@ -408,9 +494,11 @@ Inside Coder, type / to see every command:
   /plugins                 Turn plugins on and add keys (also Ctrl+P, or Cmd+P on macOS).
   Esc stops a reply. Ctrl+C quits.
 
-Scripts and agents: openagents coder --help
-Update Coder:       curl -fsSL https://openagents.com/cli/install.sh | bash
-Update on Windows:  irm https://openagents.com/cli/install.ps1 | iex"
+Coder keeps itself up to date: once a day it checks for a newer version,
+downloads and verifies it, and installs it when you quit. To only be told,
+run coder update --mode notify; to stop checking, coder update --mode off.
+
+Scripts and agents: openagents coder --help"
     )
 }
 

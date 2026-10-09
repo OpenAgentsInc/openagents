@@ -34,6 +34,27 @@ second website deploy. `--channel stable` takes only a release (`X.Y.Z`,
 never `-rc.N`), and moves `coder.rc` to the same version, so `rc` never
 names an older build than `stable`.
 
+### Automatic updates
+
+From 1.0.0 an installed Coder updates itself from the same objects
+(#11128; the design and the comparison with Codex and Grok Build are in
+[terminal-auto-update.md](terminal-auto-update.md)). At most once a day
+the TUI reads `coder.<channel>` in the background. On a standalone install
+it downloads the platform archive, checks it against
+`SHA256SUMS-coder-<version>`, and installs `coder`, `openagents`,
+`microcoder` (and `coder-boundary.exe`) together when Coder quits, keeping
+the replaced set in `~/.openagents/bin/.coder-previous` for
+`coder update --rollback`. App-bundled, Homebrew, npm, and read-only
+installs only get the one-line notice. So publishing is the whole release:
+moving a channel reaches every 1.0.0+ install within a day, and the
+release script needs nothing new. Since a channel is read by installs in
+the field, never point it at a version whose archives are missing or
+unsigned (the script already refuses), and never lower it to roll back:
+Coder never downgrades, so a bad release is fixed by publishing a newer one.
+`coder update`, `--check`, `--mode auto|notify|off`, `--channel stable|rc`,
+and `CODER_UPDATE`, `CODER_CHANNEL`, `CODER_BASE_URL` (a test channel)
+control it; `CI` turns checks off.
+
 ### Publishing 1.0.0
 
 The crates carry `1.0.0` from #11091. `CODER_VERSION` in

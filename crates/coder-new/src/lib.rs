@@ -43,6 +43,7 @@ pub mod tools;
 pub mod trace_upload;
 pub mod trajectory;
 pub mod ui;
+pub mod update;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use unicode_segmentation::UnicodeSegmentation;
@@ -125,6 +126,8 @@ pub struct App {
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
+    /// A newer Coder is ready or available (#11128); shown on the context row.
+    pub update_line: Option<String>,
     pub model_picker: Option<models::Picker>,
     pub resume_picker: Option<resume::Picker>,
     history: resume::History,

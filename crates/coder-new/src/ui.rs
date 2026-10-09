@@ -437,6 +437,21 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
         None => format!(" / {branch}"),
     };
     let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
+    // A newer Coder (#11128) takes the row's end when the whole line fits.
+    if let Some(update) = &app.update_line {
+        let update = format!(" · {update}");
+        let update_width = update.width().min(usize::from(u16::MAX)) as u16;
+        let rest = area.width.saturating_sub(update_width);
+        if update_width < area.width && rest > suffix_width + 4 {
+            let spans = vec![
+                span(truncate(directory, rest - suffix_width), t::TEXT_PRIMARY),
+                span(suffix, t::GRAY),
+                span(update, t::ACCENT_MODEL),
+            ];
+            frame.render_widget(Paragraph::new(Line::from(spans)), area);
+            return;
+        }
+    }
     let spans = if suffix_width < area.width {
         vec![
             span(
