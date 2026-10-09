@@ -21,8 +21,9 @@
 //!    takes only the caller's own accounts, never ours), the caller's
 //!    `max_price` and their own limits, benched upstreams, exhausted credit,
 //!    and (for our accounts) a rate-card row to charge from.
-//! 3. **Quality floor.** With Gym scores for the class, candidates under the
-//!    class's floor go; with none yet, the class table's order stands.
+//! 3. **Quality floor.** Candidates must meet the class's floor with both
+//!    Gym scores and verified paid-outcome rates. Without outcomes, Gym
+//!    scores stand; without either input, the class table's order stands.
 //! 4. **Rank.** Credit we hold first (free capacity and prepaid balances,
 //!    sooner expiry first), then estimated price, then measured time to
 //!    first token. Without class scores, the table's model order comes
@@ -309,7 +310,7 @@ impl Bench {
     }
 }
 
-/// Gym scores by class and model.
+/// Quality scores by class and model. The gateway combines Gym and paid outcomes.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Scores {
     pub by_class: BTreeMap<TaskClass, BTreeMap<String, f64>>,

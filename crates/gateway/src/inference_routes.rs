@@ -78,20 +78,31 @@ pub fn upstreams() -> Vec<Arc<dyn Upstream>> {
 
 /// The gateway over `upstreams` (normally [`upstreams`]), judging `openagents/auto` with Jev when
 /// a TypeSafe key is configured.
-#[must_use]
 pub fn gateway(
     config: &crate::config::Inference,
     meter: Arc<inference::meter::Meter>,
     upstreams: Vec<Arc<dyn Upstream>>,
-) -> Gateway {
-    let mut gateway = Gateway::new(upstreams, meter);
+) -> Result<Gateway, String> {
+    if config
+        .scores
+        .by_class
+        .values()
+        .flat_map(|models| models.values())
+        .any(|score| !score.is_finite() || !(0.0..=1.0).contains(score))
+    {
+        return Err("Gym quality scores must be between zero and one.".into());
+    }
+    let mut gateway = Gateway::new(upstreams, meter).with_scores(config.scores.clone());
+    if let Some(outcomes) = &config.outcomes {
+        gateway = gateway.with_outcomes(Arc::new(inference::outcomes::Book::open(outcomes)?));
+    }
     if let Some(classes) = &config.classes {
         gateway = gateway.with_classes(classes.clone());
     }
     if let Some(judge) = JevClass::from_env() {
         gateway = gateway.with_judge(Arc::new(judge), inference::run::JUDGE_BUDGET);
     }
-    gateway
+    Ok(gateway)
 }
 
 /// The `openagents/auto` judgment: one System One Choice over the task

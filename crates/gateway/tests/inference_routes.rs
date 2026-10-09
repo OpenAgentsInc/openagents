@@ -139,13 +139,17 @@ struct Deployment {
 }
 
 async fn deploy(service_tenants: Vec<String>) -> Deployment {
+    deploy_outcomes(service_tenants, None).await
+}
+
+async fn deploy_outcomes(service_tenants: Vec<String>, issuer: Option<String>) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let manifest = common::manifest(&common::artifact('a'), None);
     let registry = Registry::install(dir.path(), manifest).unwrap();
     let token = keys::issue(dir.path(), registry.manifest(), "acme")
         .unwrap()
         .token;
-    let inference: Inference = serde_json::from_value(json!({
+    let mut inference: Inference = serde_json::from_value(json!({
         "admin_token_env": ADMIN_ENV,
         "service_tenants": service_tenants,
         "classes": {
@@ -159,6 +163,28 @@ async fn deploy(service_tenants: Vec<String>) -> Deployment {
                       "balance": 30000000000u64, "basis": "prepaid"}]
     }))
     .unwrap();
+    if let Some(key) = issuer {
+        inference.admin_token_env = "INFERENCE_OUTCOMES_TEST_ADMIN".into();
+        inference.outcomes = Some(inference::outcomes::Config {
+            path: dir.path().join("outcomes.jsonl"),
+            issuers: vec![inference::outcomes::Issuer {
+                source: inference::outcomes::Source::CoderAcceptance,
+                key,
+            }],
+        });
+        inference.scores.by_class.insert(
+            inference::router::TaskClass::Chat,
+            std::collections::BTreeMap::from([(MODEL.into(), 0.9)]),
+        );
+        inference
+            .classes
+            .as_mut()
+            .unwrap()
+            .classes
+            .get_mut(&inference::router::TaskClass::Chat)
+            .unwrap()
+            .floor = Some(0.7);
+    }
     let config = Config {
         v: SCHEMA.to_string(),
         listen: "127.0.0.1:0".to_string(),
@@ -395,4 +421,121 @@ async fn keys_outside_the_service_tenants_and_stored_responses_are_refused() {
     .await
     .unwrap();
     assert_eq!(stored.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn signed_paid_outcomes_change_the_floor_and_the_public_model_samples() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+    use inference::outcomes::{Mode, Outcome, Receipt, Source};
+    use ring::signature::{Ed25519KeyPair, KeyPair};
+    // SAFETY: this variable is unique to this test and set before requests.
+    unsafe {
+        std::env::set_var("INFERENCE_OUTCOMES_TEST_ADMIN", "outcome-admin");
+    }
+    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let d = deploy_outcomes(
+        vec!["acme".into()],
+        Some(STANDARD.encode(key.public_key().as_ref())),
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let receipt = |id: &str, accepted, mode| {
+        Receipt::sign(
+            Outcome {
+                v: inference::outcomes::SCHEMA.into(),
+                source: Source::CoderAcceptance,
+                run_id: id.into(),
+                class: inference::router::TaskClass::Chat,
+                model: MODEL.into(),
+                mode,
+                accepted,
+                paid_msat: 1000,
+                cost_micros: 1_000_000,
+                payment_digest: "a".repeat(64),
+                verification_digest: "b".repeat(64),
+            },
+            &key,
+        )
+    };
+    let send = |receipt: Receipt, token: &str| {
+        client
+            .post(format!("{}/v1/admin/inference/outcomes", d.address))
+            .bearer_auth(token)
+            .json(&receipt)
+    };
+    let ask = || {
+        post(
+            &d,
+            "/v1/responses",
+            json!({"model":"openagents/chat", "input":"hi"}),
+        )
+    };
+    assert_eq!(ask().send().await.unwrap().status(), StatusCode::OK);
+    let first = receipt("work-1", true, Mode::Real);
+    assert_eq!(
+        send(first.clone(), &d.token).send().await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let body: Value = send(first.clone(), "outcome-admin")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["recorded"], true);
+    let body: Value = send(first, "outcome-admin")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["recorded"], false);
+    for mode in [Mode::Fixture, Mode::Synthetic] {
+        let body: Value = send(receipt(&format!("{mode:?}"), false, mode), "outcome-admin")
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(body["counts_toward_quality"], false);
+    }
+    assert_eq!(ask().send().await.unwrap().status(), StatusCode::OK);
+    assert_eq!(
+        send(receipt("work-2", false, Mode::Real), "outcome-admin")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let answer = ask().send().await.unwrap();
+    assert_eq!(
+        answer.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        answer.text().await.unwrap()
+    );
+    let catalog: Value = client
+        .get(format!("{}/v1/models", d.address))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let row = catalog["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == MODEL)
+        .unwrap();
+    let outcomes = &row["openagents"]["accepted_outcomes"]["chat"];
+    assert_eq!(outcomes["samples"], 2);
+    assert_eq!(outcomes["accepted_rate"], 0.5);
+    assert_eq!(outcomes["cost_per_accepted_usd"], "2");
+    assert!(!outcomes.to_string().contains("work-"));
 }

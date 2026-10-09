@@ -399,10 +399,10 @@ impl ServeState {
                     all.extend(crate::inference_pylon::upstreams(&config));
                     all
                 });
-                Arc::new(crate::inference_routes::gateway(
-                    inference, meter, upstreams,
-                ))
-            });
+                crate::inference_routes::gateway(inference, meter, upstreams).map(Arc::new)
+            })
+            .transpose()
+            .map_err(Trouble::Money)?;
         let inference_book = config
             .inference
             .as_ref()
@@ -785,6 +785,13 @@ pub(crate) async fn models(
     // The inference catalog is public: an OpenAI SDK lists it with only a
     // key, no workspace header, or with no key at all.
     let catalog = crate::inference_public::catalog(&state);
+    if state.inference.is_some() && catalog.is_none() {
+        return Err(gateway_error(
+            503,
+            "no_route",
+            "Model quality is unavailable right now.",
+        ));
+    }
     let (registry, caller) = match authenticate(&state, &headers) {
         Ok(parts) => parts,
         Err((status, code, message)) => {

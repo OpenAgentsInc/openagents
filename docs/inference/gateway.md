@@ -361,11 +361,11 @@ ordered list of (model, upstream) attempts.
    `pay: "mine"`, costs more than the caller's `max_price` or their own
    limit, is benched (a 401 or 402 benches an upstream for five minutes, as
    `jev::doors` does), or draws on an exhausted credit balance.
-3. **Quality floor.** Keep only candidates whose measured score for the
-   task class meets that class's floor (section 6). With no score yet, the
-   class table's order stands, and it keeps standing until Gym scores for
-   the class exist; until then credit, price, and latency only order each
-   model's upstreams.
+3. **Quality floor.** Both a model's Gym score and its accepted-outcome
+   rate for the task class must meet the class's floor (section 6).
+   Without paid outcomes, the Gym-only rule stands. Without either input,
+   the class table's order stands; credit, price, and latency only order
+   each model's upstreams.
 4. **Rank.** Prepaid credit first (Google, Z.ai, the Pro door's free
    capacity), then price, then measured time to first token. A caller's
    `route.sort` or `route.order` replaces this ranking.
@@ -459,10 +459,13 @@ From those records:
 - **Cost reconciliation.** Daily, our computed cost against OpenRouter's and
   Vercel's reported cost and the providers' billing. A gap over 2% raises
   an alert.
-- **Quality.** Gym suites per task class run nightly against each candidate
-  model; the score is the quality floor check in section 5. Shadow runs
-  send a small sample to a challenger model and compare, as the cost shadow
-  baseline does today.
+- **Quality.** `inference.scores.by_class` supplies Gym scores. Signed paid
+  outcomes from Coder acceptance and Gym head-to-head verifiers supply
+  accepted-outcome rates and total inference cost per accepted outcome,
+  including rejected work's cost. Each request uses the lower of the two
+  scores. `/v1/models` publishes `openagents.accepted_outcomes` by class
+  with the rate, samples, accepted count, cost, and bitcoin paid. An empty
+  object means no outcomes yet. Fixtures and synthetic runs never count.
 - **Tokens served** (added from episode 243, section 16). The one public
   number for the API: tokens served per UTC day from answering attempts,
   split into our own services and outside callers, and free and paid
@@ -697,6 +700,22 @@ P2 as built so far:
   earnings in the split ledger (section 4, "Pylon providers and local
   Psionic"). Not yet run against a live provider over a relay.
 
+Paid-outcome input (#11079): `inference.outcomes` names an absolute JSONL
+`path` and `issuers` (`source`: `coder_acceptance` or `gym_head_to_head`,
+`key`: base64 Ed25519 public key). `POST /v1/admin/inference/outcomes` uses
+the existing admin bearer and accepts `inference::outcomes::Receipt`.
+A source verifier checks settled payment and the final evaluation first,
+then signs `Outcome` with `Receipt::sign`. It reports accepted and rejected
+work, total inference cost in dollar micros, bitcoin paid in millisatoshis,
+and SHA-256 payment/evaluation receipt references; it sends no prompt text.
+Use one global `run_id` per evaluated work item (one side of a Gym comparison),
+shared across retries and sources. The signature binds the source, model,
+class, verdict, and `mode` (`real`, `fixture`, `synthetic`). These are trusted
+source attestations: installing a verifier key authorizes its payment and
+evaluation findings. Keep historical verifier keys while their records remain.
+The locked, synced book rejects conflicting retries or damaged history; new
+records affect the next route plan without a class-table edit.
+
 P1 public API as built (#11065), local only until deployed:
 
 - `inference.public` in the gateway config opens `/v1/responses` and
@@ -887,7 +906,7 @@ Sources: [241](../transcripts/241.md), [242](../transcripts/242.md),
 | 241 | Many models behind one OpenAI-compatible API, so no single vendor can cut access | Kept | Sections 1, 3, 4 |
 | 241 | Open and inspectable, unlike a closed router over closed models: the caller sees which model answered and can opt out of upstreams | Kept | Section 3 (`openagents` response object, `openagents:route`, headers), `route.ignore` |
 | 242 | One routed model id with free and paid use | Kept, renamed | `openagents/auto` and the class ids (section 3); free tier (section 8); Khala name, decision 11 |
-| 242 | Selected by paid, verified value, not graded on its own benchmarks | Now in spec, build later | Section 5, [#11079](https://github.com/OpenAgentsInc/openagents/issues/11079) |
+| 242 | Selected by paid, verified value, not graded on its own benchmarks | Implemented signed outcome input; local checks | Section 5, [#11079](https://github.com/OpenAgentsInc/openagents/issues/11079) |
 | 242 | Open pool: anyone running a Pylon serves and is paid in bitcoin | Kept | Section 4 (Pylon providers), P2 [#11070](https://github.com/OpenAgentsInc/openagents/issues/11070) |
 | 242, 247 | Programs and other people's agents compose answers that are work (code, sites, briefs), with contributors paid | Later | [#11082](https://github.com/OpenAgentsInc/openagents/issues/11082), after #11070 |
 | 242 | Confidential compute as one more route for private work | Later | A future privacy level above `strict` (section 9); no account today |

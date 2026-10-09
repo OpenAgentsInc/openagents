@@ -28,6 +28,7 @@ use crate::serve::ServeState;
 
 /// The status route's path.
 pub const PATH: &str = "/v1/admin/inference/status";
+pub const OUTCOMES: &str = "/v1/admin/inference/outcomes";
 
 /// How often the meter's daily hook runs (it reconciles once a day and
 /// checks time-based alerts such as credit nearing expiry).
@@ -43,6 +44,7 @@ const COOKIE: &str = "oa_inference_admin";
 pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     vec![
         (PATH, get(status)),
+        (OUTCOMES, axum::routing::post(outcome)),
         (PAGE, get(page)),
         (SESSION, axum::routing::post(session)),
     ]
@@ -71,6 +73,56 @@ pub(crate) fn resume(state: &Arc<ServeState>) {
             meter.tick(&[], now_ms());
         }
     });
+}
+
+async fn outcome(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error":{"message":"An admin token is required."}})),
+        )
+            .into_response();
+    }
+    let Some(book) = state
+        .inference
+        .as_ref()
+        .and_then(|gateway| gateway.outcomes())
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":{"message":"Paid outcomes are not set up here."}})),
+        )
+            .into_response();
+    };
+    if body.len() > 8192 {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({"error":{"message":"This outcome is too large."}})),
+        )
+            .into_response();
+    }
+    let receipt = match serde_json::from_slice::<inference::outcomes::Receipt>(&body) {
+        Ok(receipt) => receipt,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":{"message":"Send a signed paid-work outcome."}})),
+            )
+                .into_response();
+        }
+    };
+    let mode = receipt.outcome.mode;
+    match book.record(receipt) {
+        Ok(recorded) => Json(json!({"recorded":recorded, "mode":mode, "counts_toward_quality":mode == inference::outcomes::Mode::Real})).into_response(),
+        Err(message) => {
+            let status = if book.summary().is_err() { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::BAD_REQUEST };
+            (status, Json(json!({"error":{"message":message}}))).into_response()
+        },
+    }
 }
 
 fn expected(state: &ServeState) -> Option<String> {

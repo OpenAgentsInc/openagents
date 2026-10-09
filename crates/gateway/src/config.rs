@@ -225,6 +225,12 @@ pub struct Inference {
     /// A class table in place of the spec's starting one.
     #[serde(default)]
     pub classes: Option<inference::router::ClassTable>,
+    /// Gym scores; paid outcomes must also pass each class's quality floor.
+    #[serde(default)]
+    pub scores: inference::router::Scores,
+    /// Signed Coder/Gym paid outcomes and their trusted verifier keys.
+    #[serde(default)]
+    pub outcomes: Option<inference::outcomes::Config>,
     /// The bitcoin price the rate card figures sats at
     /// (`GET /v1/rates`); without it the card shows dollars only.
     #[serde(default)]

@@ -208,6 +208,7 @@ pub struct Gateway {
     upstreams: Vec<Arc<dyn Upstream>>,
     classes: ClassTable,
     scores: Scores,
+    outcomes: Option<Arc<crate::outcomes::Book>>,
     meter: Arc<Meter>,
     bench: Mutex<Bench>,
     judge: Option<Arc<dyn PickClass>>,
@@ -246,6 +247,7 @@ impl Gateway {
             upstreams,
             classes: ClassTable::default(),
             scores: Scores::default(),
+            outcomes: None,
             meter,
             bench: Mutex::new(Bench::default()),
             judge: None,
@@ -265,6 +267,23 @@ impl Gateway {
     pub fn with_scores(mut self, scores: Scores) -> Self {
         self.scores = scores;
         self
+    }
+
+    /// Live paid outcomes are read for each plan, without changing the class table.
+    #[must_use]
+    pub fn with_outcomes(mut self, book: Arc<crate::outcomes::Book>) -> Self {
+        self.outcomes = Some(book);
+        self
+    }
+
+    pub fn outcomes(&self) -> Option<&Arc<crate::outcomes::Book>> {
+        self.outcomes.as_ref()
+    }
+
+    pub fn outcome_summary(&self) -> Result<crate::outcomes::Summary, String> {
+        self.outcomes
+            .as_ref()
+            .map_or_else(|| Ok(Default::default()), |book| book.summary())
     }
 
     /// The same gateway judging `openagents/auto` with `judge`, waiting at
@@ -431,6 +450,15 @@ impl Gateway {
             .lock()
             .map(|bench| bench.clone())
             .unwrap_or_default();
+        let mut scores = self.scores.clone();
+        self.outcome_summary()
+            .map_err(|_| {
+                ApiError::new(
+                    ErrorType::NoRoute,
+                    "Routing quality is unavailable right now.",
+                )
+            })?
+            .apply(&mut scores);
         let plan_as = |judged: Option<TaskClass>| {
             let decided = Decided(judged);
             plan(
@@ -441,7 +469,7 @@ impl Gateway {
                     card: &card,
                     ledger: &ledger,
                     rates: &rates,
-                    scores: &self.scores,
+                    scores: &scores,
                     bench: &bench,
                     limits: caller.limits,
                     judge: Some(&decided),

@@ -40,6 +40,7 @@ pub const KEY_PATHS: &[&str] = &[
 /// operator's status page and its session.
 pub const UNDOCUMENTED: &[&str] = &[
     crate::inference_status::PATH,
+    crate::inference_status::OUTCOMES,
     crate::inference_status::PAGE,
     crate::inference_status::SESSION,
 ];
@@ -670,10 +671,18 @@ fn schemas() -> Value {
                             "id": {"type": "string"},
                             "object": {"type": "string", "const": "model"},
                             "owned_by": {"type": "string"},
-                            "openagents": {"type": "object", "description": "Providers, capabilities, context, price rows, live latency, and whether the free tier covers it."}
+                            "openagents": {"type": "object", "description": "Providers, capabilities, context, price rows, live latency, free-tier coverage, and verified paid outcomes by task class.", "properties": {
+                                "accepted_outcomes": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/AcceptedOutcomes"}, "description": "Only real paid work; empty when no outcomes exist."}
+                            }}
                         }}}
                     }
                 }));
+    map.insert("AcceptedOutcomes".into(), json!({"type":"object", "properties": {
+        "samples":{"type":"integer", "minimum":1}, "accepted":{"type":"integer", "minimum":0},
+        "accepted_rate":{"type":"number", "minimum":0, "maximum":1},
+        "cost_usd":{"type":"string"}, "cost_per_accepted_usd":{"type":["string","null"], "description":"All evaluated work's inference cost divided by accepted outcomes, to whole dollar micros; null when none were accepted."},
+        "paid_msat":{"type":"integer", "minimum":1}
+    }}));
     map.insert("RateCard".into(), json!({
                     "type": "object",
                     "required": ["v", "unit", "rows"],

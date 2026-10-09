@@ -40,6 +40,7 @@ pub mod hosted;
 pub mod item;
 pub mod meter;
 pub mod openagents;
+pub mod outcomes;
 pub mod rates;
 pub mod request;
 pub mod response;

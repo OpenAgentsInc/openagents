@@ -54,12 +54,13 @@ pub fn catalog(state: &ServeState) -> Option<serde_json::Value> {
         .map(|span| u64::try_from(span.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or_default();
     let live = gateway.meter().rates(60 * 60_000, now);
-    Some(inference::rates::catalog(
-        &gateway.offerings(),
-        &rows,
-        &live,
-        sats,
-    ))
+    let summary = gateway.outcome_summary().ok()?;
+    let mut catalog = inference::rates::catalog(&gateway.offerings(), &rows, &live, sats);
+    for model in catalog["data"].as_array_mut()? {
+        let id = model["id"].as_str()?.to_owned();
+        model["openagents"]["accepted_outcomes"] = summary.model(&id);
+    }
+    Some(catalog)
 }
 
 async fn rates(State(state): State<Arc<ServeState>>) -> Json<inference::rates::Card> {
