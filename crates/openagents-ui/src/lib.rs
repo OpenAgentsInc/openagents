@@ -5,4 +5,5 @@
 //! component stylesheets under `static/`, the icon set, and typed Maud
 //! builders. It does not depend on Axum; `openagents-web` serves its assets.
 
+pub mod content;
 pub mod icons;

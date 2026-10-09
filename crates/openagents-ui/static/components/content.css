@@ -1,0 +1,618 @@
+/*
+ * Conversation content: Markdown root and its elements, code blocks, the
+ * table family, source chips with favicons, and the sticky action bar.
+ *
+ * Ported from Apps SDK UI `Markdown.module.css` and `CodeBlock.module.css`
+ * (MIT, see crates/openagents-ui/NOTICE). `spacing(n)` became
+ * `calc(var(--spacing) * n)` and `alpha(c, p)` became `color-mix()`.
+ *
+ * `.oa-markdown` styles the plain HTML our Markdown renderer
+ * (`openagents-web/src/markdown.rs`, pulldown-cmark) writes: p, h1-h6,
+ * ul/ol/li, blockquote, hr, a, strong/em/del, inline `code`,
+ * `pre > code`, and table/thead/tbody/tr/th/td. The builders in
+ * `src/content/` emit the same structure with explicit classes.
+ */
+
+/* Component tokens, in the naming the product uses for chat surfaces. */
+:where(:root) {
+  --font-content: var(--font-sans);
+  --markdown-font-size: var(--font-text-md-size, 1rem);
+  --markdown-line-height: 1.75;
+  --markdown-space: 1em;
+  --markdown-code-font-size: 0.875em;
+  --markdown-link-color: var(--link-primary-text-color);
+  --markdown-link-color-hover: var(--link-primary-text-color-hover);
+  --code-block-radius: var(--radius-xl);
+  --code-block-bar-height: calc(var(--spacing) * 10);
+  --sticky-action-bar-top: 0px;
+  --source-height: calc(var(--spacing) * 5.5);
+  --favicon-size: calc(var(--spacing) * 3);
+}
+
+/* ------------------------------------------------------------------ */
+/* Markdown root                                                       */
+/* ------------------------------------------------------------------ */
+
+.oa-markdown {
+  min-width: 0;
+  color: var(--color-text);
+  font-family: var(--font-content);
+  font-size: var(--markdown-font-size);
+  line-height: var(--markdown-line-height);
+  overflow-wrap: anywhere;
+}
+
+.oa-markdown[data-size="sm"] {
+  --markdown-font-size: var(--font-text-sm-size, 0.875rem);
+  --markdown-line-height: 1.6;
+}
+
+/* Avoid margin collapse surprises: the first and last child sit flush. */
+.oa-markdown > :first-child {
+  margin-top: 0;
+}
+
+.oa-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* Headings */
+.oa-markdown :is(h1, h2, h3, h4, h5, h6),
+.oa-heading {
+  color: var(--color-text);
+  font-family: var(--font-content);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-markdown h1,
+.oa-heading[data-level="1"] {
+  margin: 0 0 0.5rem;
+  font-size: 1.75em;
+  letter-spacing: -0.04rem;
+  line-height: 1.222;
+}
+
+.oa-markdown h2,
+.oa-heading[data-level="2"] {
+  margin: 2rem 0 1rem;
+  font-size: 1.5em;
+  line-height: 1.222;
+}
+
+.oa-markdown h3,
+.oa-heading[data-level="3"] {
+  margin: 1.125rem 0 0.625rem;
+  font-size: 1.25em;
+  line-height: 1.3;
+}
+
+.oa-markdown h4,
+.oa-heading[data-level="4"] {
+  margin: 1rem 0 0.5rem;
+  font-size: 1em;
+  line-height: 1.5;
+}
+
+.oa-markdown h5,
+.oa-heading[data-level="5"] {
+  margin: 1rem 0 0.5rem;
+  font-size: 1em;
+  line-height: 1.5;
+}
+
+.oa-markdown h6,
+.oa-heading[data-level="6"] {
+  margin: 1rem 0 0.5rem;
+  font-size: 1em;
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+/* Paragraphs */
+.oa-markdown p,
+.oa-paragraph {
+  margin: var(--markdown-space) 0;
+  font-family: var(--font-content);
+}
+
+/* Lists */
+.oa-markdown :is(ul, ol),
+.oa-list {
+  margin: 0.5em 0 var(--markdown-space);
+  padding-left: 1.625em;
+}
+
+.oa-markdown ul,
+.oa-list[data-variant="unordered"] {
+  list-style-type: disc;
+}
+
+.oa-markdown ol,
+.oa-list[data-variant="ordered"] {
+  list-style-type: decimal;
+}
+
+.oa-markdown li,
+.oa-list-item {
+  min-height: 1.5em;
+  margin: 0.5em 0;
+  padding-left: 0.375em;
+}
+
+.oa-markdown li::marker,
+.oa-list-item::marker {
+  color: var(--color-text-secondary);
+  font-size: 1em;
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-markdown li > :first-child,
+.oa-list-item > :first-child {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.oa-markdown li :is(ul, ol),
+.oa-list-item .oa-list {
+  margin-top: 0.25em;
+}
+
+/* Emphasis */
+.oa-markdown strong {
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-markdown em {
+  font-style: italic;
+}
+
+.oa-markdown del {
+  color: var(--color-text-secondary);
+}
+
+/* Links: the renderer only keeps http, https, mailto, site paths and anchors. */
+.oa-markdown a,
+.oa-link {
+  border-radius: var(--radius-sm);
+  color: var(--markdown-link-color);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentcolor 40%, transparent);
+  text-underline-offset: 0.15em;
+  transition: color var(--transition-duration-basic, 150ms) var(--transition-ease-basic, ease);
+}
+
+.oa-markdown a:hover,
+.oa-link:hover {
+  color: var(--markdown-link-color-hover);
+}
+
+.oa-markdown a:focus-visible,
+.oa-link:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+/* Images: the renderer only keeps the site's own files. */
+.oa-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+/* Quotes */
+.oa-markdown blockquote {
+  position: relative;
+  margin: var(--markdown-space) 0;
+  padding: 0.25em 0 0.25rem calc(var(--spacing) * 6);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-normal);
+}
+
+.oa-markdown blockquote::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 0.25rem;
+  border-radius: var(--radius-2xs);
+  background: light-dark(var(--alpha-15), var(--alpha-20));
+  content: "";
+}
+
+.oa-markdown blockquote p {
+  margin: 0.5em 0 0;
+}
+
+.oa-markdown blockquote p:first-child {
+  margin-top: 0;
+}
+
+/* Dividers */
+.oa-markdown hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--alpha-10);
+}
+
+/* ------------------------------------------------------------------ */
+/* Inline code                                                         */
+/* ------------------------------------------------------------------ */
+
+.oa-markdown :not(pre) > code,
+.oa-inline-code {
+  padding: 1px 0.3rem;
+  border-radius: 0.25rem;
+  background-color: light-dark(var(--alpha-04), var(--alpha-10));
+  box-shadow: inset 0 0 0 1px var(--alpha-08);
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--markdown-code-font-size);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ */
+/* Code blocks                                                         */
+/* ------------------------------------------------------------------ */
+
+/* The surface: the builder's `.oa-code-block`, or a bare `pre` from the
+ * renderer. `contain: inline-size` keeps a long line from widening the
+ * conversation column; the content scrolls instead. */
+.oa-code-block,
+.oa-markdown pre {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  margin: var(--markdown-space) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--code-block-radius);
+  background-color: var(--codeblock-background-color);
+  contain: inline-size;
+  overflow: clip;
+}
+
+.oa-markdown .oa-code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  contain: none;
+  overflow: visible;
+}
+
+.oa-code-block__pane,
+.oa-markdown pre {
+  overflow-x: auto;
+}
+
+.oa-code-block__pane:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+
+.oa-code-block__pre {
+  margin: 0;
+}
+
+/* The content: monospace, never wrapped, scrolled sideways. */
+.oa-code-block__code,
+.oa-markdown pre > code {
+  --syntax1: var(--codeblock-syntax-1);
+  --syntax2: var(--codeblock-syntax-2);
+  --syntax3: var(--codeblock-syntax-3);
+  --syntax4: var(--codeblock-syntax-4);
+  --syntax5: var(--codeblock-syntax-5);
+
+  display: block;
+  min-width: max-content;
+  margin: 0;
+  padding: 14px 16px;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--markdown-code-font-size);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5em;
+  tab-size: 4;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.oa-code-block[data-wrap] .oa-code-block__code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Prism-style token classes from a highlighter. */
+.oa-code-block__code :is(.token.property, .token.variable, .token.attr-name, .token.unit, .token.id, .token.selector, .token.entity, .token.tag, .token.type) {
+  color: var(--syntax4);
+}
+
+.oa-code-block__code :is(.token.url, .token.boolean, .token.number, .token.important) {
+  color: var(--syntax5);
+}
+
+.oa-code-block__code :is(.token.builtin, .token.function, .token.class-name) {
+  color: var(--syntax1);
+}
+
+.oa-code-block__code :is(.token.keyword, .token.constant, .token.symbol, .token.deleted) {
+  color: var(--syntax2);
+}
+
+.oa-code-block__code :is(.token.string, .token.char, .token.regex, .token.attr-value, .token.inserted) {
+  color: var(--syntax3);
+}
+
+.oa-code-block__code :is(.token.comment, .token.prolog, .token.doctype, .token.cdata) {
+  color: color-mix(in oklab, var(--color-text) 50%, transparent);
+}
+
+.oa-code-block__code :is(.token.punctuation, .token.operator) {
+  color: color-mix(in oklab, var(--color-text) 60%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sticky action bar (a code block's header, or any content toolbar)   */
+/* ------------------------------------------------------------------ */
+
+.oa-sticky-action-bar {
+  position: sticky;
+  top: var(--sticky-action-bar-top);
+  z-index: 1;
+  display: flex;
+  min-height: var(--code-block-bar-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  padding: 0 calc(var(--spacing) * 2) 0 calc(var(--spacing) * 4);
+  background-color: var(--codeblock-background-color);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-text-sm-size, 0.875rem);
+  line-height: var(--font-text-sm-line-height, 1.25rem);
+  user-select: none;
+}
+
+.oa-code-block > .oa-sticky-action-bar {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.oa-sticky-action-bar__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-sticky-action-bar__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  margin-inline-start: auto;
+}
+
+/* The copy action; hidden until a script can copy. */
+.oa-code-block__copy {
+  display: inline-flex;
+  height: calc(var(--spacing) * 7);
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  padding: 0 calc(var(--spacing) * 2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.oa-code-block__copy[hidden] {
+  display: none;
+}
+
+.oa-code-block__copy:hover {
+  background-color: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+
+.oa-code-block__copy:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.oa-code-block__copy[data-state="copied"] {
+  color: var(--color-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables                                                              */
+/* ------------------------------------------------------------------ */
+
+/* Builder tables: container > scroller > table. Long tables scroll
+ * sideways inside the scroller, never the page. */
+.oa-table-container {
+  width: 100%;
+  min-width: 0;
+  margin: var(--markdown-space) 0;
+}
+
+.oa-table-scroller {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.oa-table-scroller:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* The renderer writes a bare `table`; as a scrolling block it behaves
+ * like the scroller above with no extra markup. */
+.oa-markdown table {
+  display: block;
+  width: 100%;
+  margin: 2em 0;
+  overflow-x: auto;
+}
+
+.oa-table,
+.oa-markdown table {
+  border: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--font-content);
+  font-size: 0.875em;
+  line-height: 1.7142857;
+  table-layout: auto;
+  /* Keep whole words together so a wide table scrolls instead of
+   * breaking every cell into letters. */
+  overflow-wrap: break-word;
+}
+
+.oa-table {
+  width: 100%;
+  margin: 0;
+}
+
+.oa-table th,
+.oa-markdown th {
+  padding: calc(var(--spacing) * 2);
+  border: 0;
+  border-bottom: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--font-text-sm-line-height, 1.25rem);
+  text-align: start;
+  vertical-align: bottom;
+}
+
+.oa-table td,
+.oa-markdown td {
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 2);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.oa-table :is(th, td):first-child,
+.oa-markdown :is(th, td):first-child {
+  padding-inline-start: 0;
+}
+
+.oa-table :is(th, td):last-child,
+.oa-markdown :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.oa-table tbody tr:last-child td,
+.oa-markdown tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.oa-table [data-numeric] {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.oa-table [data-col-size="sm"] {
+  min-width: 6rem;
+}
+
+.oa-table [data-col-size="md"] {
+  min-width: 10rem;
+}
+
+.oa-table [data-col-size="lg"] {
+  min-width: 16rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Source chips and favicons                                           */
+/* ------------------------------------------------------------------ */
+
+.oa-favicon {
+  display: inline-flex;
+  width: var(--favicon-size);
+  height: var(--favicon-size);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-full, 9999px);
+  background-color: var(--color-background-secondary-soft-alpha);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: calc(var(--favicon-size) * 0.7);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.oa-favicon > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.oa-source {
+  display: inline-flex;
+  max-width: 100%;
+  height: var(--source-height);
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  padding: 0 calc(var(--spacing) * 2);
+  border-radius: var(--radius-full, 9999px);
+  background-color: var(--color-background-secondary-soft-alpha);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+  white-space: nowrap;
+  transition: background-color var(--transition-duration-basic, 150ms) var(--transition-ease-basic, ease);
+}
+
+a.oa-source:hover {
+  background-color: var(--color-background-secondary-soft-alpha-hover);
+  color: var(--color-text);
+}
+
+a.oa-source:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.oa-source__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oa-source__extra {
+  color: var(--color-text-tertiary);
+}
+
+/* Leading: a favicon and the site name, larger, for a source list. */
+.oa-source[data-variant="leading"] {
+  --favicon-size: calc(var(--spacing) * 4);
+
+  height: auto;
+  min-height: calc(var(--spacing) * 8);
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3) calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-text-sm-size, 0.875rem);
+}
+
+.oa-markdown .oa-source {
+  margin-inline: calc(var(--spacing) * 0.5);
+}
