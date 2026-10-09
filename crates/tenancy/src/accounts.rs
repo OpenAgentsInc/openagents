@@ -32,6 +32,9 @@
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 pub mod commercial;
+pub mod identities;
+#[cfg(test)]
+mod identities_tests;
 pub mod sso;
 #[cfg(test)]
 mod sso_tests;
@@ -281,6 +284,9 @@ pub struct Store {
     pub team_reports: team_reports::Book,
     #[serde(default, skip_serializing_if = "sso::Book::is_empty")]
     pub sso: sso::Book,
+    /// Linked sign-in identities (GitHub profiles); empty books preserve old digests.
+    #[serde(default, skip_serializing_if = "identities::Book::is_empty")]
+    pub identities: identities::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -443,6 +449,7 @@ impl Store {
         self.team_capabilities.validate(self)?;
         self.team_reports.validate(self)?;
         self.sso.validate(self)?;
+        self.identities.validate(self)?;
         Ok(())
     }
 }
@@ -589,6 +596,13 @@ pub enum Refusal {
     EmptyField(&'static str),
     /// Enterprise sign-in refused; see [`sso::SsoRefusal`].
     Sso(sso::SsoRefusal),
+    /// The change would leave the account with no way to sign in.
+    LastCredential(String),
+    /// The account already holds a different identity from this provider.
+    ProviderLinked {
+        account: String,
+        provider: &'static str,
+    },
 }
 
 impl std::fmt::Display for Refusal {
@@ -694,6 +708,13 @@ impl std::fmt::Display for Refusal {
                 write!(f, "invitation `{id}` has expired; ask for a new invitation")
             }
             Self::EmptyField(field) => write!(f, "{field} must not be empty"),
+            Self::LastCredential(_) => {
+                write!(f, "add another way to sign in before removing this one")
+            }
+            Self::ProviderLinked { provider, .. } => write!(
+                f,
+                "this account already has a different {provider} account linked"
+            ),
         }
     }
 }
@@ -846,6 +867,13 @@ fn valid_principal(value: &str) -> bool {
         (hex, 64)
     } else if let Some(hex) = value.strip_prefix("sso:") {
         (hex, 64)
+    } else if let Some(id) = value.strip_prefix("github:") {
+        // GitHub's numeric user id, decimal, no leading zero.
+        return !id.is_empty()
+            && id.len() <= 20
+            && !id.starts_with('0')
+            && id.bytes().all(|b| b.is_ascii_digit())
+            && id.parse::<u64>().is_ok();
     } else {
         return false;
     };
@@ -956,6 +984,7 @@ impl Accounts {
             team_capabilities: team_capabilities::Book::default(),
             team_reports: team_reports::Book::default(),
             sso: sso::Book::default(),
+            identities: identities::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2495,6 +2524,7 @@ mod tests {
             team_capabilities: team_capabilities::Book::default(),
             team_reports: team_reports::Book::default(),
             sso: sso::Book::default(),
+            identities: identities::Book::default(),
             digest: String::new(),
         };
         store.seal();
