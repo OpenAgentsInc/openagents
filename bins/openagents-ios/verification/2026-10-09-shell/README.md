@@ -20,6 +20,12 @@ checked beside the owner's reference screenshots, in dark and light.
   **Worked for 6s** row before the reply and **New chat** in the top bar.
 - `chat-light.png`: a conversation on the offline chat fixture
   (`--chat-fixture 1`), with the reply's follow-up chips.
+- `conversation-links-light.png`, `conversation-links-dark.png`: a live
+  conversation whose reply names two links (rust-lang.org and Wikipedia's
+  Bitcoin article), each with a link card under the reply: the page's
+  picture (`og:image`, re-encoded on the phone), its title, and its site.
+  The composer floats over the conversation, which scrolls under it.
+  Launched with `--appearance light|dark --coder-send "…"`.
 
 The live release gate (`ReleaseGateUITests`) passed on this build: five
 questions, then Wallet and every Settings row, each opened from the drawer.

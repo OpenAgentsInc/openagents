@@ -152,6 +152,8 @@ struct AppPacket: Decodable {
     /// The phone's shell (#11126): the Chat / Code switch, the feature
     /// cards, and the drawer's rows while it is open.
     let shell: ShellState?
+    /// The chat's link cards by surface resource (#11126).
+    let links: [String: LinkCard]?
     /// The open Coder chat changes on its own; ask for a packet sooner.
     let coder_live: Bool?
     /// A basic Coder reply is streaming; ask for packets every few hundred

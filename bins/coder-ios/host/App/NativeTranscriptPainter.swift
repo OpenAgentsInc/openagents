@@ -349,6 +349,9 @@ struct NativeRowDisplay: Decodable {
         let state: String?
         let checked: Bool?
         let loading: Bool?
+        /// A `surface` widget's resource and spoken label.
+        let resource: String?
+        let label: String?
 
         var frame: CGRect { CGRect(x: x, y: y, width: w, height: h) }
     }
@@ -873,6 +876,9 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
     private var visibleBand: CGRect = .zero
     var toggle: ((String) -> Void)?
     var loadEarlier: (() -> Void)?
+    /// Draws a `surface` widget (a resource and its label) the application
+    /// registered, such as a link card; nil leaves the box empty.
+    var surface: ((String, String) -> UIView?)?
     /// Called when this row starts a selection, so others clear theirs.
     var selecting: ((NativeRowView) -> Void)?
     /// Give feedback on selected text (#10127): the text and this row's
@@ -928,6 +934,8 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
         accessibilityValue = access.value
         accessibilityHint = access.hint
         accessibilityTraits = access.button == true ? .button : .staticText
+        // A row with a drawn surface lets the surface speak for itself.
+        isAccessibilityElement = !widgetViews.contains { $0 is NativeHostedSurface }
         accessibilityIdentifier = key == NativeTranscriptView.earlierKey ? "transcript-earlier" : key
         var actions: [UIAccessibilityCustomAction] = []
         if let copy = model.display.copy, !copy.isEmpty {
@@ -955,7 +963,9 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
         key = ""
         toggle = nil
         loadEarlier = nil
+        surface = nil
         selecting = nil
+        isAccessibilityElement = true
         stripes.values.forEach { $0.removeFromSuperview() }
         stripes.removeAll()
         scrollers.forEach { $0.removeFromSuperview() }
@@ -1077,6 +1087,11 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
             spinner.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
             spinner.startAnimating()
             return spinner
+        case "surface":
+            guard let resource = widget.resource, let drawn = surface?(resource, widget.label ?? "") else {
+                return nil
+            }
+            return drawn
         case "earlier":
             guard widget.loading != true else { return nil }
             let button = UIButton(type: .custom)
@@ -1365,6 +1380,21 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
 
     var transcriptKey = ""
     var activate: ((String) -> Void)?
+    /// Draws a row's `surface` widget; see `NativeRowView.surface`.
+    var surface: ((String, String) -> UIView?)? {
+        didSet { if (surface == nil) != (oldValue == nil) { rowViews.values.forEach { $0.forget() }; tile() } }
+    }
+    /// Room kept clear below the last row, as for a composer floating over
+    /// the transcript; the scroll-to-bottom button sits above it.
+    var bottomInset: CGFloat = 0 {
+        didSet {
+            guard abs(bottomInset - oldValue) > 0.5 else { return }
+            contentInset.bottom = bottomInset
+            verticalScrollIndicatorInsets.bottom = bottomInset
+            if following, !isInteracting { pin() }
+            updateBottomButton()
+        }
+    }
     /// Whether the newest row stays in view as rows arrive and grow.
     var following = true {
         didSet { if following != oldValue { updateBottomButton() } }
@@ -1678,6 +1708,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
             guard let key = frame.key(placement.index) else { continue }
             keep.insert(key)
             let view = rowViews[key] ?? dequeue(key)
+            view.surface = surface
             if view.version != placement.version || view.key != key {
                 guard let model = model(for: key, in: frame, index: placement.index, version: placement.version) else {
                     continue
@@ -2030,6 +2061,30 @@ struct NativeLayoutUpdate: Encodable {
     }
 }
 
+/// A SwiftUI surface the application draws inside a painted row, at the
+/// box the layout reserved for it.
+final class NativeHostedSurface: UIView {
+    private let host: UIHostingController<AnyView>
+
+    init(_ content: AnyView) {
+        host = UIHostingController(rootView: content)
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        clipsToBounds = true
+        host.view.backgroundColor = .clear
+        host.sizingOptions = []
+        addSubview(host.view)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        host.view.frame = bounds
+    }
+}
+
 /// The SwiftUI mount for a transcript node.
 struct NativeTranscript: UIViewRepresentable {
     let key: String
@@ -2044,6 +2099,8 @@ struct NativeTranscript: UIViewRepresentable {
     let submit: NativeChat.Submit
     let activate: (String) -> Void
 
+    @Environment(\.nativeTranscriptBottomInset) private var bottomInset
+
     func makeUIView(context: Context) -> NativeTranscriptView {
         let view = NativeTranscriptView(frame: .zero)
         view.accessibilityIdentifier = key
@@ -2054,6 +2111,12 @@ struct NativeTranscript: UIViewRepresentable {
         view.transcriptKey = key
         view.accessibilityLabel = label
         view.activate = activate
+        view.bottomInset = bottomInset
+        if let surface {
+            view.surface = { resource, label in NativeHostedSurface(surface(resource, label)) }
+        } else {
+            view.surface = nil
+        }
         if let source {
             view.apply(source: source, revision: revision, earlier: earlier)
         } else {

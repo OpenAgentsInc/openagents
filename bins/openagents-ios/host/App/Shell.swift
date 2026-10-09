@@ -464,3 +464,89 @@ struct ShellDrawer: View {
         .accessibilityIdentifier(identifier)
     }
 }
+
+/// Rust's `links::Card`: a link a reply contains, as its card shows it.
+struct LinkCard: Decodable, Equatable {
+    let url: String
+    let title: String
+    let site: String
+    /// The card has a picture, read as its surface's image.
+    let image: Bool
+}
+
+/// A link card under a reply (#11126): the page's picture when it has one,
+/// then its title and site. A tap opens the page in the browser.
+struct LinkCardSurface: View {
+    @Environment(\.appColors) private var appColors
+    let resource: String
+    let label: String
+    let card: LinkCard?
+    @ObservedObject var bridge: MobileBridge
+    @State private var picture: UIImage?
+
+    private var pictured: Bool { card?.image == true }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        Button(action: open) {
+            VStack(alignment: .leading, spacing: 0) {
+                if pictured {
+                    // The picture fills its band and is cut to it.
+                    appColors.border.opacity(0.4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay {
+                            if let picture {
+                                Image(uiImage: picture).resizable().scaledToFill()
+                            }
+                        }
+                        .clipped()
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card?.title ?? label)
+                        .font(.paper(15, weight: .semibold))
+                        .foregroundStyle(appColors.primary)
+                        .lineLimit(pictured ? 1 : 2)
+                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 5) {
+                        Image(systemName: "link").font(.system(size: 11, weight: .semibold))
+                        Text(card?.site ?? "").font(.paper(13)).lineLimit(1)
+                    }
+                    .foregroundStyle(appColors.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, maxHeight: pictured ? nil : .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(shape.fill(appColors.raised))
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(appColors.border, lineWidth: 0.5))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .disabled(link == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+        .accessibilityAddTraits(.isLink)
+        .accessibilityIdentifier(resource)
+        .task(id: "\(resource)#\(pictured)") {
+            guard pictured else { return }
+            bridge.image(resource) { picture = $0 }
+        }
+    }
+
+    private var spoken: String {
+        guard let card else { return label }
+        return card.title == card.site ? card.site : "\(card.title), \(card.site)"
+    }
+
+    /// Only an https link the reply contains opens.
+    private var link: URL? {
+        guard let card, let url = URL(string: card.url), url.scheme == "https" else { return nil }
+        return url
+    }
+
+    private func open() {
+        if let link { UIApplication.shared.open(link) }
+    }
+}

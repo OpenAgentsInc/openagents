@@ -350,6 +350,12 @@ struct CoderTab: View {
                                            return AnyView(ChatImageSurface(resource: resource, label: label,
                                                                            bridge: bridge))
                                        }
+                                       if resource.hasPrefix("link:") {
+                                           return AnyView(LinkCardSurface(resource: resource, label: label,
+                                                                          card: bridge.packet?.links?[resource],
+                                                                          bridge: bridge)
+                                               .environment(\.appColors, appColors))
+                                       }
                                        return AnyView(GymCardSurface(resource: resource, bridge: bridge))
                                    },
                                    submit: { token, text in bridge.submit("coder", token: token, value: text) },
@@ -358,6 +364,10 @@ struct CoderTab: View {
                                        bridge.activate("coder", view: bridge.packet?.coder ?? view, node: node)
                                    })
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        // Under the shell the composer floats over the
+                        // conversation (#11126).
+                        .environment(\.nativeFloatingComposer,
+                                     bridge.packet?.shell != nil ? appColors.background : nil)
                 } else {
                     Color.clear
                 }

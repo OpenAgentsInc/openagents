@@ -243,6 +243,7 @@ struct NativeRenderer: View {
     /// their item and action, so a key that is gone refuses. Without it,
     /// items activate against the view that drew them.
     var activateCurrent: ((String) -> Void)? = nil
+    @Environment(\.nativeFloatingComposer) private var floating
 
     var body: some View {
         content
@@ -296,6 +297,18 @@ struct NativeRenderer: View {
                     ForEach(children) { child in render(child) }
                 })
             }
+            // A floating composer (opt-in): the transcript fills the space
+            // and what follows it floats over its end.
+            if let backdrop = floating,
+               let at = children.firstIndex(where: { if case .transcript = $0.element { true } else { false } }),
+               at < children.count - 1 {
+                let gap = NativeStyle.points(node.style.gap)
+                return AnyView(NativeFloatingStack(
+                    spacing: gap, backdrop: backdrop,
+                    above: Array(children[..<at]).map(render),
+                    transcript: render(children[at]),
+                    below: Array(children[(at + 1)...]).map(render)))
+            }
             return AnyView(VStack(alignment: .leading, spacing: NativeStyle.points(node.style.gap)) {
                 ForEach(children) { child in render(child) }
             }.frame(maxWidth: .infinity, alignment: .leading))
@@ -336,6 +349,69 @@ struct NativeRenderer: View {
         NativeRenderer(node: child, revision: revision, followTarget: followTarget,
                        followChanged: followChanged, surface: surface, submit: submit,
                        activate: activate, activateCurrent: activateCurrent)
+    }
+}
+
+private struct NativeFloatingComposerKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
+private struct NativeTranscriptBottomInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// The backdrop color of a composer floating over the transcript; nil
+    /// (the default) stacks the composer below the transcript.
+    var nativeFloatingComposer: Color? {
+        get { self[NativeFloatingComposerKey.self] }
+        set { self[NativeFloatingComposerKey.self] = newValue }
+    }
+
+    /// Room a transcript keeps clear below its last row.
+    var nativeTranscriptBottomInset: CGFloat {
+        get { self[NativeTranscriptBottomInsetKey.self] }
+        set { self[NativeTranscriptBottomInsetKey.self] = newValue }
+    }
+}
+
+/// The rows above a transcript, then the transcript filling the rest, with
+/// the rows after it (chips, cards, the composer) floating over its end on
+/// a soft fade. The transcript keeps their height clear below its last row,
+/// so it scrolls underneath them and its end can still be read.
+private struct NativeFloatingStack: View {
+    let spacing: CGFloat
+    let backdrop: Color
+    let above: [NativeRenderer]
+    let transcript: NativeRenderer
+    let below: [NativeRenderer]
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            ForEach(above, id: \.node.key) { $0 }
+            ZStack(alignment: .bottom) {
+                transcript
+                    .environment(\.nativeTranscriptBottomInset, height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(alignment: .leading, spacing: spacing) {
+                    ForEach(below, id: \.node.key) { $0 }
+                }
+                .padding(.top, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alignment: .top) {
+                    LinearGradient(stops: [.init(color: backdrop.opacity(0), location: 0),
+                                           .init(color: backdrop.opacity(0.92), location: 0.35),
+                                           .init(color: backdrop, location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .padding(.horizontal, -24)
+                        .ignoresSafeArea(.container, edges: .bottom)
+                        .allowsHitTesting(false)
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
