@@ -76,7 +76,7 @@ the original October 7 plan.
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Per-vertex implementation verified and deployed; UV storage and denser lamp probes remain deferred |
 | B3: time of day and destruction | #10907 | `720904b4c2` | Closed October 9: blended suns, relight over the layers; the `codex/everglade-b3` checkpoint was not used |
-| B4: tiers and measurement | #10908 | coordinator | Browser layer loading in progress |
+| B4: tiers and measurement | #10908 | `0db6a09302`, pins `aa628e69e7` and `372dbb932e` | Closed October 9; phone device checks in `NEEDS_OWNER.md` |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
 Plaza, Market Row, the Lantern Quarter, Well Square, the Knowledge,
@@ -145,8 +145,14 @@ unchanged.
   Staging WebGPU and WebGL2 render with `offline_light: true` and no
   browser errors; full staging and production file checks pass. Production also passes both browser backends with baked light active
   and no browser errors.
-  Spatial tier reduction and budgets remain open. The 512 px kit still
-  serves every tier (21,467,658 bytes transferred, 60.5 MiB decoded).
+  October 9: phones take a tier of their own, a 256 px kit
+  (`49a9d36f…`, 8,748,100 bytes) and two-sun layers (`a55d55e1…`,
+  34,206,277 bytes), derived from the pinned files and pinned through the
+  `everglade-kit-phone` and `everglade-kit-bake-phone` queue entries. Both
+  are in the private bucket; `cloudbuild.yaml` copies them into the next
+  full web image, and until a deployed image serves them a phone falls
+  back to the full files. Measurements and budgets are in the refactor
+  plan's B4 entry.
   B3's final repair commit needs a subsequent browser module refresh;
   preserve the immutable bake and the latest live native web image.
 

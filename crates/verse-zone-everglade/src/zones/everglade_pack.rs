@@ -270,15 +270,29 @@ impl Loader {
                     )
                     .map(|mut pack| {
                         // The licensed kit when it is cached or published;
-                        // its committed proxies otherwise.
-                        if let Ok(pieces) =
-                            kit::fetch_tier(&cache, download_kit, &worker_cancel, tier)
-                        {
+                        // its committed proxies otherwise. A tier whose
+                        // files are not served takes the full files.
+                        let full = kit::Tier::Full;
+                        let fetched = kit::fetch_tier(&cache, download_kit, &worker_cancel, tier)
+                            .map(|pieces| (pieces, tier))
+                            .or_else(|_| {
+                                kit::fetch_tier(&cache, download_kit, &worker_cancel, full)
+                                    .map(|pieces| (pieces, full))
+                            });
+                        if let Ok((pieces, tier)) = fetched {
                             kit::install(&mut pack, Some(&pieces));
                             // The kit town's baked light, when published;
                             // the town bakes at load otherwise.
                             if let Ok(layers) =
                                 kit_bake::fetch_tier(&cache, download_kit, &worker_cancel, tier)
+                                    .or_else(|_| {
+                                        kit_bake::fetch_tier(
+                                            &cache,
+                                            download_kit,
+                                            &worker_cancel,
+                                            full,
+                                        )
+                                    })
                             {
                                 kit_bake::offer(layers);
                             }

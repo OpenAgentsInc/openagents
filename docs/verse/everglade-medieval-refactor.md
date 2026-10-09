@@ -606,6 +606,41 @@ reimplemented from published papers.
 - **B4 (#10908): tiers and measurement.** Half and quarter resolution for
   web and phones, and the measured download, memory, frame, and load
   costs. Needs B2 and P8.
+  As built (October 9): the layers are per vertex, so a tier drops suns
+  rather than resolution. Desktops and the web take the 512 px kit and all
+  four suns; the browser verifies the VLAY and never runs the stepped bake.
+  Phones take the phone tier (`kit::Tier::Phone`): the pinned kit with
+  every image halved to at most 256 px (`everglade_kit --phone`) and the
+  layers with the 8:00 and 15:30 suns (`verse-bake --phone-layers`), both
+  derived from the pinned files without a rebake and pinned through the
+  `everglade-kit-phone` and `everglade-kit-bake-phone` queue entries. A
+  phone falls back to the full files when the phone files are not served.
+  The phone kit changes the scene digest (its images), so its Mac scene
+  `61e2b61c…` joins the reviewed compatibility targets; geometry,
+  materials, and vertex count are unchanged. `cloudbuild.yaml` copies both
+  phone files into the web image from the private bucket.
+  Measured on the M-series Mac with `everglade_tier_measure` (decode and
+  zone load on the CPU; frame cost unchanged from B3's +1.7 ms upload):
+
+  | | Desktop and web | Phone |
+  | --- | ---: | ---: |
+  | Kit transfer | 21,467,658 B (20.5 MiB) | 8,748,100 B (8.34 MiB) |
+  | Kit images, decoded | 60.5 MiB, 512 px | 15.1 MiB, 256 px |
+  | Layers transfer | 51,684,139 B (49.3 MiB) | 34,206,277 B (32.6 MiB) |
+  | Layers, decoded | 91.5 MiB, 4 suns | 57.3 MiB, 2 suns |
+  | Kit / layers decode | 106 ms / 251 ms | 43 ms / 153 ms |
+  | Town light at load, with layers | 1.17 s | 2.48 s (includes the scene audit) |
+  | Town light at load, load-time bake | 38.6 s | 36.6 s |
+
+  The budgets a test pins (`each_tier_pins_its_files_within_budget`): kit
+  24 MiB and layers 56 MiB for desktops and the web, kit 8.5 MiB and
+  layers 40 MiB for phones. The phone kit is 4 percent over the plan's soft
+  8 MiB; the next step down (128 px) was not taken. The web keeps the
+  512 px kit: switching it to the 256 px pack changes the browser's scene
+  digest, which needs its own audited target first. Phone frame rate,
+  memory, and load time on a device are the owner's check
+  (`NEEDS_OWNER.md`). Second-UV lightmaps and denser lamp probes remain
+  deferred under umbrella #10903.
 
 ## The proof
 
