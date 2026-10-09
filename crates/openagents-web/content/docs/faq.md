@@ -28,9 +28,11 @@ this?" to hear which one is answering now. See
 
 ## Do you keep or train on my chats?
 
-Our chat service doesn't store your message text, so there's nothing on our
-servers to delete or train on. Your conversations are saved on your
-device.
+In the web chat on openagents.com, we keep your chats on our servers so
+you can open them again in the same browser; you can't delete one yet. In
+the Mac app, Terminal, and phone app, your chats are saved on your device,
+and our chat service doesn't store your message text. We don't use your
+chats to train models. See [Privacy and security](/docs/privacy-and-security).
 
 ## Can I pick the model Coder uses?
 

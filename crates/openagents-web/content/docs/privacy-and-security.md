@@ -4,16 +4,25 @@
 
 - **No account.** There's no account or password. Your phone or computer
   makes its own key the first time it runs and signs every message with
-  it. On the website, a random cookie tells your questions apart, and the
-  site signs them for you.
-- **Encrypted in transit.** Chat messages are encrypted before they leave
-  your device. The OpenAgents relay that carries them sees only the
-  encrypted form and keeps nothing.
-- **We don't keep your message text.** Our chat service stores no message
-  text, so there is nothing on our servers to delete or train on. It
-  records each request's time, key, surface, route, model, and timings for
-  usage statistics. Your conversations are saved on your device (on a
-  computer, by its host).
+  it. On the website, a random cookie tells your chats apart, and the
+  site signs your messages for you.
+- **In the web chat** on openagents.com, we save your chats on our servers
+  so you can open them again in the same browser. Only that browser's
+  cookie opens them, and our team can read them. There's no time limit
+  yet, and you can't delete a web chat yourself.
+- **In the Mac app, Terminal, and phone app,** your chats are saved on your
+  device, encrypted with its key (on a computer, by its host). Your
+  messages are encrypted before they leave your device, and the OpenAgents
+  relay that carries them to our chat service sees only the encrypted form
+  and keeps nothing. When your phone reaches your computer through the
+  relay, the relay holds those messages, encrypted, for that phone and
+  computer only.
+- **Our chat service doesn't keep your message text.** It records each
+  request's time, key, surface, route, model, token counts, and timings for
+  usage statistics.
+- **Training.** We don't use your chats to train models.
+- **Reports.** If you send a problem report and choose to share the chat,
+  that chat goes to our team with it.
 
 ## Who sees what
 

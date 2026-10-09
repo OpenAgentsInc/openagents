@@ -248,11 +248,11 @@ followups = ["meta.pricing"]
 
 [[answer]]
 id = "meta.privacy"
-version = 3
+version = 4
 routes = ["meta"]
 when = "The user asks what happens to their messages, who can read or see them, or whether their data is private; not whether we keep, delete, or train on their chats"
 examples = ["who can see what I type here"]
-text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. On a computer, or a phone paired with one, each message also names that computer and this chat's project folder, and after Coder runs in a chat, what it reported, the files it changed, and its commands; only our worker and our chat model read those. Our worker doesn't store your message text."
+text = "In the apps, your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. In the web chat, our website reads and saves your messages. To answer, we send your messages to {recipients}. On a computer, each message also names that computer and the chat's project folder, and after Coder runs, what it reported, the files it changed, and its commands; only our worker and our chat model read those. Our worker doesn't store your message text."
 facts = { recipients = "worker.recipients" }
 chip = "What happens to my messages?"
 sources = ["nips/openagents/NIP-CJ.md", "INVARIANTS.md", "crates/coder/src/bin/coder-worker.rs"]
@@ -260,14 +260,14 @@ followups = ["meta.memory", "meta.open_source"]
 
 [[answer]]
 id = "meta.data_retention"
-version = 1
+version = 2
 routes = ["meta"]
-when = "The user asks whether we store, keep, or log their chats, how long we keep their messages, whether they can delete their history from our servers, or whether we train on their conversations; not who can read their messages"
+when = "The user asks whether we store, keep, or log their chats, how long we keep their messages, whether they can delete their history from our servers, whether the website or the apps keep their chats, or whether we train on their conversations; not who can read their messages"
 examples = ["do you store my chats", "do you train on my conversations", "can I delete my chat history from your servers"]
-text = "We don't keep your chats: our chat worker doesn't store your message text, so there's nothing on our servers to delete or train on. Your conversations are saved on your device. To answer, we send your messages to {recipients}."
+text = "In the web chat, we keep your chats on our servers so you can open them again in the same browser; you can't delete one yet. In the Mac app, Terminal, and phone app, your chats are saved on your device, and our chat worker doesn't store your message text. We don't use your chats to train models. To answer, we send your messages to {recipients}."
 facts = { recipients = "worker.recipients" }
 chip = "Do you keep my chats?"
-sources = ["crates/coder/src/bin/coder-worker.rs", "crates/openagents-mobile/src/basic_chats.rs", "INVARIANTS.md"]
+sources = ["crates/coder/src/bin/coder-worker.rs", "crates/openagents-mobile/src/basic_chats.rs", "crates/openagents-web/src/chat_store.rs", "INVARIANTS.md"]
 followups = ["meta.privacy", "meta.memory"]
 
 [[answer]]
@@ -284,10 +284,10 @@ followups = ["meta.open_source", "meta.model"]
 
 [[answer]]
 id = "meta.memory"
-version = 1
+version = 2
 routes = ["meta"]
 when = "The user asks whether we remember them or earlier conversations, or whether we learn from their chats"
-text = "We don't remember earlier conversations. Each reply reads only this conversation, which your device sends along with every message."
+text = "We don't remember earlier conversations. Each reply reads only this conversation, which is sent along with every message."
 chip = "Do you remember past chats?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "crates/coder/src/bin/coder-worker.rs"]
 followups = ["meta.privacy"]
