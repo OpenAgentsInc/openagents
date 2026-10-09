@@ -1,5 +1,4 @@
-//! Prompt handling follows Claude's handlePromptSubmit/useQueueProcessor:
-//! accept while busy, then batch ordinary prompts for the same conversation.
+//! Accept prompts while busy and safely transfer pending work back to the composer.
 use crate::{App, Draft, Mode, Screen, live};
 
 pub type Inbox =
@@ -17,6 +16,7 @@ impl App {
         if self.draft.text.trim().is_empty() {
             return;
         }
+        self.record_prompt();
         let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(self.draft.text.clone())));
         if self.live.busy
             && self.active_delegation.is_none()
@@ -36,6 +36,10 @@ impl App {
         });
         self.draft.cursor = 0;
         self.live.notice = None;
+        if self.queue_hint_count < 3 {
+            self.notice = Some("Press up to edit queued messages".into());
+            self.queue_hint_count += 1;
+        }
     }
 
     pub(crate) fn restore_queued_prompts(&mut self) -> bool {
@@ -44,11 +48,21 @@ impl App {
             .and_then(|i| self.delegations.get(i))
             .map(|a| a.id.clone());
         let session = self.session_id().map(str::to_owned);
+        self.acknowledge_prompts();
+        let cursor = self.draft.cursor;
         let mut text = Vec::new();
         self.queued_prompts.retain(|p| {
             if p.agent == agent && p.session == session {
-                text.push(p.text.clone());
-                false
+                // Taking the slot cancels execution atomically. If a worker won
+                // the race, it owns the prompt and we must not restore it.
+                if let Some(pending) = p.slot.lock().unwrap().take() {
+                    if !pending.is_empty() {
+                        text.push(pending);
+                    }
+                    false
+                } else {
+                    true
+                }
             } else {
                 true
             }
@@ -56,11 +70,17 @@ impl App {
         if text.is_empty() {
             return false;
         }
+        let prefix = text.join("\n");
+        let offset = prefix.len() + usize::from(!self.draft.text.is_empty());
         if !self.draft.text.is_empty() {
             text.push(std::mem::take(&mut self.draft.text));
         }
         self.draft.text = text.join("\n");
-        self.draft.cursor = self.draft.text.len();
+        self.draft.cursor = (offset + cursor).min(self.draft.text.len());
+        self.composer_history.reset();
+        if self.notice.as_deref() == Some("Press up to edit queued messages") {
+            self.notice = None;
+        }
         true
     }
 
@@ -134,7 +154,7 @@ impl App {
         self.select_agent(index);
         let draft = std::mem::take(&mut self.draft);
         let last = batch.pop().unwrap();
-        // Each submission stays a distinct user message, as in Claude's queueProcessor.
+        // Each submission stays a distinct user message.
         for text in batch {
             let chat = if let Some(i) = index {
                 &mut self.delegations[i].chat
@@ -147,6 +167,7 @@ impl App {
             cursor: last.len(),
             text: last,
         };
+        self.replaying_prompt = true;
         if slash {
             self.handle(crossterm::event::Event::Key(
                 crossterm::event::KeyEvent::new(
@@ -157,6 +178,7 @@ impl App {
         } else {
             self.submit_live();
         }
+        self.replaying_prompt = false;
         if !self.draft.text.is_empty() {
             // A disabled agent or failed session admission must not discard input.
             self.queue_prompt();
@@ -232,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn escape_stops_before_restoring_pending_input() {
+    fn escape_restores_pending_input_without_stopping_active_work() {
         let mut app = app();
         app.submit("first", std::path::Path::new("."));
         app.submit("next", std::path::Path::new("."));
@@ -243,9 +265,7 @@ mod tests {
             ))
         };
         app.handle(esc());
-        assert!(!app.live.busy);
-        assert_eq!(app.queued_prompts.len(), 1);
-        app.handle(esc());
+        assert!(app.live.busy);
         assert_eq!(app.draft.text, "next");
         assert!(app.queued_prompts.is_empty());
     }

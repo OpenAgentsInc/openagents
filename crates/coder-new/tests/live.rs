@@ -202,6 +202,7 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Up);
     assert_eq!(app.selected_agent, None);
+    app.draft = Default::default(); // Up now recalls prompt history.
     paste(&mut app, "/unknown");
     key(&mut app, KeyCode::Enter);
     assert!(app.request.is_none());
@@ -446,7 +447,10 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert!(app.draft.text.is_empty());
     assert!(app.request.is_none());
     assert!(app.live.busy);
-    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Esc); // Retrieve queued input without stopping.
+    assert!(app.live.busy);
+    assert_eq!(app.draft.text, "follow-up question");
+    key(&mut app, KeyCode::Esc); // No queue remains: stop active work.
     assert!(!app.live.busy);
     assert!(app.live.partial.is_empty());
     assert!(app.live.partial_model.is_none());
@@ -480,7 +484,7 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert!(matches!(app.plugins.connection, Connection::Verified));
     assert!(!render(&mut app, 80, 24).contains("late"));
 
-    key(&mut app, KeyCode::Esc); // Restore queued input for editing while idle.
+    // Retrieved input is still owned by the composer after stopping.
     key(&mut app, KeyCode::Enter);
     let second = app.request.take().unwrap();
     assert_ne!(second.id, first.id);

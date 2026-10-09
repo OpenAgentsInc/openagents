@@ -51,6 +51,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
     let area = frame.area();
     let terminal_width = area.width;
+    app.composer_width = terminal_width.saturating_sub(3).max(1);
     let terminal_x = area.x;
     frame.render_widget(
         Block::default().style(Style::default().bg(t::BG_BASE).fg(t::TEXT_SECONDARY)),
@@ -158,7 +159,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         &draft,
         cursor,
         app.selected_agent.is_none(),
-        app.model_picker.is_none(),
+        app.model_picker.is_none() && !app.footer_focused,
         &app.plugins,
         if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
             let chat = app

@@ -13,6 +13,7 @@ pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
 mod codex_usage;
+mod composer_history;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
@@ -77,6 +78,12 @@ pub struct App {
     pub mode: Mode,
     pub screen: Screen,
     pub draft: Draft,
+    pub(crate) composer_history: composer_history::History,
+    pub(crate) composer_width: u16,
+    footer_focused: bool,
+    replaying_prompt: bool,
+    queue_hint_count: u8,
+    escape_at: Option<std::time::Instant>,
     pub messages: Vec<String>,
     pub scroll: u16,
     pub selected_agent: Option<usize>,
@@ -684,6 +691,7 @@ impl App {
     }
 
     fn command(&mut self, command: slash::Command) {
+        self.record_prompt();
         if command == slash::Command::Resume {
             if self.resume(None) {
                 self.draft = Draft::default();
@@ -912,6 +920,7 @@ impl App {
             .plugins
             .key_for_request()
             .filter(|_| self.plugins.enabled);
+        self.record_prompt();
         self.cancel_request();
         self.live
             .entries
@@ -1035,6 +1044,9 @@ impl App {
             );
             return;
         };
+        self.draft.text = text.clone();
+        self.record_prompt();
+        self.draft.text.clear();
         self.cancel_request();
         self.active_delegation = Some(id.clone());
         self.active_options = self.plugins.options.clone();
@@ -1168,6 +1180,9 @@ impl App {
     }
 
     fn select_agent(&mut self, selected: Option<usize>) {
+        if self.selected_agent != selected {
+            self.composer_history.reset();
+        }
         if self.selected_agent == selected {
             return;
         }
@@ -1271,6 +1286,8 @@ impl App {
                 }
             }
             Event::Paste(text) => {
+                self.footer_focused = false;
+                self.escape_at = None;
                 self.cursor_blink_frame = 0;
                 if self.resume_picker.is_some() {
                     return true;
@@ -1548,11 +1565,11 @@ impl App {
                 let hints = self.slash_hints();
                 if !hints.is_empty() {
                     match key.code {
-                        KeyCode::Down => {
+                        KeyCode::Down if hints.len() > 1 => {
                             self.slash_selected = (self.slash_selected + 1).min(hints.len() - 1);
                             return true;
                         }
-                        KeyCode::Up => {
+                        KeyCode::Up if hints.len() > 1 => {
                             self.slash_selected = self.slash_selected.saturating_sub(1);
                             return true;
                         }
@@ -1578,28 +1595,36 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
-                    KeyCode::Down if self.mode == Mode::Demo => self.select_agent(Some(
-                        self.selected_agent
-                            .map_or(0, |index| (index + 1).min(agents::DEMOS.len() - 1)),
-                    )),
-                    KeyCode::Up if self.mode == Mode::Demo => self
-                        .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
-                    KeyCode::Down if !self.delegations.is_empty() => self.select_agent(Some(
-                        self.selected_agent
-                            .map_or(0, |index| (index + 1).min(self.delegations.len() - 1)),
-                    )),
-                    KeyCode::Up if self.mode == Mode::Live => self
-                        .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
-                    KeyCode::Esc if self.mode == Mode::Live => {
-                        if !self.live.busy && self.restore_queued_prompts() {
-                            return true;
+                    KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
+                    KeyCode::Esc => {
+                        if self.footer_focused {
+                            self.footer_focused = false;
+                            self.select_agent(None);
+                        } else if self.restore_queued_prompts() {
+                            self.escape_at = None;
+                        } else if self.live.busy {
+                            self.restore_unanswered_prompt();
+                            self.cancel_request();
+                            self.live
+                                .notice
+                                .get_or_insert_with(|| "Request stopped.".into());
+                        } else if !self.draft.text.is_empty() {
+                            let now = std::time::Instant::now();
+                            if self
+                                .escape_at
+                                .is_some_and(|at| now.duration_since(at).as_millis() < 1000)
+                            {
+                                self.record_prompt();
+                                self.draft = Draft::default();
+                                self.escape_at = None;
+                            } else {
+                                self.escape_at = Some(now);
+                                self.notice = Some("Esc again to clear".into());
+                            }
+                        } else {
+                            self.select_agent(None);
                         }
-                        self.cancel_request();
-                        self.live
-                            .notice
-                            .get_or_insert_with(|| "Request stopped.".into());
                     }
-                    KeyCode::Esc => self.select_agent(None),
                     KeyCode::PageUp => {
                         self.scroll = self
                             .scroll
@@ -1677,6 +1702,8 @@ impl App {
                         }
                     }
                     _ => {
+                        self.footer_focused = false;
+                        self.escape_at = None;
                         self.draft.edit(key);
                         self.slash_selected = 0;
                         self.slash_hidden = false;
@@ -1689,7 +1716,7 @@ impl App {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Draft {
     pub text: String,
     pub cursor: usize,
