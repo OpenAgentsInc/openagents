@@ -1,0 +1,427 @@
+{
+  "v": "openagents.buyer-attestation-vectors.v1",
+  "status": "draft",
+  "purpose": "Drive a test-first implementation of the merchant-side BuyerAttestation::verify hook (see ../2026-10-09-x402-merchant-facilitator-api-sketch.md §2). Each vector is a self-contained (inputs -> verdict) case.",
+  "scope": "Synthetic. ArtifactRefs and digests are placeholders; no real signature, admission, POL/CAP/SOV artifact bytes, or RFC8785 canonicalization is asserted. Signature validity is modeled by the control flag `signature_valid`. Admission-of-authority is modeled by the merchant-supplied `trusted_authorities` set, because NIP-SOV states self-publication cannot establish authority trust: the merchant must independently trust the admitting authority. A production verifier replaces both models with real signature checks and real host-admission evidence.",
+  "models": {
+    "sovereign_profile": "openagents.sovereign-profile.v1 (NIP-SOV): fields agent, authority, policy, custody, treasury.",
+    "spend_grant": "openagents.grant.v1 (NIP-CAP): fields issuer, principal, binding, effects (subset of reads/writes/network/process/delegates/spend, each granted separately), bounds, scope, purpose (evaluation|operational), expires_at.",
+    "ceiling_source": "The per-tx ceiling used for the OverCeiling check is grant.bounds.max_per_tx_msat. A full verifier also cross-checks the SOV treasury aggregate allowance and reconciliation authority; that is out of scope for these single-call vectors.",
+    "amounts": "millisatoshi as canonical nonnegative decimal strings (NIP-X402). One satoshi is \"1000\". Never round a liability down to zero."
+  },
+  "legend": {
+    "OWNER": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "AGENT": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "AGENT_ROTATED": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+    "UNTRUSTED_AUTHORITY": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+  },
+  "error_vocabulary": [
+    "missing",
+    "signature",
+    "authority",
+    "principal_mismatch",
+    "purpose_not_operational",
+    "effect_absent",
+    "expired",
+    "over_ceiling",
+    "reputation_too_low"
+  ],
+  "evaluation_order": [
+    { "step": 1, "check": "attestation present (profile + grant + signature)", "else": "missing" },
+    { "step": 2, "check": "signature valid over the bound request", "else": "signature" },
+    { "step": 3, "check": "profile.authority is in the merchant's trusted (admitted) authority set", "else": "authority" },
+    { "step": 4, "check": "grant.principal == profile.agent", "else": "principal_mismatch" },
+    { "step": 5, "check": "grant.purpose == \"operational\"", "else": "purpose_not_operational" },
+    { "step": 6, "check": "\"spend\" is in grant.effects", "else": "effect_absent" },
+    { "step": 7, "check": "now < grant.expires_at", "else": "expired" },
+    { "step": 8, "check": "price_msat <= grant.bounds.max_per_tx_msat", "else": "over_ceiling" },
+    { "step": 9, "check": "reputation >= min_reputation", "else": "reputation_too_low" },
+    { "step": 10, "check": "all passed", "then": "ok { buyer: profile.agent, owner: profile.authority, max_per_tx_msat: grant.bounds.max_per_tx_msat }" }
+  ],
+  "common": {
+    "now": 1791590400,
+    "expires_future": 1799999999,
+    "expires_past": 1788000000
+  },
+  "vectors": [
+    {
+      "name": "ok-minimal",
+      "note": "Valid owner-admitted agent, operational spend grant, price under ceiling, no reputation requirement.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "ok": { "buyer": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "max_per_tx_msat": "50000000" } }
+    },
+    {
+      "name": "ok-reputation-met",
+      "note": "Merchant requires reputation >= 50; buyer has 80.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 50,
+        "reputation": 80,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend", "network"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "ok": { "buyer": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "max_per_tx_msat": "50000000" } }
+    },
+    {
+      "name": "err-missing",
+      "note": "No attestation presented; an open route would 402/403 before issuing an invoice.",
+      "input": {
+        "attestation_present": false,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": null,
+        "grant": null
+      },
+      "expect": { "error": "missing" }
+    },
+    {
+      "name": "err-signature",
+      "note": "Attestation present but its signature does not verify over the bound request.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": false,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "signature" }
+    },
+    {
+      "name": "err-authority-untrusted",
+      "note": "Profile is self-published / admitted by an authority the merchant does not trust. NIP-SOV: self-publication cannot establish that trust.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "authority" }
+    },
+    {
+      "name": "err-principal-mismatch",
+      "note": "Grant was issued to a different agent than the profile identifies; the agent is presenting someone else's budget.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "principal_mismatch" }
+    },
+    {
+      "name": "err-lineage-rotated-key",
+      "note": "Profile presents a rotated (new) agent key, but the grant was issued to the old key and was not re-authorized. NIP-SOV: a key change creates a new identity; existing grants do not automatically transfer. Surfaces as principal_mismatch.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "principal_mismatch" }
+    },
+    {
+      "name": "err-purpose-evaluation",
+      "note": "Grant purpose is evaluation (arena-scoped), not operational. An eval grant cannot buy real goods.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "evaluation",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "purpose_not_operational" }
+    },
+    {
+      "name": "err-effect-absent",
+      "note": "Grant is valid but does not include the spend effect (effects are granted separately in NIP-CAP).",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["network", "reads"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "effect_absent" }
+    },
+    {
+      "name": "err-expired",
+      "note": "now is at or past grant.expires_at.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1788000000
+        }
+      },
+      "expect": { "error": "expired" }
+    },
+    {
+      "name": "err-over-ceiling",
+      "note": "Price exceeds the grant per-tx ceiling (60,000 sats > 50,000 sats).",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "60000000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 0,
+        "reputation": null,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "over_ceiling", "detail": { "price_msat": "60000000", "ceiling_msat": "50000000" } }
+    },
+    {
+      "name": "err-reputation-too-low",
+      "note": "Merchant requires reputation >= 50; buyer has 30.",
+      "input": {
+        "attestation_present": true,
+        "signature_valid": true,
+        "price_msat": "15000",
+        "now": 1791590400,
+        "trusted_authorities": ["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],
+        "min_reputation": 50,
+        "reputation": 30,
+        "profile": {
+          "v": "openagents.sovereign-profile.v1",
+          "agent": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "authority": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "policy": { "schema": "openagents.pol-policy.v1", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+          "custody": { "schema": "openagents.cap-definition.v1", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+          "treasury": { "schema": "openagents.pol-wallet-policy.v1", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+        },
+        "grant": {
+          "v": "openagents.grant.v1",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "principal": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "binding": { "schema": "openagents.cap-binding.v1", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+          "effects": ["spend"],
+          "bounds": { "max_per_tx_msat": "50000000", "aggregate_msat": "500000000" },
+          "scope": "x402:lnbtc",
+          "purpose": "operational",
+          "expires_at": 1799999999
+        }
+      },
+      "expect": { "error": "reputation_too_low", "detail": { "required": 50, "got": 30 } }
+    }
+  ]
+}

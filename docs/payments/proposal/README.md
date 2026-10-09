@@ -23,6 +23,14 @@ work is *deployment, tooling, trust services, and the buyer-facing app*.
 | 3 | [Merchant-facilitator API sketch (Rust)](2026-10-09-x402-merchant-facilitator-api-sketch.md) | How a merchant assembles `crates/x402` for direct settlement. Grounded in the real crate (sync, generic-on-store, `Arc<dyn>` hooks, `thiserror`). Reuse table; the base case as pure assembly; new pieces (`MerchantSink`, `BuyerAttestation`, `FeePolicy`, `DelegatedReceiver`); request lifecycle; the two small core changes needed. |
 | 4 | [Agent ownership & mobile purchase approval](2026-10-09-agent-ownership-and-mobile-approval.md) | The buyer's view: *how do I know an agent is mine* (NIP-SOV authority binding, rooted in host admission — not a login), and *how do I approve purchases from a phone* (NIP-HOST enrollment → CAP/SOV budget → NIP-POL single-use approval → SOV guardian threshold). The to-build list: x402↔POL wiring, verification view, grant management, mobile push. |
 
+## Fixtures
+
+- [`fixtures/buyer-attestation-v1.json`](fixtures/buyer-attestation-v1.json) — test
+  vectors for the merchant-side `BuyerAttestation::verify` hook (doc 3, §2): 12
+  `(input → verdict)` cases covering the happy path and nine refusal codes, with a
+  fail-fast evaluation order. See [`fixtures/README.md`](fixtures/README.md) for the
+  verdict table.
+
 ## Suggested reading order
 
 1 → 2 → 3 is the *build* path (why → deployment contract → code). Read **4** alongside
