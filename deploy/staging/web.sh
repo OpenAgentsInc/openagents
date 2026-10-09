@@ -13,7 +13,7 @@ printf '%s' "$CSRF_KEY" > "$p/csrf.key"
 unset GITHUB_OAUTH_JSON CSRF_KEY
 printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"}' "$PUBLIC_ORIGIN" "$p" > "$p/cloud.json"
 exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 \
-  --public-host "${PUBLIC_ORIGIN#https://}" --public-host "$ALT_HOST" \
+  --public-host "${PUBLIC_ORIGIN#https://}" --public-host "$ALT_HOST" --public-host "$RUN_HOST" \
   --everglade /srv/everglade --components-build /srv/components \
   --cloud-build /srv/cloud --chat-build /srv/chat --bunny /srv/bunny \
   --chat-bucket "$CHAT_BUCKET" \

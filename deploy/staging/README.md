@@ -11,14 +11,15 @@ the production service `coder`, with three containers in one instance:
 | `gateway` (127.0.0.1:8791) | `openagents/openagents-stack` (this directory's `Dockerfile`) | The account service (GitHub sign-in on the staging OAuth App, sessions, `/device`, projects) and the inference gateway, started by `gateway.sh`. |
 | `worker` | the same stack image | The chat worker, every model call through the gateway sidecar, on its own staging key over `wss://relay.openagents.com`, started by `worker.sh`. |
 
-URL: <https://openagents-web-1-staging-157437760789.us-central1.run.app>
-(also `openagents-web-1-staging-ezxz4mgdsq-uc.a.run.app`). It is one
+URL: <https://staging.openagents.com> (a Cloud Run domain mapping in openagentsgemini;
+the DNS CNAME is `ghs.googlehosted.com`), also <https://openagents-web-1-staging-157437760789.us-central1.run.app>
+and `openagents-web-1-staging-ezxz4mgdsq-uc.a.run.app`. It is one
 instance (min and max 1). Gateway and worker state is in an in-memory
 volume, so accounts, sessions, and saved keys reset when the instance is
 replaced; chats are in the staging bucket and stay.
 
 The staging GitHub OAuth App must list
-`https://openagents-web-1-staging-157437760789.us-central1.run.app/auth/github/callback`
+`https://staging.openagents.com/auth/github/callback`
 as its callback URL for sign-in to come back.
 
 ## Secrets (Secret Manager, staging only)

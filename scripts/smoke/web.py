@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-DEFAULT_BASE = "https://openagents-web-1-staging-157437760789.us-central1.run.app"
+DEFAULT_BASE = "https://staging.openagents.com"
 TIMEOUT = 30
 
 

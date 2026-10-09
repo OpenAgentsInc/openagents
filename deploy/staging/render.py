@@ -14,7 +14,10 @@ import pathlib
 
 SERVICE = "openagents-web-1-staging"
 PROJECT_NUMBER = "157437760789"
-ORIGIN = f"https://{SERVICE}-{PROJECT_NUMBER}.us-central1.run.app"
+# staging.openagents.com is a Cloud Run domain mapping to this service; the
+# two run.app addresses keep answering too.
+ORIGIN = "https://staging.openagents.com"
+RUN_HOST = f"{SERVICE}-{PROJECT_NUMBER}.us-central1.run.app"
 ALT_HOST = f"{SERVICE}-ezxz4mgdsq-uc.a.run.app"
 # The automation account may not act as the default compute account (see
 # docs/deployment/openagents-web.md), so staging runs as the inference account.
@@ -49,6 +52,7 @@ def main():
         "env": [
             plain("PUBLIC_ORIGIN", ORIGIN),
             plain("ALT_HOST", ALT_HOST),
+            plain("RUN_HOST", RUN_HOST),
             plain("CHAT_BUCKET", CHAT_BUCKET),
             plain("OPENAGENTS_WEB_CHAT_WORKER", args.worker_pubkey),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
