@@ -1,8 +1,11 @@
 # OpenAgents for iPhone
 
 OpenAgents for iPhone lets you chat with OpenAgents anywhere and send
-coding work to your computers. It isn't on the App Store yet; build it from
-[source](https://github.com/OpenAgentsInc/openagents).
+coding work to your computers. It's in beta on TestFlight: install
+[TestFlight](https://apps.apple.com/app/testflight/id899247664) from the
+App Store, then open
+[testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B)
+on your iPhone to install the app.
 
 The app has four tabs along the bottom.
 

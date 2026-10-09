@@ -232,20 +232,22 @@ fn download_guidance_matches_the_published_apps() {
     for (id, minimum_version, claims) in [
         (
             "openagents.get-the-app",
-            6,
+            8,
             &[
                 "openagents.com/download",
                 "macOS, Linux, and Windows",
+                "https://testflight.apple.com/join/dvQdns5B",
                 "from source",
             ][..],
         ),
         ("openagents.overview", 4, &["openagents.com/download"][..]),
         (
             "openagents.playtesting",
-            3,
+            5,
             &[
                 "openagents.com/download",
                 "macOS, Linux, and Windows",
+                "https://testflight.apple.com/join/dvQdns5B",
                 "from source",
             ][..],
         ),
@@ -275,7 +277,10 @@ fn download_guidance_matches_the_published_apps() {
                 );
             }
             for outdated in [
-                "TestFlight",
+                // The iPhone app ships on TestFlight, never as a source
+                // build.
+                "Build the iPhone",
+                "The iPhone, Android",
                 "signed APK",
                 "Android app is still in testing",
                 ".dmg",

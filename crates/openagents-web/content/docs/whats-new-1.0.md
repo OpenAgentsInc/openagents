@@ -55,7 +55,8 @@ Download the app for Mac, Linux, or Windows from the
 
 ## On your phone
 
-- **iPhone:** join the test from the [download page](/download).
+- **iPhone:** join the beta on TestFlight at
+  [testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B).
 - **Android:** download the app from the [download page](/download).
 - **Light or dark:** Account > Appearance.
 

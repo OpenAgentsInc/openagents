@@ -44,8 +44,11 @@ or Linux.
 
 ## Phone
 
-On iPhone, install TestFlight from the App Store, then open the beta link
-on the [download page](/download) on your phone.
+On iPhone, install
+[TestFlight](https://apps.apple.com/app/testflight/id899247664) from the
+App Store, then open
+[testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B)
+on your phone to install the app.
 
 ## Web
 

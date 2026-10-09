@@ -1,6 +1,6 @@
 ---
 id: openagents.overview
-version: 5
+version: 6
 kind: product
 title: "What OpenAgents is"
 summary: >-
@@ -35,6 +35,7 @@ evidence:
   - "2026-10-01: The page offers Mac and Terminal release candidates. All other apps require source builds."
   - "2026-10-09: v4 (chat goldens): the download page offers Coder, not a Mac .dmg, and the website has accounts and projects, so the answer leads with the website and Coder."
   - "2026-10-09: the answer gives the exact page or the one command to run for each thing it tells the reader to do (the owner's rule of 2026-10-09), checked against the cited sources."
+  - "2026-10-09: v6: the iPhone app ships on TestFlight (https://testflight.apple.com/join/dvQdns5B, the link the download page and /connect give), not as a source build; checked against the cited sources."
 ---
 
 ## Answer
@@ -44,7 +45,7 @@ OpenAgents is where you chat with us and get work done on your code. On openagen
 ## Details
 
 - Environments, where Claude Code runs on your repositories in the cloud, are in early testing; they'll come with our Pro plan.
-- The phone and desktop apps are built from source for now.
+- The iPhone app is in beta on TestFlight at https://testflight.apple.com/join/dvQdns5B; the Android and desktop apps are built from source for now.
 
 ## Sources
 
