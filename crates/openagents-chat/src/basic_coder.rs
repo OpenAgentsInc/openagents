@@ -212,6 +212,15 @@ pub enum Failure {
 /// count: there is no usage limit (#10120), so no surface ever names one.
 pub const UNREACHED: &str = "Couldn't reach OpenAgents; try again.";
 
+/// What the chat says when no model answered in time.
+pub const TOO_SLOW: &str = "That took too long. Try again.";
+
+/// What the chat says for a failure with no better plain words.
+pub const UNANSWERED: &str = "We couldn't answer this time. Try again.";
+
+/// What the chat shows while a slow answer is still coming.
+pub const STILL_WORKING: &str = "Still working on it…";
+
 impl Failure {
     /// What the chat says, from the refusal's code, never its words: a
     /// worker's own message can name a provider's or an old quota's limit,
@@ -240,7 +249,11 @@ impl Failure {
                 "unsupported_feature" if model_access::current().is_mine() => {
                     "OpenAgents chat can't use your keys yet. Switch to OpenAgents in Settings to chat now.".into()
                 }
-                _ => format!("We couldn't answer this time ({code}). Try again."),
+                // A model that was too slow, on this machine or ours.
+                "timed_out" | "first_token_deadline" | "timeout" => TOO_SLOW.into(),
+                // Any other code stays in logs and records: a person is
+                // never shown an error code.
+                _ => UNANSWERED.into(),
             },
             Failure::Silent => "We couldn't reply this time. Try again.".into(),
             Failure::Transport(_) => "We couldn't reach the chat. Check your connection.".into(),
@@ -358,8 +371,12 @@ pub struct Reply {
     pub text: String,
     pub done: bool,
     pub failure: Option<Failure>,
+    /// The worker said the answer is slow but still coming
+    /// (`status: "still_working"`).
+    pub slow: bool,
     /// The model the worker named, an attribution claim.
     pub model: Option<String>,
+    /// The model the worker named, an attribution claim.
     /// Where the worker's first-response judgment says the turn belongs.
     pub lane: Option<Lane>,
     /// A rank job's ordering: candidate IDs, most likely first.
@@ -612,6 +629,11 @@ impl Reading {
             // A card is a closed display record; NIP-CJ's parser reads it
             // before the phone keeps it.
             (CJ_CONVERSATION_FEEDBACK, Some("card")) => reply.meta.carded(&payload),
+            (CJ_CONVERSATION_FEEDBACK, Some("status"))
+                if payload["status"].as_str() == Some("still_working") =>
+            {
+                reply.slow = true;
+            }
             (CJ_CONVERSATION_FEEDBACK, Some("status"))
                 if payload["status"].as_str() == Some("error") =>
             {
@@ -1089,6 +1111,83 @@ mod tests {
             payer("Insufficient credits. Buy more at example.com").describe(),
             "We couldn't answer this time on your keys. Try again."
         );
+    }
+
+    /// Every chat failure line is plain words: no code, no parentheses, no
+    /// machine talk (#11031), whatever code the worker sent.
+    #[test]
+    fn every_chat_failure_line_is_plain_copy() {
+        let codes = [
+            "internal",
+            "timed_out",
+            "first_token_deadline",
+            "timeout",
+            "upstream_failed",
+            "no_route",
+            "not_admitted",
+            "unsupported_feature",
+            "limit_exceeded",
+            "busy",
+            "rate_limited",
+            "quota_exhausted",
+            "something_new_and_unknown",
+            "",
+        ];
+        let mut lines: Vec<String> = codes
+            .iter()
+            .map(|code| {
+                Failure::Refused {
+                    code: (*code).into(),
+                    message: "no first token in 8000 ms".into(),
+                    retry_after_ms: None,
+                }
+                .describe()
+            })
+            .collect();
+        lines.push(Failure::Silent.describe());
+        lines.push(Failure::Transport("connection reset".into()).describe());
+        lines.extend([
+            UNREACHED.into(),
+            TOO_SLOW.into(),
+            UNANSWERED.into(),
+            STILL_WORKING.into(),
+        ]);
+        for line in &lines {
+            assert!(
+                oa_copy::violations(line, &[]).is_empty(),
+                "machine talk in {line:?}"
+            );
+            for shown in codes.iter().filter(|code| code.contains('_') || **code == "internal") {
+                assert!(!line.contains(shown), "{shown} shown in {line:?}");
+            }
+            assert!(!line.contains('(') && !line.contains('_'), "{line:?}");
+        }
+        let said = |code: &str| {
+            Failure::Refused {
+                code: code.into(),
+                message: String::new(),
+                retry_after_ms: None,
+            }
+            .describe()
+        };
+        assert_eq!(said("internal"), UNANSWERED);
+        assert_eq!(said("timed_out"), "That took too long. Try again.");
+    }
+
+    /// The worker's slow-but-coming status marks the reply, and is no failure.
+    #[test]
+    fn a_still_working_status_marks_the_reply_slow() {
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let mut reply = Reply::default();
+        let status = json!({"v": 2, "type": "status", "status": "still_working"});
+        reading.take(
+            &answer(&worker, &me_hex, &request, CJ_CONVERSATION_FEEDBACK, status),
+            &mut reply,
+        );
+        assert!(reply.slow);
+        assert!(reply.failure.is_none() && !reply.ended());
     }
 
     /// The person's keys travel sealed: the body names `payer.keys` and

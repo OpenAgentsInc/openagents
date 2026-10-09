@@ -127,6 +127,15 @@ pub trait Admitted: Send {
 /// terminal event.
 pub type Events = Pin<Box<dyn Stream<Item = Event> + Send>>;
 
+/// What a caller can show while a request waits for its first token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Progress {
+    /// The attempt (numbered from 1) passed its first-token deadline and is
+    /// the last one planned, so it keeps running toward its ceiling instead
+    /// of failing: tell the person it is still working.
+    StillWorking { attempt: u8, waited_ms: u64 },
+}
+
 /// A planned request, not yet sent ([`Gateway::prepare`]).
 #[derive(Clone, Debug)]
 pub struct Prepared {
@@ -425,6 +434,28 @@ impl Gateway {
         caller: &Caller,
         prepared: Prepared,
     ) -> Result<Routed, ApiError> {
+        self.send_observed(request, caller, prepared, &|_| {}).await
+    }
+
+    /// [`Gateway::send`], telling `observe` when the last planned attempt
+    /// outlives its first-token deadline and is given until the class's
+    /// ceiling ([`Progress::StillWorking`]).
+    ///
+    /// Every attempt but the last falls back at the class's first-token
+    /// deadline. The last has nothing to fall back to, so it runs to the
+    /// ceiling (`last_ms`) before it counts as a miss. Nothing switches
+    /// after a first token.
+    ///
+    /// # Errors
+    ///
+    /// As [`Gateway::send`].
+    pub async fn send_observed(
+        &self,
+        request: &CreateResponse,
+        caller: &Caller,
+        prepared: Prepared,
+        observe: &(dyn Fn(Progress) + Send + Sync),
+    ) -> Result<Routed, ApiError> {
         let Prepared {
             plan: planned,
             requested,
@@ -432,6 +463,11 @@ impl Gateway {
         } = prepared;
         let class = planned.class;
         let deadline = Duration::from_millis(planned.first_token_ms);
+        let ceiling = Duration::from_millis(planned.last_ms).max(deadline);
+        let last = planned
+            .attempts
+            .iter()
+            .rposition(|candidate| self.upstream(&candidate.upstream).is_some());
         let mut tried: Vec<ext::Attempt> = Vec::new();
         for (index, candidate) in planned.attempts.iter().enumerate() {
             let Some(upstream) = self.upstream(&candidate.upstream).cloned() else {
@@ -454,7 +490,16 @@ impl Gateway {
                 ..Attempt::default()
             };
             let started = Instant::now();
-            match first_token(&*upstream, request, &candidate.model, deadline).await {
+            let extra = if last == Some(index) { ceiling } else { deadline };
+            let waiting = move || {
+                observe(Progress::StillWorking {
+                    attempt: number,
+                    waited_ms: u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
+                });
+            };
+            match first_token(&*upstream, request, &candidate.model, deadline, extra, &waiting)
+                .await
+            {
                 Ok(open) => {
                     tried.push(ext::Attempt {
                         model: candidate.model.clone(),
@@ -622,12 +667,16 @@ fn is_first_token(body: &EventBody) -> bool {
 }
 
 /// Sends one attempt and reads it to its first output token, within
-/// `deadline` of sending.
+/// `deadline` of sending, or within `ceiling` when this is the last
+/// attempt (`ceiling > deadline`); `waiting` runs when it outlives
+/// `deadline` and keeps going.
 async fn first_token(
     upstream: &dyn Upstream,
     request: &CreateResponse,
     model: &str,
     deadline: Duration,
+    ceiling: Duration,
+    waiting: &(dyn Fn() + Send + Sync),
 ) -> Result<Open, Failure> {
     let measured: Mutex<Option<AttemptMeter>> = Mutex::new(None);
     let reading = async {
@@ -675,7 +724,19 @@ async fn first_token(
     let taken = |measured: &Mutex<Option<AttemptMeter>>| {
         measured.lock().ok().and_then(|mut slot| slot.take())
     };
-    match tokio::time::timeout(deadline, reading).await {
+    let bounded = async {
+        tokio::pin!(reading);
+        if ceiling > deadline {
+            if let Ok(done) = tokio::time::timeout(deadline, &mut reading).await {
+                return Ok(done);
+            }
+            waiting();
+            return tokio::time::timeout(ceiling - deadline, &mut reading).await;
+        }
+        tokio::time::timeout(deadline, &mut reading).await
+    };
+    let deadline = ceiling.max(deadline);
+    match bounded.await {
         Ok(Ok((meter, held, rest))) => Ok(Open { meter, held, rest }),
         Ok(Err((error, deadline))) => Err(Failure {
             meter: taken(&measured),

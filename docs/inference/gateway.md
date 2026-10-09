@@ -372,7 +372,15 @@ ordered list of (model, upstream) attempts.
    on an HTTP error, a failure event, an empty stream, or no first token
    within the class's deadline (the chat worker's 4 s and 8 s rules today).
    After the first token, a failure is the caller's `response.failed`. At
-   most three attempts.
+   most three attempts. The last planned attempt has nothing to fall back
+   to, so it runs to the class's ceiling (`last_ms`: chat 30 s, fast 15 s,
+   classify 10 s, code and long 60 s, reason 90 s, a named model 30 s)
+   rather than failing at the first-token deadline, and a caller that
+   passes an observer to `Gateway::send_observed` is told once
+   (`Progress::StillWorking`) when it outlives that deadline. The chat
+   worker sends the same notice as `status: still_working`, and the chat
+   shows "Still working on it…". Only when the ceiling passes does the
+   request fail, in plain words.
 
 `openagents/auto` picks the task class with a typed judgment (Jev, as the
 chat router does), never by matching keywords in the prompt.

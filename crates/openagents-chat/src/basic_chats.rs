@@ -583,6 +583,13 @@ impl BasicChats {
             .unwrap_or_default()
     }
 
+    /// Whether the reply streaming into `id` is slow but still coming.
+    pub fn still_working(&self, id: &str) -> bool {
+        self.streams
+            .get(id)
+            .is_some_and(|stream| lock(&stream.reply).slow)
+    }
+
     /// Start a conversation with `text` and ask for the reply.
     pub fn start(&mut self, text: &str, now: u64) -> Option<String> {
         self.start_tagged(text, now, None)

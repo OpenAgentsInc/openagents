@@ -28,6 +28,7 @@ uuid = { version = "1", features = ["v4"] }
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+oa-copy = { path = "../oa-copy" }
 tempfile = "3"
 futures-util = "0.3"
 tokio = { version = "1", features = ["test-util", "net"] }

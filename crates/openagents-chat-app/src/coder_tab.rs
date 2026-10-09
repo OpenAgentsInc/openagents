@@ -3387,6 +3387,11 @@ impl CoderTab {
         {
             children.insert(0, back);
         }
+        let working_label = if self.basic.still_working(id) {
+            crate::basic_coder::STILL_WORKING
+        } else {
+            "Working…"
+        };
         let partial = self.basic.partial(id);
         let turns = self.basic.turns(id);
         let mut children = vec![header];
@@ -3411,7 +3416,7 @@ impl CoderTab {
                 body_suffix: "-md",
                 streaming_key: format!("talk-m{}", turns.len()),
                 working_key: "talk-working",
-                working_label: "Working…",
+                working_label,
                 failed_key: "talk-failed",
                 status_style: Style {
                     foreground: Some(gray()),

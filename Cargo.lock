@@ -10284,6 +10284,7 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-transport",
+ "oa-copy",
  "playtest",
  "route-contract",
  "rust-native",

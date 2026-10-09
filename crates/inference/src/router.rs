@@ -163,6 +163,12 @@ pub struct ClassEntry {
     pub models: Vec<ClassModel>,
     /// Fall back when no output token arrives within this, ms.
     pub first_token_ms: u64,
+    /// How long the last planned attempt may take to its first token, ms:
+    /// there is nothing left to fall back to, so a slow machine is waited
+    /// out rather than failed. Never below `first_token_ms`; 0 means
+    /// `first_token_ms`.
+    #[serde(default)]
+    pub last_ms: u64,
     /// The Gym score a candidate needs, when scores exist for the class.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub floor: Option<f64>,
@@ -174,6 +180,9 @@ pub struct ClassTable {
     pub classes: BTreeMap<TaskClass, ClassEntry>,
     /// First-token deadline for a request naming a model id, ms.
     pub model_first_token_ms: u64,
+    /// The last attempt's ceiling for a request naming a model id, ms.
+    #[serde(default)]
+    pub model_last_ms: u64,
 }
 
 impl Default for ClassTable {
@@ -182,9 +191,10 @@ impl Default for ClassTable {
     fn default() -> Self {
         let flash = "google/gemini-3.8-flash";
         let glm = "zai/glm-5.3-flash";
-        let entry = |models: Vec<ClassModel>, first_token_ms: u64| ClassEntry {
+        let entry = |models: Vec<ClassModel>, first_token_ms: u64, last_ms: u64| ClassEntry {
             models,
             first_token_ms,
+            last_ms,
             floor: None,
         };
         let classes = BTreeMap::from([
@@ -197,6 +207,7 @@ impl Default for ClassTable {
                         ClassModel::on("google/gemini-2.5-flash-lite", "vertex"),
                     ],
                     4_000,
+                    10_000,
                 ),
             ),
             (
@@ -208,6 +219,7 @@ impl Default for ClassTable {
                         ClassModel::on(flash, "openrouter"),
                     ],
                     4_000,
+                    15_000,
                 ),
             ),
             (
@@ -219,6 +231,7 @@ impl Default for ClassTable {
                         ClassModel::on(flash, "openrouter"),
                     ],
                     8_000,
+                    30_000,
                 ),
             ),
             (
@@ -230,6 +243,7 @@ impl Default for ClassTable {
                         ClassModel::on(glm, "zai"),
                     ],
                     15_000,
+                    60_000,
                 ),
             ),
             (
@@ -237,6 +251,7 @@ impl Default for ClassTable {
                 entry(
                     vec![ClassModel::on(flash, "vertex"), ClassModel::on(glm, "zai")],
                     15_000,
+                    60_000,
                 ),
             ),
             (
@@ -248,12 +263,14 @@ impl Default for ClassTable {
                         ClassModel::on("google/gemini-3.8-pro", "openrouter"),
                     ],
                     30_000,
+                    90_000,
                 ),
             ),
         ]);
         Self {
             classes,
             model_first_token_ms: 8_000,
+            model_last_ms: 30_000,
         }
     }
 }
@@ -384,6 +401,10 @@ pub struct Plan {
     pub attempts: Vec<Candidate>,
     /// Fall back when no output token arrives within this, ms.
     pub first_token_ms: u64,
+    /// The last attempt's ceiling for its first token, ms: never below
+    /// `first_token_ms`. Nothing is left to fall back to, so a slow
+    /// machine is waited out rather than failed.
+    pub last_ms: u64,
     /// Candidates considered and dropped, with why.
     pub dropped: Vec<(Candidate, Dropped)>,
 }
@@ -780,6 +801,11 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
         first_token_ms: entry.map_or(context.classes.model_first_token_ms, |entry| {
             entry.first_token_ms
         }),
+        last_ms: entry
+            .map_or(context.classes.model_last_ms, |entry| entry.last_ms)
+            .max(entry.map_or(context.classes.model_first_token_ms, |entry| {
+                entry.first_token_ms
+            })),
         dropped,
     })
 }

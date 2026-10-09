@@ -2408,8 +2408,32 @@ impl Job {
                         }
                         instructions.push_str(first::MODEL_NOTE);
                     }
-                    self.generate(version, &instructions, &input, &publish, triage, &turn)
-                        .await
+                    // A slow model is still working: past the primary's
+                    // first-word wait, tell the caller once, so the chat
+                    // shows that rather than a bare spinner.
+                    let generating =
+                        self.generate(version, &instructions, &input, &publish, triage, &turn);
+                    tokio::pin!(generating);
+                    let slow = tokio::time::sleep(coder::generate::PRIMARY_THINKING);
+                    tokio::pin!(slow);
+                    let mut told = false;
+                    loop {
+                        tokio::select! {
+                            done = &mut generating => break done,
+                            () = &mut slow, if !told => {
+                                told = true;
+                                // A failed notice never fails the turn.
+                                let _ = publish(
+                                    FEEDBACK_KIND,
+                                    json!({
+                                        "v": version,
+                                        "type": "status",
+                                        "status": "still_working",
+                                    }),
+                                );
+                            }
+                        }
+                    }
                 }
             }
         };
