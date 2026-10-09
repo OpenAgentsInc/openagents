@@ -46,7 +46,7 @@ use serde_json::{Map, Value, json};
 
 use super::seams::{self, Ask, Continuation, NoPersonalize, SeamError};
 use crate::generate::{
-    DEFAULT_DOOR_URL, Generate, Lane as ModelLane, Message, ResponsesDoor, Role,
+    DEFAULT_DOOR_URL, Generate, Lane as ModelLane, Message, ProviderPrivacy, ResponsesDoor, Role,
 };
 
 /// The personalization contract's identity, for evidence.
@@ -354,6 +354,9 @@ fn openrouter_class(error: &openrouter::Error) -> String {
 pub struct OpenRouterLane {
     client: openrouter::Client,
     model: String,
+    /// What the request asks OpenRouter's providers about keeping and
+    /// training on it (#11040).
+    privacy: ProviderPrivacy,
 }
 
 impl OpenRouterLane {
@@ -363,7 +366,15 @@ impl OpenRouterLane {
         Self {
             client,
             model: model.to_string(),
+            privacy: ProviderPrivacy::from_env(),
         }
+    }
+
+    /// The same lane asking for `privacy` instead of the environment's.
+    #[must_use]
+    pub fn with_privacy(mut self, privacy: ProviderPrivacy) -> Self {
+        self.privacy = privacy;
+        self
     }
 
     /// A lane for `model`, with the key from `OPENROUTER_API_KEY` (or
@@ -382,7 +393,7 @@ impl OpenRouterLane {
     }
 
     fn request(&self, prompt: &str) -> openrouter::ChatRequest {
-        openrouter::ChatRequest::new(
+        let request = openrouter::ChatRequest::new(
             &self.model,
             vec![
                 openrouter::Message::system(INSTRUCTIONS),
@@ -390,7 +401,12 @@ impl OpenRouterLane {
             ],
         )
         .max_tokens(MAX_TOKENS)
-        .temperature(0.2)
+        .temperature(0.2);
+        match self.privacy {
+            ProviderPrivacy::Strict => request.no_retention(true),
+            ProviderPrivacy::NoTraining => request.no_retention(false),
+            ProviderPrivacy::Off => request,
+        }
     }
 }
 
@@ -922,6 +938,21 @@ mod tests {
         let lane = GatewayLane::new(ResponsesDoor::new(DEFAULT_DOOR_URL, "x", "k"), "glm");
         assert_eq!(lane.model(), ModelLane::Glm.model());
         assert_eq!(lane.host(), "the Vercel AI Gateway");
+    }
+
+    /// #11040: the OpenRouter lane asks its providers not to keep or train
+    /// on the request.
+    #[test]
+    fn the_openrouter_lane_asks_providers_not_to_keep_the_request() {
+        let client =
+            openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new("k"))).unwrap();
+        let lane = OpenRouterLane::new(client, "m").with_privacy(ProviderPrivacy::Strict);
+        let sent = serde_json::to_value(lane.request("p")).unwrap();
+        assert_eq!(sent["provider"]["data_collection"], "deny");
+        assert_eq!(sent["provider"]["zdr"], true);
+        let sent =
+            serde_json::to_value(lane.with_privacy(ProviderPrivacy::Off).request("p")).unwrap();
+        assert_eq!(sent.get("provider"), None);
     }
 
     #[test]

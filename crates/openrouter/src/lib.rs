@@ -210,7 +210,16 @@ struct Plugin {
 struct ProviderPreferences {
     /// Route only to providers that support every parameter sent, such as
     /// `response_format`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     require_parameters: bool,
+    /// `deny` routes only to providers that do not collect (keep or train
+    /// on) the request; set by [`ChatRequest::no_retention`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data_collection: Option<&'static str>,
+    /// Routes only to zero-data-retention endpoints; set by
+    /// [`ChatRequest::no_retention`].
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    zdr: bool,
 }
 
 /// One chat completions request, not streamed.
@@ -281,15 +290,36 @@ impl ChatRequest {
         self
     }
 
+    /// The same request asking OpenRouter to route only to providers that
+    /// neither collect nor keep it: `data_collection: "deny"` and, when
+    /// `zero_retention`, `zdr: true` (#11040). A model with no such
+    /// endpoint is refused rather than sent elsewhere.
+    #[must_use]
+    pub fn no_retention(mut self, zero_retention: bool) -> Self {
+        let mut provider = self.provider.take().unwrap_or(ProviderPreferences {
+            require_parameters: false,
+            data_collection: None,
+            zdr: false,
+        });
+        provider.data_collection = Some("deny");
+        provider.zdr = zero_retention;
+        self.provider = Some(provider);
+        self
+    }
+
     /// The request [`Client::structured`] sends: a strict `json_schema`
     /// response format named `name`, routing only to providers that
     /// support every parameter sent, and the response-healing plugin for a
     /// reply that still misses the schema.
     #[must_use]
     pub fn structured(mut self, name: &str, schema: Value) -> Self {
-        self.provider = Some(ProviderPreferences {
-            require_parameters: true,
+        let mut provider = self.provider.take().unwrap_or(ProviderPreferences {
+            require_parameters: false,
+            data_collection: None,
+            zdr: false,
         });
+        provider.require_parameters = true;
+        self.provider = Some(provider);
         self.plugins = vec![Plugin {
             id: "response-healing".to_string(),
         }];
@@ -1295,7 +1325,11 @@ impl Client {
         body["stream"] = Value::Bool(true);
         body["messages"] = Value::Array(messages.to_vec());
         body["tools"] = Value::Array(tools.to_vec());
-        body["provider"] = serde_json::json!({ "require_parameters": true });
+        if body["provider"].is_object() {
+            body["provider"]["require_parameters"] = Value::Bool(true);
+        } else {
+            body["provider"] = serde_json::json!({ "require_parameters": true });
+        }
         self.stream_body(&body, mode, sink, model_sink).await
     }
 
@@ -1400,6 +1434,34 @@ fn strip_fence(text: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11040: a no-retention request denies data collection and asks for
+    /// zero retention, alongside a structured request's own preference.
+    #[test]
+    fn a_no_retention_request_asks_providers_not_to_keep_it() {
+        let plain = serde_json::to_value(ChatRequest::new("m", vec![])).unwrap();
+        assert_eq!(plain.get("provider"), None);
+
+        let kept = serde_json::to_value(ChatRequest::new("m", vec![]).no_retention(true)).unwrap();
+        assert_eq!(
+            kept["provider"],
+            serde_json::json!({ "data_collection": "deny", "zdr": true })
+        );
+        let no_training =
+            serde_json::to_value(ChatRequest::new("m", vec![]).no_retention(false)).unwrap();
+        assert_eq!(
+            no_training["provider"],
+            serde_json::json!({ "data_collection": "deny" })
+        );
+
+        let both = ChatRequest::new("m", vec![])
+            .no_retention(true)
+            .structured("x", serde_json::json!({ "type": "object" }));
+        let both = serde_json::to_value(both).unwrap();
+        assert_eq!(both["provider"]["require_parameters"], true);
+        assert_eq!(both["provider"]["data_collection"], "deny");
+        assert_eq!(both["provider"]["zdr"], true);
+    }
 
     #[test]
     fn the_key_never_prints() {

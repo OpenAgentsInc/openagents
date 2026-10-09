@@ -58,6 +58,20 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   hold the first release answered "summarize your essay" turns ungrounded.
   The keys are in the worker's environment file on its host and nowhere else.
   No model API key ships in the app.
+- **What we ask the providers (#11040).** Every chat-model request carries
+  `"store": false`. Under `CODER_PROVIDER_PRIVACY=strict` (the default when
+  unset), OpenRouter requests (the primary and T1 personalization) also
+  carry `provider: {"data_collection": "deny", "zdr": true}`, so OpenRouter
+  routes them only to endpoints that neither train on nor keep the request,
+  and Vercel AI Gateway requests carry
+  `providerOptions: {"gateway": {"zeroDataRetention": true}}`. A model with
+  no such endpoint is refused by the router, which the chat treats like any
+  other primary failure: the turn goes to the fallback. `no-training` keeps
+  only OpenRouter's `data_collection: "deny"`; `off` sends neither. The
+  worker's `privacy` log line names the level, and an unknown value stops
+  it. Check the journal after a deploy: if every turn now names Gemini,
+  the primary has no zero-retention endpoint. Jev's doors and the
+  embeddings calls do not send these fields yet.
 - **First response and the chat router.** The worker acknowledges every
   admitted turn with `status: processing` at once. With `TYPESAFE_API_KEY`
   set, a turn that asks gets one Jev (System One) judgment run beside the

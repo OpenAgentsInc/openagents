@@ -563,6 +563,12 @@ async fn serve(options: &Options) -> Result<(), String> {
     // `CODER_WORKER_MODEL` outranks the `CODER_MODEL` the door would
     // otherwise read, and a lane named for a door that cannot run it is
     // refused rather than quietly dropped.
+    // What every door asks its model provider about keeping and training
+    // on the conversation (#11040): strict unless the operator lowers it,
+    // and a value that names no level stops the worker.
+    if let Ok(text) = env::var(coder::generate::PROVIDER_PRIVACY_VAR) {
+        coder::generate::ProviderPrivacy::parse(&text)?;
+    }
     let mut door = Door::from_env()?;
     if let Some(model) = model_from_env(WORKER_MODEL_VAR) {
         door = door
@@ -627,6 +633,11 @@ async fn serve(options: &Options) -> Result<(), String> {
             None => eprintln!("door    {} ({})", door.name(), door.model()),
         },
     }
+    eprintln!(
+        "privacy {} (asked of the chat model's providers; {})",
+        coder::generate::ProviderPrivacy::from_env().word(),
+        coder::generate::PROVIDER_PRIVACY_VAR
+    );
     match &judge {
         Some(judge) => eprintln!(
             "judge   {} ({}): first response and suggestions",

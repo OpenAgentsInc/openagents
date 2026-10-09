@@ -41,6 +41,126 @@ pub const OPENROUTER_DOOR_URL: &str = "https://openrouter.ai/api";
 /// is reached with.
 pub const OPENROUTER_KEY_VAR: &str = "OPENROUTER_API_KEY";
 
+/// The variable choosing what every door asks of its model provider about
+/// keeping and training on the conversation: `strict` (unset), `no-training`,
+/// or `off`. See [`ProviderPrivacy`] (#11040).
+pub const PROVIDER_PRIVACY_VAR: &str = "CODER_PROVIDER_PRIVACY";
+
+/// What a door asks the provider behind it about the conversation it sends.
+///
+/// Every door sends `"store": false` regardless. On top of that:
+///
+/// | Level | OpenRouter (`provider`) | Vercel AI Gateway (`providerOptions.gateway`) |
+/// | --- | --- | --- |
+/// | `Strict` | `data_collection: "deny"`, `zdr: true` | `zeroDataRetention: true` |
+/// | `NoTraining` | `data_collection: "deny"` | nothing |
+/// | `Off` | nothing | nothing |
+///
+/// Both routers refuse a request no provider can serve under the
+/// preference rather than quietly sending it elsewhere, so under `Strict` a
+/// model with no zero-retention endpoint fails, and the chat worker's
+/// fallback answers the turn. Other door URLs get only `store: false`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ProviderPrivacy {
+    /// No training and zero retention, where the door's router supports it.
+    #[default]
+    Strict,
+    /// No training only (OpenRouter's data collection denied).
+    NoTraining,
+    /// Nothing beyond `store: false`.
+    Off,
+}
+
+impl ProviderPrivacy {
+    /// Reads `text` as a level: `strict`, `no-training`, or `off`.
+    ///
+    /// # Errors
+    ///
+    /// A sentence naming the accepted values.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim() {
+            "" | "strict" => Ok(Self::Strict),
+            "no-training" => Ok(Self::NoTraining),
+            "off" => Ok(Self::Off),
+            other => Err(format!(
+                "{PROVIDER_PRIVACY_VAR} is `strict`, `no-training`, or `off`, not `{other}`"
+            )),
+        }
+    }
+
+    /// The level [`PROVIDER_PRIVACY_VAR`] names; unset or unreadable is
+    /// [`ProviderPrivacy::Strict`], so a typo never loosens it.
+    #[must_use]
+    pub fn from_env() -> Self {
+        std::env::var(PROVIDER_PRIVACY_VAR)
+            .ok()
+            .and_then(|text| Self::parse(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// The level's name, as [`ProviderPrivacy::parse`] reads it.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::NoTraining => "no-training",
+            Self::Off => "off",
+        }
+    }
+
+    /// Adds this level's fields to `body`, a request to the door at `url`,
+    /// merging into any `provider` or `providerOptions` already there.
+    fn apply(self, url: &str, body: &mut Value) {
+        let Some(fields) = body.as_object_mut() else {
+            return;
+        };
+        if url.contains("openrouter.ai") {
+            let mut asks = serde_json::Map::new();
+            if self != Self::Off {
+                asks.insert("data_collection".to_string(), json!("deny"));
+            }
+            if self == Self::Strict {
+                asks.insert("zdr".to_string(), json!(true));
+            }
+            merge(fields, "provider", asks);
+        } else if url.contains("ai-gateway.vercel.sh") && self == Self::Strict {
+            let mut gateway = serde_json::Map::new();
+            gateway.insert("zeroDataRetention".to_string(), json!(true));
+            let mut options = serde_json::Map::new();
+            options.insert("gateway".to_string(), Value::Object(gateway));
+            merge(fields, "providerOptions", options);
+        }
+    }
+}
+
+/// Merges `add` into the object at `fields[name]`, one level deep for
+/// objects, so a lane's own provider options survive the privacy fields.
+fn merge(
+    fields: &mut serde_json::Map<String, Value>,
+    name: &str,
+    add: serde_json::Map<String, Value>,
+) {
+    if add.is_empty() {
+        return;
+    }
+    let slot = fields
+        .entry(name.to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if !slot.is_object() {
+        *slot = Value::Object(serde_json::Map::new());
+    }
+    if let Some(existing) = slot.as_object_mut() {
+        for (key, value) in add {
+            match (existing.get_mut(&key), value) {
+                (Some(Value::Object(inner)), Value::Object(more)) => inner.extend(more),
+                (_, value) => {
+                    existing.insert(key, value);
+                }
+            }
+        }
+    }
+}
+
 /// A lane: a model the gateway serves, under a short name.
 ///
 /// The gateway answers one Open Responses shape for every model in its
@@ -564,6 +684,9 @@ pub struct ResponsesDoor {
     /// Top-level request fields added to every body, such as a reasoning
     /// setting for one lane. `None` for the chat door.
     options: Option<serde_json::Map<String, Value>>,
+    /// What the door asks its provider about keeping and training on the
+    /// conversation ([`ProviderPrivacy`]); [`PROVIDER_PRIVACY_VAR`] by default.
+    privacy: ProviderPrivacy,
 }
 
 impl ResponsesDoor {
@@ -576,7 +699,22 @@ impl ResponsesDoor {
             key: key.into(),
             patience: Patience::default(),
             options: None,
+            privacy: ProviderPrivacy::from_env(),
         }
+    }
+
+    /// The same door asking its provider for `privacy` instead of the
+    /// level the environment set.
+    #[must_use]
+    pub fn with_privacy(mut self, privacy: ProviderPrivacy) -> Self {
+        self.privacy = privacy;
+        self
+    }
+
+    /// What the door asks its provider about the conversation.
+    #[must_use]
+    pub fn privacy(&self) -> ProviderPrivacy {
+        self.privacy
     }
 
     /// The same door adding `options`' fields to every request body, over
@@ -676,6 +814,7 @@ impl ResponsesDoor {
                 fields.insert(name.clone(), value.clone());
             }
         }
+        self.privacy.apply(&self.url, &mut body);
         body
     }
 }
@@ -1670,6 +1809,95 @@ mod tests {
         assert_eq!(body["tools"], json!([]));
         assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
         assert_eq!(body["input"][1]["content"][0]["type"], "output_text");
+    }
+
+    /// #11040: by default the OpenRouter door asks for no data collection
+    /// and zero retention, and the gateway door for zero retention, both
+    /// beside `store: false`.
+    #[test]
+    fn doors_ask_providers_not_to_keep_or_train_by_default() {
+        assert_eq!(ProviderPrivacy::default(), ProviderPrivacy::Strict);
+        let openrouter = ResponsesDoor::new(OPENROUTER_DOOR_URL, "m", "k")
+            .with_privacy(ProviderPrivacy::default());
+        let body = openrouter.body("sys", &[]);
+        assert_eq!(body["store"], false);
+        assert_eq!(body["provider"]["data_collection"], "deny");
+        assert_eq!(body["provider"]["zdr"], true);
+        assert_eq!(body.get("providerOptions"), None);
+
+        let gateway =
+            ResponsesDoor::new(DEFAULT_DOOR_URL, "m", "k").with_privacy(ProviderPrivacy::default());
+        let body = gateway.body("sys", &[]);
+        assert_eq!(body["store"], false);
+        assert_eq!(
+            body["providerOptions"]["gateway"]["zeroDataRetention"],
+            true
+        );
+        assert_eq!(body.get("provider"), None);
+
+        // The chat worker's primary, built the way the worker builds it.
+        let ordered = FallbackDoor::openrouter(
+            "space-bunny",
+            "o",
+            ResponsesDoor::new(DEFAULT_DOOR_URL, DEFAULT_MODEL, "g"),
+        );
+        if ordered.primary.privacy() == ProviderPrivacy::Strict {
+            let body = ordered.primary.body("sys", &[]);
+            assert_eq!(body["provider"]["data_collection"], "deny");
+            assert_eq!(body["reasoning"], json!({ "effort": PRIMARY_EFFORT }));
+        }
+
+        // Another endpoint gets only `store: false`.
+        let local = ResponsesDoor::new("http://127.0.0.1:9", "m", "k")
+            .with_privacy(ProviderPrivacy::Strict)
+            .body("sys", &[]);
+        assert_eq!(local["store"], false);
+        assert_eq!(local.get("provider"), None);
+        assert_eq!(local.get("providerOptions"), None);
+    }
+
+    /// A lane's own provider options keep their fields beside the privacy
+    /// ones, and the lower levels ask for less.
+    #[test]
+    fn privacy_merges_with_lane_options_and_levels_parse() {
+        let options =
+            json!({ "providerOptions": { "zai": { "thinking": { "type": "disabled" } } } });
+        let body = ResponsesDoor::new(DEFAULT_DOOR_URL, "m", "k")
+            .with_options(options.as_object().cloned().unwrap_or_default())
+            .with_privacy(ProviderPrivacy::Strict)
+            .body("sys", &[]);
+        assert_eq!(
+            body["providerOptions"]["zai"]["thinking"]["type"],
+            "disabled"
+        );
+        assert_eq!(
+            body["providerOptions"]["gateway"]["zeroDataRetention"],
+            true
+        );
+
+        let body = ResponsesDoor::new(OPENROUTER_DOOR_URL, "m", "k")
+            .with_privacy(ProviderPrivacy::NoTraining)
+            .body("sys", &[]);
+        assert_eq!(body["provider"], json!({ "data_collection": "deny" }));
+        let body = ResponsesDoor::new(DEFAULT_DOOR_URL, "m", "k")
+            .with_privacy(ProviderPrivacy::NoTraining)
+            .body("sys", &[]);
+        assert_eq!(body.get("providerOptions"), None);
+        let body = ResponsesDoor::new(OPENROUTER_DOOR_URL, "m", "k")
+            .with_privacy(ProviderPrivacy::Off)
+            .body("sys", &[]);
+        assert_eq!(body.get("provider"), None);
+        assert_eq!(body["store"], false);
+
+        for level in [
+            ProviderPrivacy::Strict,
+            ProviderPrivacy::NoTraining,
+            ProviderPrivacy::Off,
+        ] {
+            assert_eq!(ProviderPrivacy::parse(level.word()), Ok(level));
+        }
+        assert_eq!(ProviderPrivacy::parse(""), Ok(ProviderPrivacy::Strict));
+        assert!(ProviderPrivacy::parse("loose").is_err());
     }
 
     #[tokio::test]
