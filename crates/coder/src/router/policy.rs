@@ -79,8 +79,8 @@
 //!     precisely, and only on a route in [`LANE_ROUTES`]: an offer loses to
 //!     a route with its own answer.
 //! 12. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
-//!     `clarify.generic` stem when personalization is available, else the
-//!     model told to ask one question; but an `answer` reading at
+//!     model told to answer a plain yes-or-no in a few words or ask one
+//!     natural question ([`CLARIFY_NOTE`]); but an `answer` reading at
 //!     [`ANSWER_CONFIDENCE`] on an entry that answers in the chat, with
 //!     `needs_specifics` below [`SPECIFICS_CEILING`], serves that entry
 //!     whole instead (#10138). On a later turn, a clarify (here or in
@@ -233,8 +233,10 @@ pub const AUTHOR_CONTINUES: [RouteId; 7] = [
 pub const PLUGIN_CONTINUES: [RouteId; 2] = [RouteId::WorkDispatch, RouteId::Cli];
 
 /// The instruction the model gets when the router wants one question.
-pub const CLARIFY_NOTE: &str = "The user's message is ambiguous. Reply with one short question \
-that would let us answer or act, and nothing else.";
+pub const CLARIFY_NOTE: &str = "The user's message is short or unclear. If it is a simple yes-or-no \
+question or a remark, just answer it the way a friendly person would, in a few words (\"Yep.\", \
+\"Yes, it does.\", \"Oh yes.\"). Otherwise reply with one short, natural question that would let \
+us answer or act, and nothing else. No preamble.";
 
 /// The instruction the model gets when the router wants one question on a
 /// later turn: the earlier messages may already say what a short message
@@ -1117,7 +1119,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
             CLARIFY_WINS,
             "ge",
         ) {
-            return clarify(bank, facts, situation);
+            return clarify(situation);
         }
         // An offer loses to an answer: work and a route with its own answer
         // this close is not a dispatch.
@@ -1411,26 +1413,20 @@ fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &
             answer: entry.clone(),
         };
     }
-    clarify(bank, facts, situation)
+    clarify(situation)
 }
 
 /// Rules 2 and 12's question. On a later turn the model reads the earlier
 /// messages first and asks only when they leave the latest one unclear
-/// ([`LATER_CLARIFY_NOTE`], #10138); a first message gets the
-/// `clarify.generic` stem, or the model told [`CLARIFY_NOTE`].
-fn clarify(bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+/// ([`LATER_CLARIFY_NOTE`], #10138); a first message gets the model told
+/// [`CLARIFY_NOTE`], never a canned stem: a stem read stiffly ("To make
+/// sure we get this right: this works.") on a plain yes-or-no question.
+fn clarify(situation: &Situation) -> Tier {
     if situation.earlier {
         return Tier::Model {
             lead: None,
             note: Some(LATER_CLARIFY_NOTE),
         };
-    }
-    if situation.personalize
-        && let Some(tier) = bank
-            .entry("clarify.generic")
-            .and_then(|entry| stem_of(entry, facts, true))
-    {
-        return tier;
     }
     Tier::Model {
         lead: None,
@@ -1836,7 +1832,7 @@ mod tests {
         assert!(matches!(router(&close), Tier::Model { note: Some(_), .. }));
         assert!(matches!(
             decided(&close, &Context::default(), true),
-            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+            Tier::Model { note: Some(CLARIFY_NOTE), .. }
         ));
     }
 
@@ -1897,6 +1893,10 @@ mod tests {
             lead: None,
             note: Some(LATER_CLARIFY_NOTE),
         };
+        let asks = Tier::Model {
+            lead: None,
+            note: Some(CLARIFY_NOTE),
+        };
         // "try that again, I stopped it too soon", after a reply: a close
         // call either way round, and a sure clarify.
         let mut again = routed(RouteId::General, 0.52, "none", 0.0, 0.21);
@@ -1909,11 +1909,8 @@ mod tests {
         assert_eq!(later(&first), reads);
         let sure = routed(RouteId::Clarify, 0.8, "none", 0.0, 0.5);
         assert_eq!(later(&sure), reads);
-        // A first message still gets the stem.
-        assert!(matches!(
-            decided(&sure, &Context::default(), true),
-            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
-        ));
+        // A first message is the model asking or answering in a few words.
+        assert_eq!(decided(&sure, &Context::default(), true), asks);
     }
 
     /// A clarify reading loses to a sure prepared answer that answers in
@@ -1933,12 +1930,12 @@ mod tests {
         let unsure = routed(RouteId::Clarify, 0.72, "meta.who", 0.6, 0.22);
         assert!(matches!(
             decided(&unsure, &Context::default(), true),
-            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+            Tier::Model { note: Some(CLARIFY_NOTE), .. }
         ));
         let particular = routed(RouteId::Clarify, 0.72, "meta.who", 0.93, 0.5);
         assert!(matches!(
             decided(&particular, &Context::default(), true),
-            Tier::CannedStem { answer, .. } if answer.id == "clarify.generic"
+            Tier::Model { note: Some(CLARIFY_NOTE), .. }
         ));
     }
 

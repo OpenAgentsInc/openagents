@@ -871,10 +871,10 @@ text = "We can't help with that. We're glad to help with something else."
 
 [[answer]]
 id = "clarify.generic"
-version = 1
+version = 2
 routes = ["clarify"]
 when = "The message is too ambiguous to act on, and one short question would settle what the user means"
-stem = "To make sure we get this right:"
+stem = "Quick question:"
 generic_end = " what would you like us to do?"
 
 # ---------------------------------------------------------------------------
