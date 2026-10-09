@@ -24,33 +24,11 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home))
 }
 
-/// Site pages a shared card may link that this site doesn't serve yet: a
-/// card for one is left out, so no card goes nowhere. The roadmap card
-/// waits for `/roadmap` (#11122); take its entry out when that page ships.
-const NOT_YET_SERVED: &[&str] = &["/roadmap"];
-
-/// What fills the grid to four while a shared card waits for its page.
-const BASICS: HomeCard = HomeCard {
-    id: "basics",
-    title: "Start with the basics",
-    line: "What OpenAgents is and how to get it.",
-    href: "/docs/what-is-openagents",
-    message: "What is OpenAgents?",
-};
-
 /// The new chat's "learn about" cards: the one shared list
-/// ([`HOME_CARDS`], the phone shows the same), less any card whose page
-/// isn't served yet, filled to four with [`BASICS`].
-pub(crate) fn learn() -> Vec<HomeCard> {
-    let mut cards: Vec<HomeCard> = HOME_CARDS
-        .iter()
-        .filter(|card| !NOT_YET_SERVED.contains(&card.href))
-        .copied()
-        .collect();
-    if cards.len() < HOME_CARDS.len() {
-        cards.push(BASICS);
-    }
-    cards
+/// ([`HOME_CARDS`]; the phone shows the same). Every card's page is live
+/// (the homepage test opens each one).
+pub(crate) fn learn() -> &'static [HomeCard] {
+    HOME_CARDS
 }
 
 /// A card's icon, by its id.
@@ -68,7 +46,7 @@ fn icon(id: &str) -> Icon {
 fn learn_cards() -> LinkCards {
     LinkCards::new("Learn about OpenAgents").cards(
         learn()
-            .into_iter()
+            .iter()
             .map(|card| LinkCard::new(card.title, card.line, card.href).icon(icon(card.id))),
     )
 }
