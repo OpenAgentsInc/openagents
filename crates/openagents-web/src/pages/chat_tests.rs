@@ -1437,5 +1437,341 @@ fn a_streaming_reply_never_shows_half_written_markdown() {
     chat.requests[0].outcome = Outcome::Answered;
     let html = messages(&chat, None, false).into_string();
     assert!(!html.contains("data-oa-streaming"), "{html}");
-    assert!(html.contains(&crate::markdown::render_reply(full)), "{html}");
+    assert!(
+        html.contains(&crate::markdown::render_reply(full)),
+        "{html}"
+    );
+}
+
+// Sending twice, and refusals in the composer (the owner's double-submit
+// report, 2026-10-09): a duplicate send goes to the same chat, and a
+// refusal never replaces the page with bare text.
+
+const THIRD: &str = "32345678-1234-4234-8234-123456789abc";
+
+impl Fixture {
+    /// A send as a browser makes it: `hx` adds `HX-Request` (and, when
+    /// true, `HX-Boosted`: a boosted form); none is a plain form post.
+    async fn send(
+        &self,
+        uri: &str,
+        fields: &[(&str, &str)],
+        hx: Option<bool>,
+    ) -> (StatusCode, HeaderMap, String) {
+        let mut builder = HttpRequest::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header(header::HOST, HOST)
+            .header(header::COOKIE, format!("oa_visitor={OWNER}"))
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header(header::ORIGIN, format!("http://{HOST}"))
+            .header("Sec-Fetch-Site", "same-origin");
+        if let Some(boosted) = hx {
+            builder = builder.header("HX-Request", "true");
+            if boosted {
+                builder = builder.header("HX-Boosted", "true");
+            }
+        }
+        let response = self
+            .router
+            .clone()
+            .oneshot(builder.body(Body::from(form(fields))).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let bytes = to_bytes(response.into_body(), 2 * 1024 * 1024)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        if headers
+            .get(header::CONTENT_TYPE)
+            .is_some_and(|kind| kind.as_bytes().starts_with(b"text/html"))
+        {
+            crate::copy_guard::assert_plain(uri, &body);
+        }
+        (status, headers, body)
+    }
+
+    /// The chat with an answer still being written for `request`.
+    async fn answering(&self, request: &str) {
+        let loaded = self.record(None).await;
+        let mut next = loaded.conversation.clone();
+        next.revision += 1;
+        next.messages.push(Message {
+            role: Role::User,
+            text: "Still going?".into(),
+            request_id: Some(request.into()),
+        });
+        next.messages.push(Message {
+            role: Role::Assistant,
+            text: String::new(),
+            request_id: Some(request.into()),
+        });
+        next.pending = Some(Pending {
+            request_id: request.into(),
+            started_unix: now(),
+            job_id: None,
+        });
+        next.requests.push(Request {
+            id: request.into(),
+            digest: digest("Still going?"),
+            outcome: Outcome::Pending,
+            selection: None,
+            cloud: None,
+            reply: None,
+        });
+        self.app
+            .config
+            .chat_store
+            .compare_and_swap(&loaded, &next)
+            .await
+            .unwrap();
+    }
+}
+
+fn location(headers: &HeaderMap) -> &str {
+    headers[header::LOCATION].to_str().unwrap()
+}
+
+/// A refusal for an HTMX send: the refusal's status, marked, and only the
+/// composer's status region (out of band), nothing that replaces a page.
+fn assert_inline(status: StatusCode, headers: &HeaderMap, body: &str, text: &str) {
+    assert_eq!(headers[REFUSED_HEADER], "1", "{body}");
+    assert_eq!(headers["HX-Reswap"], "none");
+    assert_eq!(headers["HX-Push-Url"], "false");
+    assert!(status.is_client_error(), "{status}");
+    assert!(
+        body.starts_with("<div class=\"oa-composer-status\" id=\"chat-form-status\""),
+        "{body}"
+    );
+    assert!(body.contains("hx-swap-oob=\"true\""), "{body}");
+    assert!(body.contains(text), "{body}");
+    assert!(!body.contains("<html") && !body.contains("<body"), "{body}");
+}
+
+/// A refusal for a plain form post: the whole page, with the reason in the
+/// composer's status region and the text back in the box.
+fn assert_page_with_notice(body: &str, text: &str, draft: &str) {
+    assert!(body.starts_with("<!DOCTYPE html>"), "{body}");
+    assert!(body.contains("id=\"chat-form\""), "{body}");
+    let status = body.find("id=\"chat-form-status\"").unwrap();
+    assert!(body[status..].contains(text), "{body}");
+    let textarea = body.find("id=\"chat-input\"").unwrap();
+    let end = textarea + body[textarea..].find("</textarea>").unwrap();
+    assert!(
+        body[textarea..end].contains(draft),
+        "{}",
+        &body[textarea..end]
+    );
+}
+
+#[tokio::test]
+async fn two_rapid_sends_of_a_new_chat_both_open_it() {
+    // Two clicks at once, as a plain form (no script yet) and boosted.
+    for hx in [None, Some(true)] {
+        let fixture = Fixture::new();
+        let csrf = csrf(&fixture.app, OWNER);
+        let fields = [("q", TEXT), ("request_id", CHAT), ("csrf", csrf.as_str())];
+        let (first, second) = tokio::join!(
+            fixture.send("/chat", &fields, hx),
+            fixture.send("/chat", &fields, hx)
+        );
+        for (status, headers, body) in [first, second] {
+            assert_eq!(status, StatusCode::SEE_OTHER, "{hx:?}: {body}");
+            assert_eq!(location(&headers), format!("/chat/{CHAT}"));
+        }
+        let saved = fixture.read().await;
+        assert_eq!(saved.conversation.requests.len(), 1);
+        let users = saved
+            .conversation
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::User);
+        assert_eq!(users.count(), 1);
+        // One after the other: the second goes to the saved chat.
+        let (status, headers, body) = fixture.send("/chat", &fields, None).await;
+        assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+        assert_eq!(location(&headers), format!("/chat/{CHAT}"));
+        // A plain HTMX request (not boosted) is sent on with HX-Redirect.
+        let (status, headers, _) = fixture.send("/chat", &fields, Some(false)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers["HX-Redirect"], format!("/chat/{CHAT}"));
+    }
+}
+
+#[tokio::test]
+async fn a_second_new_chat_send_waits_for_the_first_to_save_it() {
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    // The first send holds the answer and has not saved the chat yet.
+    assert!(store.claim(OWNER, CHAT, now() + 60).await.unwrap());
+    let app = fixture.app.clone();
+    let saver = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        app.config
+            .chat_store
+            .create(&Conversation {
+                id: CHAT.into(),
+                owner: OWNER.into(),
+                revision: 1,
+                title: TEXT.into(),
+                messages: vec![Message {
+                    role: Role::User,
+                    text: TEXT.into(),
+                    request_id: Some(CHAT.into()),
+                }],
+                pending: None,
+                requests: vec![Request {
+                    id: CHAT.into(),
+                    digest: digest(TEXT),
+                    outcome: Outcome::Answered,
+                    selection: None,
+                    cloud: None,
+                    reply: None,
+                }],
+                selection: None,
+                updated_unix: 1,
+                pinned_unix: None,
+                archived_unix: None,
+                project: None,
+                terminal: None,
+                environment: None,
+                tasks: Vec::new(),
+                opened_unix: None,
+                branch: None,
+            })
+            .await
+            .unwrap();
+    });
+    let csrf = csrf(&fixture.app, OWNER);
+    let (status, headers, body) = fixture
+        .send(
+            "/chat",
+            &[("q", TEXT), ("request_id", CHAT), ("csrf", &csrf)],
+            Some(true),
+        )
+        .await;
+    saver.await.unwrap();
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    assert_eq!(location(&headers), format!("/chat/{CHAT}"));
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn a_new_chat_while_another_answers_says_so_in_the_composer() {
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    assert!(store.claim(OWNER, THIRD, now() + 60).await.unwrap());
+    let csrf = csrf(&fixture.app, OWNER);
+    let fields = [
+        ("q", "A new question"),
+        ("request_id", NEXT),
+        ("csrf", csrf.as_str()),
+    ];
+    let text = "OpenAgents is still answering your previous message.";
+    let (status, headers, body) = fixture.send("/chat", &fields, Some(true)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_inline(status, &headers, &body, text);
+    let (status, headers, body) = fixture.send("/chat", &fields, None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(!headers.contains_key(REFUSED_HEADER));
+    assert_page_with_notice(&body, text, "A new question");
+    // The new chat's page, boosted like any other.
+    assert!(body.contains("hx-boost=\"true\""), "{body}");
+    assert!(store.load(OWNER, NEXT).await.unwrap().is_none());
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn a_send_while_the_chat_answers_keeps_the_page_and_the_draft() {
+    let fixture = Fixture::new();
+    fixture.answering(THIRD).await;
+    let before = fixture.read().await;
+    let csrf = csrf(&fixture.app, OWNER);
+    let page = format!("/chat/{CHAT}");
+    let fields = [
+        ("q", "One more thing"),
+        ("request_id", NEXT),
+        ("csrf", csrf.as_str()),
+    ];
+    let text = "OpenAgents is still answering your previous message.";
+    let (status, headers, body) = fixture.send(&page, &fields, Some(false)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_inline(status, &headers, &body, text);
+    let (status, _, body) = fixture.send(&page, &fields, None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_page_with_notice(&body, text, "One more thing");
+    // It is the chat's own page, still answering: the send button stays off
+    // until the answer is written.
+    assert!(body.contains("Existing conversation"), "{body}");
+    assert!(
+        body.contains("data-oa-composer-busy=\"chat-form\""),
+        "{body}"
+    );
+    assert_eq!(fixture.read().await.generation, before.generation);
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn two_rapid_sends_on_a_chat_take_the_message_once() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    let csrf = csrf(&fixture.app, OWNER);
+    let page = format!("/chat/{CHAT}");
+    let fields = [
+        ("q", "And then?"),
+        ("request_id", NEXT),
+        ("csrf", csrf.as_str()),
+    ];
+    let (first, second) = tokio::join!(
+        fixture.send(&page, &fields, Some(false)),
+        fixture.send(&page, &fields, Some(false))
+    );
+    for (status, headers, body) in [first, second] {
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(!headers.contains_key(REFUSED_HEADER), "{body}");
+        assert!(body.contains("id=\"chat-ticket\""), "{body}");
+    }
+    let saved = fixture.read().await;
+    let sent = |r: &&Request| r.id == NEXT;
+    assert_eq!(saved.conversation.requests.iter().filter(sent).count(), 1);
+    assert_eq!(
+        saved
+            .conversation
+            .messages
+            .iter()
+            .filter(|m| m.text == "And then?")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn the_chat_pages_are_boosted_and_send_once() {
+    let fixture = Fixture::new();
+    fixture.record(None).await;
+    for uri in ["/".to_owned(), format!("/chat/{CHAT}")] {
+        let (status, body) = fixture.request(Method::GET, &uri, OWNER, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert!(
+            body.contains("<body class=\"oa-body\" hx-boost=\"true\">"),
+            "{uri}"
+        );
+        assert!(body.contains("hx-sync=\"this:drop\""), "{uri}");
+        assert!(
+            body.contains("hx-disabled-elt=\"#chat-form button[type=submit]\""),
+            "{uri}"
+        );
+        assert!(body.contains("/static/chat-start.js"), "{uri}");
+        assert!(body.contains("refreshOnHistoryMiss&quot;:false"), "{uri}");
+    }
+    // A page with its own head loads in full.
+    let (_, body) = fixture.request(Method::GET, "/docs", OWNER, &[]).await;
+    assert!(!body.contains("hx-boost"), "{body}");
+    // The browser code keeps boosting to the chat pages only, and binds the
+    // new composer after a boosted swap.
+    let script = include_str!("../../static/chat-start.js");
+    assert!(script.contains("htmx:confirm"));
+    assert!(script.contains("htmx:afterSettle"));
 }

@@ -90,6 +90,19 @@ async fn home(
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
     let query = query.map(|q| q.0).unwrap_or_default();
+    page(&app, &headers, query.project.as_deref(), None).await
+}
+
+/// The new chat's page; with `notice`, a refused first message shown in
+/// the composer with its text back in the box
+/// ([`super::chat::Notice`], a plain-form submit that was refused).
+pub(crate) async fn page(
+    app: &App,
+    headers: &HeaderMap,
+    project: Option<&str>,
+    notice: Option<&super::chat::Notice>,
+) -> Response {
+    let (app, headers) = (app.clone(), headers.clone());
     let (owner, fresh) = super::chat::visitor(&app, &headers).await;
     let selection = Default::default();
     // Starter questions under the composer, as on the phone's new chat
@@ -101,7 +114,7 @@ async fn home(
     };
     // Project, Branch, and Where it runs above the composer, for a
     // signed-in person (`crate::composer_row`).
-    let row = crate::composer_row::home(&app, &headers, &owner, query.project.as_deref()).await;
+    let row = crate::composer_row::home(&app, &headers, &owner, project).await;
     let content = html! {
         div.oa-thread-view {
             div.oa-thread {
@@ -111,7 +124,7 @@ async fn home(
     };
     let dock = html! {
         (crate::suggestions::starters(&app, &owner, &used))
-        (super::chat::composer("/chat", "Start a chat", row, html! {}))
+        (super::chat::composer_with("/chat", "Start a chat", row, html! {}, notice))
         (crate::composer::state_field(&app, &owner, &selection, false))
         input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
         input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
@@ -122,6 +135,7 @@ async fn home(
         .path("/")
         .app()
         .head(crate::chat_html::head())
+        .boosted()
         .content(content)
         .composer(dock);
     // A visitor without the cookie has no chats yet.

@@ -15,7 +15,7 @@ pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 
 /// The chat and composer styles come from `openagents-ui` (`/static/ui.css`).
 pub(crate) fn head() -> Markup {
     html! {
-        meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":true,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
+        meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":false,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
         script src="/static/htmx.min.js" defer {}
         script src="/static/htmx-sse.js" defer {}
         script type="module" src="/static/chat-start.js" {}

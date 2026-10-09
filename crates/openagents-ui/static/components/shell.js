@@ -18,8 +18,10 @@
 //
 // Send button: disabled (the `disabled` attribute) while the composer's
 // text box is empty or whitespace, enabled as soon as it has text; set on
-// load, on every input, and after HTMX swaps or requests. Without this
-// script it stays enabled and the server rejects an empty message.
+// load, on every input, and after HTMX swaps or requests; also disabled
+// while the page marks an answer as being written for that composer
+// ([data-oa-composer-busy="<form id>"]). Without this script it stays
+// enabled and the server rejects an empty message.
 //
 // Composer (form[data-oa-composer]): Enter submits, Shift+Enter inserts a
 // line, IME composition is left alone. A page adapter that already handled
@@ -87,7 +89,8 @@
     for (var i = 0; i < links.length; i++) {
       if (links[i].getAttribute("aria-keyshortcuts") === keys) {
         event.preventDefault();
-        window.location.assign(links[i].href);
+        // A click, so a boosted page (hx-boost) swaps instead of loading.
+        links[i].click();
         return;
       }
     }
@@ -99,11 +102,37 @@
     return { input: input, send: send };
   }
 
+  // A page marks an answer still being written for a composer with
+  // data-oa-composer-busy="<form id>" (a live stream updates it): its send
+  // button stays off until the mark goes.
+  function busy(form) {
+    if (!form.id) return false;
+    var marks = document.querySelectorAll("[data-oa-composer-busy]");
+    for (var i = 0; i < marks.length; i++) {
+      if (marks[i].getAttribute("data-oa-composer-busy") === form.id) return true;
+    }
+    return false;
+  }
+
+  // A refused send is answered with its error status and this header; its
+  // body puts the reason in the composer's status region (out of band), so
+  // HTMX is let swap it. The draft stays.
+  function refused(event) {
+    var xhr = event.detail && event.detail.xhr;
+    return !!(xhr && xhr.getResponseHeader && xhr.getResponseHeader("X-OpenAgents-Refused"));
+  }
+  document.addEventListener("htmx:beforeSwap", function (event) {
+    if (refused(event)) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
+  });
+
   function syncSend(form) {
     var parts = composerParts(form);
     if (!parts.input || !parts.send) return;
     var empty = !parts.input.value.trim();
-    if (empty || parts.input.disabled) {
+    if (empty || parts.input.disabled || busy(form)) {
       parts.send.disabled = true;
     } else if (!form.classList.contains("htmx-request")) {
       parts.send.disabled = false;
@@ -148,7 +177,10 @@
   document.addEventListener("htmx:afterRequest", function (event) {
     var form = event.detail && event.detail.elt;
     if (!form || !form.hasAttribute || !form.hasAttribute("data-oa-composer")) return;
-    if (!event.detail.successful) return;
+    if (!event.detail.successful || refused(event)) {
+      form._oaSent = undefined;
+      return;
+    }
     var input = composerParts(form).input;
     if (input && form._oaSent !== undefined && input.value === form._oaSent) {
       input.value = "";
@@ -157,7 +189,7 @@
     }
     form._oaSent = undefined;
   });
-  ["htmx:afterRequest", "htmx:afterSettle", "htmx:load", "reset"].forEach(function (name) {
+  ["htmx:afterRequest", "htmx:afterSettle", "htmx:load", "htmx:sseMessage", "reset"].forEach(function (name) {
     document.addEventListener(name, function () { setTimeout(syncAllSends, 0); });
   });
   window.addEventListener("pageshow", syncAllSends);
@@ -176,6 +208,9 @@
     if (!form || !form.hasAttribute("data-oa-composer")) return;
     event.preventDefault();
     if (!input.value.trim()) return;
+    // Nothing while a send is in flight or an answer is being written.
+    var send = composerParts(form).send;
+    if (send && send.disabled) return;
     if (typeof form.requestSubmit === "function") {
       form.requestSubmit();
     } else {

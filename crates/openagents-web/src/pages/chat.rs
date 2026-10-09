@@ -44,9 +44,9 @@ pub(crate) fn routes() -> Router<App> {
         .route(
             "/chat",
             get(|| async { crate::chat_html::protect(Redirect::to("/").into_response()) })
-                .post(start),
+                .post(send_new),
         )
-        .route("/chat/{id}", get(show).post(follow))
+        .route("/chat/{id}", get(show).post(send_follow))
         .route("/chat/{id}/workspace", get(workspace))
         .route("/chat/{id}/delete", get(confirm_delete).post(delete))
         .route("/chat/{id}/transcript", get(transcript))
@@ -266,7 +266,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
                 .first()
                 .is_some_and(|r| r.digest == digest) =>
         {
-            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
+            return to_chat(&headers, &id);
         }
         Ok(Some(_)) => {
             return refusal(
@@ -310,6 +310,12 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         {
             Ok(true) => {}
             Ok(false) => {
+                // The same new chat sent twice (a double click): the first
+                // send holds the answer and is saving the chat, so this
+                // one goes to it too.
+                if saved_soon(&app, &owner, &id, &id, &digest).await.is_some() {
+                    return to_chat(&headers, &id);
+                }
                 return refusal(
                     StatusCode::CONFLICT,
                     "OpenAgents is still answering your previous message.",
@@ -385,6 +391,34 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         spawn_answer(app.clone(), loaded, admitted_at);
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// The chat `id` once it holds the message `request` with `digest`, if
+/// that happens within two seconds: a second send of the same message (a
+/// double click) waits for the first send to save it, then shows it.
+async fn saved_soon(
+    app: &App,
+    owner: &str,
+    id: &str,
+    request: &str,
+    digest: &str,
+) -> Option<Loaded> {
+    for _ in 0..20 {
+        if let Ok(Some(record)) = app.config.chat_store.load(owner, id).await {
+            match record
+                .conversation
+                .requests
+                .iter()
+                .find(|r| r.id == request)
+            {
+                Some(found) if found.digest == digest => return Some(record),
+                Some(_) => return None,
+                None => {}
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    None
 }
 
 /// A new chat whose first message goes to Coder on `computer`
@@ -593,13 +627,20 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
 }
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    show_page(&app, &headers, &id, None).await
+}
+
+/// The chat's page; with `notice`, a refused message shown in the composer
+/// with its text back in the box (a plain-form submit that was refused).
+async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Notice>) -> Response {
+    let (app, headers, id) = (app.clone(), headers.clone(), id.to_owned());
     let record = match load(&app, &headers, &id).await {
         Ok(v) => v,
         Err(r) => return r,
     };
     let chat = &record.conversation;
     if let Some(terminal) = &chat.terminal {
-        return show_terminal(&app, &headers, chat, &terminal.computer).await;
+        return show_terminal(&app, &headers, chat, &terminal.computer, notice).await;
     }
     let row = crate::composer_row::for_chat(&app, &headers, chat, false).await;
     let dock = html! {
@@ -615,16 +656,18 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
         .actions(work::actions(chat, offer.as_ref(), false))
         .head(crate::chat_html::head())
+        .boosted()
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
         })
-        .composer(composer(
+        .composer(composer_with(
             &format!("/chat/{id}"),
             "Continue this chat",
             Some(row),
             dock,
+            notice,
         ));
     crate::chat_html::protect(page.respond(&headers))
 }
@@ -640,11 +683,12 @@ async fn show_terminal(
     headers: &HeaderMap,
     chat: &Conversation,
     computer: &str,
+    notice: Option<&Notice>,
 ) -> Response {
     let id = &chat.id;
     let online = continued::online(app, chat).await;
     let dock = if online {
-        terminal_composer(app, chat, computer)
+        terminal_composer(app, chat, computer, notice)
     } else if continued::offer(app, headers, chat, online).await.is_some() {
         html! { (terminal_note(computer)) (continued::button(chat)) }
     } else {
@@ -656,6 +700,7 @@ async fn show_terminal(
         .app()
         .breadcrumb(Breadcrumb::new(chat.title.clone()))
         .head(crate::chat_html::head())
+        .boosted()
         .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
         .content(html! {
             div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
@@ -678,8 +723,13 @@ pub(crate) fn terminal_note(computer: &str) -> Markup {
 /// The composer on a Coder chat while Coder on its computer is online: a
 /// reply waits for Coder there, which answers it with that computer's
 /// tools.
-fn terminal_composer(app: &App, chat: &Conversation, computer: &str) -> Markup {
-    Composer::new("chat-form", format!("/chat/{}", chat.id))
+fn terminal_composer(
+    app: &App,
+    chat: &Conversation,
+    computer: &str,
+    notice: Option<&Notice>,
+) -> Markup {
+    let composer = Composer::new("chat-form", format!("/chat/{}", chat.id))
         .label("Reply in Coder")
         .enhanced(true)
         .input_id("chat-input")
@@ -690,8 +740,14 @@ fn terminal_composer(app: &App, chat: &Conversation, computer: &str) -> Markup {
         .after(html! {
             (ticket(app, chat, false))
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
-        })
-        .render()
+        });
+    match notice {
+        Some(notice) => composer
+            .draft(notice.draft.clone())
+            .status(html! { (notice.text) })
+            .render(),
+        None => composer.render(),
+    }
 }
 
 /// A reply sent from a Coder chat's page: it waits for Coder on the
@@ -1010,6 +1066,10 @@ async fn follow(
         {
             Ok(true) => {}
             Ok(false) => {
+                if let Some(saved) = saved_soon(&app, &owner, &id, &prompt.request_id, &hash).await
+                {
+                    return accepted(&app, &headers, &saved.conversation).await;
+                }
                 return refusal(
                     StatusCode::CONFLICT,
                     "OpenAgents is still answering your previous message.",
@@ -1058,6 +1118,17 @@ async fn follow(
                 .chat_store
                 .release(&owner, &prompt.request_id)
                 .await;
+            if matches!(e, Error::Conflict) {
+                // The same message sent twice (a double click): the other
+                // send saved it first, so this one shows it too.
+                let sent = next.requests.last().map(|r| r.digest.as_str());
+                if let Some(saved) =
+                    saved_soon(&app, &owner, &id, &prompt.request_id, sent.unwrap_or("")).await
+                {
+                    return accepted(&app, &headers, &saved.conversation).await;
+                }
+                return refusal(StatusCode::CONFLICT, "This chat just changed. Try again.");
+            }
             return unavailable(e);
         }
     };
@@ -1150,7 +1221,10 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
         }
 
         crate::chat_html::protect(
-            html! { (ticket(app,chat,true)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await) }
+            html! {
+                (ticket(app,chat,true)) (chat_list(app,&chat.owner,Some(&chat.id),true,true).await)
+                div #chat-form-status.oa-composer-status role="status" aria-live="polite" hx-swap-oob="true" {}
+            }
                 .into_response(),
         )
     } else {
@@ -1570,7 +1644,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 (ThreadMessage::user(&reply.text).id(format!("chat-reply-{index}")))
             }
         }
-        div #chat-status.oa-thread-status role="status" aria-live="polite" {
+        div #chat-status.oa-thread-status role="status" aria-live="polite"
+            data-oa-composer-busy=[(chat.working() || work::running(chat)).then_some("chat-form")] {
             @if chat.working() {(openagents_ui::actions::Busy::new("Working"))}
             @else if let Some(terminal) = chat.terminal.as_ref().filter(|t| !t.replies.is_empty()) {"Waiting for Coder on " (terminal.computer) "."}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
@@ -1741,10 +1816,136 @@ fn request_digest(text: &str, selection: Option<&Selection>) -> String {
         }
     }
 }
+/// A refusal: a short line, carried on the response ([`Refused`]) so the
+/// send handlers ([`send_new`], [`send_follow`]) can show it in the
+/// composer instead of as a page of its own ([`shown`]).
 fn refusal(status: StatusCode, text: &str) -> Response {
-    crate::chat_html::protect(
+    let mut response = crate::chat_html::protect(
         (status, html! {p.oa-thread-error role="alert" {(text)}}).into_response(),
+    );
+    response.extensions_mut().insert(Refused(text.to_owned()));
+    response
+}
+
+/// Why a message was refused, on the refusal's response.
+#[derive(Clone)]
+struct Refused(String);
+
+/// A refused message shown in the composer: why, and the text put back in
+/// the box.
+pub(crate) struct Notice {
+    pub(crate) text: String,
+    pub(crate) draft: String,
+}
+
+/// The response header that marks an HTMX send's refusal: the shell
+/// script lets HTMX swap it (out of band, into the composer's status) and
+/// keeps the draft in the box.
+pub(crate) const REFUSED_HEADER: &str = "x-openagents-refused";
+
+fn hx_request(headers: &HeaderMap) -> bool {
+    headers.get("HX-Request").is_some_and(|v| v == "true")
+}
+
+/// On to the chat's page: a redirect the browser (or a boosted HTMX
+/// request) follows, or `HX-Redirect` for a plain HTMX request.
+fn to_chat(headers: &HeaderMap, id: &str) -> Response {
+    let boosted = headers.get("HX-Boosted").is_some_and(|v| v == "true");
+    if hx_request(headers) && !boosted {
+        let mut response = crate::chat_html::protect(StatusCode::OK.into_response());
+        response.headers_mut().insert(
+            "HX-Redirect",
+            HeaderValue::from_str(&format!("/chat/{id}")).expect("UUID URL"),
+        );
+        return response;
+    }
+    crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// A message sent from the homepage composer ([`start`]); a refusal shows
+/// in the composer ([`shown`]).
+async fn send_new(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Form(prompt): Form<Prompt>,
+) -> Response {
+    let draft = prompt.q.clone();
+    let project = prompt.project.clone();
+    let response = start(State(app.clone()), headers.clone(), Form(prompt)).await;
+    shown(&app, &headers, response, None, draft, project).await
+}
+
+/// A message sent on a chat's page ([`follow`]); a refusal shows in the
+/// composer ([`shown`]).
+async fn send_follow(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(prompt): Form<Prompt>,
+) -> Response {
+    let draft = prompt.q.clone();
+    let response = follow(
+        State(app.clone()),
+        headers.clone(),
+        Path(id.clone()),
+        Form(prompt),
     )
+    .await;
+    shown(&app, &headers, response, Some(&id), draft, None).await
+}
+
+/// A send's answer, with a refusal moved into the composer: for HTMX, a
+/// line in the composer's status region (out of band; nothing else on the
+/// page changes and the draft stays); without script, the whole page the
+/// message was sent from, with the line under the composer and the text
+/// back in the box. Never a page of bare text.
+async fn shown(
+    app: &App,
+    headers: &HeaderMap,
+    response: Response,
+    chat: Option<&str>,
+    draft: String,
+    project: Option<String>,
+) -> Response {
+    let Some(Refused(text)) = response.extensions().get::<Refused>().cloned() else {
+        return response;
+    };
+    let status = response.status();
+    if hx_request(headers) {
+        return inline_refusal(status, &text);
+    }
+    let notice = Notice { text, draft };
+    let mut page = match chat {
+        Some(id) => show_page(app, headers, id, Some(&notice)).await,
+        None => super::home::page(app, headers, project.as_deref(), Some(&notice)).await,
+    };
+    if chat.is_some() && page.status() != StatusCode::OK {
+        page = super::home::page(app, headers, None, Some(&notice)).await;
+    }
+    *page.status_mut() = status;
+    page
+}
+
+/// The refusal line for an HTMX send, answered with the refusal's status:
+/// it replaces the composer's status region out of band (the shell script
+/// lets a response with [`REFUSED_HEADER`] swap), and the page stays as it
+/// is (no main swap, no new URL).
+fn inline_refusal(status: StatusCode, text: &str) -> Response {
+    let mut response = crate::chat_html::protect(
+        (
+            status,
+            html! {
+                div #chat-form-status.oa-composer-status role="status" aria-live="polite"
+                    hx-swap-oob="true" { (text) }
+            },
+        )
+            .into_response(),
+    );
+    let headers = response.headers_mut();
+    headers.insert("HX-Reswap", HeaderValue::from_static("none"));
+    headers.insert("HX-Push-Url", HeaderValue::from_static("false"));
+    headers.insert(REFUSED_HEADER, HeaderValue::from_static("1"));
+    response
 }
 fn unavailable(error: Error) -> Response {
     eprintln!("openagents-web: conversation storage: {error}");
@@ -1763,6 +1964,18 @@ fn unavailable(error: Error) -> Response {
 /// accepts it; the homepage posts a plain form and follows the redirect to
 /// the new chat, with or without JavaScript.
 pub(crate) fn composer(action: &str, label: &str, row: Option<Markup>, after: Markup) -> Markup {
+    composer_with(action, label, row, after, None)
+}
+
+/// [`composer`] with a refused message's notice in its status region and
+/// the text back in the box.
+pub(crate) fn composer_with(
+    action: &str,
+    label: &str,
+    row: Option<Markup>,
+    after: Markup,
+    notice: Option<&Notice>,
+) -> Markup {
     let mut composer = Composer::new("chat-form", action)
         .label(label)
         .enhanced(action.starts_with("/chat/"))
@@ -1791,6 +2004,11 @@ pub(crate) fn composer(action: &str, label: &str, row: Option<Markup>, after: Ma
         .after(html! { (composer_panel_host("composer-panel")) (after) });
     if let Some(row) = row {
         composer = composer.selectors(row);
+    }
+    if let Some(notice) = notice {
+        composer = composer
+            .draft(notice.draft.clone())
+            .status(html! { (notice.text) });
     }
     composer.render()
 }

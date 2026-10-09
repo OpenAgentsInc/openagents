@@ -16,6 +16,7 @@ pub struct Document {
     theme: Option<Theme>,
     head: Option<Markup>,
     body: Option<Markup>,
+    boost: bool,
 }
 
 impl Document {
@@ -28,6 +29,7 @@ impl Document {
             theme: None,
             head: None,
             body: None,
+            boost: false,
         }
     }
 
@@ -42,6 +44,16 @@ impl Document {
     #[must_use]
     pub fn head(mut self, head: impl Render) -> Self {
         self.head = Some(head.render());
+        self
+    }
+
+    /// `hx-boost="true"` on `<body>`: with HTMX loaded, same-site links and
+    /// forms swap the page's body and push the URL instead of loading a
+    /// whole new document. The page's script decides which addresses stay
+    /// boosted (pages with another `<head>` load in full).
+    #[must_use]
+    pub fn boost(mut self, boost: bool) -> Self {
+        self.boost = boost;
         self
     }
 
@@ -70,7 +82,7 @@ impl Render for Document {
                     title { (title) }
                     @if let Some(head) = &self.head { (head) }
                 }
-                body class="oa-body" {
+                body class="oa-body" hx-boost=[self.boost.then_some("true")] {
                     @if let Some(body) = &self.body { (body) }
                 }
             }

@@ -31,6 +31,8 @@ use crate::theme;
 /// payment flow exists (docs/web/cloud-reset.md).
 const SETTINGS: &str = crate::settings::PAGE;
 const SIGN_OUT: &str = crate::cloud::SIGN_OUT;
+const ROADMAP: &str = "/roadmap";
+const PROMISES: &str = "/promises";
 
 /// A top-level destination in the left panel, under "New chat".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,6 +95,7 @@ pub struct UiPage {
     canonical: Option<String>,
     scripts: bool,
     toggle: bool,
+    boost: bool,
     status: StatusCode,
 }
 
@@ -116,6 +119,7 @@ impl UiPage {
             canonical: None,
             scripts: true,
             toggle: true,
+            boost: false,
             status: StatusCode::OK,
         }
     }
@@ -202,6 +206,16 @@ impl UiPage {
         self
     }
 
+    /// A page in the chat family (the new chat and a chat's page, which
+    /// share one `<head>`, [`crate::chat_html::head`]): its body is boosted,
+    /// so moving between them swaps the body instead of loading a new
+    /// document; `/static/chat-start.js` sends every other address to a
+    /// full load.
+    pub fn boosted(mut self) -> Self {
+        self.boost = true;
+        self
+    }
+
     /// A page whose policy allows no form (`form-action 'none'`): no theme
     /// toggle, since without script its fallback is a form. The theme still
     /// follows the cookie, else the system setting.
@@ -272,6 +286,14 @@ impl UiPage {
                 .fallback_action(theme::TOGGLE_PATH)
                 .return_to(self.return_to.clone())
         });
+        // Roadmap and Promises sit with Docs at the bottom of the panel for
+        // everyone (a signed-in person's Docs is in the account menu).
+        let roadmap = NavItem::new("Roadmap", ROADMAP)
+            .icon(Icon::MapsDirections.size(IconSize::Md))
+            .current(current == Some(ROADMAP));
+        let promises = NavItem::new("Promises", PROMISES)
+            .icon(Icon::NotebookCheck.size(IconSize::Md))
+            .current(current == Some(PROMISES));
         let sidebar = match account {
             Account::SignedIn {
                 name,
@@ -295,7 +317,7 @@ impl UiPage {
                             .form("oa-sign-out"),
                     );
                 }
-                sidebar.footer(html! {
+                sidebar.bottom(roadmap).bottom(promises).footer(html! {
                     (menu)
                     @if let Some(csrf) = sign_out {
                         form id="oa-sign-out" method="post" action=(SIGN_OUT) hidden {
@@ -306,8 +328,10 @@ impl UiPage {
             }
             Account::SignedOut => sidebar
                 .bottom(docs)
+                .bottom(roadmap)
+                .bottom(promises)
                 .bottom(NavItem::new("Log in", &log_in).icon(Icon::EnterLogin.size(IconSize::Md))),
-            Account::Unknown => sidebar.bottom(docs),
+            Account::Unknown => sidebar.bottom(docs).bottom(roadmap).bottom(promises),
         };
         // The theme toggle sits in the sidebar's bottom-right corner.
         let sidebar = match toggle {
@@ -369,6 +393,7 @@ impl UiPage {
             crate::agent_ready::head(&self.title, self.description.as_deref(), canonical);
         Document::new(self.title)
             .theme(theme::from_headers(headers))
+            .boost(self.boost && scripts)
             .head(html! {
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 (PreEscaped(metadata))

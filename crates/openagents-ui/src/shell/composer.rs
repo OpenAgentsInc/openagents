@@ -325,10 +325,12 @@ impl Composer {
         self
     }
 
-    /// Whether to add the HTMX attributes (`hx-post`, `hx-swap="none"`,
-    /// `hx-disabled-elt` naming this form's submit button, `hx-sync`). On by
-    /// default; the plain form works
-    /// either way.
+    /// Whether to add the HTMX request attributes (`hx-post`,
+    /// `hx-swap="none"`, `hx-include`). On by default; the plain form works
+    /// either way. `hx-disabled-elt` (this form's submit button) and
+    /// `hx-sync="this:drop"` are always there, so a boosted plain form
+    /// (`hx-boost`) also sends once: a second click or Enter while a send
+    /// is in flight does nothing.
     #[must_use]
     pub fn enhanced(mut self, enhanced: bool) -> Self {
         self.enhanced = enhanced;
@@ -527,8 +529,8 @@ impl Render for Composer {
                     data-oa-composer=""
                     hx-post=[enhanced.then_some(self.action.as_str())]
                     hx-swap=[enhanced.then_some("none")]
-                    hx-disabled-elt=[enhanced.then_some(disabled_elt.as_str())]
-                    hx-sync=[enhanced.then_some("this:drop")]
+                    hx-disabled-elt=(disabled_elt)
+                    hx-sync="this:drop"
                     hx-include=[enhanced.then_some(self.hx_include.as_deref()).flatten()] {
                     @for fields in &self.hidden { (fields) }
                     @if let Some(selectors) = &self.selectors {

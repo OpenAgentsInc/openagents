@@ -2951,6 +2951,18 @@ async fn security_txt_names_the_contact_and_has_not_lapsed() {
         );
         assert!(body.contains("Expires: "), "{body}");
     }
+    // Production proxies every path the site doesn't own to the previous
+    // server, which has no security.txt: both paths must be owned so they
+    // never go upstream (a production-only 404, 2026-10-09).
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for path in ["/.well-known/security.txt", "/security.txt"] {
+        assert!(upstream::owned(path), "{path}");
+        let (status, _, body) = get_with(site.clone(), path, "openagents.com").await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(body.contains("Contact: "), "{path}: {body}");
+    }
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
     let expires = std::time::UNIX_EPOCH
         + std::time::Duration::from_secs(
             // 2027-10-01T00:00:00Z

@@ -400,6 +400,7 @@ fn page(title: &str, path: &str, lead: &str, source: &str, other: (&str, &str)) 
         }
     });
     UiPage::new(title)
+        .section(path)
         .path(path)
         .description(lead)
         .scriptless()

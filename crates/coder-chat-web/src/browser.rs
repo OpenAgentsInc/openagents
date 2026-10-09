@@ -87,6 +87,19 @@ fn detail(event: &Event) -> JsValue {
         .unwrap_or(JsValue::UNDEFINED)
 }
 
+/// Whether the response is a refused send (its reason goes in the
+/// composer; the chat stays).
+fn refused_response(event: &Event) -> bool {
+    field(&detail(event), "xhr")
+        .dyn_ref::<XmlHttpRequest>()
+        .and_then(|xhr| {
+            xhr.get_response_header("x-openagents-refused")
+                .ok()
+                .flatten()
+        })
+        .is_some()
+}
+
 fn missing() -> JsValue {
     JsValue::from_str("The chat composer could not start.")
 }
@@ -94,8 +107,23 @@ fn missing() -> JsValue {
 /// Start local interaction without granting host or execution authority.
 #[wasm_bindgen]
 pub fn start() -> Result<(), JsValue> {
-    if ACTIVE.with(|active| active.borrow().is_some()) {
-        return Ok(());
+    // A boosted navigation (hx-boost) replaces the page's body: the runtime
+    // bound to the old composer is dropped, with its listeners, and the new
+    // page's composer gets its own. A runtime whose composer is still on the
+    // page stays.
+    let current = ACTIVE.with(|active| {
+        active
+            .borrow()
+            .as_ref()
+            .map(|runtime| runtime.form.is_connected())
+    });
+    match current {
+        Some(true) => return Ok(()),
+        Some(false) => {
+            let stale = ACTIVE.with(|active| active.borrow_mut().take());
+            drop(stale);
+        }
+        None => {}
     }
     let window = web_sys::window().ok_or_else(missing)?;
     let document = window.document().ok_or_else(missing)?;
@@ -210,6 +238,21 @@ impl Runtime {
         self.form
             .get_attribute("data-chat-id")
             .unwrap_or_else(|| self.form.action())
+    }
+
+    fn send_button(&self) -> Option<Element> {
+        self.form
+            .query_selector("button[type=submit]")
+            .ok()
+            .flatten()
+    }
+
+    /// Whether a send is in flight or its button is off.
+    fn sending(&self) -> bool {
+        !self.submissions.borrow().is_empty()
+            || self
+                .send_button()
+                .is_some_and(|button| button.has_attribute("disabled"))
     }
 
     fn thread(&self) -> Option<Element> {
@@ -519,7 +562,9 @@ impl Runtime {
                     && !self.composing.get()
                 {
                     event.prevent_default();
-                    if !self.input.value().trim().is_empty() {
+                    // Enter does nothing while a send is in flight or an
+                    // answer is being written (the send button is off).
+                    if !self.input.value().trim().is_empty() && !self.sending() {
                         let _ = self.form.request_submit();
                     }
                 }
@@ -547,6 +592,7 @@ impl Runtime {
                         .dyn_ref::<XmlHttpRequest>()
                         .and_then(|xhr| xhr.status().ok())
                         .is_some_and(|status| matches!(status, 401 | 403 | 404))
+                    && !refused_response(event)
                 {
                     self.retire_chat();
                     event.prevent_default();
@@ -684,7 +730,17 @@ impl Runtime {
             .dyn_ref::<XmlHttpRequest>()
             .and_then(|xhr| xhr.status().ok())
             .unwrap_or(0);
-        let accepted = (200..300).contains(&status);
+        // A refused send is answered 200 with this header so HTMX shows the
+        // reason in the composer: the text stays in the box.
+        let refused = xhr
+            .dyn_ref::<XmlHttpRequest>()
+            .and_then(|xhr| {
+                xhr.get_response_header("x-openagents-refused")
+                    .ok()
+                    .flatten()
+            })
+            .is_some();
+        let accepted = (200..300).contains(&status) && !refused;
         let retained_read = self.transcript_refresh("htmx:afterRequest", event)
             && self
                 .response_chat(event)
@@ -732,7 +788,8 @@ impl Runtime {
             return;
         };
         if !accepted {
-            if submission.chat == self.selected_key()
+            if !refused
+                && submission.chat == self.selected_key()
                 && let Some(feedback) = self.document.get_element_by_id("chat-feedback")
             {
                 let message = if status == 0 {
