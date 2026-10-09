@@ -19,9 +19,9 @@
 use super::custody::{self, CustodyError, Key, Material, Scope, Status, Vault};
 use super::hosts::Binding;
 use super::session::{SessionError, Viewer, now};
-use super::{failure, protect, refused, service, ticket, workspace_shell};
+use super::ui;
+use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{Form, State};
@@ -32,6 +32,8 @@ use coder_access::cloud;
 use coder_access::protocol::{Operation, Outcome};
 use coder_cloud::claude::{self, OwnCredential, SignIn};
 use coder_cloud::runtime::Credentials;
+use maud::{Markup, html};
+use openagents_ui::forms::{Checkbox, Field, Select, Textarea};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -355,36 +357,59 @@ fn content(
     status: Option<&Status>,
     add: Option<(&str, &str)>,
     remove: Option<(&str, &str)>,
-) -> String {
-    let mut out = format!(
-        "<h2>Claude credential</h2><p>{}</p><p>Without a credential here, your computers run Claude Code on the Claude plan you sign in to inside each computer. A plan runs one automated turn at a time and cannot start parallel tasks. Parallel Claude Code tasks need your own Anthropic API key or Bedrock, Vertex, or Foundry credential.</p>",
-        escape(claude::BILLING)
-    );
-    match status {
-        Some(status) => out.push_str(&format!(
-            "<p>Current: {} · {} · expires at {}</p>",
-            escape(status.material.label()),
-            escape(&status.masked()),
-            status.expires_at
-        )),
-        None => out.push_str("<p>No credential is stored. Claude.ai logins and setup tokens are never accepted here.</p>"),
+) -> Markup {
+    let material = Field::new("claude-credential-material", "Provider");
+    let value = Field::new("claude-credential-value", "Credential").required(true);
+    html! {
+        h2 { "Claude credential" }
+        p { (claude::BILLING) }
+        p { "Without a credential here, your computers run Claude Code on the Claude plan you sign in to inside each computer. A plan runs one automated turn at a time and cannot start parallel tasks. Parallel Claude Code tasks need your own Anthropic API key or Bedrock, Vertex, or Foundry credential." }
+        @match status {
+            Some(status) => {
+                p {
+                    "Current: " (status.material.label()) " · " (status.masked())
+                    " · expires at " (status.expires_at)
+                }
+            }
+            None => {
+                p { "No credential is stored. Claude.ai logins and setup tokens are never accepted here." }
+            }
+        }
+        @if let (Some(_), Some((csrf, request))) = (status, remove) {
+            (ui::BoundForm::new(format!("{PAGE}/credential/remove"))
+                .csrf(csrf)
+                .bind("request", request)
+                .submit_with(ui::submit("Remove credential", false)))
+            p class="dim" { "Removal takes effect at each running computer's next start or Claude turn, and for every future computer." }
+        }
+        @if let Some((csrf, request)) = add {
+            form class="cloud-form" method="post" action=(format!("{PAGE}/credential")) autocomplete="off" {
+                (ui::csrf(csrf))
+                (ui::hidden("request", request))
+                (material.clone().control(
+                    Select::new("material")
+                        .aria(material.aria())
+                        .option("anthropic_api_key", "Anthropic API key")
+                        .option("bedrock_credential", "Amazon Bedrock")
+                        .option("vertex_credential", "Google Vertex AI")
+                        .option("foundry_credential", "Microsoft Foundry"),
+                ))
+                (value.clone().control(Textarea::new("value")
+                    .aria(value.aria())
+                    .required(true)
+                    .autocomplete("off")
+                    .spellcheck(false)))
+                p class="dim" {
+                    "Anthropic: the API key. Bedrock: {\"region\", \"access_key_id\", \"secret_access_key\", \"session_token\"} or {\"region\", \"bearer_token\"}. Vertex: {\"region\", \"project_id\", \"service_account\"}. Foundry: {\"resource\", \"api_key\"}."
+                }
+                p class="dim" { (TERMS) }
+                (Checkbox::new("consent", "I consent to this custody")
+                    .value("custody")
+                    .required(true))
+                div class="cloud-form-actions" { (ui::submit("Save credential", true)) }
+            }
+        }
     }
-    if let (Some(_), Some((csrf, request))) = (status, remove) {
-        out.push_str(&format!(
-            "<form method=\"post\" action=\"{PAGE}/credential/remove\">{}<input type=\"hidden\" name=\"request\" value=\"{}\"><button type=\"submit\">Remove credential</button></form><p class=\"dim\">Removal takes effect at each running computer's next start or Claude turn, and for every future computer.</p>",
-            ticket(csrf),
-            escape(request)
-        ));
-    }
-    if let Some((csrf, request)) = add {
-        out.push_str(&format!(
-            "<form method=\"post\" action=\"{PAGE}/credential\" autocomplete=\"off\">{}<input type=\"hidden\" name=\"request\" value=\"{}\"><p><label>Provider <select name=\"material\"><option value=\"anthropic_api_key\">Anthropic API key</option><option value=\"bedrock_credential\">Amazon Bedrock</option><option value=\"vertex_credential\">Google Vertex AI</option><option value=\"foundry_credential\">Microsoft Foundry</option></select></label></p><p><label>Credential <textarea name=\"value\" autocomplete=\"off\" spellcheck=\"false\" required></textarea></label></p><p class=\"dim\">Anthropic: the API key. Bedrock: {{\"region\", \"access_key_id\", \"secret_access_key\", \"session_token\"}} or {{\"region\", \"bearer_token\"}}. Vertex: {{\"region\", \"project_id\", \"service_account\"}}. Foundry: {{\"resource\", \"api_key\"}}.</p><p class=\"dim\">{}</p><p><label><input type=\"checkbox\" name=\"consent\" value=\"custody\" required> I consent to this custody</label></p><p><button type=\"submit\">Save credential</button></p></form>",
-            ticket(csrf),
-            escape(request),
-            escape(TERMS)
-        ));
-    }
-    out
 }
 
 struct Context<'a> {
@@ -461,7 +486,7 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         context.service,
         &context.viewer,
         "settings",
-        Some(&body),
+        Some(body),
         None,
     )
 }
@@ -687,10 +712,24 @@ mod tests {
 
     #[test]
     fn the_page_states_usage_bills_to_the_users_own_account() {
-        let html = content(None, Some(("t", "r")), Some(("t", "r")));
+        let html = content(None, Some(("t", "r")), Some(("t", "r"))).into_string();
         assert!(html.contains("bills to your own Anthropic or cloud account"));
         assert!(html.contains("Parallel Claude Code tasks need your own Anthropic API key"));
         assert!(!html.contains("Remove credential"));
+        // The secret never reaches autofill or the spellchecker.
+        assert!(html.contains("<form class=\"cloud-form\" method=\"post\" action=\"/cloud/app/settings/claude/credential\" autocomplete=\"off\">"));
+        let area = html
+            .split("<textarea")
+            .nth(1)
+            .unwrap()
+            .split('>')
+            .next()
+            .unwrap();
+        assert!(
+            area.contains(" autocomplete=\"off\" spellcheck=\"false\""),
+            "{area}"
+        );
+        assert!(html.contains("name=\"consent\" value=\"custody\""));
         assert!(TERMS.contains(
             "never put in a checkpoint, saved environment image, export, log, or evidence"
         ));

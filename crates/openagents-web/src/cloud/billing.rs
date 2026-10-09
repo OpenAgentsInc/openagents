@@ -18,15 +18,17 @@
 
 use super::retail::{self, Failure};
 use super::session::{SessionError, Viewer};
+use super::ui;
 use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
+use maud::{Markup, html};
+use openagents_ui::forms::{Field, Input};
 use receipts::funding_units::{Conversion, Unit};
 use receipts::purchase::{CommercialProduct, CommercialRef, CommercialSource};
 use serde::Deserialize;
@@ -100,7 +102,7 @@ impl Context<'_> {
         Ok(())
     }
 
-    fn shell(&self, headers: &HeaderMap, content: &str) -> Response {
+    fn shell(&self, headers: &HeaderMap, content: Markup) -> Response {
         workspace_shell(
             self.app,
             headers,
@@ -134,18 +136,38 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         Err(response) => return response,
     };
     let retail = retail::available(context.app, &context.viewer);
-    let content = format!(
-        "<h2>Billing</h2><p>Each lane is read from its own native owner under your current session and the selected workspace <code>{}</code>. A page here grants no spending, invocation, or publication right; different units are never added together.</p><ul class=\"billing-lanes\"><li><a href=\"{PAGE}/statements\">Original statement</a>: funding, holds, charges, refunds, author fees, settlement, and payout references from the shared commercial owner.</li><li>{}</li></ul><section class=\"cloud-card\"><h3>Review a decision resource</h3><p>Read the current payer, price reference, and permission for one exact decision resource, and recover an earlier purchase by its original receipt.</p><form method=\"get\" action=\"{PAGE}/decisions\"><label>Resource <input name=\"door\" required maxlength=\"128\"></label> <button type=\"submit\">Review</button></form></section>",
-        escape(&context.workspace),
-        if retail {
-            format!(
-                "<a href=\"{PAGE}/retail\">Retail compute</a>: funding, quotes, purchases, and receipts through the delegated retail principal."
-            )
-        } else {
-            "Retail compute · Unavailable: no retail delegation is provisioned for this account, workspace, and membership.".into()
-        },
-    );
-    context.shell(&headers, &content)
+    let door = Field::new("billing-door", "Resource").required(true);
+    let content = html! {
+        h2 { "Billing" }
+        p {
+            "Each lane is read from its own native owner under your current session and the selected workspace "
+            code { (context.workspace) }
+            ". A page here grants no spending, invocation, or publication right; different units are never added together."
+        }
+        ul class="billing-lanes" {
+            li {
+                a href=(format!("{PAGE}/statements")) { "Original statement" }
+                ": funding, holds, charges, refunds, author fees, settlement, and payout references from the shared commercial owner."
+            }
+            li {
+                @if retail {
+                    a href=(format!("{PAGE}/retail")) { "Retail compute" }
+                    ": funding, quotes, purchases, and receipts through the delegated retail principal."
+                } @else {
+                    "Retail compute · Unavailable: no retail delegation is provisioned for this account, workspace, and membership."
+                }
+            }
+        }
+        (ui::card(html! {
+            h3 { "Review a decision resource" }
+            p { "Read the current payer, price reference, and permission for one exact decision resource, and recover an earlier purchase by its original receipt." }
+            form class="cloud-form" method="get" action=(format!("{PAGE}/decisions")) {
+                (door.clone().control(Input::new("door").aria(door.aria()).required(true).maxlength(128)))
+                div class="cloud-form-actions" { (ui::submit("Review", true)) }
+            }
+        }))
+    };
+    context.shell(&headers, content)
 }
 
 // ---- Statement ----------------------------------------------------------------
@@ -253,14 +275,6 @@ fn product(source: &CommercialSource) -> &'static str {
     }
 }
 
-fn dd(out: &mut String, label: &str, value: &str) {
-    out.push_str(&format!(
-        "<dt>{}</dt><dd>{}</dd>",
-        escape(label),
-        escape(value)
-    ));
-}
-
 fn msat(value: i64) -> String {
     format!("{value} msat")
 }
@@ -269,55 +283,44 @@ fn known(value: Option<&str>) -> &str {
     value.unwrap_or("unknown")
 }
 
-fn render_row(row: &Row, projection: Option<&Value>) -> String {
-    let mut out = format!(
-        "<li class=\"statement-row\" id=\"row-{}\"><h4>{} · {} · {}</h4><dl>",
-        escape(&row.key),
-        escape(product(&row.source)),
-        escape(&row.kind),
-        escape(&row.state)
-    );
-    dd(&mut out, "Record", &row.key);
-    dd(
-        &mut out,
-        "Native source",
-        &format!(
-            "{} / account {} / workspace {}",
-            row.source.issuer,
-            row.source.account,
-            known(row.source.workspace.as_deref())
-        ),
-    );
-    dd(
-        &mut out,
-        "Canonical mapping",
-        &format!(
-            "binding {} revision {} · customer {} · attribution only, no right",
-            row.commercial.binding, row.commercial.revision, row.commercial.customer
-        ),
-    );
-    dd(&mut out, "Source binding", &row.binding);
-    dd(
-        &mut out,
-        "Source unit",
-        &format!(
-            "{} ({} per whole unit)",
-            unit_name(&row.unit),
-            row.unit_scale
-        ),
-    );
-    dd(
-        &mut out,
-        "Source units",
-        &row.units.map_or("unknown".into(), |n| {
-            format!("{n} {}", unit_name(&row.unit))
-        }),
-    );
+fn render_row(row: &Row, projection: Option<&Value>) -> Markup {
+    let mut details = ui::Details::new()
+        .row("Record", row.key.as_str())
+        .row(
+            "Native source",
+            format!(
+                "{} / account {} / workspace {}",
+                row.source.issuer,
+                row.source.account,
+                known(row.source.workspace.as_deref())
+            ),
+        )
+        .row(
+            "Canonical mapping",
+            format!(
+                "binding {} revision {} · customer {} · attribution only, no right",
+                row.commercial.binding, row.commercial.revision, row.commercial.customer
+            ),
+        )
+        .row("Source binding", row.binding.as_str())
+        .row(
+            "Source unit",
+            format!(
+                "{} ({} per whole unit)",
+                unit_name(&row.unit),
+                row.unit_scale
+            ),
+        )
+        .row(
+            "Source units",
+            row.units.map_or("unknown".into(), |n| {
+                format!("{n} {}", unit_name(&row.unit))
+            }),
+        );
     if let Some(c) = &row.conversion {
-        dd(
-            &mut out,
+        details = details.row(
             "Conversion",
-            &format!(
+            format!(
                 "{} · {} {} to {} {} · {:?} rounding · fee paid by {:?} · source {}",
                 c.version,
                 c.numerator,
@@ -341,22 +344,18 @@ fn render_row(row: &Row, projection: Option<&Value>) -> String {
         ("Settlement", &row.settlement_reference),
     ] {
         if let Some(value) = value {
-            dd(&mut out, label, value);
+            details = details.row(label, value.as_str());
         }
     }
-    dd(&mut out, "Reserved", &msat(row.reserved_msat));
-    dd(
-        &mut out,
-        "Charged",
-        &row.charged_msat.map_or("unknown".into(), msat),
-    );
+    details = details
+        .row("Reserved", msat(row.reserved_msat))
+        .row("Charged", row.charged_msat.map_or("unknown".into(), msat));
     if let Some(credited) = row.credited_msat {
-        dd(&mut out, "Credited", &msat(credited));
+        details = details.row("Credited", msat(credited));
     }
-    dd(
-        &mut out,
+    details = details.row(
         "Unused hold released",
-        &format!("{} (not a refund)", msat(row.released_msat)),
+        format!("{} (not a refund)", msat(row.released_msat)),
     );
     for (label, value) in [
         ("Returned", row.returned_msat),
@@ -365,47 +364,40 @@ fn render_row(row: &Row, projection: Option<&Value>) -> String {
         ("Reduced claim", row.reduced_claim_msat),
     ] {
         if value != 0 {
-            dd(&mut out, label, &msat(value));
+            details = details.row(label, msat(value));
         }
     }
     if let Some(fee) = row.fee_msat {
-        dd(&mut out, "Conversion fee", &format!("{fee} msat"));
+        details = details.row("Conversion fee", format!("{fee} msat"));
     }
     if let (Some(r), Some(d)) = (row.remainder, row.denominator) {
-        dd(
-            &mut out,
+        details = details.row(
             "Remainder",
-            &format!("{r}/{d} of one msat, never spendable credit"),
+            format!("{r}/{d} of one msat, never spendable credit"),
         );
     }
     if let Some(version) = row.allocation_rule_version {
-        dd(&mut out, "Allocation rule", &format!("version {version}"));
+        details = details.row("Allocation rule", format!("version {version}"));
     }
-    out.push_str("</dl>");
-    if !row.allocations.is_empty() {
-        out.push_str("<ul class=\"statement-allocations\">");
-        for allocation in &row.allocations {
-            out.push_str(&format!(
-                "<li>{}</li>",
-                escape(&allocation_line(allocation))
-            ));
+    html! {
+        li class="statement-row" id=(format!("row-{}", row.key)) {
+            h4 { (product(&row.source)) " · " (row.kind) " · " (row.state) }
+            (details)
+            @if !row.allocations.is_empty() {
+                ul class="statement-allocations" {
+                    @for allocation in &row.allocations {
+                        li { (allocation_line(allocation)) }
+                    }
+                }
+            }
+            @if let Some(projection) = projection {
+                p { "Original gateway projection: " (projection_line(projection)) }
+            }
+            @if !row.disclosure.is_empty() {
+                p class="dim" { "Disclosure: " (row.disclosure.join("; ")) }
+            }
         }
-        out.push_str("</ul>");
     }
-    if let Some(projection) = projection {
-        out.push_str(&format!(
-            "<p>Original gateway projection: {}</p>",
-            escape(&projection_line(projection))
-        ));
-    }
-    if !row.disclosure.is_empty() {
-        out.push_str(&format!(
-            "<p class=\"dim\">Disclosure: {}</p>",
-            escape(&row.disclosure.join("; "))
-        ));
-    }
-    out.push_str("</li>");
-    out
 }
 
 fn text(value: &Value) -> String {
@@ -457,24 +449,27 @@ fn projection_line(value: &Value) -> String {
     )
 }
 
-fn balance_lines(balance: &Value) -> Result<String, ()> {
+fn balance_lines(balance: &Value) -> Result<Markup, ()> {
     let object = balance.as_object().ok_or(())?;
-    let mut out = String::from("<dl class=\"statement-balance\">");
+    let mut rows = Vec::with_capacity(object.len());
     for (key, value) in object {
         let amount = value.as_i64().ok_or(())?;
         let label = key.strip_suffix("_msat").ok_or(())?.replace('_', " ");
-        dd(
-            &mut out,
-            &label,
-            &if label == "released" {
-                format!("{} (already available; not a refund)", msat(amount))
-            } else {
-                msat(amount)
-            },
-        );
+        let shown = if label == "released" {
+            format!("{} (already available; not a refund)", msat(amount))
+        } else {
+            msat(amount)
+        };
+        rows.push((label, shown));
     }
-    out.push_str("</dl>");
-    Ok(out)
+    Ok(html! {
+        dl class="statement-balance" {
+            @for (label, shown) in &rows {
+                dt { (label) }
+                dd { (shown) }
+            }
+        }
+    })
 }
 
 async fn statement(
@@ -496,13 +491,9 @@ async fn statement(
         .account()
         .joined_statement(&context.workspace, &query, false)
         .await;
-    let mut content = format!(
-        "<h2>Original statement</h2><p>Workspace <code>{}</code>. Read from the shared commercial owner with your current session; rows are the original native records, in their own units. <a href=\"{PAGE}\">Billing</a></p>",
-        escape(&context.workspace)
-    );
-    match read {
+    let body = match read {
         Ok(view) => match render_statement(&view, &page) {
-            Ok(value) => content.push_str(&value),
+            Ok(value) => value,
             Err(()) => {
                 return failure(
                     StatusCode::CONFLICT,
@@ -513,19 +504,30 @@ async fn statement(
         },
         Err(error) => match native(&error) {
             Native::Session(error) => return refused(error),
-            Native::Unavailable => content.push_str(
-                "<section class=\"cloud-card\"><h3>Joined statement · Unavailable</h3><p>Original joined statements are not enabled for this workspace, your current statement review is absent or expired, or the source records changed. No figure is estimated in their place.</p></section>",
-            ),
+            Native::Unavailable => ui::card(html! {
+                h3 { "Joined statement · Unavailable" }
+                p { "Original joined statements are not enabled for this workspace, your current statement review is absent or expired, or the source records changed. No figure is estimated in their place." }
+            }),
         },
-    }
-    content.push_str(&retail_statements(&context).await);
+    };
+    let retail = retail_statements(&context).await;
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    context.shell(&headers, &content)
+    let content = html! {
+        h2 { "Original statement" }
+        p {
+            "Workspace " code { (context.workspace) }
+            ". Read from the shared commercial owner with your current session; rows are the original native records, in their own units. "
+            a href=(PAGE) { "Billing" }
+        }
+        (body)
+        (retail)
+    };
+    context.shell(&headers, content)
 }
 
-fn render_statement(view: &jev::JoinedStatementView, page: &Page) -> Result<String, ()> {
+fn render_statement(view: &jev::JoinedStatementView, page: &Page) -> Result<Markup, ()> {
     let statement = &view.statement;
     if statement.unit != Unit::Millisatoshis || view.native_workspace.is_empty() {
         return Err(());
@@ -535,170 +537,167 @@ fn render_statement(view: &jev::JoinedStatementView, page: &Page) -> Result<Stri
         .iter()
         .map(|row| serde_json::from_value(row.clone()).map_err(|_| ()))
         .collect::<Result<_, _>>()?;
-    let mut out = format!("<section class=\"cloud-card\"><h3>Joined statement</h3><dl>",);
-    dd(&mut out, "Origin", &statement.origin);
-    dd(
-        &mut out,
-        "Customer",
-        &format!("{} / workspace {}", statement.customer, statement.workspace),
-    );
-    dd(&mut out, "Snapshot", &statement.snapshot);
-    dd(&mut out, "Records scanned", &statement.scanned.to_string());
-    out.push_str("</dl>");
-    match &statement.balance {
-        Some(balance) => {
-            out.push_str("<h4>Pool balance (msat)</h4>");
-            out.push_str(&balance_lines(balance)?);
-        }
-        None => out.push_str(
-            "<p>Pool balance: not shown. Member reads omit pool totals; only your exactly attributed original records appear.</p>",
-        ),
-    }
-    out.push_str("</section>");
+    let balance = statement.balance.as_ref().map(balance_lines).transpose()?;
+    let mut groups = Vec::new();
     for (label, wanted) in [
         ("Decision and hosted resources", CommercialProduct::Gateway),
         ("Plugin releases", CommercialProduct::Plugin),
         ("Retail compute", CommercialProduct::Retail),
     ] {
-        let group: Vec<&Row> = rows.iter().filter(|r| r.source.product == wanted).collect();
-        if group.is_empty() {
-            continue;
+        let group: Vec<Markup> = rows
+            .iter()
+            .filter(|r| r.source.product == wanted)
+            .map(|row| {
+                let projection = view
+                    .native_projection
+                    .iter()
+                    .find(|p| p["key"].as_str() == Some(row.key.as_str()));
+                render_row(row, projection)
+            })
+            .collect();
+        if !group.is_empty() {
+            groups.push((label, group));
         }
-        out.push_str(&format!(
-            "<section class=\"cloud-card\"><h3>{}</h3><ol class=\"statement-rows\">",
-            escape(label)
-        ));
-        for row in group {
-            let projection = view
-                .native_projection
-                .iter()
-                .find(|p| p["key"].as_str() == Some(row.key.as_str()));
-            out.push_str(&render_row(row, projection));
-        }
-        out.push_str("</ol></section>");
-    }
-    if rows.is_empty() {
-        out.push_str("<p>No original records on this page.</p>");
     }
     let next = statement.next.as_ref().map(|cursor| Page {
         cursor: Some(cursor.clone()),
         after_earning: page.after_earning,
         after_payout: page.after_payout,
     });
-    out.push_str("<p>");
-    if let Some(next) = &next {
-        out.push_str(&format!(
-            "<a href=\"{}\">Next page</a> · ",
-            escape(&next.href(&format!("{PAGE}/statements")))
-        ));
-    }
-    out.push_str(&format!(
-        "<a href=\"{}\">Export this page (NDJSON)</a></p>",
-        escape(&page.href(&format!("{PAGE}/statements/export")))
-    ));
-    out.push_str(&format!(
-        "<section class=\"cloud-card\"><h3>Source attribution</h3><ul>{}</ul><p class=\"dim\">{}</p></section>",
-        view.source_attribution
-            .iter()
-            .map(|a| format!(
-                "<li>{} · {}</li>",
-                escape(&text(&a["binding"])),
-                if a["current_original_mapping"] == Value::Bool(true) {
-                    "current original mapping"
-                } else {
-                    "historical original source"
+    Ok(html! {
+        (ui::card(html! {
+            h3 { "Joined statement" }
+            (ui::Details::new()
+                .row("Origin", statement.origin.as_str())
+                .row(
+                    "Customer",
+                    format!("{} / workspace {}", statement.customer, statement.workspace),
+                )
+                .row("Snapshot", statement.snapshot.as_str())
+                .row("Records scanned", statement.scanned.to_string()))
+            @match &balance {
+                Some(balance) => {
+                    h4 { "Pool balance (msat)" }
+                    (balance)
                 }
-            ))
-            .collect::<String>(),
-        escape(&view.attribution_disclosure)
-    ));
-    out.push_str("<section class=\"cloud-card\"><h3>Payee earnings</h3>");
-    match &view.payee {
-        Some(payee) => out.push_str(&format!(
-            "<p>Party {} · unit msat. Earnings are separate from customer spending and are never netted against it.</p><pre class=\"statement-payee\">{}</pre>",
-            escape(&text(&payee["party"])),
-            escape(&serde_json::to_string_pretty(&payee["statement"]).unwrap_or_default())
-        )),
-        None => out.push_str("<p>No payee read is reviewed for this account.</p>"),
-    }
-    out.push_str(&format!(
-        "<p class=\"dim\">{}</p></section>",
-        escape(&view.payee_disclosure)
-    ));
-    out.push_str(&format!(
-        "<p class=\"dim\">{} {}</p>",
-        escape(&view.native_projection_disclosure),
-        escape(&statement.disclosure.join("; "))
-    ));
-    Ok(out)
+                None => {
+                    p { "Pool balance: not shown. Member reads omit pool totals; only your exactly attributed original records appear." }
+                }
+            }
+        }))
+        @for (label, group) in &groups {
+            (ui::card(html! {
+                h3 { (label) }
+                ol class="statement-rows" {
+                    @for row in group { (row) }
+                }
+            }))
+        }
+        @if rows.is_empty() {
+            p { "No original records on this page." }
+        }
+        p {
+            @if let Some(next) = &next {
+                a href=(next.href(&format!("{PAGE}/statements"))) { "Next page" }
+                " · "
+            }
+            a href=(page.href(&format!("{PAGE}/statements/export"))) { "Export this page (NDJSON)" }
+        }
+        (ui::card(html! {
+            h3 { "Source attribution" }
+            ul {
+                @for a in &view.source_attribution {
+                    li {
+                        (text(&a["binding"])) " · "
+                        @if a["current_original_mapping"] == Value::Bool(true) {
+                            "current original mapping"
+                        } @else {
+                            "historical original source"
+                        }
+                    }
+                }
+            }
+            p class="dim" { (view.attribution_disclosure) }
+        }))
+        (ui::card(html! {
+            h3 { "Payee earnings" }
+            @match &view.payee {
+                Some(payee) => {
+                    p {
+                        "Party " (text(&payee["party"]))
+                        " · unit msat. Earnings are separate from customer spending and are never netted against it."
+                    }
+                    pre class="statement-payee" {
+                        (serde_json::to_string_pretty(&payee["statement"]).unwrap_or_default())
+                    }
+                }
+                None => {
+                    p { "No payee read is reviewed for this account." }
+                }
+            }
+            p class="dim" { (view.payee_disclosure) }
+        }))
+        p class="dim" {
+            (view.native_projection_disclosure) " " (statement.disclosure.join("; "))
+        }
+    })
 }
 
 /// Retail compute keeps its own owner, unit, and records.
-async fn retail_statements(context: &Context<'_>) -> String {
+async fn retail_statements(context: &Context<'_>) -> Markup {
     let Some(delegations) = context.app.config.cloud_retail.as_deref() else {
-        return String::new();
+        return html! {};
     };
-    let mut out = String::new();
+    let mut sections = Vec::new();
     for delegation in delegations.current(&context.viewer) {
         let id = delegation.id().to_owned();
-        out.push_str(&format!(
-            "<section class=\"cloud-card\" id=\"retail-statement-{}\"><h3>Retail compute · delegation {}</h3>",
-            escape(&id),
-            escape(&id)
-        ));
-        match delegations.statement(&context.viewer, &id).await {
-            Ok(statement) => out.push_str(&render_retail(&id, &statement)),
-            Err(Failure::Changed(part)) => out.push_str(&format!(
-                "<p>Retail record changed: the retail service answered with a different {} than the one retained. Nothing is shown as current.</p>",
-                escape(part)
-            )),
-            Err(_) => out.push_str(
-                "<p>Retail service: Unavailable. No balance or charge is estimated in its place.</p>",
-            ),
-        }
-        out.push_str("</section>");
+        let body = match delegations.statement(&context.viewer, &id).await {
+            Ok(statement) => render_retail(&id, &statement),
+            Err(Failure::Changed(part)) => html! {
+                p {
+                    "Retail record changed: the retail service answered with a different "
+                    (part)
+                    " than the one retained. Nothing is shown as current."
+                }
+            },
+            Err(_) => html! {
+                p { "Retail service: Unavailable. No balance or charge is estimated in its place." }
+            },
+        };
+        sections.push(html! {
+            section class="cloud-card" id=(format!("retail-statement-{id}")) {
+                h3 { "Retail compute · delegation " (id) }
+                (body)
+            }
+        });
     }
-    out
+    html! { @for part in &sections { (part) } }
 }
 
-fn render_retail(id: &str, statement: &retail::Statement) -> String {
-    let mut out = format!(
-        "<pre class=\"retail-account\">{}</pre><h4>Funding invoices</h4>",
-        escape(&statement.account.lines())
-    );
-    if statement.funding.is_empty() {
-        out.push_str("<p>No funding requested from this page.</p>");
-    } else {
-        out.push_str("<ul class=\"retail-funding\">");
-        for funding in &statement.funding {
-            let line = match (&funding.recorded, &funding.current) {
-                (None, _) => format!(
-                    "request {} · {} sats requested · Outcome unknown; retry the same request from Retail",
-                    &funding.request[..8],
-                    funding
-                        .amount_sats
-                        .map_or("unknown".into(), |n| n.to_string())
-                ),
-                (Some(original), current) => format!(
-                    "invoice {} · {} msat · {}",
-                    original.payment_hash,
-                    original.amount_msat,
-                    match current {
-                        Some(now) => format!("state {}", now.state),
-                        None => format!("recorded state {}; current state unknown", original.state),
-                    }
-                ),
-            };
-            out.push_str(&format!("<li>{}</li>", escape(&line)));
-        }
-        out.push_str("</ul>");
-    }
-    out.push_str("<h4>Purchases</h4>");
-    if statement.purchases.is_empty() {
-        out.push_str("<p>No funded purchases.</p>");
-    } else {
-        out.push_str("<ul class=\"retail-statement-purchases\">");
-    }
+fn render_retail(id: &str, statement: &retail::Statement) -> Markup {
+    let funding: Vec<String> = statement
+        .funding
+        .iter()
+        .map(|funding| match (&funding.recorded, &funding.current) {
+            (None, _) => format!(
+                "request {} · {} sats requested · Outcome unknown; retry the same request from Retail",
+                &funding.request[..8],
+                funding
+                    .amount_sats
+                    .map_or("unknown".into(), |n| n.to_string())
+            ),
+            (Some(original), current) => format!(
+                "invoice {} · {} msat · {}",
+                original.payment_hash,
+                original.amount_msat,
+                match current {
+                    Some(now) => format!("state {}", now.state),
+                    None => format!("recorded state {}; current state unknown", original.state),
+                }
+            ),
+        })
+        .collect();
+    let mut purchases = Vec::with_capacity(statement.purchases.len());
     for (execution, binding) in &statement.purchases {
         let quote = binding.get("quote");
         let mut line = format!(
@@ -718,23 +717,35 @@ fn render_retail(id: &str, statement: &retail::Statement) -> String {
             ),
             None => line.push_str(" · settlement unknown; the quote maximum may remain held"),
         }
-        out.push_str(&format!(
-            "<li><a href=\"{}\">Purchase {}</a> · {}</li>",
-            retail::purchase_href(id, execution),
-            escape(execution),
-            escape(&line)
-        ));
+        purchases.push((retail::purchase_href(id, execution), execution, line));
     }
-    if !statement.purchases.is_empty() {
-        out.push_str("</ul>");
+    html! {
+        pre class="retail-account" { (statement.account.lines()) }
+        h4 { "Funding invoices" }
+        @if funding.is_empty() {
+            p { "No funding requested from this page." }
+        } @else {
+            ul class="retail-funding" {
+                @for line in &funding { li { (line) } }
+            }
+        }
+        h4 { "Purchases" }
+        @if purchases.is_empty() {
+            p { "No funded purchases." }
+        } @else {
+            ul class="retail-statement-purchases" {
+                @for (href, execution, line) in &purchases {
+                    li {
+                        a href=(href) { "Purchase " (execution) }
+                        " · " (line)
+                    }
+                }
+            }
+        }
+        @if statement.more {
+            p { a href=(format!("{PAGE}/retail/{id}/purchases")) { "Older purchases" } }
+        }
     }
-    if statement.more {
-        out.push_str(&format!(
-            "<p><a href=\"{PAGE}/retail/{}/purchases\">Older purchases</a></p>",
-            escape(id)
-        ));
-    }
-    out
 }
 
 async fn export(State(app): State<App>, headers: HeaderMap, Query(page): Query<Page>) -> Response {
@@ -836,101 +847,113 @@ async fn decision(
     }
     let account = context.viewer.client().account();
     let read = account.purchase_context(&context.workspace, &door).await;
-    let mut content = format!(
-        "<h2>Decision resource {}</h2><p><a href=\"{PAGE}\">Billing</a> · <a href=\"{PAGE}/statements\">Original statement</a></p>",
-        escape(&door)
-    );
-    match read {
+    let body = match read {
         Ok(read) => {
             if !current_context(&context, &door, &read) {
                 return refused(SessionError::Conflict);
             }
-            content.push_str(&render_context(&read));
-            content.push_str(&format!(
-                "<section class=\"cloud-card\"><h3>Recover a purchase</h3><p>An earlier purchase is recovered by its original receipt; recovery never invokes, pays, or retries.</p><form method=\"get\" action=\"{PAGE}/decisions/{}/receipt\"><label>Receipt digest <input name=\"digest\" required maxlength=\"71\"></label> <button type=\"submit\">Read the original receipt</button></form></section>",
-                escape(&door)
-            ));
+            let wanted = Field::new("billing-receipt-digest", "Receipt digest").required(true);
+            html! {
+                (render_context(&read))
+                (ui::card(html! {
+                    h3 { "Recover a purchase" }
+                    p { "An earlier purchase is recovered by its original receipt; recovery never invokes, pays, or retries." }
+                    form class="cloud-form" method="get" action=(format!("{PAGE}/decisions/{door}/receipt")) {
+                        (wanted.clone().control(Input::new("digest").aria(wanted.aria()).required(true).maxlength(71)))
+                        div class="cloud-form-actions" { (ui::submit("Read the original receipt", true)) }
+                    }
+                }))
+            }
         }
         Err(error) => match native(&error) {
             Native::Session(error) => return refused(error),
-            Native::Unavailable => content.push_str(
-                "<section class=\"cloud-card\"><h3>Purchase · Unavailable</h3><p>This resource has no current purchase context for your account and workspace: the resource, its price, your membership, or the payer lane is not admitted. Nothing is offered in its place.</p></section>",
-            ),
+            Native::Unavailable => ui::card(html! {
+                h3 { "Purchase · Unavailable" }
+                p { "This resource has no current purchase context for your account and workspace: the resource, its price, your membership, or the payer lane is not admitted. Nothing is offered in its place." }
+            }),
         },
-    }
+    };
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    context.shell(&headers, &content)
+    let statements = format!("{PAGE}/statements");
+    let content = html! {
+        h2 { "Decision resource " (door) }
+        (ui::links([(PAGE, "Billing"), (statements.as_str(), "Original statement")]))
+        (body)
+    };
+    context.shell(&headers, content)
 }
 
-fn render_context(read: &receipts::purchase::Context) -> String {
-    let mut out = String::from("<section class=\"cloud-card\"><h3>Payer and permission</h3><dl>");
-    dd(&mut out, "Native account", &read.account);
-    dd(&mut out, "Payer workspace", &read.payer_workspace);
-    dd(
-        &mut out,
-        "Membership",
-        &format!(
-            "{} · membership epoch {} · workspace members epoch {}",
-            read.role, read.membership_epoch, read.workspace_members_epoch
-        ),
-    );
-    dd(&mut out, "Credential", &read.credential_reference);
-    dd(
-        &mut out,
-        "Invocation right",
-        if read.can_invoke {
-            "Current: this account may invoke after approving an exact quote"
-        } else {
-            "Not admitted: this account cannot invoke this resource"
-        },
-    );
-    dd(
-        &mut out,
-        "Team policy",
-        &read.team_policy.as_ref().map_or("none".into(), |p| {
-            format!("version {} · {}", p.version, p.digest)
-        }),
-    );
-    dd(
-        &mut out,
-        "Canonical mapping",
-        &read
-            .commercial
-            .as_ref()
-            .map_or("none; attribution is not established".into(), |c| {
-                format!(
-                    "binding {} revision {} · customer {} · attribution only, no right",
-                    c.binding, c.revision, c.customer
-                )
+fn render_context(read: &receipts::purchase::Context) -> Markup {
+    let membership = ui::Details::new()
+        .row("Native account", read.account.as_str())
+        .row("Payer workspace", read.payer_workspace.as_str())
+        .row(
+            "Membership",
+            format!(
+                "{} · membership epoch {} · workspace members epoch {}",
+                read.role, read.membership_epoch, read.workspace_members_epoch
+            ),
+        )
+        .row("Credential", read.credential_reference.as_str())
+        .row(
+            "Invocation right",
+            if read.can_invoke {
+                "Current: this account may invoke after approving an exact quote"
+            } else {
+                "Not admitted: this account cannot invoke this resource"
+            },
+        )
+        .row(
+            "Team policy",
+            read.team_policy.as_ref().map_or("none".into(), |p| {
+                format!("version {} · {}", p.version, p.digest)
             }),
-    );
-    out.push_str("</dl></section><section class=\"cloud-card\"><h3>Exact price reference</h3><dl>");
-    dd(&mut out, "Resource", &read.door);
-    dd(&mut out, "Artifact", &read.artifact_digest);
-    dd(&mut out, "Registry", &read.registry_digest);
-    dd(
-        &mut out,
-        "Price",
-        &format!(
-            "version {} · {} · policy {}",
-            read.price.version, read.price.currency, read.price.policy
-        ),
-    );
-    dd(
-        &mut out,
-        "Maximum charge",
-        &format!(
-            "{} integer units of {} under price version {}",
-            read.price.maximum_charge, read.price.currency, read.price.version
-        ),
-    );
-    dd(&mut out, "Terms", &read.price.terms_digest);
-    dd(&mut out, "Maximum usage", &read.price.maximum_usage_digest);
-    dd(&mut out, "Context digest", &read.digest());
-    out.push_str("</dl><p>A quote freezes this exact context and request; approval, funding, and invocation stay on the installed customer client, which rechecks these rights before reservation. A changed resource, price, payer, or membership needs a new review.</p></section>");
-    out
+        )
+        .row(
+            "Canonical mapping",
+            read.commercial
+                .as_ref()
+                .map_or("none; attribution is not established".into(), |c| {
+                    format!(
+                        "binding {} revision {} · customer {} · attribution only, no right",
+                        c.binding, c.revision, c.customer
+                    )
+                }),
+        );
+    let price = ui::Details::new()
+        .row("Resource", read.door.as_str())
+        .row("Artifact", read.artifact_digest.as_str())
+        .row("Registry", read.registry_digest.as_str())
+        .row(
+            "Price",
+            format!(
+                "version {} · {} · policy {}",
+                read.price.version, read.price.currency, read.price.policy
+            ),
+        )
+        .row(
+            "Maximum charge",
+            format!(
+                "{} integer units of {} under price version {}",
+                read.price.maximum_charge, read.price.currency, read.price.version
+            ),
+        )
+        .row("Terms", read.price.terms_digest.as_str())
+        .row("Maximum usage", read.price.maximum_usage_digest.as_str())
+        .row("Context digest", read.digest());
+    html! {
+        (ui::card(html! {
+            h3 { "Payer and permission" }
+            (membership)
+        }))
+        (ui::card(html! {
+            h3 { "Exact price reference" }
+            (price)
+            p { "A quote freezes this exact context and request; approval, funding, and invocation stay on the installed customer client, which rechecks these rights before reservation. A changed resource, price, payer, or membership needs a new review." }
+        }))
+    }
 }
 
 #[derive(Deserialize)]
@@ -980,62 +1003,55 @@ async fn receipt(
             "This original receipt belongs to a different decision resource.",
         );
     }
-    let mut content = format!(
-        "<h2>Receipt</h2><p><a href=\"{PAGE}/decisions?door={}\">Resource {}</a></p><section class=\"cloud-card\"><h3>Original receipt</h3><dl>",
-        escape(&door),
-        escape(&door)
-    );
-    dd(&mut content, "Digest", &receipt.digest);
-    dd(
-        &mut content,
-        "Request",
-        &format!("{} · attempt {}", receipt.request, receipt.attempt),
-    );
-    dd(
-        &mut content,
-        "Outcome",
-        &text(&serde_json::to_value(&receipt.outcome).unwrap_or_default()),
-    );
-    dd(&mut content, "Served", &receipt.served.model);
-    dd(&mut content, "Request digest", &receipt.request_digest);
-    dd(
-        &mut content,
-        "Result digest",
-        known(receipt.result_digest.as_deref()),
-    );
-    dd(
-        &mut content,
-        "Canonical mapping",
-        &receipt.commercial.as_ref().map_or("none".into(), |c| {
-            format!("binding {} revision {}", c.binding, c.revision)
-        }),
-    );
-    content.push_str("</dl></section><section class=\"cloud-card\"><h3>Settlement</h3><dl>");
-    match &proof.cost {
-        Some(cost) => {
-            dd(&mut content, "Phase", &cost.phase);
-            dd(
-                &mut content,
+    let original = ui::Details::new()
+        .row("Digest", receipt.digest.as_str())
+        .row(
+            "Request",
+            format!("{} · attempt {}", receipt.request, receipt.attempt),
+        )
+        .row(
+            "Outcome",
+            text(&serde_json::to_value(&receipt.outcome).unwrap_or_default()),
+        )
+        .row("Served", receipt.served.model.as_str())
+        .row("Request digest", receipt.request_digest.as_str())
+        .row("Result digest", known(receipt.result_digest.as_deref()))
+        .row(
+            "Canonical mapping",
+            receipt.commercial.as_ref().map_or("none".into(), |c| {
+                format!("binding {} revision {}", c.binding, c.revision)
+            }),
+        );
+    let settlement = match &proof.cost {
+        Some(cost) => ui::Details::new()
+            .row("Phase", cost.phase.as_str())
+            .row(
                 "Reserved",
-                &format!("{} at price version {}", cost.reserved, cost.price_version),
-            );
-            dd(
-                &mut content,
+                format!("{} at price version {}", cost.reserved, cost.price_version),
+            )
+            .row(
                 "Charge",
-                &cost.retail.map_or("unknown".into(), |n| {
+                cost.retail.map_or("unknown".into(), |n| {
                     format!("{n} at price version {}", cost.price_version)
                 }),
-            );
-        }
-        None => dd(
-            &mut content,
-            "Charge",
-            "unknown; no original hold is joined",
-        ),
-    }
-    content.push_str("</dl><p class=\"dim\">This is the original receipt and its current settlement claim. Reading it never invokes, pays, or retries a purchase.</p></section>");
+            ),
+        None => ui::Details::new().row("Charge", "unknown; no original hold is joined"),
+    };
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    context.shell(&headers, &content)
+    let content = html! {
+        h2 { "Receipt" }
+        p { a href=(format!("{PAGE}/decisions?door={door}")) { "Resource " (door) } }
+        (ui::card(html! {
+            h3 { "Original receipt" }
+            (original)
+        }))
+        (ui::card(html! {
+            h3 { "Settlement" }
+            (settlement)
+            p class="dim" { "This is the original receipt and its current settlement claim. Reading it never invokes, pays, or retries a purchase." }
+        }))
+    };
+    context.shell(&headers, content)
 }
