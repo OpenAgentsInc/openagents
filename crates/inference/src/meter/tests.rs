@@ -15,6 +15,7 @@ fn config() -> Config {
             cache_write: None,
             output: 500_000,
             margin_bps: 500,
+            promotion: None,
         }],
         accounts: vec![CreditAccount {
             id: "zai".into(),

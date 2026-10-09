@@ -74,6 +74,7 @@ fn row(upstream: &str, model: &str, input: u64, output: u64) -> RateRow {
         cache_write: None,
         output,
         margin_bps: 500,
+        promotion: None,
     }
 }
 

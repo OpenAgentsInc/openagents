@@ -14,6 +14,8 @@
 //! - [`run`]: the attempt loop: planned attempts sent to the adapters,
 //!   fallback only before the first token, every attempt metered, and the
 //!   route and cost events.
+//! - [`rates`]: the public rate card and the model catalog's price rows,
+//!   over the meter's rate card.
 //! - [`meter`]: the measurement half (sections 5 and 6): one record per
 //!   upstream attempt, live rates, and the credit ledger with burn-down
 //!   alerts. Adapters report each attempt through [`meter::Recorder`].
@@ -32,6 +34,7 @@ pub mod event;
 pub mod item;
 pub mod meter;
 pub mod openagents;
+pub mod rates;
 pub mod request;
 pub mod response;
 pub mod router;

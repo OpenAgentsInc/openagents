@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 pub use attempt::{Api, Attempt, Collect, ErrorClass, NoRecorder, Outcome, Recorder, Tokens};
-pub use card::{RateCard, RateRow};
+pub use card::{Promotion, RateCard, RateRow};
 pub use ledger::{Alert, Basis, BurnDown, CreditAccount, Ledger};
 pub use live::Rate;
 pub use reconcile::{Billed, FakeBilling, ProviderBilling, Reconciled};

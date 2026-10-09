@@ -622,6 +622,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     if state.config.inference.is_some() {
         routes.extend(crate::inference_status::routes());
         routes.extend(crate::inference_routes::routes());
+        routes.extend(crate::inference_rates::routes());
     }
     routes
 }
@@ -724,7 +725,14 @@ pub(crate) async fn models(
             .await;
         }
     }
-    Ok(Json(json!({"models": cards})))
+    let mut body = json!({"models": cards});
+    // With inference set up, the OpenAI list shape rides alongside: the
+    // models the gateway routes to, with their rate card rows.
+    if let Some(catalog) = crate::inference_rates::catalog(&state) {
+        body["object"] = catalog["object"].clone();
+        body["data"] = catalog["data"].clone();
+    }
+    Ok(Json(body))
 }
 
 /// `GET /v1/balance`: the caller's workspace account position under

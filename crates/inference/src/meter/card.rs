@@ -27,13 +27,36 @@ pub struct RateRow {
     /// Our margin in basis points (500 is 5%).
     #[serde(default)]
     pub margin_bps: u32,
+    /// A promotion on this row: the caller pays its prices instead of
+    /// list plus margin. The rate card shows it as its own labeled row
+    /// beside the list row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion: Option<Promotion>,
+}
+
+/// A promotional price: what the caller pays, in micros of the row's
+/// currency per million tokens, margin included. It never changes the
+/// row's list price, which stays our cost.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Promotion {
+    /// The line the rate card shows, such as "Free while our launch
+    /// credit lasts".
+    pub label: String,
+    pub input: u64,
+    /// Cached input; defaults to `input`.
+    #[serde(default)]
+    pub cached_input: Option<u64>,
+    pub output: u64,
 }
 
 fn usd() -> String {
     "USD".into()
 }
 
-/// What one attempt cost, in micros of `currency`.
+/// What one attempt cost, in micros of `currency`. `price` is what the
+/// caller pays: `cost + margin`, or under a promotion the promotion's
+/// price, with `margin` what is left over the cost (zero when the
+/// promotion is at or below cost).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Priced {
     pub currency: String,
@@ -53,6 +76,19 @@ impl RateRow {
             + write as u128 * self.cache_write.unwrap_or(self.input) as u128
             + tokens.output as u128 * self.output as u128;
         let cost = round_div(scaled, 1_000_000);
+        if let Some(promotion) = &self.promotion {
+            // Cache writes are input at the promotion's price.
+            let scaled = (plain + write) as u128 * promotion.input as u128
+                + cached as u128 * promotion.cached_input.unwrap_or(promotion.input) as u128
+                + tokens.output as u128 * promotion.output as u128;
+            let price = round_div(scaled, 1_000_000);
+            return Priced {
+                currency: self.currency.clone(),
+                cost,
+                margin: price.saturating_sub(cost),
+                price,
+            };
+        }
         let margin = round_div(cost as u128 * self.margin_bps as u128, 10_000);
         Priced {
             currency: self.currency.clone(),
@@ -60,6 +96,22 @@ impl RateRow {
             margin,
             price: cost.saturating_add(margin),
         }
+    }
+
+    /// One million tokens of each kind at list price: (list, margin,
+    /// price) for input, cached input, and output, the margin rounded as
+    /// [`RateRow::price`] rounds it. A promotion is not applied.
+    #[must_use]
+    pub fn per_million(&self) -> [(u64, u64, u64); 3] {
+        [
+            self.input,
+            self.cached_input.unwrap_or(self.input),
+            self.output,
+        ]
+        .map(|list| {
+            let margin = round_div(list as u128 * self.margin_bps as u128, 10_000);
+            (list, margin, list.saturating_add(margin))
+        })
     }
 }
 
@@ -111,6 +163,7 @@ mod tests {
             cache_write: None,
             output: 500_000,
             margin_bps: 500,
+            promotion: None,
         }
     }
 
@@ -142,5 +195,30 @@ mod tests {
             ..Tokens::default()
         });
         assert_eq!(overclaimed.cost, 0); // 10 * 0.03 micros rounds to 0
+    }
+
+    #[test]
+    fn a_promotion_sets_the_price_and_keeps_the_cost() {
+        let mut row = glm();
+        row.promotion = Some(Promotion {
+            label: "Free this week".into(),
+            input: 0,
+            cached_input: None,
+            output: 0,
+        });
+        let priced = row.price(&Tokens {
+            input: 1_000_000,
+            output: 1_000_000,
+            ..Tokens::default()
+        });
+        assert_eq!((priced.cost, priced.margin, priced.price), (650_000, 0, 0));
+        assert_eq!(
+            glm().per_million(),
+            [
+                (150_000, 7_500, 157_500),
+                (30_000, 1_500, 31_500),
+                (500_000, 25_000, 525_000)
+            ]
+        );
     }
 }

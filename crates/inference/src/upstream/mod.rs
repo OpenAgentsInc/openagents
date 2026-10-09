@@ -264,6 +264,7 @@ impl Price {
             cache_write: self.cache_write,
             output: self.output,
             margin_bps: DEFAULT_MARGIN_BPS,
+            promotion: None,
         }
     }
 }

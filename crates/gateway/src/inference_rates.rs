@@ -1,0 +1,66 @@
+//! The public rate card (`docs/inference/gateway.md`, section 8):
+//! `GET /v1/rates`, the meter's rate card as [`inference::rates::Card`],
+//! open to anyone without a key. `GET /v1/models` carries the same rows
+//! for each model (`serve::models`, through [`catalog`]).
+//!
+//! Sats are figured at `inference.sats_rate` when the config sets one;
+//! without it the card has dollars only.
+
+use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::State;
+use axum::routing::{MethodRouter, get};
+
+use crate::serve::ServeState;
+
+pub const PATH: &str = "/v1/rates";
+
+pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
+    vec![(PATH, get(rates))]
+}
+
+/// The card this gateway charges by: its meter's rate rows.
+#[must_use]
+pub fn card(state: &ServeState) -> inference::rates::Card {
+    let sats = state
+        .config
+        .inference
+        .as_ref()
+        .and_then(|config| config.sats_rate.as_ref());
+    let rows = state
+        .meter
+        .as_ref()
+        .map(|meter| meter.snapshot().0)
+        .unwrap_or_default();
+    inference::rates::Card::from_rates(&rows, sats)
+}
+
+/// The models this gateway can route to right now (adapters with their
+/// key), in the OpenAI list shape with each provider's price rows and the
+/// last hour's live rates. `None` when inference is not set up.
+#[must_use]
+pub fn catalog(state: &ServeState) -> Option<serde_json::Value> {
+    let gateway = state.inference.as_ref()?;
+    let sats = state
+        .config
+        .inference
+        .as_ref()
+        .and_then(|config| config.sats_rate.as_ref());
+    let (rows, _) = gateway.meter().snapshot();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|span| u64::try_from(span.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or_default();
+    let live = gateway.meter().rates(60 * 60_000, now);
+    Some(inference::rates::catalog(
+        &gateway.offerings(),
+        &rows,
+        &live,
+        sats,
+    ))
+}
+
+async fn rates(State(state): State<Arc<ServeState>>) -> Json<inference::rates::Card> {
+    Json(card(&state))
+}

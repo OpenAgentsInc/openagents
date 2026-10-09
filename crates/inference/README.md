@@ -16,6 +16,7 @@ does I/O. The router and the HTTP routes build on all three.
 | `item` | `Item` (`message`, `function_call`, `function_call_output`, `reasoning`, `item_reference`, `compaction`), content parts |
 | `event` | `Event` (a `sequence_number` and an `EventBody`), every event the 2026-04-24 spec names, plus `openagents:route` and `openagents:cost` |
 | `error` | `ApiError` (`type`, `code`, `param`, `message`) with its HTTP status; the response's `error` object |
+| `rates` | The public rate card (`Card`: list price, margin, and price per million tokens, sats beside, promotions as their own rows), provider names, the published card from the adapters' own rows, and the `/v1/models` catalog |
 | `openagents` | The `openagents` request object (route, privacy, payer, max price, fallbacks) and response object (model, upstream, attempts, cost) |
 | `sse` | `SseDecoder` (bytes in, frames out, split anywhere), `ResponsesDecoder`, `encode_event`, `DONE_FRAME` |
 | `stream` | `Sequencer`, `Accumulator` (events folded into a response), `StreamCheck` (a stream checked against the spec's order) |

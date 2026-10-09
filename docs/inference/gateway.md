@@ -370,6 +370,19 @@ Rules:
 - **Pylon providers** set their own price. The rate card shows it plus the
   same margin, and the provider receives their price.
 
+Built (#11066): `inference::rates` turns the meter's rate card into the
+public card. The gateway serves it at `GET /v1/rates` without a key, and
+`GET /v1/models` (with a key) adds the OpenAI list shape (`object`,
+`data`) beside the decision models, each model with its providers' rows
+and last-hour live rates. Sats are figured at `inference.sats_rate`
+(`usd_per_btc`, `as_of`) when the config sets it. A promotion is a
+`promotion` on a rate row (label and caller prices): the meter charges
+it and the card shows it as its own row. The Pro door's rows name the
+provider "OpenAgents (Pro)". The website's `/docs/api/models` draws the
+card from the gateway named by `--inference` (`OPENAGENTS_WEB_INFERENCE`),
+or the adapters' published card when it has none; tests hold the page and
+`/v1/rates` to the same card.
+
 ## 9. Privacy and data use
 
 - **Default `strict`.** Every request goes only to endpoints that neither

@@ -225,6 +225,10 @@ pub struct Inference {
     /// A class table in place of the spec's starting one.
     #[serde(default)]
     pub classes: Option<inference::router::ClassTable>,
+    /// The bitcoin price the rate card figures sats at
+    /// (`GET /v1/rates`); without it the card shows dollars only.
+    #[serde(default)]
+    pub sats_rate: Option<inference::rates::SatsRate>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

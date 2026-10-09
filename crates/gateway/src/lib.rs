@@ -53,6 +53,7 @@ pub mod earnings;
 pub mod feedback;
 pub mod funding;
 mod github_repos;
+pub mod inference_rates;
 pub mod inference_routes;
 pub mod inference_status;
 pub mod jobs;
