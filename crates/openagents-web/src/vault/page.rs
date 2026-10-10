@@ -393,6 +393,9 @@ pub(crate) fn content(
                             "To answer on this device, start Psionic on this computer: "
                             code { "openagents vault serve-local" }
                         }
+                        p #vault-route-device-blocked class="oa-vault-hint" hidden {
+                            "This browser is set not to let this site reach apps on this computer. Allow it in the site's settings (the icon left of the address), then reload."
+                        }
                         label {
                             input #vault-route-fast type="radio" name="vault-route" value="fast";
                             span { strong { "Fast (Google sees it)" } " · Google Gemini reads them to answer. Google doesn't train on them, but sees them while answering." }

@@ -654,7 +654,13 @@ async function probeLocal() {
   const timer = setTimeout(() => controller.abort(), 1500);
   localModel = null;
   try {
-    const response = await fetch(`${LOCAL}/v1/models`, { signal: controller.signal, mode: "cors", credentials: "omit", cache: "no-store" });
+    const response = await fetch(`${LOCAL}/v1/models`, {
+      signal: controller.signal,
+      mode: "cors",
+      credentials: "omit",
+      cache: "no-store",
+      targetAddressSpace: "loopback",
+    });
     if (response.ok) {
       // Only a Psionic server counts: the plaintext goes nowhere else.
       const models = await response.json();
@@ -666,9 +672,22 @@ async function probeLocal() {
   } finally {
     clearTimeout(timer);
   }
+  // Chrome asks before a site reaches apps on this computer; if the person
+  // said no, say where to change it rather than asking them to start Psionic.
+  let blocked = false;
+  if (!localModel && navigator.permissions) {
+    for (const name of ["loopback-network", "local-network-access"]) {
+      try {
+        if ((await navigator.permissions.query({ name })).state === "denied") blocked = true;
+      } catch {
+        // This browser doesn't know that permission.
+      }
+    }
+  }
   const device = $("vault-route-device");
   device.disabled = !localModel;
-  $("vault-route-device-off").hidden = !!localModel;
+  $("vault-route-device-off").hidden = !!localModel || blocked;
+  $("vault-route-device-blocked").hidden = !!localModel || !blocked;
   if (localModel && !$("vault-route-fast").checked) device.checked = true;
   if (!localModel) device.checked = false;
 }
@@ -696,6 +715,7 @@ async function askDevice(question, files) {
     mode: "cors",
     credentials: "omit",
     headers: { "content-type": "application/json" },
+    targetAddressSpace: "loopback",
     body: JSON.stringify({
       model: localModel,
       messages: [
