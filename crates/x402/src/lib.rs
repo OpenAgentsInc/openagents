@@ -20,14 +20,17 @@
 //! the ledger of what it paid. `router` is the API's front door: one `402`
 //! with every live method's challenge on one invoice, one settle path, and
 //! the live method list discovery prints; `receipt` is the one
-//! `openagents.payment-receipt.v1` record per settled payment. Nothing here
-//! pays.
+//! `openagents.payment-receipt.v1` record per settled payment. `merchant`
+//! is a third-party merchant's own receiver: its pinned `payTo`, its own
+//! sales record, and the buyer attestation it can require before it issues
+//! an invoice. Nothing here pays.
 
 pub mod execution;
 pub mod facilitator;
 pub mod front;
 pub mod hosted;
 pub mod mcp;
+pub mod merchant;
 pub mod native;
 pub mod outcome;
 pub mod payment_scheme;
