@@ -703,6 +703,7 @@ def judge_one(task: dict, result_dir: Path, model: str) -> dict:
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)
     proc = subprocess.run([CLAUDE, "-p", prompt, "--output-format", "json", "--model", model, "--tools", "",
+                           "--system-prompt", "You review code changes and answer only with the JSON asked for.",
                            "--no-session-persistence", "--strict-mcp-config"],
                           cwd=str(WORK), capture_output=True, text=True, timeout=600, env=env)
     try:
@@ -813,10 +814,49 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
+def tool_stats(rows: list[dict]) -> dict:
+    """Per tool: calls per run, share of runs that used it, tokens in and
+    out per call, seconds per call, and how often the next edit acted on a
+    file the result named."""
+    stats: dict[str, dict] = {}
+    for r in rows:
+        used = set()
+        for t in r.get("tool_log") or []:
+            s_ = stats.setdefault(t["tool"], {"calls": 0, "tin": 0, "tout": 0, "secs": [], "acted": [], "runs": 0})
+            s_["calls"] += 1
+            s_["tin"] += t["tokens_in"]
+            s_["tout"] += t["tokens_out"]
+            if t.get("secs") is not None:
+                s_["secs"].append(t["secs"])
+            if t.get("acted_on") is not None:
+                s_["acted"].append(t["acted_on"])
+            used.add(t["tool"])
+        for name in used:
+            stats[name]["runs"] += 1
+    n = max(1, len(rows))
+    return {
+        name: {
+            "calls_per_run": round(s_["calls"] / n, 2),
+            "share_of_runs": round(s_["runs"] / n, 2),
+            "tokens_in_per_call": round(s_["tin"] / s_["calls"]),
+            "tokens_out_per_call": round(s_["tout"] / s_["calls"]),
+            "median_secs": round(statistics.median(s_["secs"]), 1) if s_["secs"] else None,
+            "acted_on": round(sum(s_["acted"]) / len(s_["acted"]), 2) if s_["acted"] else None,
+        }
+        for name, s_ in sorted(stats.items(), key=lambda kv: -kv[1]["calls"])
+    }
+
+
 def report(args) -> None:
     rows = rows_of(args.tag)
     arms = sorted({(r["tag"], r["arm"]) for r in rows})
     out = {f"{t}/{a}": summarize([r for r in rows if r["tag"] == t and r["arm"] == a]) for t, a in arms}
+    if args.tools:
+        out = {f"{t}/{a}": tool_stats([r for r in rows if r["tag"] == t and r["arm"] == a]) for t, a in arms}
+    if args.issues:
+        behavioral = {int(i) for i in args.issues.split(",")}
+        rows = [r for r in rows if r["issue"] in behavioral]
+        out = {f"{t}/{a}": summarize([r for r in rows if r["tag"] == t and r["arm"] == a]) for t, a in arms}
     print(json.dumps(out, indent=2))
     if args.csv:
         import csv
@@ -853,6 +893,8 @@ def main() -> None:
     r = sub.add_parser("report")
     r.add_argument("--tag", action="append", required=True)
     r.add_argument("--csv")
+    r.add_argument("--tools", action="store_true", help="per-tool statistics")
+    r.add_argument("--issues", help="only these issues (e.g. the behavioral subset)")
     g = sub.add_parser("regrade")
     g.add_argument("--tag", action="append", required=True)
     g.add_argument("--issue", type=int, action="append")
