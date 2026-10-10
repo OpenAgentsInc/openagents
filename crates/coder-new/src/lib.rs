@@ -21,6 +21,7 @@ mod copy_guard_tests;
 pub mod credentials;
 mod delegation_events;
 mod demo;
+pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
 pub mod jev_plugin;

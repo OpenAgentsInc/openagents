@@ -2425,4 +2425,112 @@ mod tests {
         assert!(next.contains("Favorite color (user)"));
         assert!(next.contains("The user's favorite color is teal."));
     }
+
+    /// A golden chat (#11168): the model reads a file, edits it through the
+    /// built-in Edit tool, and the transcript draws the change as a diff.
+    #[test]
+    fn a_golden_chat_edits_a_file_through_edit_and_shows_the_diff() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().canonicalize().unwrap();
+        std::fs::create_dir(repo.join(".git")).unwrap();
+        std::fs::write(
+            repo.join("greet.rs"),
+            "fn greet() {\n    println!(\"hello\");\n}\n",
+        )
+        .unwrap();
+        let mut settings = jev_settings("http://127.0.0.1:9".into(), None);
+        settings.jev_enabled = false;
+        settings.shell = true;
+        settings.cwd = repo.clone();
+        let call = |id: &str, name: &str, arguments: Value| {
+            format!(
+                "data: {}\n\ndata: [DONE]\n\n",
+                json!({"model":"fixture/first","choices":[{"delta":{"tool_calls":[{"index":0,"id":id,"function":{"name":name,"arguments":arguments.to_string()}}]},"finish_reason":"tool_calls"}]})
+            )
+        };
+        let (base, server) = sequence(vec![
+            call("read", "Read", json!({"path":"greet.rs"})),
+            call(
+                "edit",
+                "Edit",
+                json!({"path":"greet.rs","old_string":"println!(\"hello\");","new_string":"println!(\"hello, world\");"}),
+            ),
+            format!(
+                "data: {}\n\ndata: [DONE]\n\n",
+                json!({"model":"fixture/first","choices":[{"delta":{"content":"Updated the greeting."},"finish_reason":"stop"}]})
+            ),
+        ]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut chat = crate::live::Chat::default();
+        runtime()
+            .block_on(provider.chat_with_plugins(
+                "openrouter/free",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("Make greet say hello, world.")],
+                &settings,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| {
+                    if let RuntimeEvent::Tool {
+                        name,
+                        input,
+                        output,
+                        running,
+                    } = event
+                    {
+                        chat.tool(name, input, output, running);
+                    }
+                },
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        let requests = server.join().unwrap();
+        let tools: Vec<_> = requests[0]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
+            .collect();
+        for name in ["Run", "Read", "Edit", "Write", "Grep", "Glob"] {
+            assert!(tools.iter().any(|tool| tool == name), "{name} in {tools:?}");
+        }
+        // The Read observation reached the model with numbered lines.
+        assert!(requests[1].to_string().contains("total_lines"));
+        assert_eq!(
+            std::fs::read_to_string(repo.join("greet.rs")).unwrap(),
+            "fn greet() {\n    println!(\"hello, world\");\n}\n"
+        );
+        let (input, output) = chat
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                crate::live::Entry::Tool {
+                    name,
+                    input,
+                    output,
+                    running: false,
+                } if name == "Edit" => Some((input.clone(), output.clone())),
+                _ => None,
+            })
+            .expect("an Edit entry");
+        assert!(
+            output["diff"]
+                .as_str()
+                .unwrap()
+                .contains("+    println!(\"hello, world\");")
+        );
+        let drawn: String = crate::tools::file_tool_lines("Edit", &input, &output, false, 80, 0)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+                    + "\n"
+            })
+            .collect();
+        assert!(drawn.contains("Edit greet.rs +1 -1"), "{drawn}");
+        assert!(drawn.contains("hello, world"), "{drawn}");
+        assert!(drawn.contains("\"hello\""), "{drawn}");
+    }
 }

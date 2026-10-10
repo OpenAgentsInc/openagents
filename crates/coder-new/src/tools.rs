@@ -155,6 +155,157 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
     lines
 }
 
+/// A built-in file tool's transcript rows (#11168): the tool and its path or
+/// pattern, then a page count, the matches, or an edit's diff.
+pub fn file_tool_lines(
+    name: &str,
+    input: &serde_json::Value,
+    output: &serde_json::Value,
+    running: bool,
+    width: u16,
+    phase: u8,
+) -> Vec<Line<'static>> {
+    let text = |key: &str| {
+        output
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let number = |key: &str| output.get(key).and_then(serde_json::Value::as_u64);
+    let (kind, accent) = match name {
+        "Edit" | "Write" => ("edit", t::ACCENT_SUCCESS),
+        _ => ("read", t::ACCENT_SKILL),
+    };
+    let failed = output.get("error").is_some();
+    let glyph = if running {
+        spinner(phase)
+    } else if failed {
+        "×"
+    } else {
+        "◆"
+    };
+    let subject = input
+        .get("path")
+        .filter(|_| !matches!(name, "Grep" | "Glob"))
+        .or_else(|| input.get("pattern"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let path = output
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .map_or(subject.clone(), str::to_owned);
+    let mut header = vec![
+        styled(
+            format!(" {glyph} "),
+            if failed { t::DIFF_DELETE_FG } else { accent },
+        ),
+        Span::styled(
+            name.to_owned(),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        styled(
+            truncate(&path, width.saturating_sub(18 + name.width() as u16)),
+            t::TEXT_SECONDARY,
+        ),
+    ];
+    if kind == "edit" && !running && !failed {
+        header.extend([
+            styled(
+                format!(" +{}", number("added").unwrap_or(0)),
+                t::DIFF_INSERT_FG,
+            ),
+            styled(
+                format!(" -{}", number("removed").unwrap_or(0)),
+                t::DIFF_DELETE_FG,
+            ),
+        ]);
+    }
+    let mut lines = vec![Line::from(header)];
+    let detail = |text: String, color: Color| {
+        Line::from(vec![
+            styled("   ╰ ", t::GRAY_DIM),
+            styled(truncate(&text, width.saturating_sub(5)), color),
+        ])
+    };
+    if running {
+        lines.push(detail("Running".into(), accent));
+        return lines;
+    }
+    if failed {
+        lines.push(detail(text("error"), t::DIFF_DELETE_FG));
+        return lines;
+    }
+    match name {
+        "Edit" | "Write" => {
+            let diff = text("diff");
+            if diff.is_empty() {
+                lines.push(detail("No changes".into(), t::GRAY_BRIGHT));
+            } else {
+                lines.extend(t::noir_lines(diff::lines(
+                    &diff,
+                    &path,
+                    0,
+                    usize::from(width),
+                    Palette::Night,
+                    ColorLevel::TrueColor,
+                )));
+            }
+        }
+        "Read" => {
+            let total = number("total_lines").unwrap_or(0);
+            let shown = text("content").lines().count();
+            lines.push(detail(
+                if output.get("next_offset").is_some() {
+                    format!("{shown} of {total} lines")
+                } else {
+                    format!("{total} lines")
+                },
+                t::GRAY_BRIGHT,
+            ));
+        }
+        _ => {
+            let (body, summary) = if name == "Grep" {
+                let count = number("count").unwrap_or(0);
+                let files = number("files").unwrap_or(0);
+                (
+                    text("matches"),
+                    format!(
+                        "{count} {} in {files} {}",
+                        if count == 1 { "match" } else { "matches" },
+                        if files == 1 { "file" } else { "files" }
+                    ),
+                )
+            } else {
+                let count = number("count").unwrap_or(0);
+                (
+                    text("files"),
+                    format!("{count} {}", if count == 1 { "file" } else { "files" }),
+                )
+            };
+            lines.push(detail(summary, t::GRAY_BRIGHT));
+            if number("count").unwrap_or(0) > 0 {
+                let rows: Vec<&str> = body.lines().collect();
+                for row in rows.iter().take(5) {
+                    lines.push(Line::from(vec![
+                        styled("     ", t::GRAY_DIM),
+                        styled(truncate(row, width.saturating_sub(5)), t::GRAY),
+                    ]));
+                }
+                if rows.len() > 5 {
+                    lines.push(Line::from(vec![
+                        styled("     ", t::GRAY_DIM),
+                        styled(format!("… {} more", rows.len() - 5), t::GRAY_DIM),
+                    ]));
+                }
+            }
+        }
+    }
+    lines
+}
+
 pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
     let (glyph, status_color) = match call.state {
         ToolState::Complete => ("◆", t::ACCENT_SKILL),

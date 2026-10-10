@@ -753,6 +753,13 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 lines.push(Line::default());
                 return lines;
             }
+            if crate::file_tools::is_tool(name) {
+                lines.extend(crate::tools::file_tool_lines(
+                    name, input, output, *running, width, phase,
+                ));
+                lines.push(Line::default());
+                return lines;
+            }
             let glyph = if *running {
                 crate::tools::spinner(phase)
             } else if output.get("error").is_some() {

@@ -292,6 +292,33 @@ pub fn check(command: &str) -> Verdict {
     verdict(&gate, command)
 }
 
+/// The gate's verdict on a file change a built-in tool makes (`Edit`,
+/// `Write`): it runs when no gated chat runs, and otherwise asks, as a shell
+/// command that changes something does. Blocks while the person decides.
+#[must_use]
+pub fn check_change(action: &str) -> Verdict {
+    let Some(gate) = current() else {
+        return Verdict::Run;
+    };
+    if gate.desk.tool_free {
+        return Verdict::Refused(
+            "The host refuses all model tools under this crew charter.".into(),
+        );
+    }
+    if gate
+        .desk
+        .ask(action, "It changes a file in the workspace.", &gate.cancel)
+    {
+        Verdict::Run
+    } else {
+        Verdict::Refused(
+            "The owner rejected this change. Do not make it another way; \
+             continue without it or finish and say what you would have done."
+                .into(),
+        )
+    }
+}
+
 /// Whether the current host charter permits model tools.
 pub(crate) fn tools_allowed() -> bool {
     current().is_none_or(|gate| !gate.desk.tool_free)

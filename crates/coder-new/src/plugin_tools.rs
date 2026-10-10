@@ -37,7 +37,8 @@ pub struct ExecutionSettings {
     /// workshop agent's charter. The model reads them as system
     /// instructions every turn; the transcript never shows them.
     pub instructions: Option<String>,
-    /// Whether the `Run` tool is offered. Commands have full access unless
+    /// Whether the `Run` tool and the file tools (`Read`, `Edit`, `Write`,
+    /// `Grep`, `Glob`, [`crate::file_tools`]) are offered. Commands have full access unless
     /// the host explicitly installs an approval gate ([`crate::approval`]).
     pub shell: bool,
     pub brainstorm: Option<crate::brainstorm::Native>,
@@ -161,6 +162,7 @@ impl ExecutionSettings {
         let mut definitions = Vec::new();
         if self.shell {
             definitions.push(bundled_runtime::run_tool_definition());
+            definitions.extend(crate::file_tools::definitions());
         }
         if self.memory.is_some() {
             definitions.extend(crate::memory::Memory::tool_definitions());
@@ -221,6 +223,7 @@ impl ExecutionSettings {
             guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
         }
         if self.shell {
+            guidance.push_str(crate::file_tools::INSTRUCTIONS);
             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
         }
         if self.registered(ToolBinding::Microcoder) {
@@ -339,6 +342,9 @@ impl ExecutionSettings {
                     .ok_or("Brainstorm is unavailable on this host.")?
                     .execute(name, arguments, self.disclosure_desk.as_deref(), cancel)
                     .await
+            }
+            name if crate::file_tools::is_tool(name) && self.shell => {
+                crate::file_tools::execute(name, arguments, &self.cwd)
             }
             "Run" if self.shell => {
                 let args: RunArguments = serde_json::from_value(arguments)

@@ -46,6 +46,10 @@ sha2 = "0.10"
 # A screenshot the `computer` tool shows the model, as a data URL.
 base64 = "0.22"
 flate2 = "1"
+# The built-in Grep and Glob tools (#11168).
+globset = "0.4"
+ignore = "0.4"
+regex = "1"
 crc32fast = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal"] }
 unicode-segmentation = "1"
