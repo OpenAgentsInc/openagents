@@ -125,7 +125,7 @@ EMBEDDINGS_VAR = "FILEFIND_EMBEDDINGS"
 VERTEX_MODEL = os.environ.get("FILEFIND_VERTEX_MODEL", "text-embedding-005")
 VERTEX_TAG = ".vertex-" + VERTEX_MODEL
 VERTEX_MAX_INPUTS = 250
-VERTEX_MAX_CHARS = 45000   # ~15k tokens at 3 chars a token, under the 20k-token request cap
+VERTEX_MAX_CHARS = 36000   # ~12k tokens at 3 chars a token, under the 20k-token request cap
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
@@ -256,6 +256,17 @@ class VertexEmbedder:
         return out
 
     def call(self, chunk, dims, task):
+        """One request; a request over Vertex's 20k-token cap (HTTP 400, dense text the
+        character estimate undercounts) is split in half and sent again."""
+        try:
+            return self.call_once(chunk, dims, task)
+        except urllib.error.HTTPError as e:
+            if e.code != 400 or len(chunk) < 2:
+                raise
+            half = len(chunk) // 2
+            return self.call(chunk[:half], dims, task) + self.call(chunk[half:], dims, task)
+
+    def call_once(self, chunk, dims, task):
         body = {"instances": [{"content": t, "task_type": task} for t in chunk],
                 "parameters": {"outputDimensionality": dims, "autoTruncate": True}}
         d = _http_json(self.url, body, {"Authorization": f"Bearer {self.token.get()}",
