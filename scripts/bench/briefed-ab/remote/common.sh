@@ -4,12 +4,12 @@
 # switch rebuilds only what the patches touch. The disk guard keeps the
 # host above 50 GB free: below AB_MIN_FREE_GB the bench's own target dir is
 # cleared. Nothing here touches ~/openagents/target.
-AB_MIN_FREE_GB=${AB_MIN_FREE_GB:-58}
+AB_MIN_FREE_GB=${AB_MIN_FREE_GB:-55}
 # AB_BUILD=NAME picks a second checkout and target (the grader's
 # validation runs beside trials without thrashing their build).
 sfx=${AB_BUILD:+-$AB_BUILD}
 dir=$HOME/ab/build$sfx
-export CARGO_TARGET_DIR=$HOME/ab/target$sfx CARGO_TERM_COLOR=never CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_TARGET_DIR=$HOME/ab/target$sfx CARGO_TERM_COLOR=never CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
 ab_lock() {
   exec 9>"$HOME/ab/build$sfx.lock"
   local t0

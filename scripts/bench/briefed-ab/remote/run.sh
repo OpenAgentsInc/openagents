@@ -30,10 +30,12 @@ for a in "$@"; do args+=("${a//@ROOT@/$dir}"); done
 # stopped), stdin ends: stop the command too, so it does not hold the
 # build lock.
 out=$(mktemp)
-setsid timeout -k 10 "$limit" "${args[@]}" >"$out" 2>&1 &
+# 9>&-: the command and anything it leaves running must not hold the build lock.
+setsid timeout -k 10 "$limit" "${args[@]}" >"$out" 2>&1 9>&- &
 job=$!
 exec 4<&0
-( cat <&4 >/dev/null; kill -TERM -- "-$job" 2>/dev/null || kill -TERM "$job" 2>/dev/null ) &
+# AB_NO_WATCH=1 (the harness's own prewarm, whose stdin is closed) skips it.
+[ -n "${AB_NO_WATCH:-}" ] || ( cat <&4 >/dev/null; kill -TERM -- "-$job" 2>/dev/null || kill -TERM "$job" 2>/dev/null ) &
 watcher=$!
 tail -n +1 -f --pid="$job" "$out" | sed -u "s#$dir/##g; s#$dir#.#g"
 wait "$job"

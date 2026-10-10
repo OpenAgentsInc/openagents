@@ -198,3 +198,12 @@ run with a different agent binary or Claude Code version.
   briefing costs are reported apart; subscription billing is not observable.
 - **Reruns:** only trials that hit the login's usage limit (no outcome was
   observed). Nothing else is rerun or excluded.
+
+The first start of S2 was stopped before any trial finished: a stale process
+from the stopped exploratory round (a `coder host serve` a test had left
+running) held the build lock, and the per-issue prewarm was a no-op since the
+disconnect watcher (it saw the prewarm's closed stdin and stopped it). Both
+are fixed (commands run without the lock's descriptor; prewarm skips the
+watcher; incremental builds are off to fit the build host's 50 GB floor), and
+S2 restarted from scratch under the same plan. The exploratory rounds ran
+without a working prewarm, so their first trial per issue built cold.

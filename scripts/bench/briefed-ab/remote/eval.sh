@@ -21,7 +21,7 @@ if [ -s "$in/change.patch" ]; then
   git apply --binary --whitespace=nowarn "$in/change.patch" 2>"$in/apply.err" || applied=false
 fi
 if $applied; then
-  if timeout -k 10 "$limit" cargo check -q -p "$pkg" --tests --keep-going --message-format short >"$in/check.out" 2>&1; then compiles=true; else compiles=false; fi
+  if timeout -k 10 "$limit" cargo check -q -p "$pkg" --tests --keep-going --message-format short >"$in/check.out" 2>&1 9>&-; then compiles=true; else compiles=false; fi
   git add -A >/dev/null 2>&1
   if [ -s "$in/tests.patch" ]; then
     if python3 "$(dirname "$0")/overlay.py" "$in/tests.patch" >"$in/tests.err" 2>&1; then tests_applied=true; else tests_applied=false; fi
@@ -32,7 +32,7 @@ if $applied; then
     mapfile -t names < "$in/names.txt"
     targets=()
     [ -s "$in/targets.txt" ] && mapfile -t targets < "$in/targets.txt"
-    timeout -k 10 "${AB_TEST_LIMIT:-300}" cargo test -p "$pkg" "${targets[@]}" --no-fail-fast -- "${names[@]}" >"$in/test.out" 2>&1
+    timeout -k 10 "${AB_TEST_LIMIT:-300}" cargo test -p "$pkg" "${targets[@]}" --no-fail-fast -- "${names[@]}" >"$in/test.out" 2>&1 9>&-
     rc=$?
     if grep -q "could not compile" "$in/test.out"; then tests_compiled=false; else tests_compiled=true; fi
     passed=$(grep -Eo 'test result: [a-zA-Z]+\. [0-9]+ passed' "$in/test.out" | awk '{s+=$4} END {print s+0}')

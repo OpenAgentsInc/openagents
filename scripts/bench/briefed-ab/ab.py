@@ -599,7 +599,7 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     return record
 
 
-MIN_FREE_GB = 60
+MIN_FREE_GB = 55
 
 
 def disk_guard() -> None:
@@ -632,7 +632,7 @@ def prewarm(task: dict, slot: int) -> float:
     """Build the parent's package and tests in the slot (the warm cache)."""
     t0 = time.time()
     pkg = task["package"]
-    run(SSH + [f"bash ~/ab/bin/run.sh {slot} {task['parent']} . 2400 -- cargo test -p {pkg} --no-run -q"],
+    run(SSH + [f"AB_NO_WATCH=1 bash ~/ab/bin/run.sh {slot} {task['parent']} . 2400 -- cargo test -p {pkg} --no-run -q"],
         input="0\n", check=False, timeout=3000)
     return time.time() - t0
 
