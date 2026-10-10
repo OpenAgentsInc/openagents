@@ -581,7 +581,7 @@ gateway.
 
 | Need | Existing piece |
 | --- | --- |
-| API keys | `tenancy::keys`: `oak_<id>.<secret>` bearer keys, stored as digests |
+| API keys | `tenancy::keys`: `oak_<id>.<secret>` bearer keys, stored as digests; a signed-in account's `sess_` session token is admitted the same way, in its personal workspace (see "P1 public API as built" in section 13) |
 | Accounts and workspaces | `tenancy::accounts` and the gateway's account routes and SSO |
 | Prices | `tenancy::money::Price` and `Rate` (input, cached input, output, reasoning tokens) |
 | Hold, then settle | `tenancy::quota` and the gateway's `money` module (`observed-usage-v1`: reserve the worst case, settle the reported usage) |
@@ -824,6 +824,20 @@ P1 public API as built (#11065), deployed in both gateway sidecars:
   every run (plain, stored turns, compaction, hosted tool loops, the
   WebSocket) is checked against the key's limits, planned
   (`Gateway::prepare`), admitted, sent (`Gateway::send`), and settled.
+- A signed-in person's `sess_` session token (what Coder holds after the
+  RFC 8628 device sign-in) is admitted on the same path as a public
+  `oak_` key, so a signed-in Coder's `openagents/auto` runs on the
+  gateway: `admit` resolves it with the account routes' own session-book
+  lookup (`accounts::session_principal`), and an active User session
+  acts in its account's personal workspace (or the workspace
+  `X-Workspace-Id` names where the account is an active member, or its
+  one active workspace) with the free tier, limits, balance hold, and
+  metering of that workspace, under the key id `session:<session
+  digest>`. It is never a service caller. An anonymous session, a closed
+  (expired, logged-out, revoked) one, and an unknown `sess_` token get
+  `401 unauthorized` with a message saying which; without
+  `inference.public` a session is refused like any non-service key.
+  `/v1/key` still answers keys only.
 - Free tier: `inference.public.free_tier` (`requests_per_day`, `models`),
   counted per workspace per UTC day so minting keys does not add free
   requests, and never per tenant, which every personal workspace made by

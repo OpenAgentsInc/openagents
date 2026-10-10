@@ -560,3 +560,119 @@ async fn public_token_totals_match_answering_meter_records() {
     assert_eq!(day, &report["totals"]);
     assert!(!report.to_string().contains("acme"));
 }
+
+/// A signed-in person's `sess_` session (what Coder holds after the
+/// device sign-in), its account's personal workspace on `acme`, and the
+/// anonymous and closed sessions that are refused.
+struct Signed {
+    user: String,
+    anonymous: String,
+    revoked: String,
+}
+
+fn sign_in(d: &Deployment) -> Signed {
+    use tenancy::Accounts;
+    use tenancy::accounts::WorkspaceKind;
+    use tenancy::sessions::{SessionBook, Sessions};
+    use tenancy::workspaces::UserId;
+    let dir = d._dir.path();
+    let accounts = Accounts::install(dir).unwrap();
+    let ada = accounts.create_account("Ada", &[]).unwrap();
+    let gone = accounts.create_account("Gone", &[]).unwrap();
+    for who in [&ada, &gone] {
+        accounts
+            .create_workspace(&who.id, &who.label, WorkspaceKind::Personal, "acme", None)
+            .unwrap();
+    }
+    let sessions = Sessions::install(dir, SessionBook::new(3600, 3600)).unwrap();
+    let user = sessions
+        .mutate(|book, _, now| book.issue(UserId::from(ada.id.as_str()), now))
+        .unwrap()
+        .once;
+    let anonymous = sessions
+        .mutate(|book, _, now| book.issue_anonymous(now))
+        .unwrap()
+        .once;
+    let revoked = sessions
+        .mutate(|book, _, now| book.issue(UserId::from(gone.id.as_str()), now))
+        .unwrap()
+        .once;
+    sessions
+        .mutate(|book, _, now| {
+            book.revoke_all(&UserId::from(gone.id.as_str()), now);
+            Ok(())
+        })
+        .unwrap();
+    Signed {
+        user,
+        anonymous,
+        revoked,
+    }
+}
+
+fn chat(model: &str) -> Value {
+    json!({"model": model, "stream": false, "messages": [{"role": "user", "content": "hi"}]})
+}
+
+#[tokio::test]
+async fn a_signed_in_session_runs_inference_in_its_own_workspace() {
+    let d = deploy(true, None).await;
+    let signed = sign_in(&d);
+    // Its personal workspace has no balance: the paid model is held
+    // against it and refused, exactly as for a key in that workspace.
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(PAID)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    assert_eq!(body["error"]["type"], "insufficient_balance");
+    // The free tier counts per workspace: two free requests, then none.
+    for _ in 0..2 {
+        let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(FREE)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["object"], "chat.completion");
+    }
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(FREE)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    // The tenant's own key, in no account's workspace, keeps its own.
+    let (status, body, _) = call(&d, &d.acme, "/v1/chat/completions", chat(FREE)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn anonymous_closed_and_unknown_sessions_are_refused() {
+    let d = deploy(true, None).await;
+    let signed = sign_in(&d);
+    for (token, message) in [
+        (
+            signed.anonymous.as_str(),
+            "An anonymous session can't run inference. Sign in, or use an API key.",
+        ),
+        (
+            signed.revoked.as_str(),
+            "Your session is revoked. Sign in again.",
+        ),
+        (
+            "sess_notarealsession",
+            "Your session token isn't recognized. Sign in again.",
+        ),
+    ] {
+        let (status, body, _) = call(&d, token, "/v1/chat/completions", chat(FREE)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+        assert_eq!(body["error"]["type"], "unauthorized");
+        assert_eq!(body["error"]["message"], message);
+        assert!(
+            !body.to_string().contains(token),
+            "the token is never echoed"
+        );
+    }
+}
+
+#[tokio::test]
+async fn without_public_terms_a_session_is_refused_like_a_key() {
+    let d = deploy(false, None).await;
+    let signed = sign_in(&d);
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(FREE)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(
+        body["error"]["message"],
+        "Inference is open to OpenAgents services only for now."
+    );
+}

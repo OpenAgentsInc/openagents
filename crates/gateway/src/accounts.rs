@@ -315,35 +315,23 @@ fn principal_unbound(
 ) -> Result<Principal, Response> {
     let token = bearer(headers)?;
     if token.starts_with("sess_") {
-        let sessions = sessions_store(state)?;
-        let store = sessions
-            .store()
-            .map_err(|t| unavailable("sessions_unavailable", t.to_string()))?;
-        let session = store.book.session_of_token(&token).ok_or_else(|| {
-            refused(
+        return session_principal(state, &token).map_err(|refusal| match refusal {
+            SessionRefusal::Unavailable(details) => unavailable(
+                "sessions_unavailable",
+                format!(
+                    "The service can't read sessions right now. Try again later. Details: {details}"
+                ),
+            ),
+            SessionRefusal::Unknown => refused(
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
                 "Your session token isn't recognized. Sign in again.",
-            )
-        })?;
-        if session.standing(unix_now()) != sessions::SessionState::Active {
-            return Err(refused(
+            ),
+            SessionRefusal::Closed(standing) => refused(
                 StatusCode::UNAUTHORIZED,
                 "session_closed",
-                format!(
-                    "Your session is {}. Sign in again.",
-                    session.standing(unix_now())
-                ),
-            ));
-        }
-        return Ok(match session.kind {
-            SessionKind::Anonymous => Principal::Anonymous {
-                session: session.id.as_str().to_string(),
-            },
-            SessionKind::User => Principal::Account {
-                account: session.user.as_str().to_string(),
-                session: Some(session.id.as_str().to_string()),
-            },
+                format!("Your session is {standing}. Sign in again."),
+            ),
         });
     }
     let registry = registry(state)?;
@@ -385,6 +373,47 @@ fn principal_unbound(
     Ok(Principal::Account {
         account,
         session: None,
+    })
+}
+
+/// Why a `sess_` token names no active session.
+pub(crate) enum SessionRefusal {
+    /// The session book can't be read; the details are the store's.
+    Unavailable(String),
+    /// No session has this token's digest.
+    Unknown,
+    /// The session exists but is expired, logged out, or revoked.
+    Closed(sessions::SessionState),
+}
+
+/// Resolve a `sess_` token through the session book: an active
+/// user-kind session names its account, an anonymous-kind one the funded
+/// lane. The account routes ([`principal`]) and inference admission
+/// (`inference_routes::admit`) share this one lookup; the token is only
+/// ever digested, never logged.
+pub(crate) fn session_principal(
+    state: &ServeState,
+    token: &str,
+) -> Result<Principal, SessionRefusal> {
+    let store = sessions::Sessions::open(&state.dir)
+        .and_then(|sessions| sessions.store())
+        .map_err(|trouble| SessionRefusal::Unavailable(trouble.to_string()))?;
+    let session = store
+        .book
+        .session_of_token(token)
+        .ok_or(SessionRefusal::Unknown)?;
+    let standing = session.standing(unix_now());
+    if standing != sessions::SessionState::Active {
+        return Err(SessionRefusal::Closed(standing));
+    }
+    Ok(match session.kind {
+        SessionKind::Anonymous => Principal::Anonymous {
+            session: session.id.as_str().to_string(),
+        },
+        SessionKind::User => Principal::Account {
+            account: session.user.as_str().to_string(),
+            session: Some(session.id.as_str().to_string()),
+        },
     })
 }
 

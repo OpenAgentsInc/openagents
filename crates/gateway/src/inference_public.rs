@@ -761,6 +761,62 @@ pub(crate) fn key_scope(
     }
 }
 
+/// The workspace, and the registry tenant it binds to, that a signed-in
+/// account's `sess_` session acts in: the workspace `X-Workspace-Id`
+/// names when the account is a current member there, otherwise the
+/// account's personal workspace, otherwise its one active workspace.
+/// Like [`key_scope`], never the tenant every personal workspace shares.
+pub(crate) fn session_scope(
+    state: &ServeState,
+    account: &str,
+    named: Option<&str>,
+) -> Result<(String, String), ApiError> {
+    let unavailable = || {
+        ApiError::new(
+            ErrorType::ServerError,
+            "Your account can't be checked right now. Try again in a minute.",
+        )
+    };
+    let accounts = tenancy::Accounts::open(&state.dir).map_err(|_| unavailable())?;
+    let store = accounts.store().map_err(|_| unavailable())?;
+    let active = |ws: &&tenancy::accounts::Workspace| {
+        ws.members
+            .get(account)
+            .is_some_and(|m| m.status == tenancy::accounts::MemberStatus::Active)
+    };
+    if let Some(named) = named {
+        return store
+            .workspaces
+            .get(named)
+            .filter(active)
+            .map(|ws| (ws.tenant.clone(), ws.id.clone()))
+            .ok_or_else(|| {
+                ApiError::new(
+                    ErrorType::Unauthorized,
+                    "Your account isn't a current member of that workspace.",
+                )
+            });
+    }
+    let mine: Vec<&tenancy::accounts::Workspace> =
+        store.workspaces.values().filter(active).collect();
+    let personal: Vec<&tenancy::accounts::Workspace> = mine
+        .iter()
+        .copied()
+        .filter(|ws| ws.kind == tenancy::accounts::WorkspaceKind::Personal)
+        .collect();
+    match (personal.as_slice(), mine.as_slice()) {
+        ([own], _) | ([], [own]) => Ok((own.tenant.clone(), own.id.clone())),
+        ([], []) => Err(ApiError::new(
+            ErrorType::Unauthorized,
+            "Your account has no workspace to run inference in. Finish signing up on openagents.com.",
+        )),
+        _ => Err(ApiError::invalid_request(
+            "X-Workspace-Id",
+            "Your account is in more than one workspace. Send an X-Workspace-Id header naming the one to use.",
+        )),
+    }
+}
+
 /// The `X-Workspace-Id` a request named, when it named one.
 pub(crate) fn named_workspace(headers: &HeaderMap) -> Option<&str> {
     headers

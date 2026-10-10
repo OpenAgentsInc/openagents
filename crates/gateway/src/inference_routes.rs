@@ -265,12 +265,25 @@ pub(crate) fn error(error: &ApiError, request_id: &str) -> Response {
     response
 }
 
+/// Who a request's bearer credential admits: the registry tenant, the
+/// id limits and metering are kept under, the key's scopes, and the
+/// workspace it acts in.
+struct Admitted {
+    tenant: String,
+    key_id: String,
+    scopes: Option<keys::Scopes>,
+    scope: String,
+    service: bool,
+}
+
 /// The caller, or the refusal. A service tenant's key is metered and not
 /// charged. With `inference.public` set, any other key is admitted with
 /// [`crate::inference_public::PublicAdmission`]: its owner's limits, the
-/// free tier, and the balance hold, on every run its requests make.
+/// free tier, and the balance hold, on every run its requests make. So
+/// is a signed-in person's `sess_` session (the token Coder holds after
+/// the device sign-in): it acts in that account's personal workspace,
+/// under the key id `session:<session digest>`.
 pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Caller, ApiError> {
-    let unauthorized = |message: &str| ApiError::new(ErrorType::Unauthorized, message);
     let Some(config) = &state.config.inference else {
         return Err(ApiError::new(
             ErrorType::NotFound,
@@ -281,7 +294,79 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         .get("authorization")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or_else(|| unauthorized("Send your API key in the `Authorization: Bearer` header."))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                ErrorType::Unauthorized,
+                "Send your API key in the `Authorization: Bearer` header.",
+            )
+        })?;
+    let Admitted {
+        tenant,
+        key_id,
+        scopes,
+        scope,
+        service,
+    } = if token.starts_with("sess_") {
+        admit_session(state, config, headers, token)?
+    } else {
+        admit_key(state, config, headers, token)?
+    };
+    let admission = (!service).then(|| {
+        inference::run::Admission(Arc::new(crate::inference_public::PublicAdmission::new(
+            state.clone(),
+            crate::inference_public::Public {
+                tenant: tenant.clone(),
+                key_id: key_id.clone(),
+                scopes,
+                scope: scope.clone(),
+            },
+        )))
+    });
+    // The workspace's own provider keys; `run_responses` and `run_chat`
+    // add the key owner's own linked computers (#11080,
+    // `crate::inference_own_coder::attach`), which need an async read.
+    let own = crate::inference_byok::own(state, &scope);
+    Ok(Caller {
+        request_id: request_id(),
+        tenant: Some(tenant),
+        key_id: Some(key_id),
+        api: Api::Responses,
+        traffic: inference::meter::Traffic {
+            audience: if service {
+                inference::meter::Audience::Internal
+            } else {
+                inference::meter::Audience::Outside
+            },
+            payment: if service {
+                inference::meter::Payment::Free
+            } else {
+                inference::meter::Payment::Unknown
+            },
+            synthetic: false,
+        },
+        limits: inference::router::PriceLimit::default(),
+        admission,
+        own,
+        owner: Some(scope),
+    })
+}
+
+fn services_only() -> ApiError {
+    ApiError::new(
+        ErrorType::LimitReached,
+        "Inference is open to OpenAgents services only for now.",
+    )
+}
+
+/// An `oak_` key: a service tenant's, or with `inference.public` set any
+/// active key, acting in the workspace
+/// [`crate::inference_public::key_scope`] finds.
+fn admit_key(
+    state: &Arc<ServeState>,
+    config: &crate::config::Inference,
+    headers: &HeaderMap,
+    token: &str,
+) -> Result<Admitted, ApiError> {
     let registry = Registry::open(&state.dir).map_err(|_| {
         ApiError::new(
             ErrorType::ServerError,
@@ -289,16 +374,13 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         )
     })?;
     let authenticated = keys::authenticate(&state.dir, registry.manifest(), token)
-        .map_err(|_| unauthorized("Your API key was rejected."))?;
+        .map_err(|_| ApiError::new(ErrorType::Unauthorized, "Your API key was rejected."))?;
     let service = config
         .service_tenants
         .iter()
         .any(|tenant| *tenant == authenticated.tenant);
     if !service && config.public.is_none() {
-        return Err(ApiError::new(
-            ErrorType::LimitReached,
-            "Inference is open to OpenAgents services only for now.",
-        ));
+        return Err(services_only());
     }
     if authenticated
         .scopes
@@ -328,43 +410,66 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         Err(_) if service => authenticated.tenant.clone(),
         Err(refusal) => return Err(refusal),
     };
-    let admission = (!service).then(|| {
-        inference::run::Admission(Arc::new(crate::inference_public::PublicAdmission::new(
-            state.clone(),
-            crate::inference_public::Public {
-                tenant: authenticated.tenant.clone(),
-                key_id: authenticated.key_id.clone(),
-                scopes: authenticated.scopes.clone(),
-                scope: scope.clone(),
-            },
-        )))
-    });
-    // The workspace's own provider keys; `run_responses` and `run_chat`
-    // add the key owner's own linked computers (#11080,
-    // `crate::inference_own_coder::attach`), which need an async read.
-    let own = crate::inference_byok::own(state, &scope);
-    Ok(Caller {
-        request_id: request_id(),
-        tenant: Some(authenticated.tenant),
-        key_id: Some(authenticated.key_id),
-        api: Api::Responses,
-        traffic: inference::meter::Traffic {
-            audience: if service {
-                inference::meter::Audience::Internal
-            } else {
-                inference::meter::Audience::Outside
-            },
-            payment: if service {
-                inference::meter::Payment::Free
-            } else {
-                inference::meter::Payment::Unknown
-            },
-            synthetic: false,
-        },
-        limits: inference::router::PriceLimit::default(),
-        admission,
-        own,
-        owner: Some(scope),
+    Ok(Admitted {
+        tenant: authenticated.tenant,
+        key_id: authenticated.key_id,
+        scopes: authenticated.scopes,
+        scope,
+        service,
+    })
+}
+
+/// A `sess_` session, resolved by the same session-book lookup as the
+/// account routes ([`crate::accounts::session_principal`]). Only an
+/// active user session is admitted, and only as a public caller (never a
+/// service): the same free tier, limits, balance hold, and metering as
+/// an `oak_` key, in the account's workspace
+/// ([`crate::inference_public::session_scope`]). The token is never
+/// logged or echoed; only its digest names the session.
+fn admit_session(
+    state: &Arc<ServeState>,
+    config: &crate::config::Inference,
+    headers: &HeaderMap,
+    token: &str,
+) -> Result<Admitted, ApiError> {
+    use crate::accounts::{Principal, SessionRefusal};
+    let unauthorized = |message: String| ApiError::new(ErrorType::Unauthorized, message);
+    let principal =
+        crate::accounts::session_principal(state, token).map_err(|refusal| match refusal {
+            SessionRefusal::Unavailable(_) => ApiError::new(
+                ErrorType::ServerError,
+                "Your session can't be checked right now. Try again in a minute.",
+            ),
+            SessionRefusal::Unknown => {
+                unauthorized("Your session token isn't recognized. Sign in again.".into())
+            }
+            SessionRefusal::Closed(standing) => {
+                unauthorized(format!("Your session is {standing}. Sign in again."))
+            }
+        })?;
+    let Principal::Account {
+        account,
+        session: Some(session),
+    } = principal
+    else {
+        return Err(unauthorized(
+            "An anonymous session can't run inference. Sign in, or use an API key.".into(),
+        ));
+    };
+    if config.public.is_none() {
+        return Err(services_only());
+    }
+    let (tenant, scope) = crate::inference_public::session_scope(
+        state,
+        &account,
+        crate::inference_public::named_workspace(headers),
+    )?;
+    Ok(Admitted {
+        tenant,
+        key_id: format!("session:{session}"),
+        scopes: None,
+        scope,
+        service: false,
     })
 }
 
