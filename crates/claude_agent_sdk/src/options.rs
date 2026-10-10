@@ -6,6 +6,7 @@
 
 use crate::callbacks::{ElicitationHandler, HookMatcher, UserDialogHandler};
 use crate::error::{Error, Result};
+use crate::mcp::SdkMcpServer;
 use crate::protocol::{HookEvent, InitializeRequest, PermissionMode, SdkHookCallbackMatcher};
 use crate::transport::ExecutableConfig;
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,16 @@ pub struct QueryOptions {
 
     /// MCP server configurations.
     pub mcp_servers: HashMap<String, McpServerConfig>,
+
+    /// SDK-hosted (in-process) MCP servers, named in
+    /// `initialize.sdkMcpServers` and served over `mcp_message`.
+    pub sdk_mcp_servers: Vec<Arc<SdkMcpServer>>,
+
+    /// Send each SDK-hosted server's `initialize` and `tools/list` results
+    /// in `initialize.sdkMcpServerManifests` (TS `captureSdkMcpManifests`),
+    /// saving the CLI those round trips. `mcp_message` is answered either
+    /// way.
+    pub sdk_mcp_manifests: bool,
 
     /// Use only the MCP servers in `mcp_servers` (`--strict-mcp-config`).
     pub strict_mcp_config: bool,
@@ -538,6 +549,22 @@ impl QueryOptions {
         self
     }
 
+    /// Register an SDK-hosted (in-process) MCP server (TS
+    /// `createSdkMcpServer` in `mcpServers`). Its tools are
+    /// `mcp__<server>__<tool>`; a server of the same name is replaced.
+    pub fn sdk_mcp_server(mut self, server: SdkMcpServer) -> Self {
+        self.sdk_mcp_servers.retain(|s| s.name() != server.name());
+        self.sdk_mcp_servers.push(Arc::new(server));
+        self
+    }
+
+    /// Send SDK-hosted server manifests in `initialize`
+    /// (see [`QueryOptions::sdk_mcp_manifests`]).
+    pub fn sdk_mcp_manifests(mut self, on: bool) -> Self {
+        self.sdk_mcp_manifests = on;
+        self
+    }
+
     /// Add a custom agent.
     pub fn agent(mut self, name: impl Into<String>, definition: AgentDefinition) -> Self {
         self.agents.insert(name.into(), definition);
@@ -601,6 +628,19 @@ impl QueryOptions {
                 "a permission handler cannot be combined with permission_prompt_tool_name"
                     .to_string(),
             ));
+        }
+        for server in &self.sdk_mcp_servers {
+            if server.name().is_empty() {
+                return Err(Error::InvalidOptions(
+                    "an SDK MCP server needs a name".to_string(),
+                ));
+            }
+            if self.mcp_servers.contains_key(server.name()) {
+                return Err(Error::InvalidOptions(format!(
+                    "MCP server name {:?} is used by both an SDK server and mcp_servers",
+                    server.name()
+                )));
+            }
         }
         if self.sandbox.is_some()
             && matches!(&self.settings, Some(Value::String(path)) if !is_inline_json(path))
@@ -878,8 +918,24 @@ impl QueryOptions {
         hooks: Option<HashMap<HookEvent, Vec<SdkHookCallbackMatcher>>>,
     ) -> InitializeRequest {
         let flag = |on: bool| on.then_some(true);
+        let sdk = &self.sdk_mcp_servers;
+        let configs: HashMap<String, Value> = sdk
+            .iter()
+            .filter_map(|s| {
+                s.timeout()
+                    .map(|t| (s.name().to_string(), serde_json::json!({ "timeout": t })))
+            })
+            .collect();
         InitializeRequest {
             hooks,
+            sdk_mcp_servers: (!sdk.is_empty())
+                .then(|| sdk.iter().map(|s| s.name().to_string()).collect()),
+            sdk_mcp_server_configs: (!configs.is_empty()).then_some(configs),
+            sdk_mcp_server_manifests: (self.sdk_mcp_manifests && !sdk.is_empty()).then(|| {
+                sdk.iter()
+                    .map(|s| (s.name().to_string(), s.manifest()))
+                    .collect()
+            }),
             title: self.title.clone(),
             skills: self.skills.clone(),
             plan_mode_instructions: self.plan_mode_instructions.clone(),

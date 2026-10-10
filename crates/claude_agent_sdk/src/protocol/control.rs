@@ -309,6 +309,13 @@ pub struct InitializeRequest {
     pub hooks: Option<HashMap<HookEvent, Vec<SdkHookCallbackMatcher>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sdk_mcp_servers: Option<Vec<String>>,
+    /// Per-server settings (`timeout`) for the servers in `sdk_mcp_servers`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sdk_mcp_server_configs: Option<HashMap<String, Value>>,
+    /// Each server's own `initialize` and `tools/list` results, so the CLI
+    /// skips those `mcp_message` round trips.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sdk_mcp_server_manifests: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub json_schema: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -66,7 +66,8 @@
 //! - **Streaming responses**: Process messages as they arrive via async streams
 //! - **Custom permissions**: Fine-grained control over tool usage
 //! - **Session management**: Continue or resume conversations
-//! - **MCP servers**: Add custom tools via Model Context Protocol
+//! - **MCP servers**: Add custom tools via Model Context Protocol, including
+//!   in-process tools written in Rust ([`SdkMcpServer`])
 //! - **Custom agents**: Define sub-agents with specific capabilities
 //!
 //! ## Protocol
@@ -76,6 +77,7 @@
 
 pub mod callbacks;
 pub mod error;
+pub mod mcp;
 pub mod options;
 pub mod permissions;
 pub mod protocol;
@@ -89,6 +91,7 @@ pub const UPSTREAM_SDK_VERSION: &str = "0.3.296";
 // Re-export main types at crate root
 pub use callbacks::{ElicitationHandler, HookCallback, HookMatcher, UserDialogHandler, hook_fn};
 pub use error::{Error, Result};
+pub use mcp::{SdkMcpServer, SdkMcpTool, ToolContent, ToolResult, mcp_tool_name};
 pub use options::{
     AgentDefinition, AgentModel, DEFAULT_CONTROL_TIMEOUT, EffortLevel, McpServerConfig,
     OutputFormat, PermissionPrompts, PluginConfig, PluginDelivery, QueryOptions,

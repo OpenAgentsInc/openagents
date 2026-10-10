@@ -392,6 +392,59 @@ if let Some(session_id) = query.session_id() {
 }
 ```
 
+## Custom Tools (In-Process MCP Servers)
+
+Tools written in Rust can run inside the host process, as with the TS
+SDK's `tool()` and `createSdkMcpServer()`. Build an `SdkMcpServer`, add
+tools with a JSON Schema and an async handler, and register it with
+`sdk_mcp_server`. The server is named in the `initialize` request; the CLI
+then sends each MCP JSON-RPC message (`initialize`, `tools/list`,
+`tools/call`, notifications) as an `mcp_message` control request, and the
+crate answers from the server. The model sees each tool as
+`mcp__<server>__<tool>`, which is also the name `allowed_tools` takes.
+
+```rust,no_run
+use claude_agent_sdk::{QueryOptions, SdkMcpServer, ToolResult, query};
+use serde_json::json;
+
+# async fn example() -> Result<(), claude_agent_sdk::Error> {
+let calc = SdkMcpServer::new("calc", "1.0.0").tool(
+    "add",
+    "Add two numbers and return the sum.",
+    json!({
+        "type": "object",
+        "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+        "required": ["a", "b"]
+    }),
+    |args| async move {
+        let (Some(a), Some(b)) = (args["a"].as_f64(), args["b"].as_f64()) else {
+            return Ok(ToolResult::error("a and b must be numbers"));
+        };
+        Ok(ToolResult::text((a + b).to_string()))
+    },
+);
+let mut options = QueryOptions::new().sdk_mcp_server(calc);
+options.allowed_tools = Some(vec!["mcp__calc__add".into()]);
+let stream = query("Use the add tool to add 1234 and 5678.", options).await?;
+# Ok(())
+# }
+```
+
+`ToolResult` carries text and base64 image blocks (`text`, `image`,
+`with_text`, `with_image`), optional `structuredContent`, and `is_error`
+(`ToolResult::error`). A handler that returns `Err` becomes an `isError`
+result with the error text. `SdkMcpTool` adds annotations, `always_load`,
+and a tool-search hint; the server takes `instructions`, `always_load`, and
+a per-server `timeout_ms`. `sdk_mcp_manifests(true)` sends each server's
+`initialize` and `tools/list` results in `initialize`, saving the CLI those
+round trips. The CLI cuts tool descriptions at 4,096 characters (16,384
+when loaded through tool search). The live example, which has Claude call
+`add` on the owner's login:
+
+```bash
+cargo run -p claude_agent_sdk --example sdk_mcp_tools
+```
+
 ## Hooks, Elicitation, and Dialogs
 
 Hook callbacks run in the host. The CLI calls them over the control

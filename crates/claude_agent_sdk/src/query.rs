@@ -2,6 +2,7 @@
 
 use crate::callbacks::{ElicitationHandler, HookRegistry, UserDialogHandler};
 use crate::error::{Error, Result};
+use crate::mcp::SdkMcpServer;
 use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
@@ -45,6 +46,8 @@ struct ControlHandlers {
     hooks: HookRegistry,
     on_elicitation: Option<Arc<dyn ElicitationHandler>>,
     on_user_dialog: Option<Arc<dyn UserDialogHandler>>,
+    /// SDK-hosted MCP servers, by name.
+    sdk_mcp_servers: HashMap<String, Arc<SdkMcpServer>>,
     /// Inbound requests being answered, so a `control_cancel_request` can
     /// stop one and a duplicate delivery is skipped.
     in_flight: Mutex<HashMap<String, tokio::task::AbortHandle>>,
@@ -107,10 +110,17 @@ impl ControlHandlers {
                 .run(hook)
                 .await
                 .and_then(|out| Ok(Some(serde_json::to_value(out)?))),
-            ControlRequestData::McpMessage(ref message) => Err(Error::McpError(format!(
-                "SDK MCP server not found: {}",
-                message.server_name
-            ))),
+            ControlRequestData::McpMessage(ref message) => {
+                match self.sdk_mcp_servers.get(&message.server_name) {
+                    Some(server) => Ok(Some(serde_json::json!({
+                        "mcp_response": server.handle_message(&message.message).await
+                    }))),
+                    None => Err(Error::McpError(format!(
+                        "SDK MCP server not found: {}",
+                        message.server_name
+                    ))),
+                }
+            }
             ControlRequestData::Elicitation(ref elicitation) => match &self.on_elicitation {
                 Some(handler) => match handler.elicit(elicitation).await {
                     Ok(Some(answer)) => serde_json::to_value(answer).map(Some).map_err(Error::from),
@@ -214,6 +224,11 @@ impl Query {
             hooks,
             on_elicitation: options.on_elicitation.clone(),
             on_user_dialog: options.on_user_dialog.clone(),
+            sdk_mcp_servers: options
+                .sdk_mcp_servers
+                .iter()
+                .map(|s| (s.name().to_string(), s.clone()))
+                .collect(),
             in_flight: Mutex::new(HashMap::new()),
         });
 
@@ -1380,6 +1395,138 @@ rl.on('line', (line) => {
             reply["response"]["response"]["hookSpecificOutput"]["permissionDecision"],
             "deny"
         );
+    }
+
+    fn add_server() -> SdkMcpServer {
+        SdkMcpServer::new("calc", "1.0.0").timeout_ms(30_000).tool(
+            "add",
+            "Add two numbers",
+            serde_json::json!({
+                "type": "object",
+                "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+                "required": ["a", "b"]
+            }),
+            |args| async move {
+                let sum =
+                    args["a"].as_f64().unwrap_or_default() + args["b"].as_f64().unwrap_or_default();
+                Ok(crate::mcp::ToolResult::text(sum.to_string()))
+            },
+        )
+    }
+
+    fn mcp_frame(request_id: &str, server: &str, message: Value) -> Value {
+        serde_json::json!({
+            "type": "control_request",
+            "request_id": request_id,
+            "request": {"subtype": "mcp_message", "server_name": server, "message": message}
+        })
+    }
+
+    #[tokio::test]
+    async fn sdk_mcp_server_answers_list_and_call_over_mcp_message() {
+        let options = QueryOptions::new().sdk_mcp_server(add_server());
+        assert!(
+            flag_value(&options.build_args(), "--mcp-config").is_none(),
+            "SDK servers go in initialize, not --mcp-config"
+        );
+        let frames = [
+            mcp_frame(
+                "cli-mcp-0",
+                "calc",
+                serde_json::json!({"jsonrpc": "2.0", "id": 0, "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                               "clientInfo": {"name": "claude-code", "version": "2.1.296"}}}),
+            ),
+            mcp_frame(
+                "cli-mcp-1",
+                "calc",
+                serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            ),
+            mcp_frame(
+                "cli-mcp-2",
+                "calc",
+                serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+            ),
+            mcp_frame(
+                "cli-mcp-3",
+                "calc",
+                serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                    "params": {"name": "add", "arguments": {"a": 2, "b": 3}}}),
+            ),
+            mcp_frame(
+                "cli-mcp-4",
+                "nope",
+                serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),
+            ),
+        ];
+        let lines = run_scripted(&frames, options, Duration::from_millis(250)).await;
+
+        let init = &lines[0]["request"];
+        assert_eq!(init["subtype"], "initialize");
+        assert_eq!(init["sdkMcpServers"], serde_json::json!(["calc"]));
+        assert_eq!(init["sdkMcpServerConfigs"]["calc"]["timeout"], 30_000);
+        assert!(init.get("sdkMcpServerManifests").is_none());
+
+        let mcp = |id: &str| {
+            let reply = reply_to(&lines, id).unwrap_or_else(|| panic!("no reply to {id}"));
+            assert_eq!(reply["response"]["subtype"], "success", "{reply}");
+            reply["response"]["response"]["mcp_response"].clone()
+        };
+        let initialized = mcp("cli-mcp-0");
+        assert_eq!(initialized["id"], 0);
+        assert_eq!(initialized["result"]["serverInfo"]["name"], "calc");
+        assert_eq!(
+            mcp("cli-mcp-1"),
+            serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 0})
+        );
+        let listed = mcp("cli-mcp-2");
+        assert_eq!(listed["id"], 1);
+        assert_eq!(listed["result"]["tools"][0]["name"], "add");
+        assert_eq!(
+            listed["result"]["tools"][0]["inputSchema"]["required"][0],
+            "a"
+        );
+        let called = mcp("cli-mcp-3");
+        assert_eq!(called["id"], 2);
+        assert_eq!(called["result"]["content"][0]["text"], "5");
+
+        let missing = reply_to(&lines, "cli-mcp-4").expect("reply for an unknown server");
+        assert_eq!(missing["response"]["subtype"], "error");
+        assert!(
+            missing["response"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("nope")
+        );
+    }
+
+    #[tokio::test]
+    async fn sdk_mcp_manifests_ride_in_initialize_when_asked() {
+        let options = QueryOptions::new()
+            .sdk_mcp_server(add_server())
+            .sdk_mcp_manifests(true);
+        let lines = run_scripted(&[], options, Duration::from_millis(50)).await;
+        let manifest = &lines[0]["request"]["sdkMcpServerManifests"]["calc"];
+        assert_eq!(manifest["initializeResult"]["serverInfo"]["name"], "calc");
+        assert_eq!(manifest["toolsListResult"]["tools"][0]["name"], "add");
+    }
+
+    #[test]
+    fn sdk_mcp_server_name_cannot_shadow_a_process_server() {
+        let options = QueryOptions::new()
+            .mcp_server(
+                "calc",
+                crate::options::McpServerConfig::Stdio {
+                    command: "calc".into(),
+                    args: None,
+                    env: None,
+                },
+            )
+            .sdk_mcp_server(add_server());
+        assert!(matches!(
+            options.validate(false),
+            Err(Error::InvalidOptions(_))
+        ));
     }
 
     #[tokio::test]

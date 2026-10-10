@@ -199,10 +199,52 @@ from 0.3.172.
 - `cargo test -p microcoder`: the `claude_sdk` engine's fake-CLI tests,
   updated for the joined flag spelling.
 
+## SDK-hosted MCP servers
+
+Added after 0.3.296 parity (`src/mcp.rs`): `SdkMcpServer` and `SdkMcpTool`
+are the Rust `createSdkMcpServer()` and `tool()`, and
+`QueryOptions::sdk_mcp_server` registers one.
+
+- As in the TS SDK, an SDK server is not written to `--mcp-config`; its
+  name goes in `initialize.sdkMcpServers`, and a `timeout_ms` goes in
+  `initialize.sdkMcpServerConfigs` as `{"timeout": ms}`.
+- `mcp_message` requests route to the named server and are answered with
+  `{"mcp_response": <JSON-RPC reply>}`. `initialize` answers with the
+  requested protocol version when supported (else 2025-11-25),
+  `capabilities.tools`, `serverInfo`, and `instructions`; `tools/list`
+  gives `name`, `description`, `inputSchema`, `annotations`, and `_meta`
+  (`anthropic/alwaysLoad`, `anthropic/searchHint`); `tools/call` runs the
+  handler; `ping` answers `{}`. An unknown tool is JSON-RPC error -32602
+  and an unknown method -32601. A notification or response gets the TS
+  SDK's acknowledgement `{"jsonrpc":"2.0","result":{},"id":0}`. An unknown
+  server name is a control error, as in the TS SDK.
+- A handler `Err` becomes an `isError` result with the error text, as the
+  TS `McpServer` does for a throw. Results carry text and image content,
+  `isError`, and `structuredContent`.
+- `sdk_mcp_manifests(true)` sends `initialize.sdkMcpServerManifests`
+  (TS `captureSdkMcpManifests`); `mcp_message` is still answered for every
+  server.
+- `validate` rejects an SDK server whose name is empty or also a key of
+  `mcp_servers`.
+- Tool names follow `mcp__<server>__<tool>` (`SdkMcpServer::tool_name`,
+  `allowed_tool_names`, `mcp_tool_name`).
+- The 0.3.296 description limits (4,096 characters up front and for
+  server instructions, 16,384 through tool search) are applied by the CLI;
+  the crate exports them as `MCP_DESCRIPTION_LIMIT` and
+  `MCP_DEFERRED_DESCRIPTION_LIMIT` and does not truncate.
+- Verified by unit tests for the JSON-RPC handling, fake-CLI tests for
+  `tools/list` and `tools/call` over `mcp_message`, and on 2026-10-09 by
+  `cargo run -p claude_agent_sdk --example sdk_mcp_tools` against Claude
+  Code 2.1.295 on the owner's login: `calc` reported `connected` in
+  `system/init`, Claude called `mcp__calc__add(1234, 5678)` once, and the
+  result was `success` with `6912`.
+
 ## Deferred
 
-- SDK-hosted MCP servers (`createSdkMcpServer`, `mcp_message` routing,
-  `sdkMcpServerManifests`).
+- SDK-hosted MCP server extras: input validation against the schema
+  (left to the CLI), `resources` and `prompts`, server-sent messages
+  (notifications and progress from the host to the CLI), and
+  `mcp_set_servers` with in-process servers.
 - Streaming input (`AsyncIterable` prompts, `streamInput`), and
   `abortController`, `stderr`, `spawnClaudeCodeProcess`, `loadTimeoutMs`,
   and `toolConfig`.
@@ -223,5 +265,3 @@ from 0.3.172.
 - `AgentDefinition` models the 0.3.172 fields plus `autoCompactWindow`;
   the other optional agent fields (`initialPrompt`, `maxTurns`,
   `background`, `omitClaudeMd`, and the rest) are not.
-- MCP description limits (4,096 and 16,384 characters) apply to
-  SDK-hosted MCP servers, which this crate does not support.
