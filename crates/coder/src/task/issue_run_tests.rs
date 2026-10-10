@@ -144,6 +144,20 @@ fn a_policy_file_is_read_and_its_absence_is_the_safe_default() {
     assert!(Land::parse("force").is_err());
 }
 
+#[test]
+fn the_landing_queue_is_a_way_to_land() {
+    assert_eq!(Land::parse("queue").unwrap(), Land::Queue);
+    assert!(Land::parse("sideways").unwrap_err().contains("`queue`"));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".openagents")).unwrap();
+    std::fs::write(dir.path().join(POLICY_FILE), r#"{"land": "queue"}"#).unwrap();
+    let policy = Policy::load(dir.path()).unwrap();
+    assert_eq!(policy.land, Land::Queue);
+    let written = serde_json::to_string(&policy).unwrap();
+    assert!(written.contains(r#""land":"queue""#), "{written}");
+    assert_eq!(serde_json::from_str::<Policy>(&written).unwrap(), policy);
+}
+
 /// This repository's own policy lands on main after the checks: fmt, and
 /// no clippy (8afcce4131).
 #[test]
@@ -436,6 +450,7 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
             top: dir.path().into(),
             now: || 100,
             artifacts: None,
+            queue: None,
         };
         let record = local_record();
         let mut flow = flow("working");
@@ -518,6 +533,7 @@ fn a_failure_comment_links_the_runs_uploaded_artifacts() {
         top: dir.path().into(),
         now: || 100,
         artifacts: Some(bucket.clone()),
+        queue: None,
     };
     let mut flow = flow("working");
     flow.finished = false;
@@ -582,6 +598,7 @@ fn started_fixture(dir: &Path) -> Started {
             top: dir.into(),
             now: || 100,
             artifacts: None,
+            queue: None,
         },
     }
 }
@@ -639,6 +656,7 @@ fn a_started_flow_goes_to_a_process_of_its_own_with_what_it_needs() {
         skip_claimed: true,
         now: || 100,
         artifacts: None,
+        queue: None,
     };
     assert_eq!(
         drive_with(&runner, dir.path(), "task-fixture-1234").unwrap_err(),
@@ -785,6 +803,7 @@ fn a_queue_leaves_an_issue_in_progress_on_the_project() {
         skip_claimed: true,
         now: || 1_000,
         artifacts: None,
+        queue: None,
     };
     let reference = Reference {
         repository: None,
@@ -1021,6 +1040,7 @@ fn stranded_run_comment(origin_ok: bool) -> (String, String, PathBuf, tempfile::
         top: worktree.clone(),
         now: || 100,
         artifacts: None,
+        queue: None,
     };
     let mut flow = flow("working");
     flow.finished = false;
@@ -1072,6 +1092,116 @@ fn a_change_that_cannot_land_is_kept_on_a_stranded_branch_on_origin() {
     );
     assert!(comment.contains(&format!("https://github.com/acme/app/tree/{branch}")));
     assert!(!comment.contains("Nothing was pushed"));
+}
+
+#[test]
+fn a_queued_change_is_pushed_and_submitted_and_the_issue_stays_open() {
+    use super::super::land_queue::{Dir, Queue, State};
+    let dir = tempfile::tempdir().unwrap();
+    let (origin, worktree) = committed_change(dir.path());
+    // The run's change is staged, not committed: the flow commits it.
+    git(&worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+    let queue = Arc::new(Dir(dir.path().join("queue")));
+    // `Comments` panics on close: the integrator closes, not the flow.
+    let tracker = Arc::new(Comments::default());
+    let record = local_record();
+    let work = Work {
+        store: dir.path().into(),
+        local: Arc::new(Local::new(dir.path().into())),
+        tracker: tracker.clone(),
+        checks: Arc::new(NoChecks),
+        policy: Policy {
+            land: Land::Queue,
+            ..Policy::default()
+        },
+        branch: "main".into(),
+        top: worktree.clone(),
+        now: || 1_791_000_000,
+        artifacts: None,
+        queue: Some(queue.clone()),
+    };
+    let mut flow = flow("working");
+    flow.finished = false;
+    flow.link.commits.clear();
+    flow.link.closed = false;
+    let issue = issue(&[]);
+    let mut run = Run {
+        work: &work,
+        flow: &mut flow,
+        record: &record,
+        issue: &issue,
+        repository: "acme/app",
+        worktree: &worktree,
+        turn: 1,
+        summaries: vec!["Fixed the docs.".into()],
+        checked: Checked::default(),
+        rounds: 0,
+        stranded: None,
+    };
+    run.land_queue();
+    let head = git(&worktree, &["rev-parse", "HEAD"]);
+
+    let entries = Queue { store: &*queue }.entries().unwrap();
+    assert_eq!(entries.len(), 1);
+    let entry = &entries[0];
+    assert_eq!(entry.issue, Some(42));
+    assert!(entry.close);
+    assert_eq!(entry.head, head);
+    assert_eq!(entry.state, State::Queued);
+    assert_eq!(entry.target, "main");
+    assert_eq!(entry.summary, "Fix the docs");
+    assert_eq!(entry.branch, format!("land/{}", entry.id));
+    assert!(!entry.machine.is_empty());
+    assert_eq!(
+        git(
+            &origin,
+            &["rev-parse", &format!("refs/heads/{}", entry.branch)]
+        ),
+        head,
+        "origin holds the queued head"
+    );
+    assert_eq!(
+        git(&origin, &["rev-parse", "refs/heads/main"]),
+        git(&worktree, &["rev-parse", "HEAD~1"]),
+        "the flow does not push main"
+    );
+
+    assert_eq!(flow.link.outcome, "queued");
+    assert_eq!(flow.link.commits, vec![head.clone()]);
+    assert!(!flow.link.closed);
+    assert!(flow.finished);
+    assert!(flow.closing.contains(&entry.id), "{}", flow.closing);
+    assert!(flow.closing.contains(&entry.branch), "{}", flow.closing);
+    assert!(
+        flow.link
+            .line()
+            .contains(&format!("queued {} to land", &head[..10]))
+    );
+    let comments = tracker.0.lock().unwrap();
+    let queued = comments
+        .iter()
+        .find(|c| c.starts_with("Coder queued this change"))
+        .unwrap();
+    assert!(
+        queued.contains(&format!("entry `{}`", entry.id)),
+        "{queued}"
+    );
+    assert!(
+        queued.contains(&format!("branch `{}`", entry.branch)),
+        "{queued}"
+    );
+    assert!(
+        !comments.iter().any(|c| c.contains("released its claim")),
+        "a queued change keeps its claim"
+    );
+    drop(comments);
+
+    // The ending is a result that names the queue, not a failure.
+    let CoderEvent::Result(ended) = flow.ending(result()) else {
+        panic!("a queued change ends as a result")
+    };
+    assert!(ended.summary.contains(&entry.id));
+    assert_eq!(ended.issue.unwrap().outcome, "queued");
 }
 
 #[test]
@@ -1239,6 +1369,7 @@ fn cloud_recovery_starts_from_pushed_work_or_scratch_and_checks_the_full_change(
             skip_claimed: true,
             now: || 1_000,
             artifacts: None,
+            queue: None,
         };
         let reference = Reference {
             repository: Some("acme/app".into()),

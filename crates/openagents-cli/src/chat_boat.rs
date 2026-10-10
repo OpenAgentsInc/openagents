@@ -467,6 +467,7 @@ fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
+        Some(Land::Queue) => " --land queue",
         None => "",
     };
     format!(
@@ -1353,7 +1354,7 @@ async fn run_issue(
     };
     let landed = matches!(
         outcome.as_str(),
-        "landed" | "pull_request" | "skipped" | "closed" | "unchanged"
+        "landed" | "pull_request" | "queued" | "skipped" | "closed" | "unchanged"
     );
     // Usage is read as the run ends, before a delete removes the sandbox.
     let usage = client
@@ -1665,7 +1666,12 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     }
     let landed = results
         .iter()
-        .filter(|r| matches!(r["outcome"].as_str(), Some("landed" | "pull_request")))
+        .filter(|r| {
+            matches!(
+                r["outcome"].as_str(),
+                Some("landed" | "pull_request" | "queued")
+            )
+        })
         .count();
     let total: f64 = results.iter().filter_map(|r| r["cost_usd"].as_f64()).sum();
     event(
@@ -1683,7 +1689,7 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let good = results.iter().all(|r| {
         matches!(
             r["outcome"].as_str(),
-            Some("landed" | "pull_request" | "skipped" | "closed")
+            Some("landed" | "pull_request" | "queued" | "skipped" | "closed")
         )
     });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
@@ -1725,6 +1731,10 @@ mod tests {
         let setup = script.find("bash /tmp/oa-boat-fork-ready.sh").unwrap();
         assert!(setup < read && FORK_READY.contains("ascii-lazyfs"));
         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
+        assert!(
+            run_script(10220, Some(Land::Queue), false)
+                .ends_with("--issues 10220 --parallel 1 --land queue\n")
+        );
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
         assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=boat"));
         for word in ["GH_TOKEN=", "ghp_", "gho_", "xai-"] {

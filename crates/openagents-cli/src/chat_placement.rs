@@ -71,7 +71,7 @@ pub(super) fn outcome(
     cost_microusd: Option<u64>,
     wall_ms: Option<u64>,
 ) -> RunOutcome {
-    let landed = matches!(outcome, "landed" | "pull_request");
+    let landed = matches!(outcome, "landed" | "pull_request" | "queued");
     RunOutcome {
         task: task.to_owned(),
         engine: None,

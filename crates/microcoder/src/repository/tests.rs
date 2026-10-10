@@ -2598,6 +2598,7 @@ mod local_run {
                 skip_claimed: false,
                 now: coder::task::autostart::unix_now,
                 artifacts: None,
+                queue: None,
             }
         }
 

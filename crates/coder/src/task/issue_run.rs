@@ -27,7 +27,9 @@
 //! 4. commits, and lands as the repository's [`Policy`] says: onto the
 //!    default branch after a rebase, running the checks again whenever the
 //!    rebase moved the base (this repository's policy), or as a pull
-//!    request;
+//!    request, or by handing the pushed commit to the landing queue
+//!    ([`super::land_queue`]), whose integrator lands it and closes the
+//!    issue;
 //! 5. comments the commit and the evidence on the issue and closes it.
 //!
 //! A flow never lands a change whose checks failed: a red check, a run
@@ -124,7 +126,7 @@ impl Flow {
         let closing = self.closing.trim().to_owned();
         let landed = matches!(
             link.outcome.as_str(),
-            "landed" | "pull_request" | "unchanged"
+            "landed" | "pull_request" | "queued" | "unchanged"
         );
         let failure = |turn: usize, message: String, ending: &str| {
             CoderEvent::Failure(coder_events::Failure {
@@ -225,10 +227,14 @@ pub enum Land {
     Main,
     /// Push a branch and open a pull request.
     PullRequest,
+    /// Push `land/<entry id>` and submit it to the landing queue
+    /// ([`super::land_queue`]); the integrator lands it and closes the
+    /// issue.
+    Queue,
 }
 
 impl Land {
-    /// Reads `main` or `pr` (`pull_request`).
+    /// Reads `main`, `pr` (`pull_request`), or `queue`.
     ///
     /// # Errors
     /// Any other word.
@@ -236,7 +242,8 @@ impl Land {
         match word.trim() {
             "main" => Ok(Land::Main),
             "pr" | "pull_request" | "pull-request" => Ok(Land::PullRequest),
-            other => Err(format!("--land is `main` or `pr`, not `{other}`")),
+            "queue" => Ok(Land::Queue),
+            other => Err(format!("--land is `main`, `pr`, or `queue`, not `{other}`")),
         }
     }
 }
@@ -596,7 +603,7 @@ pub fn stale_claims(
         if flow.link.number == 0
             || matches!(
                 flow.link.outcome.as_str(),
-                "landed" | "pull_request" | "unchanged"
+                "landed" | "pull_request" | "queued" | "unchanged"
             )
         {
             continue;
@@ -1205,6 +1212,9 @@ struct Work {
     now: fn() -> u64,
     /// Where the run's artifacts go, when uploads are on (#10227).
     artifacts: Option<Arc<dyn super::run_artifacts::Uploader>>,
+    /// The landing queue [`Land::Queue`] submits to; `None` is this
+    /// machine's default ([`super::land_queue::open_default`]).
+    queue: Option<Arc<dyn super::land_queue::Store>>,
 }
 
 /// Starts issue flows on this computer.
@@ -1219,6 +1229,9 @@ pub struct Runner {
     pub now: fn() -> u64,
     /// Where each run's artifacts go; `None` uploads nothing (#10227).
     pub artifacts: Option<Arc<dyn super::run_artifacts::Uploader>>,
+    /// The landing queue [`Land::Queue`] submits to; `None` is this
+    /// machine's default (`OPENAGENTS_LAND_QUEUE`, else the shared one).
+    pub queue: Option<Arc<dyn super::land_queue::Store>>,
 }
 
 impl Runner {
@@ -1238,6 +1251,7 @@ impl Runner {
             skip_claimed: false,
             now: super::autostart::unix_now,
             artifacts: super::run_artifacts::from_env(),
+            queue: None,
         }
     }
 
@@ -1429,6 +1443,9 @@ impl Runner {
         let land = match policy.land {
             Land::Main => format!("lands it on `{branch}` when the checks pass"),
             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
+            Land::Queue => {
+                format!("hands it to the landing queue for `{branch}` when the checks pass")
+            }
         };
         let claim = format!(
             "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
@@ -1489,6 +1506,7 @@ impl Runner {
                 top: checkout.top,
                 now: self.now,
                 artifacts: self.artifacts.clone(),
+                queue: self.queue.clone(),
             },
         })
     }
@@ -1793,6 +1811,7 @@ fn drive_with(runner: &Runner, store: &Path, task: &str) -> Result<Flow, String>
             top: job.top,
             now: runner.now,
             artifacts: runner.artifacts.clone(),
+            queue: runner.queue.clone(),
         },
     };
     Ok(started.finish())
@@ -1933,6 +1952,7 @@ impl Run<'_> {
         match self.work.policy.land {
             Land::Main => self.land_main(),
             Land::PullRequest => self.land_pull_request(),
+            Land::Queue => self.land_queue(),
         }
     }
 
@@ -2235,6 +2255,109 @@ impl Run<'_> {
         }
     }
 
+    /// Pushes the committed change to `land/<entry id>` and submits it to
+    /// the landing queue. The integrator lands it, closes the issue, and
+    /// moves the board, or comments the reason when it bounces, so the
+    /// flow leaves the issue open.
+    fn land_queue(&mut self) {
+        use super::land_queue::{self, Entry, Queue, State};
+        if self.stopping() {
+            return self.stopped("Stopped by the person who started it, before landing.");
+        }
+        let head = match self.commit() {
+            Ok(head) => head,
+            Err(why) => return self.failed(&why, None),
+        };
+        let store = match &self.work.queue {
+            Some(store) => Ok(Arc::clone(store)),
+            None => land_queue::open_default(None).map(Arc::from),
+        };
+        let store = match store {
+            Ok(store) => store,
+            Err(why) => {
+                let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+                return self.failed(&format!("The landing queue cannot be opened: {why}"), None);
+            }
+        };
+        let at = (self.work.now)();
+        let machine = land_queue::machine();
+        let id = land_queue::new_id(at, &machine);
+        let branch = format!("land/{id}");
+        if let Err(why) = local::git_out(
+            self.worktree,
+            &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+        ) {
+            let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+            self.flow.link.not_landed = Some("push_refused".into());
+            return self.failed(&format!("Git could not push {branch}: {why}"), None);
+        }
+        let entry = Entry {
+            id: id.clone(),
+            branch: branch.clone(),
+            target: self.work.branch.clone(),
+            issue: Some(self.issue.number),
+            close: true,
+            author: local::git_out(self.worktree, &["config", "user.name"])
+                .map(|name| name.trim().to_owned())
+                .unwrap_or_default(),
+            machine,
+            summary: self.issue.title.clone(),
+            head: head.clone(),
+            submitted_at: at,
+            state: State::Queued,
+            updated_at: at,
+            tries: 0,
+            commit: None,
+            reason: None,
+            worker: None,
+        };
+        if let Err(why) = (Queue { store: &*store }).submit(&entry) {
+            self.stranded = Some(branch.clone());
+            return self.failed(
+                &format!(
+                    "The change is on `{branch}`, but the landing queue at {} refused it: {why}",
+                    store.location()
+                ),
+                None,
+            );
+        }
+        let files = changed_by(self.worktree, &format!("{head}~1"), &head);
+        self.flow.files = Some(files.clone());
+        self.flow.link.commits = vec![head.clone()];
+        self.flow.link.outcome = "queued".into();
+        self.note(format!("Queued entry {id} on `{branch}`."));
+        let target = &self.work.branch;
+        let mut comment = self.evidence(
+            &format!(
+                "Coder queued this change to land on `{target}`: entry `{id}`, branch \
+                 `{branch}` ({}). The integrator lands it and closes this issue, or comments \
+                 here if it cannot.",
+                &head[..head.len().min(10)]
+            ),
+            &files,
+        );
+        comment = comment.replace(
+            "- The checks passed on the exact change that landed.\n",
+            "- The checks passed on the queued change; the integrator runs them again after \
+             its rebase.\n",
+        );
+        comment.push_str(&self.artifacts(Some(&format!("{head}~1"))));
+        let commented = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        let mut closing = format!(
+            "Queued {} as entry {id} on `{branch}`; the integrator closes #{} when it lands",
+            &head[..head.len().min(10)],
+            self.issue.number
+        );
+        match commented {
+            Ok(()) => closing.push('.'),
+            Err(why) => closing.push_str(&format!("; {why}.")),
+        }
+        self.end(closing)
+    }
+
     /// The evidence comment: `headline`, what changed, the checks, and
     /// the run.
     fn evidence(&self, headline: &str, files: &[FileChange]) -> String {
@@ -2529,7 +2652,10 @@ impl Run<'_> {
     }
 
     fn end(&mut self, closing: String) {
-        if !matches!(self.flow.link.outcome.as_str(), "landed" | "pull_request") {
+        if !matches!(
+            self.flow.link.outcome.as_str(),
+            "landed" | "pull_request" | "queued"
+        ) {
             let release = format!("Coder released its claim; nothing landed. {RELEASE_MARK}");
             for said in crate::claim::release(
                 &*self.work.tracker,

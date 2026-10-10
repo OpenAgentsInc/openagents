@@ -773,7 +773,8 @@ pub struct IssueLink {
     pub number: u64,
     pub url: String,
     pub title: String,
-    /// `landed` (pushed to the default branch), `pull_request`,
+    /// `landed` (pushed to the default branch), `pull_request`, `queued`
+    /// (handed to the landing queue, which closes the issue when it lands),
     /// `unchanged`, `failed`, or `stopped`.
     pub outcome: String,
     /// The commits the run pushed, newest last.
@@ -808,6 +809,13 @@ impl IssueLink {
             "pull_request" => match &self.pull_request {
                 Some(url) => format!("pull request {url}"),
                 None => "pull request".to_owned(),
+            },
+            "queued" => match self.commits.last() {
+                Some(commit) => format!(
+                    "queued {} to land; closes when it lands",
+                    &commit[..commit.len().min(10)]
+                ),
+                None => "queued to land; closes when it lands".to_owned(),
             },
             "unchanged" => "nothing changed; left open".to_owned(),
             "stopped" => "stopped; left open".to_owned(),
