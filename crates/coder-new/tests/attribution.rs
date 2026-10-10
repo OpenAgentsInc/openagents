@@ -117,7 +117,7 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     assert!(
         rows(&buffer)
             .iter()
-            .any(|line| line.contains(DEFAULT_MODEL) && line.starts_with('─'))
+            .any(|line| line.trim_matches('─').trim() == "auto")
     );
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
@@ -129,8 +129,9 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     assert!(
         rows(&buffer)
             .iter()
-            .any(|line| line.contains("anthropic/claude-fable-5.1") && line.starts_with('─'))
+            .any(|line| line.trim_matches('─').trim() == "claude-fable-5.1")
     );
+    assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
 }
 
 #[test]
@@ -141,13 +142,13 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
         let text = rows(&buffer);
         let top = text
             .iter()
-            .position(|line| line.starts_with('─') && line.contains(DEFAULT_MODEL))
+            .position(|line| line.starts_with('─') && line.contains(" auto "))
             .unwrap();
         assert!(text[top].starts_with('─') && text[top].ends_with('─'));
         assert!(text[top + 1].starts_with(" ❯ "));
         assert!(text[top + 2].chars().all(|c| c == '─'));
         assert_eq!(cursor, (3, (top + 1) as u16));
-        let byte = text[top].find(DEFAULT_MODEL).unwrap();
+        let byte = text[top].find("auto").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
         assert_eq!(buffer[(x, top as u16)].fg, theme::GRAY);
     }
@@ -164,7 +165,7 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     let text = rows(&buffer);
     let top = text
         .iter()
-        .position(|line| line.contains(DEFAULT_MODEL))
+        .position(|line| line.starts_with('─') && line.contains(" auto "))
         .unwrap();
     assert_eq!(cursor, (8, (top + 3) as u16));
     assert!(text[top + 4].chars().all(|c| c == '─'));
@@ -233,8 +234,9 @@ fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     assert_eq!(cursor.0, 8);
     assert!(
         text.iter()
-            .any(|line| line.starts_with('─') && line.contains("anthropic/"))
+            .any(|line| line.starts_with('─') && line.contains("claude-fable"))
     );
+    assert!(!text.iter().any(|line| line.contains("anthropic/")));
 }
 
 #[test]
@@ -251,10 +253,12 @@ fn input_rails_show_reasoning_and_leave_the_bottom_rule_empty() {
     });
     for width in [24, 80, 110] {
         let text = rows(&render(&mut app, width, 24).0);
+        // The rail names the chosen model only, never its settings.
         assert!(
             text.iter()
-                .any(|line| line.starts_with('─') && line.contains(":low"))
+                .any(|line| line.starts_with('─') && line.contains("gpt-6"))
         );
+        assert!(!text.iter().any(|line| line.contains(":low")));
         assert!(
             text.iter()
                 .rfind(|line| line.starts_with('─'))
@@ -267,7 +271,7 @@ fn input_rails_show_reasoning_and_leave_the_bottom_rule_empty() {
     let text = rows(&render(&mut app, 110, 24).0);
     assert!(
         text.iter()
-            .any(|line| line.trim_matches('─').trim() == "openai/gpt-6-luna")
+            .any(|line| line.trim_matches('─').trim() == "gpt-6-luna")
     );
     app.apply_update(Update::Checked {
         id: app.request_id,

@@ -752,7 +752,9 @@ fn running_and_failed_run_keep_the_command_visible() {
 }
 
 #[test]
-fn local_codex_model_label_is_shown_above_the_input_rail() {
+/// OpenAgents picks the model when none is chosen, so the rail says `auto`
+/// and never the name of whichever model answered.
+fn local_login_turns_show_auto_above_the_input_rail() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     app.plugins.enabled = false;
@@ -761,8 +763,9 @@ fn local_codex_model_label_is_shown_above_the_input_rail() {
     assert!(
         screen
             .lines()
-            .any(|line| line.contains("codex:gpt-6.1-sol") && line.contains('─'))
+            .any(|line| line.contains(" auto ") && line.contains('─'))
     );
+    assert!(!screen.contains("gpt-6.1-sol"));
 
     app.live.partial_model = None;
     app.live.entries.push(Entry::Assistant {
@@ -774,6 +777,7 @@ fn local_codex_model_label_is_shown_above_the_input_rail() {
     assert!(
         screen
             .lines()
-            .any(|line| line.contains("codex:gpt-6.1-sol") && line.contains('─'))
+            .any(|line| line.contains(" auto ") && line.contains('─'))
     );
+    assert!(!screen.contains("gpt-6.1-sol"));
 }

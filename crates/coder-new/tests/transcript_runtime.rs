@@ -171,7 +171,7 @@ fn selected_subagent_header_shows_its_own_model_and_reasoning() {
     delegation(&mut app, RuntimeEvent::Model("openai/gpt-test:high".into()));
     key(&mut app, KeyCode::Down);
     let buffer = draw(&mut app, 110, 24);
-    assert!(row(&buffer, 1).contains("microcoder · openai/gpt-test:high"));
+    assert!(row(&buffer, 1).contains("microcoder · gpt-test"));
     delegation(&mut app, RuntimeEvent::Text("Reviewed.".into()));
     delegation(
         &mut app,
@@ -182,7 +182,7 @@ fn selected_subagent_header_shows_its_own_model_and_reasoning() {
             false,
         ),
     );
-    assert!(row(&draw(&mut app, 110, 24), 1).contains("microcoder · openai/gpt-test:high"));
+    assert!(row(&draw(&mut app, 110, 24), 1).contains("microcoder · gpt-test"));
 }
 
 #[test]
