@@ -85,6 +85,7 @@ pub mod usage;
 
 mod commercial;
 mod purchase;
+mod receipt_log;
 
 pub mod team_policy;
 

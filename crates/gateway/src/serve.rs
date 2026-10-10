@@ -24,7 +24,6 @@
 //!    beside the registry.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -203,7 +202,8 @@ pub struct ServeState {
     /// Pay per request with x402, present when `inference.x402` is
     /// configured.
     pub(crate) inference_x402: Option<crate::inference_x402::Toll>,
-    receipts: Mutex<std::fs::File>,
+    /// `receipts.jsonl`, appended and fsynced off the async runtime.
+    receipts: Arc<crate::receipt_log::ReceiptLog>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
     classify_inputs: Arc<Semaphore>,
@@ -487,7 +487,7 @@ impl ServeState {
             card_cursor: std::sync::atomic::AtomicUsize::new(0),
             funding_slots: Arc::new(Semaphore::new(4)),
             team_progress: crate::team_reports::Monitor::default(),
-            receipts: Mutex::new(receipts),
+            receipts: crate::receipt_log::ReceiptLog::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
             job_cancels: Mutex::new(HashMap::new()),
@@ -511,8 +511,6 @@ impl ServeState {
 
     pub(crate) async fn receipt_source(&self) -> Result<std::fs::File, String> {
         self.receipts
-            .lock()
-            .await
             .try_clone()
             .map_err(|_| "Held native receipt source is unavailable.".into())
     }
@@ -786,8 +784,13 @@ pub fn mounted_paths(state: &ServeState) -> Vec<&'static str> {
 /// `GET /healthz`: the process is up — readiness for a load balancer.
 /// This says nothing about backend health; a door's card check is the
 /// identity check, run per request.
-async fn healthz() -> impl IntoResponse {
-    Json(json!({"status": "ok"}))
+async fn healthz(State(state): State<Arc<ServeState>>) -> impl IntoResponse {
+    let unwritten = state.receipts.unwritten();
+    if unwritten == 0 {
+        Json(json!({"status": "ok"}))
+    } else {
+        Json(json!({"status": "ok", "receipts_unwritten": unwritten}))
+    }
 }
 
 /// `GET /v1/models`: the doors the caller's tenant may name, with the
@@ -5672,10 +5675,21 @@ pub(crate) async fn write_receipt(
     receipt.usage = ctx.usage.clone();
     receipt.team_policy = ctx.team_policy.clone();
     receipt.seal();
-    let line = serde_json::to_string(&receipt).ok()?;
-    let mut file = state.receipts.lock().await;
-    writeln!(file, "{line}").ok()?;
-    file.sync_all().ok()?;
+    let line = match serde_json::to_string(&receipt) {
+        Ok(line) => line,
+        Err(error) => {
+            eprintln!(
+                "{}",
+                json!({"event": "receipt_unwritten", "receipt": receipt.digest,
+                       "error": error.to_string()})
+            );
+            return None;
+        }
+    };
+    // A receipt that could not be made durable is logged and counted
+    // (`/healthz` reports `receipts_unwritten`); the response then carries
+    // no `x-receipt`, since no durable receipt backs it.
+    state.receipts.append(line, &receipt.digest).await.ok()?;
     Some(receipt.digest)
 }
 
