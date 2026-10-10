@@ -74,6 +74,85 @@ pub enum InputPurpose {
     TaskWorkspace,
     /// Replacement instructions for a task.
     SteerPrompt,
+    /// The path of a file on the computer to copy here.
+    FilePath,
+}
+
+/// The largest file the Files control copies from a computer, in bytes.
+/// A screenshot may be larger: it is bounded by
+/// `coder_access::computer::MAX_SCREENSHOT_BYTES` on the host's side and
+/// by [`MAX_CAPTURE_BYTES`] here.
+pub const MAX_PULL_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The most bytes a capture keeps for showing on this device.
+pub const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
+
+/// The most of a text file the screen shows.
+pub const MAX_PREVIEW_BYTES: usize = 8 * 1024;
+
+/// What a capture holds, decided from its bytes, never its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureKind {
+    /// A PNG or JPEG the platform draws.
+    Image,
+    /// UTF-8 text the screen shows.
+    Text,
+    /// Anything else: only its size is shown.
+    Other,
+}
+
+impl CaptureKind {
+    /// Sniff the kind from the first bytes and the encoding.
+    pub fn of(bytes: &[u8]) -> Self {
+        const PNG: &[u8] = &[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
+        const JPEG: &[u8] = &[0xff, 0xd8, 0xff];
+        if bytes.starts_with(PNG) || bytes.starts_with(JPEG) {
+            Self::Image
+        } else if std::str::from_utf8(bytes).is_ok_and(|text| {
+            !text
+                .chars()
+                .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+        }) {
+            Self::Text
+        } else {
+            Self::Other
+        }
+    }
+}
+
+/// What the Screenshot or Files control last brought back from a
+/// computer. It lives only in this surface's memory; nothing writes it to
+/// disk.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Capture {
+    pub host: String,
+    /// The path the computer read, or `None` for a screenshot.
+    pub path: Option<String>,
+    pub kind: CaptureKind,
+    pub bytes: Vec<u8>,
+    /// Counts captures in this surface, so each one has its own surface
+    /// resource and a platform redraws a new one.
+    pub serial: u64,
+}
+
+impl std::fmt::Debug for Capture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Capture")
+            .field("host", &self.host)
+            .field("path", &self.path)
+            .field("kind", &self.kind)
+            .field("bytes", &self.bytes.len())
+            .field("serial", &self.serial)
+            .finish()
+    }
+}
+
+impl Capture {
+    /// The `image:` surface resource a platform draws this capture's image
+    /// under; `None` when it is not an image.
+    pub fn resource(&self) -> Option<String> {
+        (self.kind == CaptureKind::Image).then(|| format!("image:computer-capture-{}", self.serial))
+    }
 }
 
 /// A request for one value the Rust Native tree cannot collect yet: Rust
@@ -117,6 +196,10 @@ enum Target {
         task: String,
         revision: u64,
     },
+    /// A file to copy from a computer.
+    Pull {
+        host: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -140,6 +223,10 @@ pub(crate) struct UiState {
     pub orders: BTreeMap<String, OrderDraft>,
     /// A terminal the person asked to open, until the client takes it.
     pub terminal: Option<String>,
+    /// What a Screenshot or Files control last brought back.
+    pub capture: Option<Capture>,
+    /// How many captures this surface has made.
+    pub captures: u64,
 }
 
 impl UiState {
@@ -270,6 +357,8 @@ impl Computers {
                 notice: None,
                 orders: BTreeMap::new(),
                 terminal: None,
+                capture: None,
+                captures: 0,
             },
             instance: instance.into(),
             revision: 0,
@@ -301,6 +390,19 @@ impl Computers {
     /// with a terminal screen shows it after an [`Outcome::Terminal`].
     pub fn take_terminal(&mut self) -> Option<String> {
         self.ui.terminal.take()
+    }
+
+    /// What the Screenshot or Files control last brought back, if the
+    /// screen still shows it.
+    pub fn capture(&self) -> Option<&Capture> {
+        self.ui.capture.as_ref()
+    }
+
+    /// The encoded image bytes of the capture's `image:` surface
+    /// `resource`, for a platform that draws the image itself.
+    pub fn capture_image(&self, resource: &str) -> Option<&[u8]> {
+        let capture = self.ui.capture.as_ref()?;
+        (capture.resource().as_deref() == Some(resource)).then_some(capture.bytes.as_slice())
     }
 
     /// The value the adapter should collect, if any.
@@ -664,6 +766,14 @@ impl Computers {
                 self.ui.drafts.retain(|host, _| hosts.contains(host));
                 self.ui.invitations.retain(|host, _| hosts.contains(host));
                 self.ui.orders.retain(|host, _| hosts.contains(host));
+                if self
+                    .ui
+                    .capture
+                    .as_ref()
+                    .is_some_and(|capture| !hosts.contains(&capture.host))
+                {
+                    self.ui.capture = None;
+                }
                 if let Screen::Access { host } | Screen::Host { host } | Screen::Order { host } =
                     &self.ui.screen
                     && !hosts.contains(host)
@@ -797,6 +907,10 @@ impl Computers {
                 "New instructions",
                 "Enter the instructions that replace this task's prompt.",
             ),
+            InputPurpose::FilePath => (
+                "File on the computer",
+                "Enter the file's path on the computer, such as ~/notes.txt or /tmp/log.txt.",
+            ),
         };
         let prompt = asked.unwrap_or_else(|| prompt.to_owned());
         let secret = matches!(purpose, InputPurpose::SshPassword | InputPurpose::OwnerKey);
@@ -815,6 +929,31 @@ impl Computers {
         debug_assert!(self.input().is_some_and(|input| input.validate().is_ok()));
         self.ui.notice = None;
         Ok(Outcome::InputRequested)
+    }
+
+    /// Keep what a Screenshot or Files control brought back, replacing the
+    /// last capture.
+    fn keep_capture(
+        &mut self,
+        host: String,
+        path: Option<String>,
+        bytes: Vec<u8>,
+    ) -> Result<(), Refusal> {
+        if bytes.len() > MAX_CAPTURE_BYTES {
+            return Err(Refusal::Failed(Error::new(
+                Code::Bounds,
+                "the capture is over this device's limit",
+            )));
+        }
+        self.ui.captures += 1;
+        self.ui.capture = Some(Capture {
+            host,
+            path,
+            kind: CaptureKind::of(&bytes),
+            bytes,
+            serial: self.ui.captures,
+        });
+        Ok(())
     }
 
     /// The latest grant expiry this device may give: at most the protocol
@@ -983,6 +1122,30 @@ impl Computers {
                 self.ui.terminal = Some(host);
                 self.ui.notice = None;
                 Ok(Outcome::Terminal)
+            }
+            Intent::Screenshot { host } => {
+                self.allow(Action::Terminal { host: &host })?;
+                let bytes = self.service.screenshot(&host).map_err(Refusal::Failed)?;
+                let label = self.label(&host);
+                self.keep_capture(host, None, bytes)?;
+                self.done(format!("Took a screenshot of {label}."))
+            }
+            Intent::PullFile { host } => {
+                self.allow(Action::Terminal { host: &host })?;
+                self.ask(InputPurpose::FilePath, Target::Pull { host }, false)
+            }
+            Intent::ClearCapture { host } => {
+                if self
+                    .ui
+                    .capture
+                    .as_ref()
+                    .is_none_or(|capture| capture.host != host)
+                {
+                    return Err(Refusal::Stale);
+                }
+                self.ui.capture = None;
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
             }
             Intent::Refresh => {
                 self.ui.notice = None;
@@ -1294,6 +1457,26 @@ impl Computers {
         let value = value.trim();
         match target {
             Target::SshPrompt { .. } => Err(Refusal::Stale),
+            Target::Pull { host } => {
+                self.allow(Action::Terminal { host: &host })?;
+                if value.is_empty()
+                    || value.len() > 4096
+                    || value.chars().any(char::is_control)
+                    || !(value.starts_with('/') || value.starts_with("~/"))
+                {
+                    return Err(Refusal::Input(
+                        "Enter a path on one line that starts with / or ~/.".into(),
+                    ));
+                }
+                let (path, bytes) = self
+                    .service
+                    .pull_file(&host, value, MAX_PULL_BYTES)
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                let size = bytes.len();
+                self.keep_capture(host, Some(path.clone()), bytes)?;
+                self.done(format!("Copied {path} ({}).", byte_size(size as u64)))
+            }
             Target::Prompt { host } => {
                 self.allow(Action::Operate { host: &host })?;
                 if value.is_empty() {
@@ -1488,4 +1671,17 @@ fn directory_label(value: &str) -> Result<(), Refusal> {
         ));
     }
     Ok(())
+}
+
+/// A byte count as people read it: bytes, KB, or MB.
+pub(crate) fn byte_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * 1024;
+    if bytes < KB {
+        format!("{bytes} bytes")
+    } else if bytes < MB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    }
 }

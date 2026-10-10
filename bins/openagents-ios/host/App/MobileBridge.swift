@@ -1048,7 +1048,8 @@ final class MobileBridge: ObservableObject {
 
     /// The image an `image:` surface in the chat shows: the bytes Rust
     /// decoded and bounded, decoded again here for display and cached.
-    func image(_ resource: String, received: @escaping (UIImage?) -> Void) {
+    /// `fit` bounds the decoded picture's longer side, in pixels.
+    func image(_ resource: String, fit: CGFloat = 480, received: @escaping (UIImage?) -> Void) {
         if let image = images[resource] { return received(image) }
         guard let handle else { return received(nil) }
         queue.async {
@@ -1059,7 +1060,7 @@ final class MobileBridge: ObservableObject {
                 guard let pointer = buffer.data, buffer.len > 0 else { return nil }
                 return Data(bytes: pointer, count: buffer.len)
             }
-            let image = data.flatMap { UIImage(data: $0)?.preparingThumbnail(of: CGSize(width: 480, height: 480)) }
+            let image = data.flatMap { UIImage(data: $0)?.preparingThumbnail(of: CGSize(width: fit, height: fit)) }
             DispatchQueue.main.async {
                 if let image {
                     if self.images.count > 16 { self.images.removeAll() }

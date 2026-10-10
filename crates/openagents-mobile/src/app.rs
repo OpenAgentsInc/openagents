@@ -1270,6 +1270,16 @@ impl App {
                 .map(|image| image.as_ref().clone())
                 .unwrap_or_default();
         }
+        // A screenshot or image file a computer's Screenshot or Files
+        // control brought back (#11185).
+        if resource.starts_with("image:computer-capture-") {
+            return self
+                .computers
+                .as_ref()
+                .and_then(|computers| computers.capture_image(resource))
+                .map(<[u8]>::to_vec)
+                .unwrap_or_default();
+        }
         self.coder
             .image(resource)
             .map(|image| image.bytes.as_ref().clone())

@@ -2046,3 +2046,87 @@ fn background_list_names_the_running_watchers() {
         None
     );
 }
+
+#[test]
+fn a_phone_takes_a_screenshot_and_copies_files_from_an_online_host() {
+    let mut computers = open(Platform::Phone);
+    press(&mut computers, "first-run-continue").unwrap();
+    let studio = synthetic_key(0xa1);
+
+    // An offline host offers neither, with reasons.
+    show(
+        &mut computers,
+        Screen::Host {
+            host: synthetic_key(0xa3),
+        },
+    );
+    assert!(!enabled(&computers, "host-screenshot"));
+    assert!(!enabled(&computers, "host-files"));
+    assert!(find(&computers, "host-screenshot-reason").is_some());
+
+    show(
+        &mut computers,
+        Screen::Host {
+            host: studio.clone(),
+        },
+    );
+    assert!(find(&computers, "host-capture").is_none());
+
+    // Screenshot shows the picture as an image surface the platform draws.
+    assert_eq!(
+        press(&mut computers, "host-screenshot").unwrap(),
+        Outcome::Updated
+    );
+    let resource = match find(&computers, "host-capture-image").map(|node| &node.element) {
+        Some(Element::Surface { resource, .. }) => resource.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert!(resource.starts_with("image:computer-capture-"));
+    assert_eq!(
+        computers.capture_image(&resource),
+        Some(synthetic::SCREENSHOT)
+    );
+    assert_eq!(computers.capture_image("image:computer-capture-0"), None);
+
+    // Files asks for a path, refuses one that isn't, and shows text.
+    assert_eq!(
+        press(&mut computers, "host-files").unwrap(),
+        Outcome::InputRequested
+    );
+    let input = computers.input().unwrap().clone();
+    assert_eq!(input.purpose, InputPurpose::FilePath);
+    assert!(matches!(
+        computers.submit(&input.token, "notes.txt"),
+        Err(Refusal::Input(_))
+    ));
+    computers.submit(&input.token, "~/notes.txt").unwrap();
+    assert!(computers.input().is_none());
+    assert_eq!(
+        text_of(&computers, "host-capture-text"),
+        "Buy milk.\nCall the shop.\n"
+    );
+    assert!(text_of(&computers, "host-capture-title").starts_with("/home/synthetic/notes.txt"));
+    assert!(find(&computers, "host-capture-image").is_none());
+    assert_eq!(computers.capture_image(&resource), None);
+
+    // Bytes that are neither text nor an image show only their size.
+    press(&mut computers, "host-files").unwrap();
+    let input = computers.input().unwrap().clone();
+    computers.submit(&input.token, "~/data.bin").unwrap();
+    assert!(find(&computers, "host-capture-other").is_some());
+
+    // A missing file is refused and keeps the last capture.
+    press(&mut computers, "host-files").unwrap();
+    let input = computers.input().unwrap().clone();
+    assert!(matches!(
+        computers.submit(&input.token, "~/gone.txt"),
+        Err(Refusal::Failed(_))
+    ));
+    assert!(find(&computers, "host-capture-other").is_some());
+
+    // Close puts it away.
+    computers.cancel_input(&input.token).unwrap();
+    press(&mut computers, "host-capture-clear").unwrap();
+    assert!(find(&computers, "host-capture").is_none());
+    assert!(computers.capture().is_none());
+}

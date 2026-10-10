@@ -529,7 +529,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     }
 
     /** The image an `image:` surface shows: the bytes Rust decoded and bounded, decoded here for display. */
-    fun image(resource: String, received: (android.graphics.Bitmap?) -> Unit) {
+    /** [fit] bounds the decoded picture's longer side, in pixels. */
+    fun image(resource: String, fit: Int = 480, received: (android.graphics.Bitmap?) -> Unit) {
         images[resource]?.let { return received(it) }
         if (disposed) return received(null)
         worker.execute {
@@ -540,7 +541,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                     val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                     var sample = 1
-                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 480) sample *= 2
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= fit) sample *= 2
                     android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
                         android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                 }

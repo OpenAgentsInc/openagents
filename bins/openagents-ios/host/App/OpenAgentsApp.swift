@@ -69,6 +69,8 @@ struct HomeScreen: View {
 /// screen.
 struct SurfaceView: View {
     let view: NativeView?
+    /// Draws the tree's local surfaces, such as a computer's screenshot.
+    var surface: ((String, String) -> AnyView)? = nil
     let activate: (NativeView, String) -> Void
     @Environment(\.appColors) private var appColors
 
@@ -76,7 +78,8 @@ struct SurfaceView: View {
         ScrollView {
             if let view {
                 NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
-                               followChanged: nil, activate: { node in activate(view, node) })
+                               followChanged: nil, surface: surface,
+                               activate: { node in activate(view, node) })
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
@@ -104,7 +107,11 @@ struct ComputersTab: View {
             if let home {
                 ComputersList(home: home, bridge: bridge)
             } else {
-                SurfaceView(view: bridge.packet?.computers) { view, node in
+                // A computer's Screenshot or Files control shows what it
+                // brought back as an `image:computer-capture-…` surface.
+                SurfaceView(view: bridge.packet?.computers, surface: { resource, label in
+                    AnyView(CaptureImageSurface(resource: resource, label: label, bridge: bridge))
+                }) { view, node in
                     bridge.activate("computers", view: view, node: node)
                 }
                 if let qr = bridge.packet?.computers_qr {
@@ -703,6 +710,33 @@ struct InvitationQR: View {
                 }
             }
         }
+    }
+}
+
+/// A screenshot or image file a computer sent back, at the screen's width:
+/// the `image:computer-capture-…` surface Rust names, drawn from the bytes
+/// Rust holds, with its alternative text as the spoken label.
+struct CaptureImageSurface: View {
+    let resource: String
+    let label: String
+    @ObservedObject var bridge: MobileBridge
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                Color(uiColor: NativeChatPalette.raised).frame(height: 160)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier(resource)
+        .task(id: resource) { bridge.image(resource, fit: 2048) { image = $0 } }
     }
 }
 

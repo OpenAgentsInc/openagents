@@ -29,7 +29,8 @@ pub mod terminal;
 
 pub use authority::{Action, Denial};
 pub use controller::{
-    Computers, InputPurpose, InputRequest, MAX_INPUT_BYTES, Notice, NoticeKind, Outcome, Refusal,
+    Capture, CaptureKind, Computers, InputPurpose, InputRequest, MAX_CAPTURE_BYTES,
+    MAX_INPUT_BYTES, MAX_PREVIEW_BYTES, MAX_PULL_BYTES, Notice, NoticeKind, Outcome, Refusal,
     describe,
 };
 pub use intent::{Intent, Screen};

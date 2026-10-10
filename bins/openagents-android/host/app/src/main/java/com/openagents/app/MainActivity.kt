@@ -243,7 +243,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             })
-        computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
+        // A computer's Screenshot or Files control shows what it brought
+        // back as an `image:computer-capture-…` surface (#11185).
+        computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true,
+            surfaces = { resource ->
+                if (resource.startsWith("image:computer-capture-")) {
+                    imageViews.getOrPut(resource) { ChatImages.capture(this, bridge, resource) }
+                } else null
+            })
         account = AccountScreens(this, bridge)
         playtest = Playtest(this, bridge)
         SelectionLayer.giveFeedback = { text, row -> playtest.feedback(text, row, playtestTab, playtestRoute) }

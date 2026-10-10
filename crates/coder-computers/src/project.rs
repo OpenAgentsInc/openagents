@@ -4,7 +4,9 @@
 //! `<control>-reason` that states why. Rows use stacks rather than lists so a
 //! platform can place the whole screen in one scrolling container.
 use crate::authority::{Action, Denial, check};
-use crate::controller::{Confirm, Notice, UiState};
+use crate::controller::{
+    Capture, CaptureKind, Confirm, MAX_PREVIEW_BYTES, Notice, UiState, byte_size,
+};
 use crate::intent::{Intent, Screen};
 use crate::model::{
     Capabilities, DataState, DeviceList, DeviceRow, DirectoryState, HostRecord, HostStatus,
@@ -1462,6 +1464,78 @@ fn summary_rows(
     }
 }
 
+/// What the Screenshot or Files control brought back: the image, the
+/// start of a text file, or the size of anything else, and a control to
+/// put it away.
+fn capture_section(nodes: &mut Vec<Node<Intent>>, capture: &Capture) {
+    let mut rows = Vec::new();
+    let size = byte_size(capture.bytes.len() as u64);
+    rows.push(text(
+        "host-capture-title",
+        match &capture.path {
+            Some(path) => format!("{path} ({size})"),
+            None => format!("Screenshot ({size})"),
+        },
+        TextRole::Heading,
+    ));
+    match capture.kind {
+        CaptureKind::Image => {
+            if let Some(resource) = capture.resource() {
+                rows.push(Node {
+                    key: "host-capture-image".into(),
+                    style: Style::default(),
+                    element: Element::Surface {
+                        resource,
+                        label: match &capture.path {
+                            Some(path) => format!("The image {path}"),
+                            None => "A screenshot of the computer's screen".into(),
+                        },
+                    },
+                });
+            }
+        }
+        CaptureKind::Text => {
+            let text_value = String::from_utf8_lossy(&capture.bytes);
+            let mut end = text_value.len().min(MAX_PREVIEW_BYTES);
+            while !text_value.is_char_boundary(end) {
+                end -= 1;
+            }
+            let shown = &text_value[..end];
+            rows.push(text(
+                "host-capture-text",
+                if shown.trim().is_empty() {
+                    "The file is empty.".to_owned()
+                } else {
+                    shown.to_owned()
+                },
+                TextRole::Code,
+            ));
+            if end < text_value.len() {
+                rows.push(text(
+                    "host-capture-more",
+                    format!("Showing the first {} of {}.", byte_size(end as u64), size),
+                    TextRole::Status,
+                ));
+            }
+        }
+        CaptureKind::Other => rows.push(text(
+            "host-capture-other",
+            "This file isn't text or an image, so it isn't shown here.",
+            TextRole::Status,
+        )),
+    }
+    control(
+        &mut rows,
+        "host-capture-clear",
+        "Close",
+        Intent::ClearCapture {
+            host: capture.host.clone(),
+        },
+        Ok(()),
+    );
+    nodes.push(section("host-capture", rows));
+}
+
 /// One host: status and route, what this device may do there, and its
 /// recent work.
 fn host_detail(
@@ -1524,6 +1598,24 @@ fn host_detail(
     );
     control(
         &mut actions,
+        "host-screenshot",
+        "Screenshot",
+        Intent::Screenshot {
+            host: host.key.clone(),
+        },
+        check(snapshot, caps, Action::Terminal { host: &host.key }),
+    );
+    control(
+        &mut actions,
+        "host-files",
+        "Files",
+        Intent::PullFile {
+            host: host.key.clone(),
+        },
+        check(snapshot, caps, Action::Terminal { host: &host.key }),
+    );
+    control(
+        &mut actions,
         "host-access",
         "Access",
         Intent::Show {
@@ -1549,6 +1641,13 @@ fn host_detail(
         );
     }
     nodes.push(section("host-actions", actions));
+    if let Some(capture) = ui
+        .capture
+        .as_ref()
+        .filter(|capture| capture.host == host.key)
+    {
+        capture_section(nodes, capture);
+    }
     nodes.push(text("host-work-title", "Recent work", TextRole::Heading));
     let work: Vec<&ActivitySummary> = current_activity(snapshot)
         .into_iter()

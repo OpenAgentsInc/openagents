@@ -2080,6 +2080,8 @@ impl ComputersService for Live {
         use coder_access::computer::{
             Answer, MAX_SCREENSHOT_BYTES, Request, Source, fetch_described_many,
         };
+        // A phone keeps the picture in memory: no more than a capture holds.
+        let limit = MAX_SCREENSHOT_BYTES.min(crate::controller::MAX_CAPTURE_BYTES as u64);
         let Answer::File { file } = self
             .computer(
                 host,
@@ -2098,7 +2100,7 @@ impl ComputersService for Live {
         fetch_described_many(
             &mut |requests: Vec<Request>| self.computer_many(host, requests),
             &file,
-            MAX_SCREENSHOT_BYTES,
+            limit,
             &mut bytes,
             &mut |_, _| {},
         )?;

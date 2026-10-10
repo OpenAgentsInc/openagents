@@ -35,6 +35,32 @@ object ChatImages {
     }
 
     /**
+     * A screenshot or image file a computer sent back (#11185), at the
+     * screen's width and its own proportions; its label is the spoken
+     * description.
+     */
+    fun capture(context: Context, bridge: MobileBridge, resource: String): View {
+        val image = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            background = context.rounded(Palette.RAISED, 12f, Palette.BORDER)
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) =
+                    outline.setRoundRect(0, 0, view.width, view.height, context.dp(12).toFloat())
+            }
+            minimumHeight = context.dp(120)
+            tag = resource
+        }
+        bridge.image(resource, 2048) { bitmap -> bitmap?.let { image.setImageBitmap(it) } }
+        return FrameLayout(context).apply {
+            addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+    }
+
+    /**
      * A picked photo as the PNG or JPEG Rust accepts: kept as is when it
      * already is one and fits, else re-encoded as a JPEG at most 4096 pixels
      * a side. Null when it isn't an image.
