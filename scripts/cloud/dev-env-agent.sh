@@ -125,7 +125,7 @@ User=$user
 WorkingDirectory=$home/openagents
 Environment=PATH=$home/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 ExecStartPre=/bin/bash -lc 'scripts/cloud/dev-env-session.sh >/dev/null'
-ExecStart=/bin/bash -lc 'set -a; . \$HOME/.openagents/dev-env.env; set +a; bin=\$HOME/.openagents/bin/openagents; [ -x "\$bin" ] || bin=openagents; exec "\$bin" land work'
+ExecStart=/bin/bash -lc 'export PATH=\$HOME/.cargo/bin:\$PATH; set -a; . \$HOME/.openagents/dev-env.env; set +a; bin=\$HOME/.openagents/bin/openagents; [ -x "\$bin" ] || bin=openagents; exec "\$bin" land work'
 Restart=always
 RestartSec=30
 [Install]
