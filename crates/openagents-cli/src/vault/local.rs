@@ -152,13 +152,21 @@ pub(crate) fn find_server(home: &Path, name: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// A model file on this computer: `~/.openagents/models/gpt-oss-20b-MXFP4.gguf`,
-/// else the first `.gguf` there.
+/// The small model the vault answers with by default: Qwen2.5 0.5B
+/// Instruct, about 15 s for a short answer on a laptop's CPU.
+pub(crate) const SMALL_MODEL: &str = "qwen2.5-0.5b-instruct-q8_0.gguf";
+/// Where to get it.
+pub(crate) const SMALL_MODEL_URL: &str = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf";
+
+/// A model file on this computer: [`SMALL_MODEL`] in `~/.openagents/models`,
+/// else `gpt-oss-20b-MXFP4.gguf` there, else the first `.gguf` there.
 pub(crate) fn find_model(home: &Path) -> Option<PathBuf> {
     let dir = home.join(".openagents/models");
-    let preferred = dir.join("gpt-oss-20b-MXFP4.gguf");
-    if preferred.is_file() {
-        return Some(preferred);
+    for preferred in [SMALL_MODEL, "gpt-oss-20b-MXFP4.gguf"] {
+        let path = dir.join(preferred);
+        if path.is_file() {
+            return Some(path);
+        }
     }
     let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
         .ok()?
@@ -177,8 +185,12 @@ pub(crate) fn serve_command(server: &Path, model: &Path, port: u16, origin: &str
         model.display().to_string(),
     ];
     let name = model.to_string_lossy().to_ascii_lowercase();
-    // Psionic runs Gemma 4 and Qwen on Metal; everything else on the CPU.
-    if cfg!(target_os = "macos") && (name.contains("gemma") || name.contains("qwen")) {
+    // Psionic's Metal decoders are Gemma 4 and Qwen 3.5/3.8; everything
+    // else (Qwen2.5, gpt-oss) runs on the CPU.
+    let metal = [
+        "gemma4", "gemma-4", "qwen3.5", "qwen35", "qwen3.8", "qwen38",
+    ];
+    if cfg!(target_os = "macos") && metal.iter().any(|family| name.contains(family)) {
         command.extend(["--backend".into(), "metal".into()]);
     }
     command.extend([

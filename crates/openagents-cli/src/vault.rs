@@ -508,9 +508,13 @@ fn serve_local(output: &Output, args: &Args) -> Result<Value, String> {
         let message = format!(
             "No local model server here yet. From an OpenAgents checkout, build it once with:\n\n  {build}\n\nthen put target/release/{name} on your PATH (or in ~/.openagents/bin), and run this again{}.",
             if args.option("model").is_none() && local::find_model(&home).is_none() {
-                " with --model PATH to a .gguf model"
+                format!(
+                    ". Get the small model first:\n\n  mkdir -p ~/.openagents/models && curl -L -o ~/.openagents/models/{} {}",
+                    local::SMALL_MODEL,
+                    local::SMALL_MODEL_URL
+                )
             } else {
-                ""
+                String::new()
             }
         );
         return Ok(json!({ "running": false, "build": build, "message": message }));
