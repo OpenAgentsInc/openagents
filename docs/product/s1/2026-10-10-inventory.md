@@ -121,7 +121,7 @@ list-price `cost_usd` for the agent, plus the Jev decision call.
 | Issue flow cannot land through the queue | small | #11242, run through the loop (in progress) |
 | Issue-flow landings cannot be replay-verified | small | #11243, landed `27b206a24d` through the loop |
 | `zsh`/`fish` missing on the image | small | `cded309dd7`, submitted from the Mac with `openagents land submit`, landed by `oa-land-worker` on the environment |
-| Landing livelock on a busy `main`; `main` red from direct pushes | large | Filed [#11248](https://github.com/OpenAgentsInc/openagents/issues/11248) on project 22 |
+| Landing livelock on a busy `main`; `main` red from direct pushes | large | Filed [#11248](https://github.com/OpenAgentsInc/openagents/issues/11248) on project 22. From 23:44 UTC `oa-land-worker` runs lanes: documents land in a fast lane without a build, code entries whose packages do not overlap check side by side, and the CLI tree is written again in the queue |
 | Disk 300 GB too small for 2 flows | infra | Disk grown to 500 GB (`gcloud compute disks resize` plus `growpart`/`resize2fs`) |
 | Two flows thrash 22 vCPUs | small | Per-flow `CARGO_BUILD_JOBS`/`RUST_TEST_THREADS` in the run wrapper; general fix proposed in #11248 |
 | Owner cannot watch runs without commands | owner priority | #11228 moved to the front; follow-up [#11250](https://github.com/OpenAgentsInc/openagents/issues/11250) filed |
