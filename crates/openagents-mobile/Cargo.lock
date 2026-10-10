@@ -6253,6 +6253,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "openagents-x402",
+ "receipts",
  "reqwest 0.12.28",
  "secp256k1 0.31.1",
  "serde",
