@@ -49,12 +49,139 @@ const RELEASE_PATH: &str = "/att/release.json";
 const STATE_PATH: &str = "/att/api/state";
 const SEND_PATH: &str = "/att/api/send";
 const ANSWERS_PATH: &str = "/att/api/answers/{id}";
+const LANES_PATH: &str = "/att/api/lanes";
+const WAKE_PATH: &str = "/att/api/wake";
 
 /// The relay the endpoint listens on.
 pub(crate) const RELAY: &str = "wss://relay.openagents.com";
 /// The OpenAgents key that publishes the sealed Clef releases.
 pub(crate) const PUBLISHER: &str =
     "77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e";
+
+/// The Pylon behind the open lane: CoderOS-4080's demo decision pylon
+/// (`~/work/pylon-att-open` there), Clef M2 on CUDA. Not a TEE.
+pub(crate) const OPEN_PYLON: &str =
+    "81bb2b3588e8741b976a410cf52fe5df58b540475fd40cde7b96f14f80b9eba4";
+const OPEN_SLUG: &str = "coderos-4080-att-open";
+/// The weights every lane serves: Clef-Flash Q4_K_M.
+const CLEF_WEIGHTS: &str =
+    "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c";
+/// The sealed GPU machine the wake action starts (a stopped spot VM).
+const GPU_VM: &str = "oa-att-h100-1";
+const GPU_ZONE: &str = "us-central1-a";
+const PROJECT: &str = "openagentsgemini";
+/// Wakes all visitors may ask for per hour.
+const WAKES_PER_HOUR: usize = 6;
+
+/// A way to get a decision answered, with its trust level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Lane {
+    /// Clef on CUDA on an H100 in Intel TDX + NVIDIA confidential computing.
+    Gpu,
+    /// Clef on the CPU in Intel TDX.
+    Cpu,
+    /// Clef on CUDA on an ordinary Pylon; sealed in transit only.
+    Open,
+}
+
+impl Lane {
+    const ALL: [Self; 3] = [Self::Gpu, Self::Cpu, Self::Open];
+
+    fn parse(word: Option<&str>) -> Self {
+        match word {
+            Some("gpu") => Self::Gpu,
+            Some("open") => Self::Open,
+            _ => Self::Cpu,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Gpu => "gpu",
+            Self::Cpu => "cpu",
+            Self::Open => "open",
+        }
+    }
+
+    /// The NIP-ATT workload of an attested lane.
+    fn workload(self) -> Option<&'static str> {
+        match self {
+            Self::Gpu => Some("clef-decisions-gpu"),
+            Self::Cpu => Some(oa_att::WORKLOAD),
+            Self::Open => None,
+        }
+    }
+
+    fn vm(self) -> Option<(String, String)> {
+        let env = |name: &str, default: &str| {
+            std::env::var(name)
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| default.to_string())
+        };
+        (self == Self::Gpu).then(|| (env("ATT_GPU_VM", GPU_VM), env("ATT_GPU_ZONE", GPU_ZONE)))
+    }
+
+    /// What the page shows for the lane: its name, level, measured time
+    /// per answer, cost, and who can see what.
+    fn info(self) -> Value {
+        match self {
+            Self::Gpu => json!({
+                "id": "gpu",
+                "name": "Sealed GPU",
+                "level": "tee-cloud",
+                "level_words": "Sealed hardware: Intel TDX with an NVIDIA H100 in confidential-computing mode, in Google Confidential Space",
+                "engine": "Psionic Clef on CUDA, H100",
+                "seconds": LANE_SECONDS[0],
+                "cost_per_hour": LANE_COST[0],
+                "on_demand": true,
+                "sees": [
+                    ["Your browser", "Your question and the answer"],
+                    ["OpenAgents relay and gateway", "Size, timing, sealed bytes"],
+                    ["Google, Intel, NVIDIA", "That a sealed machine and GPU ran, not your data"],
+                    ["Sealed program", "Your question, inside the sealed machine and GPU only"],
+                ],
+            }),
+            Self::Cpu => json!({
+                "id": "cpu",
+                "name": "Sealed CPU",
+                "level": "tee-cloud",
+                "level_words": "Sealed hardware: Intel TDX in Google Confidential Space",
+                "engine": "Psionic Clef on the CPU",
+                "seconds": LANE_SECONDS[1],
+                "cost_per_hour": LANE_COST[1],
+                "on_demand": false,
+                "sees": [
+                    ["Your browser", "Your question and the answer"],
+                    ["OpenAgents relay and gateway", "Size, timing, sealed bytes"],
+                    ["Google / Intel", "That a sealed machine ran, not your data"],
+                    ["Sealed program", "Your question, inside the sealed machine only"],
+                ],
+            }),
+            Self::Open => json!({
+                "id": "open",
+                "name": "Fast GPU, not sealed",
+                "level": "open",
+                "level_words": "Not sealed hardware: an OpenAgents Pylon (an RTX 4080 at our office). Its owner could read your question",
+                "engine": "Psionic Clef on CUDA, RTX 4080",
+                "seconds": LANE_SECONDS[2],
+                "cost_per_hour": LANE_COST[2],
+                "on_demand": false,
+                "sees": [
+                    ["Your browser", "Your question and the answer"],
+                    ["OpenAgents relay and gateway", "Size, timing, sealed bytes"],
+                    ["The Pylon's owner", "Your question and the answer: the machine is not sealed"],
+                    ["Anyone else on the relay", "Size, timing, sealed bytes"],
+                ],
+            }),
+        }
+    }
+}
+
+/// Measured seconds per answer (gpu, cpu, open), browser round included.
+const LANE_SECONDS: [f64; 3] = [0.0, 27.0, 1.5];
+/// Dollars per hour while the lane's machine runs (gpu, cpu, open).
+const LANE_COST: [f64; 3] = [0.0, 0.40, 0.0];
 
 /// The build's files (`scripts/build-att-web.sh`).
 const GLUE: &str = "att_web.js";
@@ -88,6 +215,8 @@ pub(crate) fn routes() -> Router<App> {
         .route(STATE_PATH, get(state))
         .route(SEND_PATH, post(send))
         .route(ANSWERS_PATH, get(answers))
+        .route(LANES_PATH, get(lanes))
+        .route(WAKE_PATH, post(wake))
 }
 
 fn build(app: &App) -> Option<&Path> {
@@ -236,7 +365,12 @@ struct Round {
 struct Shared {
     /// The gateway's own relay key, made at start.
     secret: SecretKey,
-    cache: Mutex<Option<(Instant, Records, Value)>>,
+    cache: Mutex<HashMap<Lane, (Instant, Records, Value)>>,
+    /// The open lane's beacon and the gateway's check of it.
+    open: Mutex<Option<(Instant, Event, Value)>>,
+    wakes: Mutex<VecDeque<Instant>>,
+    /// The GPU machine's state as Compute Engine last said.
+    vm: Mutex<Option<(Instant, String)>>,
     visitors: Mutex<HashMap<String, VecDeque<Instant>>>,
     everyone: Mutex<VecDeque<Instant>>,
     rounds: Mutex<HashMap<String, (Instant, Round)>>,
@@ -246,7 +380,10 @@ struct Shared {
 static SHARED: LazyLock<Arc<Shared>> = LazyLock::new(|| {
     Arc::new(Shared {
         secret: SecretKey::new(&mut secp256k1::rand::rng()),
-        cache: Mutex::new(None),
+        cache: Mutex::new(HashMap::new()),
+        open: Mutex::new(None),
+        wakes: Mutex::new(VecDeque::new()),
+        vm: Mutex::new(None),
         visitors: Mutex::new(HashMap::new()),
         everyone: Mutex::new(VecDeque::new()),
         rounds: Mutex::new(HashMap::new()),
@@ -266,18 +403,18 @@ fn refuse(status: StatusCode, message: &str) -> Response {
     json_response(status, &json!({"error": message}))
 }
 
-fn policy() -> Policy {
+fn policy(workload: &str) -> Policy {
     Policy {
         publisher: PUBLISHER.into(),
-        workload: oa_att::WORKLOAD.into(),
+        workload: workload.into(),
         required: nostr::att::Level::TeeCloud,
         seen_generation: None,
     }
 }
 
 /// The gateway's own check of the records, with every step's verdict.
-fn gateway_check(records: &Records, at: u64) -> Value {
-    let policy = policy();
+fn gateway_check(records: &Records, workload: &str, at: u64) -> Value {
+    let policy = policy(workload);
     let parsed = match oa_att::parse(records, &policy, at) {
         Ok(parsed) => parsed,
         Err(why) => return json!({"ok": false, "step": "fetch", "reason": why.0}),
@@ -302,30 +439,84 @@ fn gateway_check(records: &Records, at: u64) -> Value {
 }
 
 /// The records, fetched or reused, and the gateway's check of them.
-async fn records(shared: &Shared) -> Result<(Records, Value, u64, bool), String> {
+async fn records(shared: &Shared, lane: Lane) -> Result<(Records, Value, u64, bool), String> {
+    let workload = lane.workload().ok_or("this lane has no attested records")?;
     if let Ok(held) = shared.cache.lock()
-        && let Some((at, records, check)) = held.as_ref()
+        && let Some((at, records, check)) = held.get(&lane)
         && at.elapsed() < STATE_TTL
     {
         return Ok((records.clone(), check.clone(), 0, true));
     }
-    let fetched = net::fetch(RELAY, &shared.secret, PUBLISHER, oa_att::WORKLOAD, now()).await?;
-    let check = gateway_check(&fetched.records, now());
+    let fetched = net::fetch(RELAY, &shared.secret, PUBLISHER, workload, now()).await?;
+    let check = gateway_check(&fetched.records, workload, now());
     if let Ok(mut held) = shared.cache.lock() {
-        *held = Some((Instant::now(), fetched.records.clone(), check.clone()));
+        held.insert(
+            lane,
+            (Instant::now(), fetched.records.clone(), check.clone()),
+        );
     }
     Ok((fetched.records, check, fetched.ms, false))
 }
 
-async fn state() -> Response {
+/// The open lane's beacon, fetched or reused, and the gateway's check.
+async fn open_beacon(shared: &Shared) -> Result<(Event, Value, u64, bool), String> {
+    if let Ok(held) = shared.open.lock()
+        && let Some((at, beacon, check)) = held.as_ref()
+        && at.elapsed() < STATE_TTL
+    {
+        return Ok((beacon.clone(), check.clone(), 0, true));
+    }
+    let (beacon, ms) = net::fetch_beacon(RELAY, &shared.secret, OPEN_PYLON, OPEN_SLUG).await?;
+    let check =
+        match oa_att::open::parse_beacon(&beacon, OPEN_PYLON, CLEF_WEIGHTS, now(), Tamper::None) {
+            Ok(found) => json!({"ok": true, "level": found.level.as_str(), "served": found.served}),
+            Err(why) => json!({"ok": false, "step": "beacon", "reason": why.0}),
+        };
+    if let Ok(mut held) = shared.open.lock() {
+        *held = Some((Instant::now(), beacon.clone(), check.clone()));
+    }
+    Ok((beacon, check, ms, false))
+}
+
+#[derive(serde::Deserialize, Default)]
+struct LaneQuery {
+    lane: Option<String>,
+}
+
+async fn state(Query(query): Query<LaneQuery>) -> Response {
     let shared = Arc::clone(&SHARED);
-    match records(&shared).await {
+    let lane = Lane::parse(query.lane.as_deref());
+    if lane == Lane::Open {
+        return match open_beacon(&shared).await {
+            Ok((beacon, check, fetched_ms, cached)) => json_response(
+                StatusCode::OK,
+                &json!({
+                    "lane": lane.id(),
+                    "relay": RELAY,
+                    "pylon": OPEN_PYLON,
+                    "slug": OPEN_SLUG,
+                    "artifact": CLEF_WEIGHTS,
+                    "fetched_ms": fetched_ms,
+                    "cached": cached,
+                    "events": {"beacon": beacon},
+                    "gateway": check,
+                    "now": now(),
+                }),
+            ),
+            Err(why) => json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &json!({"error": format!("The Pylon is not reachable right now: {why}")}),
+            ),
+        };
+    }
+    match records(&shared, lane).await {
         Ok((records, check, fetched_ms, cached)) => json_response(
             StatusCode::OK,
             &json!({
+                "lane": lane.id(),
                 "relay": RELAY,
                 "publisher": PUBLISHER,
-                "workload": oa_att::WORKLOAD,
+                "workload": lane.workload(),
                 "fetched_ms": fetched_ms,
                 "cached": cached,
                 "events": {
@@ -338,9 +529,188 @@ async fn state() -> Response {
                 "now": now(),
             }),
         ),
-        Err(why) => json_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            &json!({"error": format!("The sealed machine is not reachable right now: {why}")}),
+        Err(why) => {
+            let machine = machine_state(&shared, lane).await;
+            json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &json!({
+                    "error": format!("The sealed machine is not reachable right now: {why}"),
+                    "machine": machine,
+                    "can_wake": lane.vm().is_some(),
+                }),
+            )
+        }
+    }
+}
+
+/// The metadata server's access token for this service's own account.
+async fn cloud_token() -> Result<String, String> {
+    let response = reqwest::Client::new()
+        .get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
+        .header("Metadata-Flavor", "Google")
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|_| "no cloud identity here".to_string())?;
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|_| "the cloud identity answered oddly".to_string())?;
+    body["access_token"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "no cloud identity here".into())
+}
+
+/// Compute Engine's word for the lane's machine (`RUNNING`, `TERMINATED`,
+/// `STAGING` …), cached briefly; `None` for a lane without one or when it
+/// can't be asked.
+async fn machine_state(shared: &Shared, lane: Lane) -> Option<String> {
+    let (vm, zone) = lane.vm()?;
+    if let Ok(held) = shared.vm.lock()
+        && let Some((at, status)) = held.as_ref()
+        && at.elapsed() < Duration::from_secs(10)
+    {
+        return Some(status.clone());
+    }
+    let token = cloud_token().await.ok()?;
+    let url = format!(
+        "https://compute.googleapis.com/compute/v1/projects/{PROJECT}/zones/{zone}/instances/{vm}?fields=status"
+    );
+    let body: Value = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(token)
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let status = body["status"].as_str()?.to_string();
+    if let Ok(mut held) = shared.vm.lock() {
+        *held = Some((Instant::now(), status.clone()));
+    }
+    Some(status)
+}
+
+/// `GET /att/api/lanes`: every lane, its level, measured time and cost,
+/// who can see what, and whether it can answer now.
+async fn lanes() -> Response {
+    let shared = Arc::clone(&SHARED);
+    let (gpu, cpu, open) = tokio::join!(
+        records(&shared, Lane::Gpu),
+        records(&shared, Lane::Cpu),
+        open_beacon(&shared)
+    );
+    let machine = if gpu.is_err() {
+        machine_state(&shared, Lane::Gpu).await
+    } else {
+        None
+    };
+    let mut out = Vec::new();
+    for lane in Lane::ALL {
+        let mut info = lane.info();
+        let ready = match lane {
+            Lane::Gpu => gpu.as_ref().is_ok_and(|r| r.1["ok"] == true),
+            Lane::Cpu => cpu.as_ref().is_ok_and(|r| r.1["ok"] == true),
+            Lane::Open => open.as_ref().is_ok_and(|r| r.1["ok"] == true),
+        };
+        let status = if ready {
+            "ready"
+        } else if lane == Lane::Gpu {
+            match machine.as_deref() {
+                Some("TERMINATED" | "STOPPED" | "SUSPENDED") => "asleep",
+                Some("PROVISIONING" | "STAGING" | "RUNNING" | "REPAIRING") => "waking",
+                Some("STOPPING" | "SUSPENDING") => "stopping",
+                _ => "unavailable",
+            }
+        } else {
+            "unavailable"
+        };
+        info["status"] = json!(status);
+        if lane == Lane::Gpu {
+            info["machine"] = json!(machine);
+        }
+        out.push(info);
+    }
+    json_response(StatusCode::OK, &json!({"lanes": out, "now": now()}))
+}
+
+/// `POST /att/api/wake`: start the sealed GPU machine (a stopped spot VM
+/// that stops itself when idle and after its maximum run time). A few
+/// wakes an hour for everyone together.
+async fn wake() -> Response {
+    let shared = Arc::clone(&SHARED);
+    let Some((vm, zone)) = Lane::Gpu.vm() else {
+        return refuse(StatusCode::NOT_FOUND, "No machine to wake.");
+    };
+    match machine_state(&shared, Lane::Gpu).await.as_deref() {
+        Some("RUNNING" | "PROVISIONING" | "STAGING") => {
+            return json_response(
+                StatusCode::OK,
+                &json!({"machine": "RUNNING", "message": "The sealed GPU is already awake or starting."}),
+            );
+        }
+        Some(_) => {}
+        None => {
+            return refuse(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The sealed GPU can't be reached from here right now.",
+            );
+        }
+    }
+    {
+        let Ok(mut wakes) = shared.wakes.lock() else {
+            return refuse(StatusCode::SERVICE_UNAVAILABLE, "busy");
+        };
+        while wakes
+            .front()
+            .is_some_and(|t| t.elapsed() > Duration::from_secs(3_600))
+        {
+            wakes.pop_front();
+        }
+        if wakes.len() >= WAKES_PER_HOUR {
+            return refuse(
+                StatusCode::TOO_MANY_REQUESTS,
+                "The sealed GPU has been woken several times this hour. Try the other lanes, or again later.",
+            );
+        }
+        wakes.push_back(Instant::now());
+    }
+    let Ok(token) = cloud_token().await else {
+        return refuse(StatusCode::SERVICE_UNAVAILABLE, "No cloud identity here.");
+    };
+    let url = format!(
+        "https://compute.googleapis.com/compute/v1/projects/{PROJECT}/zones/{zone}/instances/{vm}/start"
+    );
+    let started = reqwest::Client::new()
+        .post(url)
+        .bearer_auth(token)
+        .header(header::CONTENT_LENGTH, "0")
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await;
+    if let Ok(mut held) = shared.vm.lock() {
+        *held = None;
+    }
+    match started {
+        Ok(response) if response.status().is_success() => json_response(
+            StatusCode::OK,
+            &json!({"machine": "STAGING", "message": "Waking the sealed GPU. It takes a few minutes to boot, check its GPU, load the model and publish its evidence."}),
+        ),
+        Ok(response) => {
+            let status = response.status();
+            let body: Value = response.json().await.unwrap_or(Value::Null);
+            let why = body["error"]["message"].as_str().unwrap_or("refused");
+            refuse(
+                StatusCode::BAD_GATEWAY,
+                &format!("Google Cloud did not start the sealed GPU ({status}): {why}"),
+            )
+        }
+        Err(_) => refuse(
+            StatusCode::BAD_GATEWAY,
+            "Google Cloud did not answer the wake request.",
         ),
     }
 }
@@ -391,7 +761,8 @@ fn admit(shared: &Shared, who: &str) -> Result<(), String> {
     Ok(())
 }
 
-async fn send(headers: HeaderMap, body: Bytes) -> Response {
+async fn send(Query(query): Query<LaneQuery>, headers: HeaderMap, body: Bytes) -> Response {
+    let lane = Lane::parse(query.lane.as_deref());
     let shared = Arc::clone(&SHARED);
     if body.len() > 32 * 1024 {
         return refuse(StatusCode::PAYLOAD_TOO_LARGE, "The request is too large.");
@@ -414,27 +785,46 @@ async fn send(headers: HeaderMap, body: Bytes) -> Response {
             "The request is too large or too old.",
         );
     }
-    let (records, check, _, _) = match records(&shared).await {
-        Ok(found) => found,
-        Err(why) => {
+    let target = if lane == Lane::Open {
+        match open_beacon(&shared).await {
+            Ok((_, check, _, _)) if check["ok"] == true => OPEN_PYLON.to_string(),
+            Ok(_) => {
+                return refuse(
+                    StatusCode::CONFLICT,
+                    "The Pylon's beacon did not check out, so the gateway sends nothing to it.",
+                );
+            }
+            Err(why) => {
+                return refuse(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("The Pylon is not reachable right now: {why}"),
+                );
+            }
+        }
+    } else {
+        let (records, check, _, _) = match records(&shared, lane).await {
+            Ok(found) => found,
+            Err(why) => {
+                return refuse(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("The sealed machine is not reachable right now: {why}"),
+                );
+            }
+        };
+        if check["ok"] != true {
             return refuse(
-                StatusCode::SERVICE_UNAVAILABLE,
-                &format!("The sealed machine is not reachable right now: {why}"),
+                StatusCode::CONFLICT,
+                "The gateway could not verify the sealed machine, so it sends nothing to it.",
             );
         }
+        records.endpoint.pubkey.clone()
     };
-    if check["ok"] != true {
-        return refuse(
-            StatusCode::CONFLICT,
-            "The gateway could not verify the sealed machine, so it sends nothing to it.",
-        );
-    }
-    let endpoint_key = records.endpoint.pubkey.clone();
+    let endpoint_key = target;
     let tagged: Vec<&str> = event.tag_values("p").collect();
     if tagged != [endpoint_key.as_str()] {
         return refuse(
             StatusCode::BAD_REQUEST,
-            "The request is not addressed to the verified sealed machine.",
+            "The request is not addressed to the lane's machine.",
         );
     }
     if let Err(why) = admit(&shared, &visitor(&headers)) {
@@ -591,10 +981,26 @@ mod tests {
     }
 
     #[test]
+    fn lanes_parse_and_say_their_level() {
+        assert_eq!(Lane::parse(None), Lane::Cpu);
+        assert_eq!(Lane::parse(Some("gpu")), Lane::Gpu);
+        assert_eq!(Lane::parse(Some("open")), Lane::Open);
+        assert_eq!(Lane::Open.info()["level"], "open");
+        assert!(Lane::Open.workload().is_none());
+        for lane in Lane::ALL {
+            assert_eq!(lane.info()["id"], lane.id());
+            assert_eq!(lane.info()["sees"].as_array().map(Vec::len), Some(4));
+        }
+    }
+
+    #[test]
     fn a_visitor_is_rate_limited() {
         let shared = Shared {
             secret: SecretKey::new(&mut secp256k1::rand::rng()),
-            cache: Mutex::new(None),
+            cache: Mutex::new(HashMap::new()),
+            open: Mutex::new(None),
+            wakes: Mutex::new(VecDeque::new()),
+            vm: Mutex::new(None),
             visitors: Mutex::new(HashMap::new()),
             everyone: Mutex::new(VecDeque::new()),
             rounds: Mutex::new(HashMap::new()),
