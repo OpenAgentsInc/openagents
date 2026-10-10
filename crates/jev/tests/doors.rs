@@ -354,6 +354,40 @@ async fn a_refusal_of_the_question_never_fails_over() -> Outcome {
 }
 
 #[tokio::test]
+async fn a_doors_own_size_or_admission_limit_fails_over() -> Outcome {
+    for (status, body) in [
+        (
+            413,
+            r#"{"error": {"code": "not_admitted", "message": "the prompt is 20000 Clef tokens; this server admits 16384"}}"#,
+        ),
+        (
+            400,
+            r#"{"error": "question \"answer\": criteria must contain 2–26 candidates"}"#,
+        ),
+        (
+            413,
+            r#"{"error": "text and schema must not exceed 64 KiB"}"#,
+        ),
+    ] {
+        let (typesafe, _) = door(Behavior::Answer(status, body.into())).await?;
+        let (gateway, gateway_seen) = door(Behavior::Answer(200, gateway_answer())).await?;
+        let client = failover_client(
+            &typesafe,
+            &[(
+                doors::GATEWAY_DOOR,
+                format!("{gateway}/typesafe/v1/systemone"),
+                Naming::Gateway,
+            )],
+            None,
+        )?;
+        let response = client.system_one(fixture_request()).await?;
+        assert_eq!(response.model, "typesafe-ai/jev", "{status} {body}");
+        assert_eq!(gateway_seen.lock().await.len(), 1, "{status} {body}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_typesafe_answer_is_served_as_it_came() -> Outcome {
     let (typesafe, _) = door(Behavior::Answer(200, TYPESAFE_ANSWER.into())).await?;
     let (gateway, gateway_seen) = door(Behavior::Answer(200, gateway_answer())).await?;

@@ -5134,6 +5134,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "image",
+ "libm",
  "psionic-adapters",
  "psionic-backend-cpu",
  "psionic-backend-cuda",

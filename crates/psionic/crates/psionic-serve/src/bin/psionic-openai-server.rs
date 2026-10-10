@@ -3,11 +3,12 @@
 use std::{
     env,
     io::{self, Write},
+    path::PathBuf,
     process::ExitCode,
 };
 
 use psionic_observe::{TokioRuntimeTelemetryConfig, build_main_runtime};
-use psionic_serve::{OpenAiCompatBackend, OpenAiCompatConfig, OpenAiCompatServer};
+use psionic_serve::{OpenAiCompatBackend, OpenAiCompatConfig, OpenAiCompatServer, clef};
 use tokio::net::TcpListener;
 
 fn main() -> ExitCode {
@@ -29,11 +30,62 @@ fn run_main() -> Result<(), String> {
 }
 
 async fn run() -> Result<(), String> {
-    let config = parse_args()?;
+    let (decision, rest) = split_decision_args(env::args().skip(1))?;
+    let decision_only = !rest.iter().any(|arg| arg == "-m" || arg == "--model");
+    if decision_only && decision.model_paths.is_empty() {
+        return Err(format!("missing required `-m` / `--model`\n\n{}", usage()));
+    }
+    let mut args = rest;
+    if decision_only {
+        args.extend([String::from("-m"), String::from(DECISION_ONLY_PLACEHOLDER)]);
+    }
+    let mut config = parse_args_from(args)?;
+    if decision_only {
+        config.model_paths.clear();
+    }
+    // A Clef GGUF passed with `-m` is a decision model.
+    let mut decision_paths = decision.model_paths.clone();
+    config.model_paths.retain(|path| {
+        if clef::is_clef_gguf(path) {
+            decision_paths.push(path.clone());
+            false
+        } else {
+            true
+        }
+    });
+    let lanes = decision_paths
+        .iter()
+        .map(|path| {
+            let head = decision.head.clone().map_or(
+                clef::ClefHeadSource::Embedded,
+                clef::ClefHeadSource::Safetensors,
+            );
+            clef::ClefDecisionLane::load(path, head, decision.limits)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to load decision model: {error}"))?;
+    let lanes = clef::ClefLanes::new(lanes);
     let address = config.socket_addr().map_err(|error| error.to_string())?;
     let listener = TcpListener::bind(address)
         .await
         .map_err(|error| format!("failed to bind {address}: {error}"))?;
+    if config.model_paths.is_empty() {
+        let _ = writeln!(
+            io::stdout(),
+            "psionic openai server listening on http://{} decision_models={} backend=cpu execution_mode=native route=/v1/systemone",
+            listener
+                .local_addr()
+                .map_err(|error| format!("failed to query listener address: {error}"))?,
+            decision_paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        return clef::serve(listener, clef::decision_router(lanes))
+            .await
+            .map_err(|error| format!("server failed: {error}"));
+    }
     let server = OpenAiCompatServer::from_config(&config)
         .map_err(|error| format!("failed to load models: {error}"))?;
     let mut stdout = io::stdout();
@@ -53,14 +105,74 @@ async fn run() -> Result<(), String> {
         server.execution_mode_label(),
         server.execution_engine_label(),
     );
-    server
-        .serve(listener)
-        .await
-        .map_err(|error| format!("server failed: {error}"))
+    if lanes.is_empty() {
+        return server
+            .serve(listener)
+            .await
+            .map_err(|error| format!("server failed: {error}"));
+    }
+    clef::serve(
+        listener,
+        server.router().merge(clef::systemone_router(lanes)),
+    )
+    .await
+    .map_err(|error| format!("server failed: {error}"))
 }
 
-fn parse_args() -> Result<OpenAiCompatConfig, String> {
-    parse_args_from(env::args().skip(1))
+const DECISION_ONLY_PLACEHOLDER: &str = "<decision-only>";
+
+/// Decision-model flags, taken out before the generic flags are read.
+#[derive(Clone, Debug, Default)]
+struct DecisionArgs {
+    model_paths: Vec<PathBuf>,
+    head: Option<PathBuf>,
+    limits: clef::ClefLimits,
+}
+
+fn split_decision_args<I, S>(args: I) -> Result<(DecisionArgs, Vec<String>), String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut decision = DecisionArgs::default();
+    let mut rest = Vec::new();
+    let mut args = args.into_iter().map(Into::into);
+    let number = |flag: &str, value: String| -> Result<usize, String> {
+        value
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| format!("invalid {flag} value `{value}`"))
+    };
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--decision-model" => decision
+                .model_paths
+                .push(next_value(&mut args, argument.as_str())?.into()),
+            "--clef-head" => decision.head = Some(next_value(&mut args, argument.as_str())?.into()),
+            "--decision-max-tokens" => {
+                decision.limits.max_tokens =
+                    number(&argument, next_value(&mut args, argument.as_str())?)?;
+            }
+            "--decision-chunk" => {
+                decision.limits.prefill_chunk =
+                    number(&argument, next_value(&mut args, argument.as_str())?)?;
+            }
+            "--decision-max-questions" => {
+                decision.limits.max_questions =
+                    number(&argument, next_value(&mut args, argument.as_str())?)?;
+            }
+            "--decision-max-options" => {
+                let value = number(&argument, next_value(&mut args, argument.as_str())?)?;
+                if value < 2 {
+                    return Err(String::from("--decision-max-options must be at least 2"));
+                }
+                decision.limits.max_options = value;
+            }
+            _ => rest.push(argument),
+        }
+    }
+    Ok((decision, rest))
 }
 
 fn parse_args_from<I, S>(args: I) -> Result<OpenAiCompatConfig, String>
@@ -157,7 +269,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled]",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
     )
 }
 
@@ -165,6 +277,30 @@ fn usage() -> String {
 mod tests {
     use super::parse_args_from;
     use psionic_serve::OpenAiCompatBackend;
+
+    #[test]
+    fn decision_flags_are_taken_out_before_the_generic_flags() {
+        let (decision, rest) = super::split_decision_args([
+            "--decision-model",
+            "/tmp/clef.gguf",
+            "--port",
+            "9000",
+            "--clef-head",
+            "/tmp/head",
+            "--decision-max-tokens",
+            "32768",
+            "--decision-chunk",
+            "64",
+        ])
+        .expect("decision flags");
+        assert_eq!(decision.model_paths.len(), 1);
+        assert_eq!(decision.limits.max_tokens, 32768);
+        assert_eq!(decision.limits.prefill_chunk, 64);
+        assert_eq!(decision.limits.max_options, 255);
+        assert!(decision.head.is_some());
+        assert_eq!(rest, ["--port", "9000"]);
+        assert!(super::split_decision_args(["--decision-max-options", "1"]).is_err());
+    }
 
     #[test]
     fn parse_args_accepts_multiple_models() {

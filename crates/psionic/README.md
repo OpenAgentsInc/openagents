@@ -50,3 +50,8 @@ On Apple Silicon, use `--backend metal`. `--backend cpu` works anywhere.
 The CUDA and Metal lanes serve `qwen35`, `qwen38`, and `gemma4` GGUF
 decoders. [`docs/psionic/README.md`](../../docs/psionic/README.md) covers
 what runs where.
+
+A Clef decision GGUF (`general.architecture = clef`, Cloudflare's
+Clef-Flash) given with `-m` is served at `POST /v1/systemone` on the CPU
+(`--decision-max-tokens`, `--decision-chunk`, `--clef-head`); see
+[`docs/inference/clef-native.md`](../../docs/inference/clef-native.md).

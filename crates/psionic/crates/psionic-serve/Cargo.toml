@@ -32,6 +32,7 @@ futures-util = "0.3"
 hex = { workspace = true }
 hyper = "1"
 hyper-util = { version = "0.1", features = ["server", "service", "tokio", "http1", "http2"] }
+libm = "0.2"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 psionic-data = { path = "../psionic-data" }
 psionic-adapters = { path = "../psionic-adapters" }

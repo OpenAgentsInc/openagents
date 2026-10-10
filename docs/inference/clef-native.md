@@ -3,7 +3,7 @@
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: `planned` (2026-10-09). Nothing in this document is implemented yet.
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2–M4 `planned`. See [M1 status](#m1-status-2026-10-09).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -24,6 +24,93 @@ Tracking issues:
 
 The measurements this plan builds on are in openagents
 `docs/inference/clef-self-host.md` (commit `c33281c2d1`).
+
+## M1 status (2026-10-09)
+
+The Clef lane is `implemented_early` on the CPU in
+`crates/psionic/crates/psionic-serve/src/clef/` ([#11194](https://github.com/OpenAgentsInc/openagents/issues/11194)).
+
+**What runs.**
+
+- `psionic-openai-server -m Clef-Flash-Q4_K_M.gguf` serves
+  `POST /v1/systemone`, `GET /v1/models` (`capabilities: ["decision"]`) and
+  `/health`. A Clef GGUF given with `-m` becomes a decision model, and
+  `--decision-model` names one explicitly. Next to other `-m` models, the
+  route is added to the generic server.
+- **Admission.** `general.architecture = clef` GGUFs are admitted with their
+  backbone read as `qwen35`, plus the embedded head (Q8_0/BF16/F32,
+  dequantized to f32). `--clef-head <dir|joint_head.safetensors>` uses
+  Cloudflare's HF head instead, beside a Clef or `qwen35` GGUF.
+  - A missing head, wrong shapes, `hidden_size` drift, unknown head tensors,
+    or a tied LM head are refused at load.
+- **Prompt.** The encoder is a byte-exact port of `encode_record`. It has its
+  own JSON reader and writer that keep Python's semantics: key order,
+  repeated keys, exact big integers, `repr(float)`, and `ensure_ascii=False`
+  escapes.
+- **Backbone.** The CPU backbone runs a chunked prefill (default 256 tokens,
+  `--decision-chunk`).
+  - Each weight row is decoded once per chunk and multiplied with every row
+    of the chunk, using an AVX2+FMA kernel when the CPU has it.
+  - The recurrent and attention updates run token by token.
+  - It streams each final hidden row into the head. The head keeps only the
+    1024-wide memory rows, the span sums and the last row, and the LM head
+    is never multiplied.
+- **Limits and refusals.**
+  - Limits: up to 255 options, 64 questions and a 16,384-token budget
+    (`--decision-max-{tokens,questions,options}`), with an 8 MiB body.
+  - Over the budget, too many questions or options, images or videos, or an
+    oversized body are refused with `not_admitted`. Truncation happens only
+    when the request sends `truncation: "state_tail"`.
+  - A malformed request gets `invalid_request` (400). A full queue gets
+    `busy` (503).
+- **Answers.** Confidence is the reference's (the top probability), and
+  probabilities are not rounded. Every answer carries
+  `psionic.{artifact, artifact_digest, head_source, head_digest, backend,
+  prefill_chunk, prompt_tokens, truncated_state_tokens, trained_length,
+  latency_ms}`.
+- **Judge chain.** `crates/jev/src/doors.rs` now fails over on these door
+  refusals:
+  - a 413;
+  - a `not_admitted` or size/unsupported code;
+  - a bare 400 that names a known door limit (Ollama's 2–26 options and
+    64 KiB cap, llama.cpp's "input is too large").
+
+  A malformed question still does not fail over.
+
+**Measured** on coderos-4080 (CPU), against `Clef-Flash-Q4_K_M.gguf`
+(sha256 `fd3e9060…638c`). The fixtures and tools are in
+`crates/psionic/fixtures/clef/`.
+
+| Gate | Result |
+| --- | --- |
+| Encoder vs Cloudflare `encode_record` + HF tokenizer, 200 synthetic records | **0 differences** (ids, question spans, option spans, option ids) |
+| Head vs torch f32 `JointSchemaHead`, the same hidden rows (Psionic's backbone, 155-token record) | **max \|Δlogit\| 2.3e-6** (HF head). The GGUF Q8_0 head vs torch f32 is 1.2e-3 logit and 6e-5 in p; torch bf16 vs f32 is 1.3e-2 logit. A tiny-head fixture test is 1e-4. |
+| Chunked prefill vs token at a time | Same rows: the test requires min row cosine > 0.9999 at chunks 7, 64 and 512; the same answer to 7 digits |
+| Backbone hidden rows vs HF f32 reference (155 tokens) | mean cosine 0.989, min 0.855 (Q4_K_M vs f32 weights) |
+| End to end vs llama.cpp b11538 (CPU, same GGUF), 37 requests ≤ 1.1k tokens, 95 questions | top answer 90.5 %, median \|Δp\| 0.006, p99 0.115, max 0.249 |
+| Same, only the 16 requests where llama.cpp builds the reference prompt (36 questions) | top answer 91.7 % (3 near-ties: top two within 0.03), median \|Δp\| 0.004, p99 0.034, max 0.077 |
+| End to end vs the Cloudflare reference in f32 (HF weights), 40 requests, 104 questions | Psionic: top answer 94.2 %, max \|Δp\| 0.177. llama.cpp on the same gate: 92.6 %, max 0.30 |
+| `crates/jev` quickstart (`TYPESAFE_BASE_URL` = the Psionic route) | answers `billing` in 7.1 s (143 tokens, CPU) |
+
+**Not met: the M1 end-to-end gate as written** (100 % top answer and
+\|Δp\| ≤ 0.02 against llama.cpp). The measurements show llama.cpp is not a
+tight comparator here:
+
+- llama.cpp b11538's own prompt differs from the reference encoder on 21 of
+  37 requests, by up to 41 tokens. Psionic's prompt is exact.
+- llama.cpp disagrees with the f32 reference more than Psionic does (92.6 %
+  against 94.2 %).
+- Where both build the same prompt, every top-answer difference is a near
+  tie on synthetic questions.
+- llama.cpp refuses `1e400` in a request (3 of 40).
+
+Before M1 closes, the gate should be restated as **Psionic vs the reference
+encoder plus the f32 reference model**, with near ties excluded, or measured
+on decisive product requests.
+
+**Speed.** On the CPU this is development speed, not serving speed: about
+7–13 s per 150-token request, depending on load. M2 (#11195) owns CUDA
+speed.
 
 ## Sources read
 
@@ -471,7 +558,8 @@ Done when:
 - 100% top-answer agreement and |Δp| ≤ 0.02 against llama.cpp on the same
   GGUF, for records up to about 1k tokens. The CPU lane is slow by design.
 - The `crates/jev` quickstart answers through `Config::local`.
-- `INFERENCE_ENGINE.md` publishes the lane as `implemented_early` (CPU).
+- This document publishes the lane as `implemented_early` (CPU); see
+  [M1 status](#m1-status-2026-10-09).
 
 **M2: CUDA speed** ([#11195](https://github.com/OpenAgentsInc/openagents/issues/11195)). This milestone adds:
 

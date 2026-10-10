@@ -34,6 +34,7 @@ use psionic_runtime::{
     PrefixCacheRefusalReason, PrefixCacheState, SamplingPolicy,
 };
 use psionic_train::load_qwen38_lm_head_adapter_safetensors;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -2045,6 +2046,70 @@ impl CpuGgufQwen35TextGenerationService {
         }
         let step = final_step.ok_or(ReferenceTextGenerationError::EmptyPrompt)?;
         Ok((step.final_hidden, step.logits))
+    }
+
+    /// Runs `tokens` through the trunk one token at a time and hands `sink`
+    /// each token's final hidden row (after the output RMSNorm, the
+    /// `last_hidden_state` a Hugging Face model returns), in order. The LM
+    /// head is never run and no activation beyond one row is kept, so a
+    /// caller can stream the rows into a reduction (the Clef decision head).
+    ///
+    /// `chunk` tokens go through each layer together (projections batched,
+    /// recurrent and attention updates in token order); `chunk = 1` is the
+    /// token-at-a-time decode path.
+    pub fn stream_final_hidden_rows(
+        &self,
+        tokens: &[TokenId],
+        chunk: usize,
+        sink: &mut dyn FnMut(usize, &[f32]) -> Result<(), ReferenceTextGenerationError>,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        if tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+        let mut state = self.model.initial_state(qwen35_cache_capacity_tokens(
+            tokens.len(),
+            1,
+            tokens.len().max(self.model.descriptor.config.max_context),
+        ));
+        if chunk > 1 {
+            return self
+                .model
+                .prefill_final_hidden_rows(&mut state, tokens, chunk, sink);
+        }
+        for (index, token) in tokens.iter().enumerate() {
+            let position = state.position;
+            let step =
+                self.model
+                    .forward_token_inner(&mut state, *token, None, [position; 3], false)?;
+            sink(index, step.final_hidden.as_slice())?;
+        }
+        Ok(())
+    }
+
+    /// Decodes rows of the untied output projection (`output.weight`, the LM
+    /// head) for the given token ids. The Clef head reads these rows as
+    /// option lexical vectors; the matrix itself is never multiplied.
+    pub fn output_embedding_rows(
+        &self,
+        tokens: &[u32],
+    ) -> Result<Vec<Vec<f32>>, ReferenceTextGenerationError> {
+        tokens
+            .iter()
+            .map(|token| self.model.output.decode_row(*token as usize))
+            .collect()
+    }
+
+    /// Whether the artifact carries its own output projection (an untied LM
+    /// head). The Clef head requires one.
+    #[must_use]
+    pub fn has_untied_output(&self) -> bool {
+        self.model.output_is_untied
+    }
+
+    /// The runtime tokenizer the trunk was loaded with.
+    #[must_use]
+    pub fn runtime_tokenizer(&self) -> &GgufRuntimeTokenizer {
+        &self.model.tokenizer
     }
 
     /// Captures layer-zero recurrent intermediates for supplied prefill and decode tokens.
@@ -4213,6 +4278,7 @@ struct CpuQwen35Model {
     token_embedding: HostMatrix,
     output_norm: Vec<f32>,
     output: HostMatrix,
+    output_is_untied: bool,
     layers: Vec<CpuQwen35Layer>,
     mtp: Option<CpuQwen38MtpModel>,
     plan_digest: String,
@@ -4245,6 +4311,7 @@ impl CpuQwen35Model {
         })?;
         let token_embedding_name = adapter.tensor_layout().token_embedding.as_str();
         let token_embedding = HostMatrix::load(&artifact, token_embedding_name)?;
+        let output_is_untied = adapter.tensor_layout().output.is_some();
         let output = if let Some(name) = adapter.tensor_layout().output.as_ref() {
             HostMatrix::load(&artifact, name.as_str())?
         } else {
@@ -4303,6 +4370,7 @@ impl CpuQwen35Model {
             token_embedding,
             output_norm,
             output,
+            output_is_untied,
             layers,
             mtp,
             plan_digest: if enable_qwen38_mtp {
@@ -4344,6 +4412,20 @@ impl CpuQwen35Model {
         token: TokenId,
         embedding_override: Option<&[f32]>,
         mrope_position: [usize; 3],
+    ) -> Result<CpuQwen35ForwardStep, ReferenceTextGenerationError> {
+        self.forward_token_inner(state, token, embedding_override, mrope_position, true)
+    }
+
+    /// One token through the trunk. `compute_logits = false` stops at the
+    /// output-norm hidden row (the Clef decision lane never runs the LM
+    /// head) and returns empty logits.
+    fn forward_token_inner(
+        &self,
+        state: &mut CpuQwen35State,
+        token: TokenId,
+        embedding_override: Option<&[f32]>,
+        mrope_position: [usize; 3],
+        compute_logits: bool,
     ) -> Result<CpuQwen35ForwardStep, ReferenceTextGenerationError> {
         if token.as_u32() as usize >= self.descriptor.config.vocab_size {
             return Err(ReferenceTextGenerationError::InvalidToken {
@@ -4390,11 +4472,14 @@ impl CpuQwen35Model {
             self.output_norm.as_slice(),
             self.family_metadata.rms_norm_epsilon,
         );
-        let logits = self
-            .output
-            .matvec(final_hidden.as_slice())
-            .map_err(ReferenceTextGenerationError::Runtime)?;
-        bytes_moved = bytes_moved.saturating_add(self.output.host_residency_bytes() as u64);
+        let logits = if compute_logits {
+            bytes_moved = bytes_moved.saturating_add(self.output.host_residency_bytes() as u64);
+            self.output
+                .matvec(final_hidden.as_slice())
+                .map_err(ReferenceTextGenerationError::Runtime)?
+        } else {
+            Vec::new()
+        };
         state.position = state.position.saturating_add(1);
         Ok(CpuQwen35ForwardStep {
             logits,
@@ -4402,6 +4487,58 @@ impl CpuQwen35Model {
             kernel_count: kernel_count.saturating_add(1),
             bytes_moved,
         })
+    }
+}
+
+impl CpuQwen35Model {
+    /// Chunked prefill to the final hidden rows (output RMSNorm applied),
+    /// handed to `sink` in order. No LM head.
+    fn prefill_final_hidden_rows(
+        &self,
+        state: &mut CpuQwen35State,
+        tokens: &[TokenId],
+        chunk: usize,
+        sink: &mut dyn FnMut(usize, &[f32]) -> Result<(), ReferenceTextGenerationError>,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        let hidden_size = self.descriptor.config.hidden_size;
+        let mut done = 0usize;
+        for piece in tokens.chunks(chunk.max(1)) {
+            let n = piece.len();
+            let mut hidden = Vec::with_capacity(n * hidden_size);
+            for token in piece {
+                if token.as_u32() as usize >= self.descriptor.config.vocab_size {
+                    return Err(ReferenceTextGenerationError::InvalidToken {
+                        token: token.as_u32(),
+                        vocab_size: self.descriptor.config.vocab_size,
+                    });
+                }
+                hidden.extend(self.token_embedding.decode_row(token.as_u32() as usize)?);
+            }
+            let first_position = state.position;
+            for (layer, layer_state) in self.layers.iter().zip(state.layers.iter_mut()) {
+                hidden = layer.forward_chunk(
+                    &self.family_metadata,
+                    self.descriptor.config.block.attention.head_count,
+                    self.descriptor.config.block.attention.head_dim,
+                    self.descriptor.config.block.attention.rotary_dim,
+                    first_position,
+                    hidden.as_slice(),
+                    n,
+                    layer_state,
+                )?;
+            }
+            for (offset, row) in hidden.chunks_exact(hidden_size).enumerate() {
+                let normalized = rms_norm(
+                    row,
+                    self.output_norm.as_slice(),
+                    self.family_metadata.rms_norm_epsilon,
+                );
+                sink(done + offset, normalized.as_slice())?;
+            }
+            state.position = state.position.saturating_add(n);
+            done += n;
+        }
+        Ok(())
     }
 }
 
@@ -5132,6 +5269,298 @@ impl CpuQwen35Layer {
         add_vectors(post_attention.as_slice(), ffn_down.as_slice())
             .map_err(ReferenceTextGenerationError::Runtime)
     }
+}
+
+/// Chunked CPU prefill: a chunk of tokens goes through one layer at a time.
+/// Every projection decodes each weight row once and multiplies it with all
+/// the chunk's rows ([`HostMatrix::matmul_rows`]); the recurrent and
+/// attention updates still run token by token in order, so the state after
+/// a chunk is the state after the same tokens one at a time.
+impl CpuQwen35Layer {
+    fn forward_chunk(
+        &self,
+        family_metadata: &GgufDecoderFamilyMetadata,
+        head_count: usize,
+        head_dim: usize,
+        rotary_dim: usize,
+        first_position: usize,
+        input: &[f32],
+        n: usize,
+        state: &mut CpuQwen35LayerState,
+    ) -> Result<Vec<f32>, ReferenceTextGenerationError> {
+        let epsilon = family_metadata.rms_norm_epsilon;
+        let width = input.len() / n.max(1);
+        let mut normalized = Vec::with_capacity(input.len());
+        for row in input.chunks_exact(width) {
+            normalized.extend(rms_norm(row, self.attention_norm.as_slice(), epsilon));
+        }
+        let mixed = match (&self.kind, state) {
+            (CpuQwen35LayerKind::Hybrid(hybrid), CpuQwen35LayerState::Hybrid(state)) => {
+                let parts = hybrid
+                    .qkv_gate_alpha_beta
+                    .host_matmul_rows(normalized.as_slice(), n)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                let widths = &hybrid.qkv_gate_alpha_beta.rows_per_projection;
+                let mut activated = Vec::with_capacity(n * hybrid.inner_size);
+                for t in 0..n {
+                    let at = |part: usize| &parts[part][t * widths[part]..(t + 1) * widths[part]];
+                    activated.extend(hybrid_mix_step(
+                        hybrid,
+                        epsilon,
+                        at(0),
+                        at(1),
+                        at(2),
+                        at(3),
+                        state,
+                    )?);
+                }
+                hybrid
+                    .ssm_out
+                    .matmul_rows(activated.as_slice(), n)
+                    .map_err(ReferenceTextGenerationError::Runtime)?
+            }
+            (
+                CpuQwen35LayerKind::FullAttention(full_attention),
+                CpuQwen35LayerState::FullAttention(state),
+            ) => {
+                let parts = full_attention
+                    .qkv
+                    .host_matmul_rows(normalized.as_slice(), n)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                let widths = &full_attention.qkv.rows_per_projection;
+                let query_width = head_count.saturating_mul(head_dim);
+                let mut gated = Vec::with_capacity(n * query_width);
+                for t in 0..n {
+                    let at = |part: usize| &parts[part][t * widths[part]..(t + 1) * widths[part]];
+                    gated.extend(full_attention_mix_step(
+                        family_metadata,
+                        full_attention,
+                        head_count,
+                        head_dim,
+                        rotary_dim,
+                        [first_position + t; 3],
+                        at(0),
+                        at(1),
+                        at(2),
+                        state,
+                    )?);
+                }
+                full_attention
+                    .output
+                    .matmul_rows(gated.as_slice(), n)
+                    .map_err(ReferenceTextGenerationError::Runtime)?
+            }
+            _ => {
+                return Err(ReferenceTextGenerationError::Runtime(
+                    crate::RuntimeError::Backend(String::from(
+                        "qwen35 cpu layer/state kind mismatch",
+                    )),
+                ));
+            }
+        };
+        let mut post_attention = mixed;
+        for (value, residual) in post_attention.iter_mut().zip(input) {
+            *value += residual;
+        }
+        let mut post_norm = Vec::with_capacity(post_attention.len());
+        for row in post_attention.chunks_exact(width) {
+            post_norm.extend(rms_norm(row, self.post_attention_norm.as_slice(), epsilon));
+        }
+        let gate_up = self
+            .ffn_gate_up
+            .host_matmul_rows(post_norm.as_slice(), n)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let ffn: Vec<f32> = gate_up[0]
+            .iter()
+            .zip(gate_up[1].iter())
+            .map(|(gate, up)| silu_scalar(*gate) * *up)
+            .collect();
+        let down = self
+            .ffn_down
+            .matmul_rows(ffn.as_slice(), n)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        for (value, ffn) in post_attention.iter_mut().zip(down) {
+            *value += ffn;
+        }
+        Ok(post_attention)
+    }
+}
+
+/// The token-by-token part of a hybrid (Gated DeltaNet) layer after its
+/// input projection: conv step, delta-rule update, gated norm. The same
+/// arithmetic as `CpuQwen35Layer::forward_hybrid_attention`.
+fn hybrid_mix_step(
+    hybrid: &CpuQwen35HybridLayer,
+    epsilon: f32,
+    qkv: &[f32],
+    z: &[f32],
+    alpha: &[f32],
+    beta: &[f32],
+    state: &mut CpuQwen35HybridState,
+) -> Result<Vec<f32>, ReferenceTextGenerationError> {
+    let q_size = hybrid.group_count.saturating_mul(hybrid.state_size);
+    let k_size = q_size;
+    let v_size = hybrid.inner_size;
+    let v_offset = q_size.saturating_add(k_size);
+    let mut conv = vec![0.0_f32; qkv.len()];
+    causal_depthwise_conv1d_step_in_place(
+        qkv,
+        state.conv_state.as_mut_slice(),
+        &hybrid.ssm_conv1d,
+        hybrid.conv_kernel,
+        conv.as_mut_slice(),
+    )?;
+    silu_forward_in_place(conv.as_mut_slice());
+    let mut decay = vec![0.0_f32; alpha.len()];
+    let mut beta_sigmoid = vec![0.0_f32; beta.len()];
+    for index in 0..alpha.len() {
+        let gate = softplus(alpha[index] + hybrid.ssm_dt[index]) * hybrid.ssm_a[index];
+        decay[index] = gate.exp();
+        beta_sigmoid[index] = sigmoid(beta[index]);
+    }
+    let mut gated_delta = vec![0.0_f32; v_size];
+    let mut norm_q = vec![0.0_f32; hybrid.state_size];
+    let mut norm_k = vec![0.0_f32; hybrid.state_size];
+    let mut kv_mem = vec![0.0_f32; hybrid.state_size];
+    let mut delta = vec![0.0_f32; hybrid.state_size];
+    let repeat_factor = hybrid.time_step_rank / hybrid.group_count.max(1);
+    for value_head_index in 0..hybrid.time_step_rank {
+        let key_head_index = if hybrid.v_head_reordered {
+            value_head_index % hybrid.group_count.max(1)
+        } else if repeat_factor > 0 {
+            value_head_index / repeat_factor
+        } else {
+            0
+        };
+        let q = &conv[key_head_index * hybrid.state_size..(key_head_index + 1) * hybrid.state_size];
+        let k = &conv[q_size + key_head_index * hybrid.state_size
+            ..q_size + (key_head_index + 1) * hybrid.state_size];
+        let v = &conv[v_offset + value_head_index * hybrid.state_size
+            ..v_offset + (value_head_index + 1) * hybrid.state_size];
+        let square = hybrid.state_size.saturating_mul(hybrid.state_size);
+        let state_slice =
+            &mut state.delta_state[value_head_index * square..(value_head_index + 1) * square];
+        let output_slice = &mut gated_delta
+            [value_head_index * hybrid.state_size..(value_head_index + 1) * hybrid.state_size];
+        delta_net_autoregressive_step_in_place(
+            q,
+            k,
+            v,
+            decay[value_head_index],
+            beta_sigmoid[value_head_index],
+            state_slice,
+            norm_q.as_mut_slice(),
+            norm_k.as_mut_slice(),
+            kv_mem.as_mut_slice(),
+            delta.as_mut_slice(),
+            output_slice,
+        );
+    }
+    let hybrid_norm = per_head_rms_norm(
+        gated_delta.as_slice(),
+        hybrid.time_step_rank,
+        hybrid.state_size,
+        hybrid.ssm_norm.as_slice(),
+        epsilon,
+    );
+    Ok(hybrid_norm
+        .iter()
+        .copied()
+        .zip(z.iter().copied())
+        .map(|(value, gate)| value * silu_scalar(gate))
+        .collect())
+}
+
+/// The token-by-token part of a full-attention layer after its input
+/// projection: q/k norms, rotary, attention over the cache (which this token
+/// joins), output gate. The same arithmetic as
+/// `CpuQwen35Layer::forward_full_attention`.
+fn full_attention_mix_step(
+    family_metadata: &GgufDecoderFamilyMetadata,
+    full_attention: &CpuQwen35FullAttentionLayer,
+    head_count: usize,
+    head_dim: usize,
+    rotary_dim: usize,
+    mrope_position: [usize; 3],
+    query_gate: &[f32],
+    key: &[f32],
+    value: &[f32],
+    state: &mut CpuQwen35FullAttentionState,
+) -> Result<Vec<f32>, ReferenceTextGenerationError> {
+    let epsilon = family_metadata.rms_norm_epsilon;
+    let query_width = head_count.saturating_mul(head_dim);
+    let kv_head_count = full_attention.kv_width / head_dim.max(1);
+    if query_gate.len() != query_width.saturating_mul(2) {
+        return Err(ReferenceTextGenerationError::Runtime(
+            crate::RuntimeError::Backend(format!(
+                "qwen35 cpu full-attention query/gate width mismatch: expected {}, actual {}",
+                query_width.saturating_mul(2),
+                query_gate.len(),
+            )),
+        ));
+    }
+    let mut query = vec![0.0_f32; query_width];
+    let mut gate = vec![0.0_f32; query_width];
+    for head_index in 0..head_count {
+        let source_base = head_index * head_dim * 2;
+        let destination = head_index * head_dim;
+        query[destination..destination + head_dim]
+            .copy_from_slice(&query_gate[source_base..source_base + head_dim]);
+        gate[destination..destination + head_dim]
+            .copy_from_slice(&query_gate[source_base + head_dim..source_base + head_dim * 2]);
+    }
+    let mut query = per_head_rms_norm(
+        query.as_slice(),
+        head_count,
+        head_dim,
+        full_attention.query_norm.as_slice(),
+        epsilon,
+    );
+    let mut key = per_head_rms_norm(
+        key,
+        kv_head_count,
+        head_dim,
+        full_attention.key_norm.as_slice(),
+        epsilon,
+    );
+    let attention_scale = qwen35_attention_scale(family_metadata, head_dim);
+    apply_rope_neox_mrope(
+        query.as_mut_slice(),
+        head_count,
+        head_dim,
+        rotary_dim,
+        mrope_position,
+        family_metadata,
+    );
+    apply_rope_neox_mrope(
+        key.as_mut_slice(),
+        kv_head_count,
+        head_dim,
+        rotary_dim,
+        mrope_position,
+        family_metadata,
+    );
+    let attention = attend_full_attention(
+        query.as_slice(),
+        key.as_slice(),
+        value,
+        state.entries.as_slice(),
+        head_count,
+        kv_head_count,
+        head_dim,
+        attention_scale,
+        family_metadata.sliding_window,
+    );
+    state.entries.push(Qwen35FullAttentionEntry {
+        key,
+        value: value.to_vec(),
+    });
+    Ok(attention
+        .iter()
+        .copied()
+        .zip(gate.iter().copied())
+        .map(|(value, gate)| value * sigmoid(gate))
+        .collect())
 }
 
 #[derive(Clone, Debug)]
@@ -6020,6 +6449,19 @@ impl HostProjectionGroup {
             .iter()
             .map(HostMatrix::host_residency_bytes)
             .sum()
+    }
+
+    /// `HostMatrix::matmul_rows` for each part: one `n x rows` block per
+    /// projection.
+    fn host_matmul_rows(
+        &self,
+        input: &[f32],
+        n: usize,
+    ) -> Result<Vec<Vec<f32>>, crate::RuntimeError> {
+        self.parts
+            .iter()
+            .map(|matrix| matrix.matmul_rows(input, n))
+            .collect()
     }
 
     fn host_matvec(&self, input: &[f32]) -> Result<ProjectionOutputs, crate::RuntimeError> {
@@ -14211,6 +14653,162 @@ impl HostMatrix {
             HostMatrixKind::Quantized(matrix) => matrix.matvec(input),
         }
     }
+
+    /// `n` input rows (`n x columns`, row-major) times this matrix: returns
+    /// `n x rows`. Each weight row is decoded to f32 once and multiplied
+    /// with every input row, so a prefill chunk pays the dequantization
+    /// once instead of once per token.
+    fn matmul_rows(&self, input: &[f32], n: usize) -> Result<Vec<f32>, crate::RuntimeError> {
+        let (rows, columns) = (self.rows(), self.columns());
+        if input.len() != n.saturating_mul(columns) {
+            return Err(crate::RuntimeError::Backend(format!(
+                "matmul input width mismatch: expected {n} x {columns}, actual {}",
+                input.len()
+            )));
+        }
+        let per_row: Vec<Vec<f32>> = (0..rows)
+            .into_par_iter()
+            .with_min_len(4)
+            .map_init(
+                || Vec::with_capacity(columns),
+                |decoded, row| -> Result<Vec<f32>, crate::RuntimeError> {
+                    let weights: &[f32] = match &self.kind {
+                        HostMatrixKind::Dense(matrix) => {
+                            &matrix.values[row * columns..(row + 1) * columns]
+                        }
+                        HostMatrixKind::Quantized(matrix) => {
+                            decoded.clear();
+                            let bytes = matrix
+                                .storage
+                                .read_range(row * matrix.row_byte_len, matrix.row_byte_len)
+                                .map_err(model_load_runtime_error)?;
+                            decode_quantized_row_into(matrix.mode, bytes, decoded)?;
+                            decoded.as_slice()
+                        }
+                    };
+                    Ok(dot_row_with_rows(weights, input, columns))
+                },
+            )
+            .collect::<Result<_, _>>()?;
+        let mut output = vec![0.0_f32; n.saturating_mul(rows)];
+        for (row, values) in per_row.iter().enumerate() {
+            for (token, value) in values.iter().enumerate() {
+                output[token * rows + row] = *value;
+            }
+        }
+        Ok(output)
+    }
+}
+
+/// `weights · row` for every `columns`-wide row of `input`. Uses an AVX2+FMA
+/// kernel that reads the weight row once per four input rows when the CPU
+/// has it (checked at run time, so the binary stays portable); a repeated
+/// call on the same machine is bitwise identical.
+fn dot_row_with_rows(weights: &[f32], input: &[f32], columns: usize) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if columns % 8 == 0
+            && std::arch::is_x86_feature_detected!("avx2")
+            && std::arch::is_x86_feature_detected!("fma")
+        {
+            // SAFETY: the CPU supports AVX2 and FMA (checked above), and the
+            // kernel reads only within `weights` and `input`, whose lengths
+            // are multiples of `columns`, itself a multiple of 8.
+            return unsafe { dot_row_with_rows_avx2(weights, input, columns) };
+        }
+    }
+    input
+        .chunks_exact(columns)
+        .map(|activation| dot_lanes(weights, activation))
+        .collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn dot_row_with_rows_avx2(weights: &[f32], input: &[f32], columns: usize) -> Vec<f32> {
+    use std::arch::x86_64::{
+        __m256, _mm_add_ps, _mm_cvtss_f32, _mm_hadd_ps, _mm256_add_ps, _mm256_castps256_ps128,
+        _mm256_extractf128_ps, _mm256_fmadd_ps, _mm256_loadu_ps, _mm256_setzero_ps,
+    };
+    unsafe fn sum(value: __m256) -> f32 {
+        unsafe {
+            let low = _mm256_castps256_ps128(value);
+            let high = _mm256_extractf128_ps(value, 1);
+            let pair = _mm_add_ps(low, high);
+            let pair = _mm_hadd_ps(pair, pair);
+            _mm_cvtss_f32(_mm_hadd_ps(pair, pair))
+        }
+    }
+    let rows = input.len() / columns;
+    let mut out = Vec::with_capacity(rows);
+    let w = weights.as_ptr();
+    let mut row = 0;
+    unsafe {
+        while row + 4 <= rows {
+            let a = input.as_ptr().add(row * columns);
+            let b = a.add(columns);
+            let c = b.add(columns);
+            let d = c.add(columns);
+            let (mut sa, mut sb, mut sc, mut sd) = (
+                _mm256_setzero_ps(),
+                _mm256_setzero_ps(),
+                _mm256_setzero_ps(),
+                _mm256_setzero_ps(),
+            );
+            let mut k = 0;
+            while k < columns {
+                let wk = _mm256_loadu_ps(w.add(k));
+                sa = _mm256_fmadd_ps(wk, _mm256_loadu_ps(a.add(k)), sa);
+                sb = _mm256_fmadd_ps(wk, _mm256_loadu_ps(b.add(k)), sb);
+                sc = _mm256_fmadd_ps(wk, _mm256_loadu_ps(c.add(k)), sc);
+                sd = _mm256_fmadd_ps(wk, _mm256_loadu_ps(d.add(k)), sd);
+                k += 8;
+            }
+            out.extend([sum(sa), sum(sb), sum(sc), sum(sd)]);
+            row += 4;
+        }
+        while row < rows {
+            let a = input.as_ptr().add(row * columns);
+            let (mut s0, mut s1) = (_mm256_setzero_ps(), _mm256_setzero_ps());
+            let mut k = 0;
+            while k + 16 <= columns {
+                s0 = _mm256_fmadd_ps(_mm256_loadu_ps(w.add(k)), _mm256_loadu_ps(a.add(k)), s0);
+                s1 = _mm256_fmadd_ps(
+                    _mm256_loadu_ps(w.add(k + 8)),
+                    _mm256_loadu_ps(a.add(k + 8)),
+                    s1,
+                );
+                k += 16;
+            }
+            while k < columns {
+                s0 = _mm256_fmadd_ps(_mm256_loadu_ps(w.add(k)), _mm256_loadu_ps(a.add(k)), s0);
+                k += 8;
+            }
+            out.push(sum(_mm256_add_ps(s0, s1)));
+            row += 1;
+        }
+    }
+    out
+}
+
+/// An f32 dot product in eight fixed lanes (vectorizes; a repeated call is
+/// bitwise identical).
+fn dot_lanes(left: &[f32], right: &[f32]) -> f32 {
+    let mut lanes = [0.0_f32; 8];
+    let mut left_chunks = left.chunks_exact(8);
+    let mut right_chunks = right.chunks_exact(8);
+    for (l, r) in (&mut left_chunks).zip(&mut right_chunks) {
+        for lane in 0..8 {
+            lanes[lane] += l[lane] * r[lane];
+        }
+    }
+    let tail: f32 = left_chunks
+        .remainder()
+        .iter()
+        .zip(right_chunks.remainder())
+        .map(|(l, r)| l * r)
+        .sum();
+    lanes.iter().sum::<f32>() + tail
 }
 
 #[derive(Clone, Debug)]
@@ -14293,6 +14891,15 @@ impl QuantizedMatrix {
             )));
         }
         let bytes = self.storage.bytes().map_err(model_load_runtime_error)?;
+        // Rows are independent and each row's dot is computed the same way
+        // either path, so the parallel path is bitwise identical.
+        if self.rows.saturating_mul(self.columns) >= QUANTIZED_MATVEC_PARALLEL_MIN_ELEMENTS {
+            return bytes
+                .par_chunks_exact(self.row_byte_len)
+                .with_min_len(16)
+                .map(|row_bytes| quantized_row_dot(input, self.mode, row_bytes))
+                .collect();
+        }
         let mut output = Vec::with_capacity(self.rows);
         for row_bytes in bytes.chunks_exact(self.row_byte_len) {
             output.push(quantized_row_dot(input, self.mode, row_bytes)?);
@@ -14300,6 +14907,10 @@ impl QuantizedMatrix {
         Ok(output)
     }
 }
+
+/// Host quantized matvecs at least this large (rows × columns) split their
+/// rows across the rayon pool.
+const QUANTIZED_MATVEC_PARALLEL_MIN_ELEMENTS: usize = 1 << 20;
 
 #[derive(Clone, Debug)]
 struct MetalProjectionStep {

@@ -2092,6 +2092,10 @@ impl GgufTensorInfo {
     }
 }
 
+/// Metadata key that records the original `general.architecture` of a Clef
+/// decision artifact after its backbone is admitted as `qwen35`.
+pub const CLEF_SOURCE_ARCHITECTURE_KEY: &str = "psionic.clef.source_architecture";
+
 /// Reusable GGUF metadata and tensor table parsed from an artifact.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GgufContent {
@@ -2179,13 +2183,65 @@ impl GgufContent {
             .unwrap_or(DEFAULT_ALIGNMENT);
         let tensor_data_offset = align_offset(reader.position() as u64, alignment);
 
-        Ok(Self {
+        let mut content = Self {
             version,
             alignment,
             metadata,
             tensor_infos,
             tensor_data_offset,
-        })
+        };
+        content.admit_clef_backbone();
+        Ok(content)
+    }
+
+    /// Exposes the Qwen3.5 backbone of a `general.architecture = clef`
+    /// decision artifact (the `ggml-org/Clef-Flash-GGUF` layout) as `qwen35`.
+    ///
+    /// The Clef converter renames every `qwen35.*` key to `clef.*` and adds
+    /// the decision head (`decision.*`, `dec.blk.*`, `token_types`). The
+    /// backbone graph is a stock Qwen3.5 text decoder, so each `clef.*` key
+    /// is mirrored to `qwen35.*` and the architecture becomes `qwen35`. The
+    /// original label stays readable as
+    /// [`CLEF_SOURCE_ARCHITECTURE_KEY`]. Returns whether the artifact was a
+    /// Clef artifact.
+    pub fn admit_clef_backbone(&mut self) -> bool {
+        let is_clef = matches!(
+            self.metadata.get("general.architecture"),
+            Some(GgufMetadataValue::String(value)) if value == "clef"
+        );
+        if !is_clef {
+            return false;
+        }
+        let mirrored = self
+            .metadata
+            .iter()
+            .filter_map(|(key, value)| {
+                key.strip_prefix("clef.")
+                    .map(|rest| (format!("qwen35.{rest}"), value.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (key, value) in mirrored {
+            self.metadata.entry(key).or_insert(value);
+        }
+        self.metadata.insert(
+            String::from("general.architecture"),
+            GgufMetadataValue::String(String::from("qwen35")),
+        );
+        self.metadata.insert(
+            String::from(CLEF_SOURCE_ARCHITECTURE_KEY),
+            GgufMetadataValue::String(String::from("clef")),
+        );
+        true
+    }
+
+    /// Whether this artifact is a Clef decision artifact whose backbone was
+    /// admitted as `qwen35` by [`Self::admit_clef_backbone`].
+    #[must_use]
+    pub fn is_clef_decision_artifact(&self) -> bool {
+        matches!(
+            self.metadata.get(CLEF_SOURCE_ARCHITECTURE_KEY),
+            Some(GgufMetadataValue::String(value)) if value == "clef"
+        )
     }
 
     /// Reads GGUF metadata and tensor descriptors from a local file.

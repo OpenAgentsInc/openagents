@@ -17,6 +17,7 @@
 )]
 
 mod attnres;
+pub mod clef;
 mod conformance;
 mod csm_speech;
 mod gguf;

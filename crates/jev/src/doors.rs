@@ -26,10 +26,14 @@
 //! default TypeSafe is asked first; [`Failover::primary_last`] asks every
 //! fallback door first and TypeSafe last, the order above. A door is left
 //! for the next only when it could not answer for a reason of its own
-//! ([`fails_over`]: 402, 408, 429, any 5xx, the door's own key, account,
-//! or quota refusals, a timeout, or no connection). A refusal of the
-//! question itself (a 400, a 413) never fails over: the next door would
-//! refuse the same question. An answer from any door but TypeSafe names it
+//! ([`fails_over_reply`]: 402, 408, 413, 429, any 5xx, the door's own key,
+//! account, quota, or admission refusals, a timeout, or no connection).
+//! A request too large or unsupported for one door (a 413, a
+//! `not_admitted` code, or a 400 that names that door's own limit, such
+//! as Ollama's 26-option cap) is that door's limit, not the question's:
+//! a later door with other limits may take it. A refusal of the question
+//! itself (a malformed request, `invalid_request` at 400) never fails
+//! over: the next door would refuse the same question. An answer from any door but TypeSafe names it
 //! in `service.door`, so a decision record says which door answered; when
 //! no door answers, the first door's own refusal stands. Each door's key
 //! is held here, sent only to its own door, and never logged.
@@ -176,20 +180,69 @@ const DOOR_OWN_CODES: &[&str] = &[
     "overloaded",
 ];
 
+/// Refusal codes a 400 carries when the request is fine but too large or
+/// unsupported for that door: its size, option or context limits, or a
+/// feature it lacks.
+const DOOR_LIMIT_CODES: &[&str] = &[
+    "request_too_large",
+    "payload_too_large",
+    "context_length_exceeded",
+    "unsupported",
+    "unsupported_input",
+];
+
+/// Error messages of doors that refuse their own limits with a bare 400
+/// and no code: Ollama 0.40's Clef path (2–26 options per question, a
+/// 64 KiB text and schema cap) and llama.cpp's decision server (the prompt
+/// is larger than its physical batch or its context). A fixed table of
+/// known protocol errors, matched case-insensitively.
+const DOOR_LIMIT_MESSAGES: &[&str] = &[
+    "criteria must contain 2–26 candidates",
+    "criteria must contain 2-26 candidates",
+    "must not exceed 64 kib",
+    "input is too large to process",
+    "exceeds the available context size",
+    "the request exceeds the available context",
+];
+
 /// Whether a door's refusal may be asked again at the next door: the door
 /// could not pay (402), has no such model or route (404), timed out (408),
-/// was over a rate or quota (429),
-/// failed (any 5xx), or refused for a reason of its own (its key, its
-/// account, its model list: a [`DOOR_OWN_CODES`] code). A refusal of the
-/// question itself, such as `invalid_request` at 400 or `limit_exceeded`
-/// at 413, never fails over.
+/// would not take a request this large (413), was over a rate or quota
+/// (429), failed (any 5xx), or refused for a reason of its own (its key,
+/// its account, its model list, its admission: a [`DOOR_OWN_CODES`] code
+/// such as `not_admitted`, or a [`DOOR_LIMIT_CODES`] code). A refusal of
+/// the question itself, such as `invalid_request` at 400 or 422, never
+/// fails over. [`fails_over_reply`] also reads the message of a bare 400.
 #[must_use]
 pub fn fails_over(status: u16, code: Option<&str>) -> bool {
-    if matches!(status, 402 | 404 | 408 | 429 | 500..=599) {
+    if matches!(status, 402 | 404 | 408 | 413 | 429 | 500..=599) {
         return true;
     }
     let code = code.unwrap_or_else(|| code_for_http_status(status));
-    DOOR_OWN_CODES.contains(&code)
+    DOOR_OWN_CODES.contains(&code) || (status == 400 && DOOR_LIMIT_CODES.contains(&code))
+}
+
+/// [`fails_over`] for a whole refusal body: a 400 whose message is one of
+/// [`DOOR_LIMIT_MESSAGES`] (a door that names its own limit without a
+/// code, such as Ollama's 26-option cap) is that door's refusal too.
+#[must_use]
+pub fn fails_over_reply(status: u16, body: &Value) -> bool {
+    if fails_over(status, error_code(body)) {
+        return true;
+    }
+    if status != 400 {
+        return false;
+    }
+    let message = body
+        .get("error")
+        .and_then(|error| error.get("message").or(Some(error)))
+        .and_then(Value::as_str)
+        .or_else(|| body.get("message").and_then(Value::as_str))
+        .unwrap_or_default()
+        .to_lowercase();
+    DOOR_LIMIT_MESSAGES
+        .iter()
+        .any(|limit| message.contains(limit))
 }
 
 /// The refusal code an error body carries: `error.code` when it is a
@@ -664,7 +717,7 @@ impl Failover {
                 Ok(reply) => {
                     let body: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
                     let code = error_code(&body).map(str::to_string);
-                    let over = fails_over(reply.status, code.as_deref());
+                    let over = fails_over_reply(reply.status, &body);
                     if !benched {
                         tracing::info!(
                             target: "jev",
@@ -765,8 +818,36 @@ mod tests {
         assert!(fails_over(401, Some("unauthenticated")));
         assert!(!fails_over(400, Some("invalid_request")));
         assert!(!fails_over(400, None));
-        assert!(!fails_over(413, Some("limit_exceeded")));
         assert!(!fails_over(422, Some("invalid_request")));
+        // A door's own size or admission limit is not the question's.
+        assert!(fails_over(413, Some("limit_exceeded")));
+        assert!(fails_over(413, None));
+        assert!(fails_over(413, Some("not_admitted")));
+        assert!(fails_over(400, Some("not_admitted")));
+        assert!(fails_over(400, Some("request_too_large")));
+        assert!(fails_over(400, Some("unsupported")));
+        assert!(!fails_over(422, Some("unsupported")));
+    }
+
+    #[test]
+    fn a_bare_400_naming_a_doors_limit_fails_over() {
+        // Ollama 0.40: `{"error": "<message>"}`, no code.
+        let ollama_options =
+            json!({"error": "question \"answer\": criteria must contain 2–26 candidates"});
+        assert!(fails_over_reply(400, &ollama_options));
+        let ollama_size = json!({"error": "text and schema must not exceed 64 KiB"});
+        assert!(fails_over_reply(400, &ollama_size));
+        let llama = json!({"error": {"code": 400, "message": "input is too large to process. increase the physical batch size", "type": "invalid_request_error"}});
+        assert!(fails_over_reply(400, &llama));
+        // Psionic's refusal of a prompt over its token budget.
+        let psionic = json!({"error": {"code": "not_admitted", "message": "the prompt is 20000 Clef tokens; this server admits 16384"}});
+        assert!(fails_over_reply(413, &psionic));
+        assert!(fails_over_reply(400, &psionic));
+        // A malformed question fails everywhere: it stays.
+        let malformed = json!({"error": {"code": "invalid_request", "message": "questions.x.type is not a question type"}});
+        assert!(!fails_over_reply(400, &malformed));
+        let ollama_malformed = json!({"error": "question \"x\": unknown type \"maybe\""});
+        assert!(!fails_over_reply(400, &ollama_malformed));
     }
 
     #[test]
