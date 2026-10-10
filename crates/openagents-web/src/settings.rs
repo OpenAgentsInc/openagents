@@ -506,9 +506,9 @@ fn settings_content(
                     h2 #settings-claude { "Claude" }
                     div class="oa-settings-row" {
                         div class="oa-settings-text" {
-                            span class="oa-settings-label" { "Your Claude key" }
+                            span class="oa-settings-label" { "Claude Code sign-in" }
                             span class="oa-settings-hint" {
-                                "Your own Anthropic API key or cloud credential for Claude Code."
+                                "Sign in inside your environment, or add your own Anthropic API key or cloud credential."
                             }
                             span class="oa-settings-hint" { (hint) }
                         }
@@ -693,8 +693,12 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
             Err(error) => return refused(error),
         }
     }
+    // Subscription tokens only for the allowlist until Anthropic approves
+    // them in writing (#11235).
+    let tokens = app.config.claude_tokens.admits_viewer(&context.viewer);
     let body = claude_content(
         status.map(|status| status.material),
+        tokens,
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
@@ -708,30 +712,91 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
     )
 }
 
-/// The Claude credential page: what is saved (never the key itself), a
-/// remove button, and the form that adds or replaces it.
-fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &str)) -> Markup {
+/// Where Settings, Claude sends people for Max and Team monthly API
+/// credits.
+const API_CREDITS: &str =
+    "https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-and-team-plans";
+/// Claude Code's one-line install.
+pub(crate) const INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash";
+/// Why a subscription token was not saved for an account off the
+/// allowlist (#11235).
+const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Sign in to Claude inside your environment instead, or save an Anthropic API key. Nothing was saved.";
+
+/// The Claude page (#11235): signing in inside your environment first,
+/// through Claude Code itself; then your own key, with the Max and Team
+/// monthly API credits; what is saved (never the key itself), a remove
+/// button, and the form that adds or replaces it. `tokens` offers a
+/// subscription token (`claude setup-token`), for the allowlist only
+/// ([`byo::TokenAllow`]).
+fn claude_content(
+    saved: Option<Material>,
+    tokens: bool,
+    add: (&str, &str),
+    remove: (&str, &str),
+) -> Markup {
     let material = Field::new("claude-credential-material", "Provider");
     let value = Field::new("claude-credential-value", "Key")
         .required(true)
-        .description("Claude subscription token: the token claude setup-token prints (sk-ant-oat…). Anthropic API key: from console.anthropic.com (sk-ant-api…). Either is recognized by how it starts. Bedrock, Vertex, or Foundry: the JSON credential.");
+        .description(if tokens {
+            "Claude subscription token: the token claude setup-token prints (sk-ant-oat…). Anthropic API key: from console.anthropic.com (sk-ant-api…). Either is recognized by how it starts. Bedrock, Vertex, or Foundry: the JSON credential."
+        } else {
+            "Anthropic API key: from console.anthropic.com (sk-ant-api…). Bedrock, Vertex, or Foundry: the JSON credential."
+        });
+    let mut providers = Select::new("material").aria(material.aria());
+    if tokens {
+        providers = providers.option("claude_subscription_token", SUBSCRIPTION_LABEL);
+    }
+    let providers = providers
+        .option("anthropic_api_key", "Anthropic API key")
+        .option("bedrock_credential", "Amazon Bedrock")
+        .option("vertex_credential", "Google Vertex AI")
+        .option("foundry_credential", "Microsoft Foundry");
+    let retired_token = !tokens && saved == Some(Material::ClaudeSubscriptionToken);
     html! {
         p { (action_link("Settings", PAGE)) }
         (MarkdownRoot::new(html! {
-            h1 { "Claude credential" }
-            p { "Add your own Claude subscription token or Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential, to run Claude Code tasks. Usage bills to your own account." }
+            h1 { "Claude" }
+            h2 #sign-in { "Sign in inside your environment" }
             p {
-                "A subscription token bills your Claude plan and runs one task at a time: run "
-                code { "claude setup-token" }
-                " in a terminal on your computer and paste the token it prints. An API key bills your Anthropic account and can run tasks in parallel: create one at "
+                "Use your Claude Pro, Max, Team, or Enterprise plan by signing in to Claude Code where it runs. You sign in on Anthropic's own page, and OpenAgents never sees your login. On a plan, Claude Code runs one task at a time."
+            }
+            ul {
+                li {
+                    "On your computer: run " code { "claude" } " in a terminal, then type "
+                    code { "/login" } ". Coder uses that sign-in. To install Claude Code, run "
+                    code { (INSTALL) } "."
+                }
+                li {
+                    "On a Cloud computer: use Sign in to Claude on that computer. Its terminal opens with Claude Code; paste the code Anthropic shows back there. You sign in once per computer."
+                }
+            }
+            h2 #key { "Or use your own key" }
+            p {
+                "Add your own Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential. Usage bills to your own account, and a key can run tasks in parallel. Create an API key at "
                 a href="https://console.anthropic.com/settings/keys" { "console.anthropic.com" } "."
+            }
+            p {
+                "On Claude Max or Team? Your plan comes with monthly API credits: $100 on Max 5x, $200 on Max 20x, and on Team a share per seat, pooled up to $500. Claim them into a Claude Console organization and create a key there. It works here like any API key: tasks run in parallel and use those credits, not your plan's limits. "
+                a href=(API_CREDITS) { "How to claim them" } "."
+            }
+            @if tokens {
+                p {
+                    "You can also save a subscription token: run "
+                    code { "claude setup-token" }
+                    " in a terminal on your computer and paste the token it prints. It bills your Claude plan and runs one task at a time."
+                }
             }
             @match saved {
                 Some(material) => {
                     p { "Saved: " (material_label(material)) }
                     p class="oa-page-meta" aria-label="Key hidden" { "••••••••••••••••" }
+                    @if retired_token {
+                        p role="status" {
+                            "Subscription tokens can't be saved here anymore. Yours keeps working until you remove it. To keep using your plan, sign in inside your environment instead."
+                        }
+                    }
                 },
-                None => p { "Nothing saved. Without a key, Claude Code runs one task at a time on your Claude plan." },
+                None => p { "Nothing saved. Without a key, Claude Code runs on the sign-in inside your environment, one task at a time." },
             }
         }))
         @if saved.is_some() {
@@ -749,15 +814,7 @@ fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &st
         form method="post" action=(CLAUDE) autocomplete="off" {
             input type="hidden" name="csrf" value=(add.0);
             input type="hidden" name="request" value=(add.1);
-            (material.clone().control(
-                Select::new("material")
-                    .aria(material.aria())
-                    .option("claude_subscription_token", SUBSCRIPTION_LABEL)
-                    .option("anthropic_api_key", "Anthropic API key")
-                    .option("bedrock_credential", "Amazon Bedrock")
-                    .option("vertex_credential", "Google Vertex AI")
-                    .option("foundry_credential", "Microsoft Foundry"),
-            ))
+            (material.clone().control(providers))
             (value.clone().control(
                 Textarea::new("value")
                     .aria(value.aria())
@@ -813,6 +870,13 @@ async fn add(
     // A pasted subscription token or API key is told apart by its prefix,
     // whichever of the two was picked.
     let material = byo::detect(form.material, &form.value);
+    // Subscription tokens only for the allowlist until Anthropic approves
+    // them in writing (#11235); the value is dropped unread.
+    if material == Material::ClaudeSubscriptionToken
+        && !app.config.claude_tokens.admits_viewer(&context.viewer)
+    {
+        return problem(StatusCode::BAD_REQUEST, TOKEN_REFUSED, CLAUDE);
+    }
     let key = match Key::for_material(material, std::mem::take(&mut form.value)) {
         Ok(value) => value,
         Err(error) => return custody_failure(error),
@@ -873,7 +937,7 @@ mod tests {
 
     #[test]
     fn the_claude_page_says_usage_bills_to_the_users_own_account() {
-        let html = claude_content(None, ("t", "r"), ("t", "r")).into_string();
+        let html = claude_content(None, true, ("t", "r"), ("t", "r")).into_string();
         assert!(html.contains("Usage bills to your own account."));
         assert!(!html.contains(">Remove<"));
         // The secret never reaches autofill or the spellchecker.
@@ -894,8 +958,13 @@ mod tests {
             "{area}"
         );
         assert!(html.contains("name=\"consent\" value=\"custody\""));
-        let saved =
-            claude_content(Some(Material::BedrockCredential), ("t", "r"), ("t", "r")).into_string();
+        let saved = claude_content(
+            Some(Material::BedrockCredential),
+            true,
+            ("t", "r"),
+            ("t", "r"),
+        )
+        .into_string();
         assert!(saved.contains("Saved: Amazon Bedrock"));
         assert!(saved.contains("action=\"/settings/claude/remove\""));
         assert!(byo::TERMS.contains(
@@ -908,11 +977,71 @@ mod tests {
         assert!(html.contains("claude setup-token"));
         let token = claude_content(
             Some(Material::ClaudeSubscriptionToken),
+            true,
             ("t", "r"),
             ("t", "r"),
         )
         .into_string();
         assert!(token.contains("Saved: Claude subscription token (from claude setup-token)"));
+        assert!(!token.contains("can't be saved here anymore"));
+    }
+
+    #[test]
+    fn the_claude_page_leads_with_signing_in_inside_your_environment() {
+        let html = claude_content(None, false, ("t", "r"), ("t", "r")).into_string();
+        // Sign-in first, through Claude Code itself (#11235).
+        let sign_in = html.find("Sign in inside your environment").unwrap();
+        let key = html.find("Or use your own key").unwrap();
+        let form = html.find("<form").unwrap();
+        assert!(sign_in < key && key < form, "{html}");
+        for needle in [
+            "<code>claude</code>",
+            "<code>/login</code>",
+            INSTALL,
+            "Sign in to Claude on that computer",
+            "OpenAgents never sees your login",
+        ] {
+            assert!(html.contains(needle), "{needle}");
+        }
+        // The Max and Team monthly API credits, used through a Console key.
+        for needle in [
+            "monthly API credits",
+            "$100 on Max 5x",
+            "$200 on Max 20x",
+            "pooled up to $500",
+            "Claude Console organization",
+            API_CREDITS,
+        ] {
+            assert!(html.contains(needle), "{needle}");
+        }
+        let text = oa_copy::visible_text(&html);
+        assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+    }
+
+    #[test]
+    fn subscription_tokens_show_only_for_the_allowlist() {
+        let off = claude_content(None, false, ("t", "r"), ("t", "r")).into_string();
+        assert!(!off.contains("claude_subscription_token"), "{off}");
+        assert!(!off.contains("setup-token"), "{off}");
+        assert!(!off.contains("sk-ant-oat"), "{off}");
+        assert!(off.contains("value=\"anthropic_api_key\""));
+        let on = claude_content(None, true, ("t", "r"), ("t", "r")).into_string();
+        assert!(on.contains("value=\"claude_subscription_token\""));
+        assert!(on.contains("<code>claude setup-token</code>"));
+        // A token saved before keeps working, with a notice to switch.
+        let kept = claude_content(
+            Some(Material::ClaudeSubscriptionToken),
+            false,
+            ("t", "r"),
+            ("t", "r"),
+        )
+        .into_string();
+        assert!(kept.contains("Saved: Claude subscription token"));
+        assert!(kept.contains("Yours keeps working until you remove it."));
+        assert!(kept.contains("action=\"/settings/claude/remove\""));
+        assert!(!kept.contains("value=\"claude_subscription_token\""));
+        let text = oa_copy::visible_text(&kept);
+        assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
     }
 
     #[test]

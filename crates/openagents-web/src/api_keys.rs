@@ -36,7 +36,7 @@ const PROVIDERS: [(&str, &str); 2] = [
     ("vercel", "Vercel AI Gateway"),
 ];
 /// Why a Claude subscription token is refused as a provider key.
-pub(crate) const SUBSCRIPTION_REFUSAL: &str = "That's a Claude subscription token (from claude setup-token). Anthropic allows those only in Claude Code, so the API can't call models with it. Save it under Settings, Claude credential, for Claude Code runs, or paste a provider API key here.";
+pub(crate) const SUBSCRIPTION_REFUSAL: &str = "That's a Claude subscription token (from claude setup-token). Anthropic allows those only in Claude Code, so the API can't call models with it. For Claude Code runs, sign in to Claude inside your environment (Settings, Claude shows how), or paste a provider API key here.";
 const MAKE_SCOPE: &str = "api-key-make";
 const REVOKE_SCOPE: &str = "api-key-revoke";
 

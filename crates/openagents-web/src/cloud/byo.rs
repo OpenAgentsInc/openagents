@@ -82,6 +82,78 @@ pub fn detect(selected: Material, value: &str) -> Material {
     }
 }
 
+/// The owner's account: the one account that may save a subscription
+/// token until Anthropic approves it in writing (#11235).
+pub const TOKEN_OWNER: &str = "chris@openagents.com";
+/// The server flag naming who else may save one: comma-separated account
+/// ids or verified emails, `*` for everyone (only once Anthropic's written
+/// approval is recorded), empty for nobody. Unset means [`TOKEN_OWNER`].
+pub const TOKEN_ACCOUNTS_ENV: &str = "OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS";
+
+/// Who may see and save a Claude subscription token (`claude setup-token`)
+/// in Settings, Claude ([rule 2](../../../../docs/cloud/claude-code-byo.md)).
+///
+/// Anthropic's terms bar third parties from storing Claude.ai credentials
+/// unless previously approved, so until the owner records that approval
+/// the option is limited to an allowlist, by default the owner's account
+/// only. Signing in inside the environment, through the unmodified
+/// `claude`, is open to everyone. A token saved earlier by an account not
+/// on the list keeps working until it is removed; it just can't be saved
+/// again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TokenAllow {
+    /// Everyone (`*`): only once Anthropic has approved it in writing.
+    Everyone,
+    /// These account ids or verified emails, compared without case.
+    Only(Vec<String>),
+}
+
+impl Default for TokenAllow {
+    fn default() -> Self {
+        Self::Only(vec![TOKEN_OWNER.to_owned()])
+    }
+}
+
+impl TokenAllow {
+    /// The list [`TOKEN_ACCOUNTS_ENV`] names; unset is the owner only.
+    #[must_use]
+    pub fn parse(value: Option<&str>) -> Self {
+        let Some(value) = value else {
+            return Self::default();
+        };
+        let entries: Vec<String> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if entries.iter().any(|entry| entry == "*") {
+            Self::Everyone
+        } else {
+            Self::Only(entries)
+        }
+    }
+
+    /// Whether the account `account` (with its verified `email`) may see
+    /// and save a subscription token.
+    #[must_use]
+    pub fn admits(&self, account: &str, email: Option<&str>) -> bool {
+        match self {
+            Self::Everyone => true,
+            Self::Only(entries) => entries.iter().any(|entry| {
+                entry.eq_ignore_ascii_case(account)
+                    || email.is_some_and(|email| entry.eq_ignore_ascii_case(email.trim()))
+            }),
+        }
+    }
+
+    /// [`Self::admits`] for a signed-in viewer.
+    #[must_use]
+    pub fn admits_viewer(&self, viewer: &Viewer) -> bool {
+        self.admits(&viewer.account_id, viewer.email.as_deref())
+    }
+}
+
 /// The account, workspace, and membership epoch that own the computers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Owner {
@@ -492,6 +564,27 @@ mod tests {
     /// literal sits in the source.
     fn fake_token() -> String {
         format!("sk-ant-oat01-{}", "t9".repeat(40))
+    }
+
+    #[test]
+    fn subscription_tokens_are_for_the_allowlist_only() {
+        // Unset: the owner's account only (#11235).
+        let default = TokenAllow::parse(None);
+        assert_eq!(default, TokenAllow::default());
+        assert!(default.admits("acct-owner", Some(TOKEN_OWNER)));
+        assert!(default.admits("acct-owner", Some("Chris@OpenAgents.com")));
+        assert!(!default.admits("acct-ada", Some("ada@example.com")));
+        assert!(!default.admits("acct-ada", None));
+        // Named accounts, by id or verified email.
+        let named = TokenAllow::parse(Some(" alice , bob@example.com,"));
+        assert!(named.admits("alice", None));
+        assert!(named.admits("acct-bob", Some("BOB@example.com")));
+        assert!(!named.admits("carol", Some("carol@example.com")));
+        assert!(!named.admits("acct-owner", Some(TOKEN_OWNER)));
+        // Empty: nobody. `*`: everyone, once Anthropic approves.
+        assert!(!TokenAllow::parse(Some("")).admits("alice", Some(TOKEN_OWNER)));
+        assert_eq!(TokenAllow::parse(Some("alice,*")), TokenAllow::Everyone);
+        assert!(TokenAllow::Everyone.admits("anyone", None));
     }
 
     #[test]

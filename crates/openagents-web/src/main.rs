@@ -227,6 +227,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|account| !account.is_empty())
         .map(str::to_owned)
         .collect();
+    // Who may save a Claude subscription token (#11235): the owner's
+    // account unless named, until Anthropic approves it in writing.
+    config.claude_tokens = openagents_web::cloud::byo::TokenAllow::parse(
+        std::env::var(openagents_web::cloud::byo::TOKEN_ACCOUNTS_ENV)
+            .ok()
+            .as_deref(),
+    );
     // The inference gateway: `/api/v1/...` and the API docs' rate card.
     if let Some(url) = inference.filter(|url| !url.is_empty()) {
         config.inference = Some(std::sync::Arc::new(

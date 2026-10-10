@@ -92,7 +92,7 @@ pub fn admit_value(value: &str) -> crate::Result<()> {
 }
 
 /// Why a claude.ai login was refused.
-pub const REFUSAL: &str = "A Claude.ai login or subscription token can't be used here. Save a subscription token under Settings, Claude, or sign in to Claude inside your computer's terminal.";
+pub const REFUSAL: &str = "A Claude.ai login or subscription token can't be used here. Sign in to Claude inside your computer's terminal, or add your own Anthropic API key under Settings, Claude.";
 
 /// Why a value saved as a subscription token was refused.
 pub const TOKEN_SHAPE: &str = "That isn't a Claude subscription token. Run claude setup-token and paste the token it prints (it starts with sk-ant-oat).";

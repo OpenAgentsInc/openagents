@@ -161,6 +161,10 @@ pub struct Config {
     /// Private custody of users' own Claude credentials for their own
     /// computers (BYO-04); absence hides the Claude credential settings.
     pub cloud_byo: Option<Arc<cloud::byo::Computers>>,
+    /// Who may see and save a Claude subscription token in Settings,
+    /// Claude (`OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS`, #11235): the
+    /// owner's account only unless set, until Anthropic approves it.
+    pub claude_tokens: cloud::byo::TokenAllow,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -212,6 +216,7 @@ impl Config {
             cloud_hosts: None,
             cloud_build: None,
             cloud_byo: None,
+            claude_tokens: cloud::byo::TokenAllow::default(),
             pilot: None,
             environments: None,
             plan: None,

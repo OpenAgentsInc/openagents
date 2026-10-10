@@ -39,13 +39,21 @@ October 8, 2026. Recheck both before each availability decision.
    flow. In a hosted terminal, the browser shows a code that the user pastes
    back into that same terminal. Our web app never shows its own Claude login
    form and never asks for a token.
-2. **We collect no Claude.ai credential except the user's own subscription
-   token, saved by them.** Since 2026-10-09 (owner-directed, #11204) Settings,
-   Claude accepts the user's own `claude setup-token` value (below). No other
-   openagents.com field, API, Secret Manager entry, or Coder setting accepts a
-   claude.ai OAuth token, and no path ever takes a login document or refresh
-   token. A login made inside a computer lives only there
-   (`~/.claude/.credentials.json` in its isolated home).
+2. **We collect no Claude.ai credential except an allowlisted user's own
+   subscription token, saved by them.** Signing in inside the user's own
+   computer or environment, through the unmodified `claude`, is the default
+   and is what Settings, Claude offers first. Since 2026-10-09
+   (owner-directed, #11204) Settings, Claude accepts a user's own
+   `claude setup-token` value (below), but since 2026-10-10 (#11235) only
+   for accounts on the server's allowlist (`OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS`,
+   default the owner's account), until the owner records Anthropic's written
+   approval. Anyone else is neither shown nor allowed to save one; a token
+   saved earlier keeps working until removed, with a notice to switch to
+   in-environment sign-in. No other openagents.com field, API, Secret
+   Manager entry, or Coder setting accepts a claude.ai OAuth token, and no
+   path ever takes a login document or refresh token. A login made inside a
+   computer lives only there (`~/.claude/.credentials.json` in its isolated
+   home).
 3. **No path reads it back out.** Evidence capture, terminal recording, ATIF,
    export, logs, crash reports, support tooling, and saved environment images
    exclude Claude login files and redact `CLAUDE_CODE_OAUTH_TOKEN` values.
@@ -261,6 +269,21 @@ use plan limits, but its legal page still bars third parties from storing
 Claude.ai credentials without approval, so saving a token stays limited to an
 allowlist until Anthropic approves it in writing
 ([#11235](https://github.com/OpenAgentsInc/openagents/issues/11235)).
+
+- **Allowlist.** `cloud::byo::TokenAllow`, set by
+  `OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS` (comma-separated account ids or
+  verified emails; unset means the owner's account, `chris@openagents.com`;
+  empty means nobody; `*` means everyone and may be set only once the
+  owner records Anthropic's written approval). An account off the list sees
+  no subscription-token option or `claude setup-token` copy, and a pasted
+  `sk-ant-oat` value is refused before it is checked or kept, whichever
+  provider was picked. A token it saved earlier keeps running and shows a
+  notice to switch to signing in inside the environment.
+- **Max and Team API credits.** Settings, Claude tells Max and Team
+  subscribers that their plan's monthly API credits, claimed into a Claude
+  Console organization, come with an ordinary API key from that
+  organization: it runs tasks in parallel and bills those credits, not the
+  plan.
 
 - **Settings, Claude** offers "Claude subscription token (from claude
   setup-token)" beside "Anthropic API key". A pasted value is told apart by

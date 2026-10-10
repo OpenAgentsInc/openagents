@@ -796,6 +796,143 @@ async fn claude_credential_needs_a_fresh_ticket_from_the_same_account() {
     assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 0);
 }
 
+/// Only an allowlisted account sees and saves a Claude subscription token
+/// (#11235); everyone else is offered signing in inside their environment
+/// and keys.
+#[tokio::test]
+async fn subscription_tokens_are_offered_and_kept_for_the_allowlist_only() {
+    let fixture = fixture_with(|config| {
+        config.claude_tokens = super::byo::TokenAllow::parse(Some("alice"));
+    })
+    .await;
+    // Assembled at run time so no token-shaped literal sits in the source.
+    let token = format!("sk-ant-oat01-{}", "t9".repeat(40));
+    let submit = |page: &str, material: &str| {
+        let add = form_at(page, "/settings/claude");
+        form(&[
+            ("csrf", &field(add, "csrf")),
+            ("request", &field(add, "request")),
+            ("material", material),
+            ("value", &token),
+            ("consent", "custody"),
+        ])
+    };
+    // Bob isn't on the list: no token option, and a pasted token is
+    // refused whichever provider was picked. Nothing is kept.
+    let bob = login(&fixture, "bob").await;
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings/claude",
+        &bob,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    plain(&page);
+    assert!(page.body.contains("Sign in inside your environment"));
+    assert!(!page.body.contains("claude_subscription_token"));
+    assert!(!page.body.contains("setup-token"));
+    for material in ["claude_subscription_token", "anthropic_api_key"] {
+        let page = request(
+            &fixture.site,
+            Method::GET,
+            "/settings/claude",
+            &bob,
+            None,
+            None,
+        )
+        .await;
+        let refused = request(
+            &fixture.site,
+            Method::POST,
+            "/settings/claude",
+            &bob,
+            Some(&submit(&page.body, material)),
+            Some(ORIGIN),
+        )
+        .await;
+        assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{material}");
+        private(&refused);
+        assert!(
+            refused
+                .body
+                .contains("Sign in to Claude inside your environment instead"),
+            "{}",
+            refused.body
+        );
+        assert!(!refused.body.contains(&token));
+    }
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 0);
+    // An API key still works for bob.
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings/claude",
+        &bob,
+        None,
+        None,
+    )
+    .await;
+    let add = form_at(&page.body, "/settings/claude");
+    let key = form(&[
+        ("csrf", &field(add, "csrf")),
+        ("request", &field(add, "request")),
+        ("material", "anthropic_api_key"),
+        ("value", FAKE_KEY),
+        ("consent", "custody"),
+    ]);
+    let saved = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/claude",
+        &bob,
+        Some(&key),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(saved.status, StatusCode::SEE_OTHER, "{}", saved.body);
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 1);
+    // Alice is on the list: she sees the option and her token is kept.
+    let alice = login(&fixture, "alice").await;
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings/claude",
+        &alice,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    plain(&page);
+    assert!(page.body.contains("value=\"claude_subscription_token\""));
+    let kept = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/claude",
+        &alice,
+        Some(&submit(&page.body, "claude_subscription_token")),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(kept.status, StatusCode::SEE_OTHER, "{}", kept.body);
+    assert!(!kept.body.contains(&token));
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/settings/claude",
+        &alice,
+        None,
+        None,
+    )
+    .await;
+    assert!(page.body.contains("Saved: Claude subscription token"));
+    assert!(!page.body.contains(&token));
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 2);
+}
+
 #[tokio::test]
 async fn old_cloud_addresses_redirect_to_their_new_homes() {
     let fixture = fixture().await;
