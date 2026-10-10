@@ -719,5 +719,5 @@ fn query(text: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "github_rest_tests.rs"]
+#[path = "issues_tests.rs"]
 mod tests;

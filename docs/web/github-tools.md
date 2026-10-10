@@ -85,8 +85,11 @@ Nothing reads the message's words to pick a tool.
 
 ## Left for later
 
-- #11166's `coder::github_rest` (not on `main` yet) moves onto this crate
-  when it lands, so there is one REST implementation.
+- The CLI's issue and board verbs (#11166) now live in this crate as
+  `github_actions::issues` (moved from `coder::github_rest`) over a blocking
+  transport, beside the async `rest` steps the web runs. The two still
+  build their requests separately; folding `issues`' create, comment,
+  close, reopen and board moves onto `rest`'s steps is left.
 - A body longer than one 256-byte line can't come through a chat proposal
   (NIP-CJ's `cli` offer bounds); the card links to GitHub tools to write
   it there.

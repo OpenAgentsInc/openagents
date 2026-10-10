@@ -72,7 +72,6 @@ pub mod execution;
 pub mod executor_door;
 pub mod first;
 pub mod generate;
-pub mod github_rest;
 pub mod gym_kb;
 pub mod identity;
 pub mod package;

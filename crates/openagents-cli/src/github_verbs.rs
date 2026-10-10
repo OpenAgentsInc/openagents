@@ -1,14 +1,14 @@
 //! `openagents issue create|comment|close|reopen|list|view` and
 //! `openagents project list|add|move` (#11166): GitHub issues and Project
-//! boards over REST ([`coder::github_rest`]) with this computer's GitHub
+//! boards over REST ([`github_actions::issues`]) with this computer's GitHub
 //! sign-in: `GH_TOKEN` or `GITHUB_TOKEN` when set, else the GitHub CLI's
 //! (`gh auth token`). Boards use the REST projectsV2 endpoints, so they
 //! keep working when other tools have spent the GraphQL limit.
 
 use std::time::Duration;
 
-use coder::github_rest::{Github, Reply, Rest};
 use coder::task::issue_run::Policy;
+use github_actions::issues::{Github, Reply, Rest};
 use serde_json::{Value, json};
 
 use crate::Args;
@@ -86,7 +86,7 @@ impl Rest for TokenRest {
         let url = if path.starts_with("https://") {
             path.to_owned()
         } else {
-            format!("https://api.github.com{path}")
+            format!("{}{path}", github_actions::rest::API_BASE)
         };
         let method = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|_| format!("`{method}` is not an HTTP method"))?;
@@ -95,7 +95,7 @@ impl Rest for TokenRest {
             .request(method, &url)
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28");
+            .header("X-GitHub-Api-Version", github_actions::rest::API_VERSION);
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -209,7 +209,7 @@ pub(crate) fn issue(
             if let (Some(board), Some(status)) = (&board, status) {
                 let field = github.field(board, &project.field)?;
                 if field.option(status).is_none() {
-                    return Err(coder::github_rest::missing(board, &field, status));
+                    return Err(github_actions::issues::missing(board, &field, status));
                 }
             }
             let issue = github.create(title, &body, &labels)?;
@@ -520,7 +520,7 @@ fn labels(issue: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coder::github_rest::fake::FakeGithub;
+    use github_actions::issues::fake::FakeGithub;
 
     const REPO: &str = "acme/app";
 

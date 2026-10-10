@@ -15,10 +15,17 @@
 //!   `scripts/dev/issue-board.sh` does, so they keep working when other
 //!   tools have spent the GraphQL limit.
 //!
+//! - [`issues`]: the CLI's issue and board verbs (#11166) over a blocking
+//!   [`issues::Rest`] transport: create, comment, close, reopen, list and
+//!   view issues; add an issue to a board, set its status, and list a
+//!   board's items. Moved here from `coder::github_rest`, so every GitHub
+//!   REST call the product makes lives in this one crate.
+//!
 //! Nothing here reads a message's words to choose a change.
 
 pub mod action;
 pub mod argv;
+pub mod issues;
 pub mod rest;
 
 #[cfg(test)]

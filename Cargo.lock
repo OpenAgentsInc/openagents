@@ -10429,6 +10429,7 @@ dependencies = [
  "discovery",
  "ext-eval",
  "futures-util",
+ "github-actions",
  "glam",
  "gym",
  "gym-bridge",

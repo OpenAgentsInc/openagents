@@ -13,6 +13,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+github-actions = { path = "../github-actions", default-features = false }
 coder-cloud = { path = "../coder-cloud" }
 coder-environment-operator = { path = "../coder-environment-operator" }
 coder-new = { path = "../coder-new" }
