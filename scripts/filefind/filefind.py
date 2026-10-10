@@ -53,7 +53,7 @@ LOCK_NAMES = {"Cargo.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", 
               "bun.lockb", "Package.resolved", "go.sum", "flake.lock", "uv.lock", "poetry.lock"}
 SOURCES = ["emb", "sym", "co", "sim", "hist", "pair", "dir", "recent", "stage2"]
 # output-only labels for what stage 2 found (not model features)
-STAGES_OUT = SOURCES + ["ref", "iface", "rule", "crate"]
+STAGES_OUT = SOURCES + ["ref", "iface", "rule", "crate", "tmpl", "feedback"]
 
 
 # ---------------------------------------------------------------- git
@@ -154,6 +154,25 @@ def issue_text(title, body):
 
 # ---------------------------------------------------------------- index
 
+FEEDBACK_WEIGHT = {"changed": 1.0, "read_outside": 0.5}
+
+
+def load_feedback(cache):
+    """issue -> {path: weight}: files earlier agent runs on the issue changed, or opened
+    outside their briefing (`filefind.py feedback`)."""
+    out = defaultdict(dict)
+    p = os.path.join(cache, "feedback.jsonl")
+    if os.path.exists(p):
+        for line in open(p):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            w = FEEDBACK_WEIGHT.get(r.get("kind"), 0.5)
+            out[int(r["issue"])][r["path"]] = max(w, out[int(r["issue"])].get(r["path"], 0))
+    return out
+
+
 def dirs_index(h):
     """directory -> sorted commit positions touching any file in it (small commits only)."""
     by_dir = defaultdict(set)
@@ -187,6 +206,7 @@ class Index:
         self.load_commit_vecs()
         if "by_dir" not in self.hist:
             self.hist["by_dir"] = dirs_index(self.hist)
+        self.feedback = load_feedback(self.cache)
         return self
 
     def load_blobs(self):
@@ -232,6 +252,49 @@ class Index:
         self.hist["by_dir"] = dirs_index(self.hist)
         with open(os.path.join(self.cache, "history.pkl"), "wb") as f:
             pickle.dump(self.hist, f, protocol=4)
+
+    def refresh_history(self, repo, rev):
+        """Append the commits between the indexed head and rev; a rewritten history
+        rebuilds. Returns the number of new commits (-1 for a rebuild)."""
+        h = self.hist
+        head = git(repo, "rev-parse", rev).decode().strip()
+        if head == h.get("rev") or head in h["pos"]:
+            return 0
+        last = h["commits"][-1][0] if h["commits"] else None
+        if not last or subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", last, head],
+                                      capture_output=True).returncode != 0:
+            self.build_history(repo, rev)
+            return -1
+        raw = git(repo, "log", "--reverse", "--no-merges", "--format=%x00%H%x09%ct%x09%s",
+                  "--name-only", f"{last}..{head}").decode("utf-8", "replace")
+        n = 0
+        for blk in raw.split("\0")[1:]:
+            lines = blk.strip("\n").split("\n")
+            sha, ts, subj = lines[0].split("\t", 2)
+            if sha in h["pos"]:
+                continue
+            fids = []
+            for l in lines[1:]:
+                if l:
+                    if l not in h["pid"]:
+                        h["pid"][l] = len(h["paths"])
+                        h["paths"].append(l)
+                    fids.append(h["pid"][l])
+            i = len(h["commits"])
+            h["commits"].append((sha, int(ts), subj, fids))
+            h["pos"][sha] = i
+            if len(fids) <= BIG_COMMIT:
+                for f in fids:
+                    h["by_file"].setdefault(f, []).append(i)
+                for d in {h["paths"][f].rsplit("/", 1)[0] if "/" in h["paths"][f] else "" for f in fids}:
+                    h["by_dir"].setdefault(d, []).append(i)
+            for num in set(int(x) for x in re.findall(r"#(\d{3,6})\b", subj)):
+                h["issue_commits"].setdefault(num, []).append(i)
+            n += 1
+        h["rev"] = head
+        with open(os.path.join(self.cache, "history.pkl"), "wb") as f:
+            pickle.dump(h, f, protocol=4)
+        return n
 
     def build_commit_vecs(self, key):
         """Embed every commit subject (cached by sha)."""
@@ -404,10 +467,44 @@ FILE_EXT = {"rs", "md", "json", "jsonl", "toml", "js", "mjs", "ts", "css", "html
             "svg", "txt", "yaml", "yml", "lock", "wasm", "gz", "swift", "kt", "com", "org", "io", "dev", "ai", "sh"}
 
 
+SERDE_DERIVE = re.compile(r"#\[derive\([^)]*(?:Serialize|Deserialize)[^)]*\)\]")
+RS_FIELD = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?([a-z_][a-z0-9_]*)\s*:", re.M)
+SERDE_RENAME = re.compile(r"rename\s*=\s*\"([A-Za-z_][\w-]*)\"")
+JSON_KEY = re.compile(r"[\"']([a-z][a-z0-9_]{3,40})[\"']\s*[:=]>?|\.get\(\s*\"([a-z][a-z0-9_]{3,40})\"|\[\s*\"([a-z][a-z0-9_]{3,40})\"\s*\]")
+
+
+def wire_fields(path, text):
+    """Field names of wire types: fields of serde structs (and their renames) in Rust, and
+    JSON keys written or read anywhere ("name": ..., .get("name"), ["name"])."""
+    out = set()
+    if path.endswith(".rs"):
+        for m in SERDE_DERIVE.finditer(text):
+            i = text.find("{", m.end())
+            j = text.find(";", m.end())
+            if i < 0 or (0 <= j < i) or i - m.end() > 400:
+                continue
+            depth, k = 0, i
+            while k < len(text):
+                if text[k] == "{":
+                    depth += 1
+                elif text[k] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                k += 1
+            body = text[i + 1:k]
+            out.update(f for f in RS_FIELD.findall(body) if len(f) >= 4)
+            out.update(SERDE_RENAME.findall(body))
+    for a, b, c in JSON_KEY.findall(text):
+        out.add(a or b or c)
+    return {"f:" + f for f in out if len(f) >= 4}
+
+
 def iface_strings(path, text):
     """Interface strings a file uses: routes (and their prefixes), method/event names,
-    ids and CSS classes. These tie a server to its clients across crates and languages."""
-    out = set()
+    ids, CSS classes and wire-type field names. These tie a server to its clients
+    across crates and languages."""
+    out = wire_fields(path, text)
     lits = [a or b for a, b in QUOTED.findall(text)]
     if path.endswith(".css"):
         lits += CSS_CLASS.findall(text)
@@ -508,13 +605,21 @@ class IfaceIndex:
                     out[t] = n
         return out
 
-    def users(self, strings):
+    def users(self, strings, current=None):
+        """string -> blob ids using it; with `current` (blob ids of one tree) only those."""
         out = defaultdict(list)
         strings = list(strings)
+        if current is not None and not getattr(self, "_cur", None) is current:
+            self.db.execute("CREATE TEMP TABLE IF NOT EXISTS cur(b INTEGER PRIMARY KEY)")
+            self.db.execute("DELETE FROM cur")
+            self.db.executemany("INSERT OR IGNORE INTO cur VALUES (?)", ((b,) for b in current))
+            self._cur = current
         for i in range(0, len(strings), 500):
             chunk = strings[i:i + 500]
             q = ",".join("?" * len(chunk))
-            for t, b in self.db.execute(f"SELECT t, b FROM s WHERE t IN ({q})", chunk):
+            sql = (f"SELECT s.t, s.b FROM s JOIN cur ON cur.b = s.b WHERE s.t IN ({q})" if current is not None
+                   else f"SELECT t, b FROM s WHERE t IN ({q})")
+            for t, b in self.db.execute(sql, chunk):
                 out[t].append(b)
         return out
 
@@ -756,13 +861,14 @@ class Query:
                 if n == self.exclude_issue:
                     continue
                 cs = [c for c in h["issue_commits"].get(n, []) if c < self.cutoff]
-                if not cs:
+                if not cs and n not in getattr(self.ix, "feedback", {}):
                     continue
                 cand.append((float(sims[j]), n, cs))
                 if len(cand) >= 12:
                     break
+            fb = getattr(self.ix, "feedback", {})
             for s, n, cs in cand:
-                files = {h["paths"][g] for c in cs for g in h["commits"][c][3]}
+                files = {h["paths"][g] for c in cs for g in h["commits"][c][3]} | set(fb.get(n, {}))
                 if len(files) > 60:
                     continue
                 for p in files:
@@ -879,17 +985,34 @@ class Query:
                 b = ix.ids.get(sha)
                 if b is not None:
                     self.iface_bid[b].append(p)
+
         score, cross, why = Counter(), Counter(), {}
         for p, sc in top:
             b = ix.ids.get(self.tree.get(p, ""))
             if b is None:
                 continue
             strings = ix.rare(ix.strings_of(b), 600)
+            fs = sorted((n, t) for t, n in strings.items() if t.startswith("f:"))
+            for n, t in fs[60:]:
+                del strings[t]
+            for n, t in fs[:60]:
+                if n > 150:
+                    del strings[t]
             if not strings:
                 continue
             users = ix.users(strings)
+            # Rust readers of a rare wire field use it as `.name`: one batched token lookup
+            fields = sorted(t[2:] for t, n in strings.items()
+                            if t.startswith("f:") and n <= 100 and ("_" in t or len(t) >= 9))[:40]
+            readers = defaultdict(set)
+            if fields:
+                q_ = ",".join("?" * len(fields))
+                for t_, b_ in self.ix.tokens.db.execute(f"SELECT t, b FROM tok WHERE t IN ({q_})", fields):
+                    readers["f:" + t_].update(self.bid_to_path.get(b_, ()))
             for t, bs in users.items():
                 files = {q for x in bs for q in self.iface_bid.get(x, ())} - {p}
+                if t in readers and len(readers[t]) <= 30:
+                    files |= readers[t] - {p}
                 if not files or len(files) > 30:
                     continue
                 w = sc / math.log2(2 + len(files))
@@ -942,6 +1065,45 @@ class Query:
                     if pr > rule_f.get(q, 0):
                         why[q] = f"changes in {n} of {len(cs)} commits that touch `{d}/`"
         return rule_f, rule_d, why
+
+    def templates(self, scored, window=3000):
+        """Cross-client templates: in past commits that touched one of the strongest crates
+        and at least two others (a feature landing in several clients), how often each file
+        of the *other* crates changed. Proposes the phone screen, desktop pane, bridge or
+        client that such features usually also touch."""
+        h = self.ix.hist
+        mass = group_mass(scored, n=30)
+        tot = sum(mass.values()) or 1.0
+        active = {g: m / tot for g, m in mass.most_common(4) if m / tot >= 0.1}
+        out, why, base = Counter(), {}, Counter()
+        lo = max(0, self.cutoff - window)
+        for c in range(lo, self.cutoff):
+            fids = h["commits"][c][3]
+            if len(fids) > BIG_COMMIT or len(fids) < 3:
+                continue
+            groups = {}
+            for g in fids:
+                groups.setdefault(group(h["paths"][g]), []).append(g)
+            hit = [a for a in active if a in groups]
+            if not hit or len(groups) < 3:
+                continue
+            w = max(active[a] for a in hit)
+            for a in hit:
+                base[a] += 1
+            for gname, gf in groups.items():
+                if gname in active:
+                    continue
+                for g in gf:
+                    out[g] += w
+        res = Counter()
+        n = max(base.values()) if base else 0
+        if n:
+            for g, v in out.items():
+                p = h["paths"][g]
+                if p in self.tree:
+                    res[p] = v / n
+                    why[p] = f"changes when features land in `{max(active, key=active.get)}` and other clients"
+        return res, why
 
     def stage2(self, feats, scored):
         """Propagate the first ranking: co-change, pairs and crate/dir mass from its top files."""
@@ -1008,6 +1170,12 @@ class Query:
         for q, _ in ref.most_common(120):
             new.add(q)
         t1 = time.perf_counter()
+        if not hasattr(self, "bid_to_path"):
+            self.bid_to_path = defaultdict(list)
+            for p_, sha in self.tree.items():
+                b_ = self.ix.tokens.ids.get(sha)
+                if b_ is not None:
+                    self.bid_to_path[b_].append(p_)
         iface, iface_x, iface_why = self.interface_users(scored[:8])
         for q, _ in iface.most_common(150):
             new.add(q)
@@ -1018,6 +1186,11 @@ class Query:
             if v >= 0.3:
                 new.add(q)
         self.tick("stage2_rules", t1)
+        t1 = time.perf_counter()
+        tmpl, tmpl_why = self.templates(scored)
+        for q, v in tmpl.most_common(120):
+            new.add(q)
+        self.tick("stage2_templates", t1)
         # the whole of the crates holding the most stage-1 confidence, so the ranker can
         # place every file of them (the map's crate lists)
         members = defaultdict(list)
@@ -1045,6 +1218,9 @@ class Query:
             x["iface_x"] = iface_x.get(p, 0.0)
             x["rule_f"] = rule_f.get(p, 0.0)
             x["rule_d"] = rule_d.get(p, 0.0)
+            x["tmpl"] = tmpl.get(p, 0.0)
+            if x["tmpl"] >= 0.15:
+                self.reason[p].append(tmpl_why[p])
             if x["iface"] > 0.1:
                 self.reason[p].append(iface_why[p][1])
             if max(x["rule_f"], x["rule_d"]) >= 0.4:
@@ -1065,13 +1241,15 @@ class Query:
                 self.src["rule"].add(p)
             if x.get("crate_rank", 9) < 9:
                 self.src["crate"].add(p)
+            if x.get("tmpl", 0) >= 0.15:
+                self.src["tmpl"].add(p)
         relative(feats, REL1 + REL2)
         self.tick("stage2", t0)
         return feats
 
 
 REL1 = ["cos", "co", "co_max", "hist", "hist_max", "sim", "sim_max", "sym_ment", "lit", "recent_n"]
-REL2 = ["co2", "s1", "ref", "iface", "iface_x", "rule_f", "rule_d"]
+REL2 = ["co2", "s1", "ref", "iface", "iface_x", "rule_f", "rule_d", "tmpl"]
 
 
 def relative(feats, keys):
@@ -1294,11 +1472,66 @@ def default_cache(repo):
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")
 
 
+def cmd_feedback(a):
+    """Collect late files from agent runs into the index's feedback.jsonl: what an
+    issue-run (`coder issue-run`) or a briefed-agent A/B trial changed, and the files it
+    opened outside its briefing. Similar-issue lookups use them; a query on the same
+    issue keeps them in its list."""
+    cache = a.cache or default_cache(a.repo)
+    path = os.path.join(cache, "feedback.jsonl")
+    seen = set()
+    if os.path.exists(path):
+        for line in open(path):
+            try:
+                r = json.loads(line)
+                seen.add((r["issue"], r["path"], r["kind"], r["source"]))
+            except (ValueError, KeyError):
+                pass
+    rows = []
+    import glob
+    for d in a.issue_runs or []:
+        for f in glob.glob(os.path.join(os.path.expanduser(d), "*", "summary.json")):
+            try:
+                r = json.load(open(f))
+            except ValueError:
+                continue
+            src = "issue-run:" + os.path.basename(os.path.dirname(f))
+            checks = (r.get("checks") or []) + (r.get("agent_checks") or [])
+            if checks and all(c.get("ok") for c in checks) and not r.get("error"):
+                for p in r.get("changed") or []:  # only a change whose checks passed
+                    rows.append((r["issue"], p, "changed", src))
+            for p in r.get("opened_outside_briefing") or []:
+                rows.append((r["issue"], p, "read_outside", src))
+    for d in a.ab or []:
+        for f in glob.glob(os.path.join(os.path.expanduser(d), "**", "result.json"), recursive=True):
+            try:
+                r = json.load(open(f))
+            except ValueError:
+                continue
+            src = "ab:" + os.path.relpath(os.path.dirname(f), d)
+            if r.get("tests_pass"):
+                for p in r.get("files_changed") or []:
+                    rows.append((r["issue"], p, "changed", src))
+            for m in r.get("misses") or []:
+                p = m.get("file") if isinstance(m, dict) else m
+                if p:
+                    rows.append((r["issue"], p, "read_outside", src))
+    new = [x for x in rows if x not in seen]
+    with open(path, "a") as f:
+        for issue, p, kind, src in new:
+            f.write(json.dumps({"issue": int(issue), "path": p, "kind": kind, "source": src}) + "\n")
+    print(f"feedback: {len(new)} new rows ({len(rows)} read) -> {path}")
+
+
 def cmd_index(a):
     key = embed_key()
     ix = Index(a.cache or default_cache(a.repo))
     t0 = time.time()
-    ix.build_history(a.repo, a.rev)
+    if os.path.exists(os.path.join(ix.cache, "history.pkl")) and not a.full:
+        ix.load(need_blobs=False)
+        ix.refresh_history(a.repo, a.rev)
+    else:
+        ix.build_history(a.repo, a.rev)
     print(f"history: {len(ix.hist['commits'])} commits, {len(ix.hist['paths'])} paths "
           f"({time.time()-t0:.1f}s)", file=sys.stderr)
     n = ix.build_commit_vecs(key)
@@ -1307,7 +1540,8 @@ def cmd_index(a):
     if not issues and not a.no_issues:
         issues = os.path.join(ix.cache, "closed-issues.json")
         with open(issues, "wb") as f:
-            f.write(subprocess.run(["gh", "issue", "list", "--state", "closed", "--limit", str(a.issue_limit),
+            limit = a.issue_limit if not os.path.exists(os.path.join(ix.cache, "issues.pkl")) else 300
+            f.write(subprocess.run(["gh", "issue", "list", "--state", "closed", "--limit", str(limit),
                                     "--json", "number,title,body,closedAt,createdAt"], cwd=a.repo,
                                    check=True, capture_output=True).stdout)
     if issues:
@@ -1379,6 +1613,11 @@ def cmd_query(a):
     model = json.load(open(a.model))
     timing["load"] = time.perf_counter() - t0
     t0 = time.perf_counter()
+    if ix.refresh_history(a.repo, a.rev) and key:  # new commits since the index: keep it fresh
+        ix.build_commit_vecs(key)
+        ix.hist.setdefault("by_dir", dirs_index(ix.hist))
+    timing["refresh_history"] = time.perf_counter() - t0
+    t0 = time.perf_counter()
     rev = a.rev
     tree = ls_tree(a.repo, rev)
     timing["tree"] = time.perf_counter() - t0
@@ -1393,6 +1632,16 @@ def cmd_query(a):
     feats = q.run(title, body, qvec)
     t0 = time.perf_counter()
     ranked_all, feats = rank_two_stage(model, q, feats)
+    fb = ix.feedback.get(a.issue, {}) if a.issue else {}
+    if fb:  # files earlier runs on this issue changed or had to open: keep them in the list
+        conf = dict(ranked_all)
+        for p, w in fb.items():
+            if p in tree:
+                conf[p] = max(conf.get(p, 0.0), 0.5 + 0.4 * w)
+                q.src["feedback"].add(p)
+                q.reason[p].insert(0, "an earlier agent run on this issue " +
+                                   ("changed it" if w >= 1 else "opened it outside its briefing"))
+        ranked_all = sorted(conf.items(), key=lambda kv: -kv[1])
     ranked = ranked_all[:a.k]
     timing["score"] = time.perf_counter() - t0
     timing["total"] = time.perf_counter() - t_all
@@ -1425,6 +1674,7 @@ def main():
                    "output (default: fetched with gh)")
     i.add_argument("--issue-limit", type=int, default=5000)
     i.add_argument("--no-issues", action="store_true", help="skip the similar-issue index")
+    i.add_argument("--full", action="store_true", help="rebuild the history index from scratch")
     i.add_argument("--cache")
     q = sub.add_parser("query", help="rank the files an issue needs")
     q.add_argument("--repo", default=".")
@@ -1438,8 +1688,13 @@ def main():
     q.add_argument("--json", action="store_true")
     q.add_argument("--cache")
     q.add_argument("--model", default=MODEL_PATH)
+    fb = sub.add_parser("feedback", help="collect late files from issue-run and A/B runs")
+    fb.add_argument("--repo", default=".")
+    fb.add_argument("--cache")
+    fb.add_argument("--issue-runs", nargs="*", default=["~/.openagents/coder-new/issue-runs"])
+    fb.add_argument("--ab", nargs="*", default=[], help="briefed-agent A/B results directories")
     a = ap.parse_args()
-    {"index": cmd_index, "query": cmd_query}[a.cmd](a)
+    {"index": cmd_index, "query": cmd_query, "feedback": cmd_feedback}[a.cmd](a)
 
 
 if __name__ == "__main__":

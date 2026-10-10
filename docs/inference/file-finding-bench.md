@@ -18,7 +18,10 @@ planner) only when that helps.
 - **Models add nothing at 400 paths.** Jev and a planning model help only
   the short "start here" list: 0.80 instead of 0.75 at 50 files.
 - **Newer fixes score lower.** On 8 larger fixes that landed after the
-  scorer was trained, the map holds 85%.
+  scorer was trained, the map holds 85%. That is the same with a ranker
+  trained on every fix up to Oct 9 (the latest replayable fix before
+  them), and the same after adding wire-field fan-out and cross-client
+  templates; see "Fixes that landed after training".
 - **New files are not counted.** About 20% of the hand-written files in a
   fix are files the fix creates. No finder can return those, so they are
   left out of these figures and reported separately.
@@ -74,8 +77,41 @@ file contents:
 | `tokens.sqlite` | Identifiers and defined names per blob. |
 | `iface.sqlite` | Interface strings per blob, with each string's document frequency. |
 
-`query` indexes any blob or commit it has not seen, so a pull costs a few
-seconds at most.
+**Freshness.** Nothing is ever stale:
+
+- `query` appends any commits that are newer than the history index,
+  using `git log <indexed head>..HEAD`; a rewritten history triggers a
+  full rebuild. It embeds the new commit subjects, and it indexes,
+  embeds and tokenizes any blob it has not seen. The first query after a
+  big pull pays 1–3 s for this; later queries pay nothing.
+- `scripts/filefind/post-merge-hook.sh` does the same in the background
+  after every pull, and also refreshes recently closed issues and the
+  run feedback. To install it, link it as `.git/hooks/post-merge`.
+  `filefind.py index` is incremental: about 5 s after a day of commits.
+- `scripts/filefind/retrain.sh` retrains the ranker on every fix up to
+  now. It rebuilds the issue → fix dataset from main, replays every
+  parent, trains with cross-fitting, and writes `model.json` trained on
+  all cases. The shipped model is trained on every replayable fix up to
+  Oct 9 (1,692 issues).
+
+**Late files from agent runs.** `filefind.py feedback` collects these
+into `feedback.jsonl` in the index:
+
+- the files a `coder issue-run` (#11214) changed when its checks passed,
+  and the files it opened outside its briefing;
+- the files a briefed-agent A/B trial (#11211) changed when its tests
+  passed, and the files it opened outside its briefing (`misses`), read
+  with `--ab <results dir>`.
+
+The feedback is used in two places:
+
+- The similar-issue stage treats them as fix files of that issue.
+- A query on the same issue pins them into the list, with the reason "an
+  earlier agent run on this issue changed it" or "opened it outside its
+  briefing".
+
+The bench never uses feedback, because every run is newer than the
+replayed fix.
 
 ## Pipeline
 
@@ -105,8 +141,9 @@ older than the bench.
 |---|---|
 | co2 / pair2 | Co-change and paired files of the stage-1 top 10. |
 | ref | Files that use a Rust or other name that one of the top 6 files defines, when fewer than 25 files use it. |
-| iface | Files that use an *interface string* of one of the top 8 files, when at most 30 files use it. Interface strings are routes and every prefix of them, method and event names (`background.list`), kebab and snake ids, and CSS classes. They are extracted from quoted strings in every language, so a route in an axum router reaches the Swift/Kotlin bridge, the JS and the CLI client that call it. |
+| iface | Files that use an *interface string* of one of the top 8 files, when at most 30 files use it. Interface strings are routes and every prefix of them, method and event names (`background.list`), kebab and snake ids, CSS classes, and **wire-type field names**. Field names are the fields (and `serde` renames) of Rust structs that derive `Serialize`/`Deserialize`, and JSON keys written or read anywhere (`"name":`, `.get("name")`, `["name"]`). Rust readers of a rare field (`.name`) are found through the token index. Strings are taken from quoted strings in every language, so a route in an axum router reaches the Swift/Kotlin bridge, the JS and the CLI client that call it. |
 | rule | "X changes ⇒ Y changes" mined from history before the fix: P(Y \| X) for the stage-1 top 20 files, and P(Y \| something in directory D changes) for the six directories that hold the most confidence. Kept when the support is at least 2 or 3 commits. |
+| tmpl | Cross-client templates: in the last 3,000 commits that touched one of the strongest crates *and* at least two other crates (a feature landing in several clients), how often each file of the other crates changed. |
 | crate | Every file of the four crates that hold the most stage-1 confidence, if a crate has at most 500 files. This lets the ranker place the whole crate, and it is what the map draws on. |
 
 A second model (83 features, adding stage-1 score, crate rank, crate and
@@ -162,11 +199,14 @@ python3 $B judge $A; python3 $B judge-eval $A; python3 $B plan $A --limit 50; py
 | pair | 0.164 | 23 |
 | dir | 0.476 | 171 |
 | recent | 0.426 | 150 |
-| ref (stage 2) | 0.516 | 133 |
-| iface (stage 2) | 0.429 | 172 |
-| rule (stage 2) | 0.474 | 28 |
-| crate (stage 2) | 0.714 | 361 |
-| **union** | **0.967** | **1,218** |
+| ref (stage 2) | 0.517 | 132 |
+| iface (stage 2, with wire fields) | 0.585 | 238 |
+| rule (stage 2) | 0.470 | 28 |
+| crate (stage 2) | 0.714 | 367 |
+| **union** | **0.973** | **1,260** |
+
+Wire fields raised the interface stage from 0.429 to 0.585, and the union
+from 0.967 to 0.973.
 
 The `rule` stage stands out for precision: 28 candidates per issue that
 hold 47% of the files.
@@ -178,13 +218,18 @@ All figures are recall of existing hand-written files.
 | Pipeline | @20 | @50 | @100 | @200 | @300 | **@400 (map)** |
 |---|---:|---:|---:|---:|---:|---:|
 | stage-1 scorer only | 0.504 | 0.725 | 0.815 | 0.879 | | |
-| **finder, stages 1 + 2 (shipped)** | **0.514** | **0.745** | **0.850** | **0.913** | **0.942** | **0.952** |
-| precision | 0.180 | 0.105 | 0.060 | 0.032 | 0.022 | 0.017 |
-| recall over all hand-written files, added included | 0.413 | 0.598 | 0.683 | 0.733 | 0.756 | 0.764 |
-| issues with every existing file found | 23 | 46 | 58 | 67 | 78 | 82 |
+| finder before wire fields and templates | 0.514 | 0.745 | 0.850 | 0.913 | 0.942 | 0.952 |
+| **finder, stages 1 + 2 (shipped)** | **0.524** | **0.752** | **0.853** | **0.905** | **0.943** | **0.952** |
+| … without the template feature (ablation) | 0.527 | 0.744 | 0.855 | 0.907 | 0.943 | 0.956 |
+| precision | 0.184 | 0.106 | 0.060 | 0.032 | 0.022 | 0.017 |
+| recall over all hand-written files, added included | 0.421 | 0.604 | 0.685 | 0.727 | 0.757 | 0.764 |
+| issues with every existing file found | 24 | 47 | 56 | 66 | 77 | 80 |
 | + Jev on ranks 30–150 (every query) | 0.514 | 0.788 | 0.865 | 0.917 | 0.942 | 0.952 |
 | + Jev only when unsure (72% of queries) | 0.514 | 0.782 | 0.849 | 0.910 | 0.932 | 0.950 |
 | plan first, then finder (50 issues)* | 0.482 | 0.804 | 0.866 | 0.919 | 0.931 | 0.947 |
+
+The Jev and plan rows were measured with the ranker before wire fields
+and templates.
 
 \* On those 50 issues the finder alone scores 0.530 / 0.752 / 0.857 / 0.909
 / 0.936 / 0.945. The plan names a median of 27 files, and those 27 alone
@@ -269,43 +314,71 @@ builds:
 | sym (token index, literal check) | 190 / 556 | 50–570 |
 | issue embedding, overlapping sym (network) | | 450–1,050 (wait 0–1,050) |
 | emb, co, sim, hist, pair, recent | about 40 together | about 40 |
-| stage 2, total | 146 / 241 | 190–290 |
-| … of which iface | 25 / 70 | 25–62 |
+| history refresh (no new commits) | | 0 |
+| stage 2, total | 271 / 403 | 200–325 |
+| … of which iface (with wire fields) | 114 / 244 | 50–170 |
 | … of which rules | 3 / 5 | 3–6 |
+| … of which templates | 9 / 11 | 9–15 |
 | two scorers | | 225–345 |
-| **total, issue text in hand** | | **815–1,250**; deterministic part 0.6–1.0 s |
+| **total, issue text in hand** | | **785–1,210**; deterministic part 0.6–1.1 s |
 
 Fetching the issue with `gh` adds 0.45 s.
 
 ### Fixes that landed after the scorer was trained
 
 Eight issues still open on project 22 already have fixes on main that
-landed after the training cut. Running the finder at each fix's parent gives
+landed after the bench data. Running the finder at each fix's parent gives
 an out-of-sample check. These fixes are larger than the bench median, with
-4–19 hand-written files each, some over several commits.
+4–19 hand-written files each, some over several commits. Results with the
+shipped ranker, which was trained on every replayable fix up to Oct 9 (the
+newest training fix before these):
 
 | Issue | Existing files | @20 | @50 | @100 | @200 | @300 | @400 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| #11156 one error and list shape | 15 | 4 | 5 | 8 | 10 | 11 | 12 |
-| #11158 app routes under /v1 | 17 | 5 | 9 | 12 | 13 | 15 | 15 |
-| #11159 owned routes | 14 | 5 | 7 | 9 | 13 | 14 | 14 |
-| #11160 key scopes | 6 | 5 | 6 | 6 | 6 | 6 | 6 |
-| #11177 background work | 14 | 7 | 10 | 10 | 12 | 14 | 14 |
-| #11182 account memory (5 commits) | 16 | 6 | 6 | 8 | 9 | 10 | 13 |
-| #11132 provider fallback note | 15 | 2 | 2 | 5 | 8 | 8 | 8 |
+| #11156 one error and list shape | 15 | 4 | 6 | 8 | 10 | 11 | 12 |
+| #11158 app routes under /v1 | 17 | 8 | 10 | 13 | 13 | 14 | 15 |
+| #11159 owned routes | 14 | 5 | 7 | 11 | 14 | 14 | 14 |
+| #11160 key scopes | 6 | 4 | 6 | 6 | 6 | 6 | 6 |
+| #11177 background work | 14 | 6 | 9 | 11 | 12 | 13 | 14 |
+| #11182 account memory (5 commits) | 16 | 5 | 7 | 8 | 10 | 12 | 12 |
+| #11132 provider fallback note | 15 | 2 | 3 | 5 | 7 | 9 | 9 |
 | #11134 account export | 3 | 2 | 2 | 2 | 3 | 3 | 3 |
-| **all** | **100** | **0.36** | **0.47** | **0.60** | **0.74** | **0.81** | **0.85** |
+| **all** | **100** | **0.36** | **0.50** | **0.64** | **0.75** | **0.82** | **0.85** |
 
-Before the iface, rule and crate stages, this set scored 0.63 at 100 and
-0.76 at 200.
+The newer-fix row after each change:
 
-Misses at 400:
+| Ranker and stages | @100 | @200 | @300 | @400 | @600 | @1,000 |
+|---|---:|---:|---:|---:|---:|---:|
+| first version (two stages, no fan-out) | 0.63 | 0.76 | | | | |
+| + iface, rules, crate expansion; ranker cut at Sept 26 | 0.60 | 0.74 | 0.81 | 0.85 | | |
+| same stages, ranker trained through Oct 9 | 0.62 | 0.78 | 0.84 | 0.85 | | |
+| + wire fields and templates, ranker through Oct 9 (shipped) | 0.64 | 0.75–0.76 | 0.82–0.83 | 0.85 | 0.89 | 0.93 |
+| same, without the template feature | 0.64 | 0.76 | 0.82 | 0.85 | 0.89 | 0.92 |
 
-- **#11132** misses the coder CLI's event output (`turn.rs`, `headless.rs`,
-  `relay.rs`, `main.rs`) and NIP-CJ (`nostr/src/cj_conversation.rs`,
-  `NIP-CJ.md`). The link to them is a JSON field name (`switched`), a plain
-  word the interface index does not keep.
-- **#11182** misses the two chat routers and `docs/api/design.md`.
+The candidate pool now holds 94 of the 100 files. The loss is in ranking.
+Fifteen files are missed at 400, and ten of them come from two issues:
+
+- **#11132** (6 files): the coder CLI's event output (`turn.rs`,
+  `headless.rs`, `relay.rs`, `main.rs`, `tests/relay_job.rs`) and
+  `NIP-CJ.md`, ranked 441–1,036. The fix *adds* the wire field
+  (`switched`), so at the parent there is no field to follow. These
+  files are linked to the change only by being the consumers of the
+  result type.
+- **#11182** (4 files): the two chat routers and the phone's
+  `link_tests.rs`. The feature is new, so they share no string yet.
+
+On the bench, fixes of 10 or more files score 0.939 at 400 and fixes of
+4–9 files score 0.985. This 8-issue set is small and weighted toward two
+cross-client features, so the gap is mostly those two issues.
+
+### Late files from agent runs
+
+Six A/B issues have both a replay case and recorded misses. Across them,
+briefed agents (with a small top-k briefing) opened 25 distinct files
+outside their briefing. The shipped finder holds 17 of them in its top
+100 and **24 in its map of 400**. The one it misses is a debug file the
+agent wrote itself. So in those A/B runs the agents' misses came from
+the briefing's size, not from what the finder can see.
 
 ## Open issues on project 22: is the map comprehensive?
 
@@ -334,14 +407,16 @@ for #11177. Those need the plan stage, or the agent's own exploration.
 
 ## Next steps
 
-1. **Teach the interface index JSON field names that sit next to a NIP or
-   wire type.** The `switched` field in #11132 is the example. Today a
-   plain word is too common to index, so tie such words to the files that
-   define the wire type.
-2. **Per-client templates for "add X to every client".** Mine from history
-   which files a cross-client feature touches (web page + desktop pane +
-   phone screen + bridge), and propose those slots when the scorer's top
-   files sit in one client.
-3. **Feed late files back.** Record every file the agent adds after the
-   briefing as training data. Retrain with `train` every few hundred fixes.
-   The model is `scripts/filefind/model.json`, about 250 KB.
+1. **Consumers of a changed result type.** When a top file defines a
+   serde struct or a result enum, follow its *type name* (not its fields)
+   to every file that matches on it or constructs it, across crates. This
+   is the #11132 miss: a field is added to a result type, and every
+   consumer has to emit it.
+2. **Rank with the plan for broad issues.** On the newer fixes, recall
+   rises from 0.85 at 400 to 0.93 at 1,000. For issues the scorer is
+   unsure about, let the planner's named crates and files re-rank the map,
+   instead of growing it.
+3. **Let the feedback flow back automatically.** Run `filefind.py
+   feedback` after every `coder issue-run` and every A/B round (the
+   post-merge hook already does it for issue-runs), and run
+   `retrain.sh` weekly, so the ranker is trained up to the newest fix.

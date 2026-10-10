@@ -103,6 +103,7 @@ def cmd_prepare(a):
 
 
 def run_case(ix, repo, c, key, keep_query=False):
+    ix.feedback = {}  # run feedback is newer than the case: never use it in a replay
     timing = {}
     t0 = time.perf_counter()
     tree = ff.ls_tree(repo, c["parent"])
@@ -210,6 +211,9 @@ def rows_of(cases, feats, names=None):
 
 
 def fit(cases, feats, a, names=None):
+    if names is None and a.drop:
+        allnames = sorted({k for c in cases for f in feats[c["issue"]]["feats"].values() for k in f})
+        names = [n for n in allnames if not any(n.startswith(d) for d in a.drop.split(","))]
     X, y, names = rows_of(cases, feats, names)
     # keep every positive and a random share of the negatives, reweighted
     rng = np.random.default_rng(7)
@@ -242,6 +246,8 @@ def cmd_train(a):
     cases = load(a)
     feats = pickle.load(open(os.path.join(a.work, "features.pkl"), "rb"))
     ev, train = split(cases, a.eval)
+    if a.all:  # the production ranker: every case, eval included (its stage-2 inputs are out of sample)
+        train = cases
     if a.reuse_stage2:  # features2.pkl already holds the cross-fitted stage-2 features
         feats2 = pickle.load(open(os.path.join(a.work, "features2.pkl"), "rb"))
         m1 = fit(train, feats, a)
@@ -639,6 +645,8 @@ def main():
     ap.add_argument("--trees", type=int, default=200)
     ap.add_argument("--neg-keep", type=float, default=0.3)
     ap.add_argument("--reuse-stage2", action="store_true")
+    ap.add_argument("--all", action="store_true", help="train on every case (with --reuse-stage2)")
+    ap.add_argument("--drop", default="", help="comma-separated feature-name prefixes to leave out (ablation)")
     ap.add_argument("--band-lo", type=int, default=30)
     ap.add_argument("--band-hi", type=int, default=150)
     ap.add_argument("--limit", type=int, default=0)
