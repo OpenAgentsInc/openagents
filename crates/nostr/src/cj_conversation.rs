@@ -1513,5 +1513,7 @@ pub fn card_feedback(card: &Card, version: u64) -> Result<Value, ContractError> 
     Ok(value)
 }
 
+pub mod switched;
+
 #[cfg(test)]
 mod tests;

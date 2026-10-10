@@ -1272,6 +1272,7 @@ impl Worker<'_> {
             identity: self.identity.clone(),
             answered: Default::default(),
             upstream: Default::default(),
+            switched: Default::default(),
             door: self.door.clone(),
             judge: self.judge.clone(),
             decline: self.options.decline.clone(),
@@ -1528,6 +1529,10 @@ struct Job {
     /// The upstream the inference gateway named for this job's reply, when
     /// the door is the gateway ([`Meta::Upstream`]).
     upstream: std::sync::Mutex<Option<String>>,
+    /// The provider that missed this job's turn before another answered
+    /// it, when one did ([`Meta::Switched`], #11132): the result says so as
+    /// `switched`.
+    switched: std::sync::Mutex<Option<coder::generate::Switched>>,
     /// The System One client for the first response and rankings.
     judge: Option<Arc<jev::Client>>,
     decline: Option<String>,
@@ -2504,6 +2509,16 @@ impl Job {
                 // text no model wrote names the bank as its `model`.
                 if let Some(served) = &served {
                     router::wire::annotate(&mut result, served, Bank::builtin());
+                }
+                // The first provider missed the turn and another model
+                // wrote the reply (#11132): the chat says so. A reply no
+                // model wrote names no switch.
+                if let Some(switched) = self.switched.lock().ok().and_then(|slot| slot.clone())
+                    && result["model"].as_str().is_some_and(|model| {
+                        !model.starts_with("bank:") && !model.starts_with("kb:")
+                    })
+                {
+                    result["switched"] = switched.value();
                 }
                 let by = result["model"].as_str().unwrap_or("?").to_string();
                 publish(RESULT_KIND, result)?;
@@ -3483,11 +3498,18 @@ impl Job {
                     // The model that wrote the reply, when the door named
                     // one: the result names it rather than the door's
                     // first choice (#10109).
-                    let (named_model, named_upstream) = said
+                    let (named_model, named_upstream, named_switch) = said
                         .lock()
                         .ok()
-                        .map(|mut named| (named.model.take(), named.upstream.take()))
+                        .map(|mut named| {
+                            (named.model.take(), named.upstream.take(), named.switched.take())
+                        })
                         .unwrap_or_default();
+                    if let Some(switched) = named_switch
+                        && let Ok(mut slot) = self.switched.lock()
+                    {
+                        *slot = Some(switched);
+                    }
                     if let Some(upstream) = named_upstream
                         && let Ok(mut slot) = self.upstream.lock()
                     {
@@ -3637,6 +3659,7 @@ fn start_model(
                 match meta {
                     Meta::Model(model) => named.model = Some(model),
                     Meta::Upstream(upstream) => named.upstream = Some(upstream),
+                    Meta::Switched(switched) => named.switched = Some(switched),
                     _ => {}
                 }
             }
@@ -3655,6 +3678,8 @@ type Said = Arc<std::sync::Mutex<Named>>;
 struct Named {
     model: Option<String>,
     upstream: Option<String>,
+    /// The provider that missed the turn first, when another answered.
+    switched: Option<coder::generate::Switched>,
 }
 
 /// `generation`, answering only once `gate` is open: a model call that
@@ -4052,6 +4077,7 @@ mod tests {
                 routing,
                 answered: Default::default(),
                 upstream: Default::default(),
+                switched: Default::default(),
                 identity: Arc::new(worker),
                 door: Arc::new(door),
                 judge: None,
@@ -5008,6 +5034,7 @@ mod tests {
             judge,
             answered: Default::default(),
             upstream: Default::default(),
+            switched: Default::default(),
             decline: None,
             allow: None,
             ledger: None,
@@ -6481,7 +6508,7 @@ mod tests {
 
     /// The result names the model that wrote the reply: the primary when
     /// it answered, the fallback when the primary missed the turn
-    /// (#10109).
+    /// (#10109), and then which provider missed it (#11132).
     #[tokio::test]
     async fn the_result_names_the_door_that_answered() {
         let mut payload = turn("How do Nostr relays work?");
@@ -6500,6 +6527,29 @@ mod tests {
             assert_eq!(result["type"], "result", "{frames:?}");
             assert_eq!(result["model"], model);
             assert_eq!(result["text"], text);
+            // The fallback's answer says the first provider missed the
+            // turn, and why; the primary's says nothing (#11132).
+            if answers {
+                assert!(result.get("switched").is_none(), "{result}");
+            } else {
+                assert_eq!(
+                    result["switched"],
+                    json!({
+                        "provider": "other",
+                        "model": Lane::SpaceBunny.model(),
+                        "why": "error",
+                    })
+                );
+                let switched =
+                    coder::generate::Switched::parse(&result["switched"], result["model"].as_str())
+                        .expect("a client reads it");
+                assert_eq!(
+                    switched.line(),
+                    format!(
+                        "The first model provider had a problem, so {GEMINI} answered instead."
+                    )
+                );
+            }
         }
     }
 

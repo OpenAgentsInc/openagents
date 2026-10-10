@@ -1099,6 +1099,12 @@ pub struct Meta {
     /// sets it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub payer_keys: Vec<model_access::KeyPrint>,
+    /// The first model provider missed this turn and another model
+    /// answered it (#11132), from the result's typed `switched` field as
+    /// NIP-CJ's own parser read it: shown as one short line beside the
+    /// answer ([`nostr::cj_conversation::switched::Switched::line`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switched: Option<nostr::cj_conversation::switched::Switched>,
 }
 
 impl Meta {
@@ -1203,6 +1209,10 @@ impl Meta {
         }
         self.take_words(payload);
         self.take_followups(payload);
+        self.switched = nostr::cj_conversation::switched::Switched::parse(
+            &payload["switched"],
+            payload["model"].as_str(),
+        );
         if let Some(flow) = crate::plugin_flow::Flow::parse(&payload["plugin"]) {
             self.plugin = Some(flow);
         }
@@ -1439,6 +1449,30 @@ mod tests {
             Offer::command_line(&["kb".into(), "search".into(), "docker cp".into()]),
             "openagents kb search 'docker cp'"
         );
+    }
+
+    #[test]
+    fn a_result_another_provider_answered_keeps_the_switch() {
+        let mut meta = Meta::default();
+        meta.resulted(&json!({"v": 2, "type": "result", "text": "Paris.",
+            "model": "z-ai/glm-5.3-flash",
+            "switched": {"provider": "openrouter", "model": "google/gemini-3.8-flash",
+                "why": "timeout"}}));
+        let switched = meta.switched.clone().expect("the switch is kept");
+        assert_eq!(
+            switched.line(),
+            "OpenRouter didn't answer in time, so z-ai/glm-5.3-flash answered instead."
+        );
+        // It survives storage, and a result without one keeps none.
+        let kept: Meta = serde_json::from_value(serde_json::to_value(&meta).unwrap()).unwrap();
+        assert_eq!(kept.switched, Some(switched));
+        let mut plain = Meta::default();
+        plain.resulted(&json!({"type": "result", "text": "Paris.", "model": "m"}));
+        assert_eq!(plain.switched, None);
+        // A word this version doesn't know drops the field.
+        plain.resulted(&json!({"type": "result", "text": "Paris.", "model": "m",
+            "switched": {"provider": "azure", "model": "x", "why": "timeout"}}));
+        assert_eq!(plain.switched, None);
     }
 
     #[test]

@@ -1470,6 +1470,7 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                         let mut meta = openagents_chat::suggestions::chip_meta(&r.meta);
                         meta.tier = r.meta.tier.clone();
                         meta.route = r.meta.route.clone();
+                        meta.switched = r.meta.switched.clone();
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
@@ -1751,6 +1752,12 @@ fn turn(
             }
             (crate::suggestions::plugin_cards(plugins))
             span hidden data-oa-reply-end {}
+            // The first model provider missed this turn and another model
+            // answered it (#11132): one quiet line, outside the reply's
+            // markers so the chat goldens read the reply alone.
+            @if let Some(switched) = reply.and_then(|r| r.switched.as_ref()) {
+                p.oa-thread-notice data-oa-switched=(switched.provider.word()) { (switched.line()) }
+            }
         })
         .author("OpenAgents"),
         Role::Tool => ThreadMessage::status(&message.text),

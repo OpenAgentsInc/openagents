@@ -395,6 +395,11 @@ pub(super) fn worked(
         } else {
             steps.push("Wrote the answer".into());
         }
+        // The first model provider missed the turn and another model
+        // answered it (#11132).
+        if let Some(switched) = meta.and_then(|meta| meta.switched.as_ref()) {
+            steps.push(switched.line());
+        }
         if meta.is_some_and(|meta| !meta.offers.is_empty()) {
             steps.push("Suggested a next step".into());
         }

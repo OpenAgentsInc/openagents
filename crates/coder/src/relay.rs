@@ -1042,6 +1042,14 @@ impl RelayDoor {
                             if let Some(model) = &model {
                                 meta(Meta::Model(model.clone()));
                             }
+                            // Another provider answered because the first
+                            // did not (#11132): the terminal says so.
+                            if let Some(switch) = crate::generate::Switched::parse(
+                                &feedback["switched"],
+                                model.as_deref(),
+                            ) {
+                                meta(Meta::Switched(switch));
+                            }
                             // The result is the answer, whole. Deltas are
                             // a preview of it, never a substitute: an
                             // empty result is an empty answer, however

@@ -59,6 +59,9 @@ pub enum Event {
     Classified(Classified),
     /// A remote worker's judgment feedback line (NIP-CJ).
     Judgment(String),
+    /// The first model provider missed the turn and another model answered
+    /// it, as one plain line to show beside the answer (#11132).
+    Switched(String),
     /// A shell-loop event: a proposal, an outcome, or the judge's verdict.
     Shell(ShellEvent),
     /// A reply delta, as it streams.
@@ -225,12 +228,15 @@ pub async fn run(
                     &mut |meta| {
                         // The model a forwarding door names is for the
                         // trace, not the terminal: the answer is already
-                        // on the screen by the time it lands.
-                        let Meta::Judgment(line) = meta else {
-                            return;
+                        // on the screen by the time it lands. A provider
+                        // switch is for the person (#11132).
+                        let event = match meta {
+                            Meta::Judgment(line) => Event::Judgment(line),
+                            Meta::Switched(switched) => Event::Switched(switched.line()),
+                            _ => return,
                         };
                         if let Ok(mut sink) = sink.lock() {
-                            sink(Event::Judgment(line));
+                            sink(event);
                         }
                     },
                     &mut |shell| {

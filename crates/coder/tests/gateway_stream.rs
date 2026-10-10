@@ -670,6 +670,68 @@ async fn a_402_then_a_404_then_an_answer_is_answered() {
     );
 }
 
+/// The switches a turn through `door` names ([`Meta::Switched`]).
+async fn switches(door: &FallbackDoor) -> Vec<coder::generate::Switched> {
+    let mut seen = Vec::new();
+    let _ = door
+        .generate("you are terse", &turn(), &mut |_| {}, &mut |meta| {
+            if let Meta::Switched(switched) = meta {
+                seen.push(switched);
+            }
+        })
+        .await;
+    seen
+}
+
+/// A turn another door answered names the first door that missed it, why,
+/// and who answered, once (#11132): a refusal, an error, and silence each
+/// in their own word; a benched door skipped on a later turn is named with
+/// the reason it was benched; a primary that answers names no switch.
+#[tokio::test]
+async fn a_turn_another_door_answered_says_which_missed_it_and_why() {
+    use coder::generate::{Missed, Provider};
+    for (stub, why) in [
+        (Stub::Status(402), Missed::Refused),
+        (Stub::Status(429), Missed::Refused),
+        (Stub::Status(500), Missed::Error),
+        (Stub::Deaf, Missed::Timeout),
+    ] {
+        let primary = Server::start(stub).await;
+        let fallback = Server::start(Stub::Status(404)).await;
+        let backup = Server::start(Stub::Whole(GLM)).await;
+        let door = chain(
+            [&primary, &fallback, &backup],
+            [
+                Lane::Gemini.model(),
+                Lane::SpaceBunny.model(),
+                Lane::Glm.model(),
+            ],
+        );
+        let seen = switches(&door).await;
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert_eq!(seen[0].provider, Provider::Other);
+        assert_eq!(seen[0].model, Lane::Gemini.model());
+        assert_eq!(seen[0].why, why);
+        assert_eq!(seen[0].answered.as_deref(), Some(Lane::Glm.model()));
+    }
+
+    // A primary benched for its 402 is skipped next turn and still named.
+    let primary = Server::start(Stub::Status(402)).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    let door = ordered(&primary, &fallback);
+    let _ = switches(&door).await;
+    let seen = switches(&door).await;
+    assert_eq!(primary.asked(), 1, "the benched primary sat the turn out");
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].why, Missed::Refused);
+    assert_eq!(seen[0].model, Lane::SpaceBunny.model());
+    assert_eq!(seen[0].answered.as_deref(), Some(Lane::Gemini.model()));
+
+    let primary = Server::start(Stub::Whole(SPACE_BUNNY)).await;
+    let fallback = Server::start(Stub::Whole(GEMINI)).await;
+    assert!(switches(&ordered(&primary, &fallback)).await.is_empty());
+}
+
 /// Every door failing is the last door's failure, which the worker turns
 /// into its one plain failure line; nothing reached the caller.
 #[tokio::test]

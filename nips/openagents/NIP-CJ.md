@@ -168,7 +168,14 @@ the client waits for the complete result. Feedback never proves completion.
 A result has `v: 1`, `requires`, `type: "result"`, nonempty `text`, optional
 `usage: {input, output}` (nonnegative token counts), and optional `model`
 (nonempty identifier). Missing usage is unknown, not zero. A model name is
-an attribution claim, not proof of immutable weights. The first valid result
+an attribution claim, not proof of immutable weights. Added 2026-10-09: a
+result MAY carry `switched` (`{provider, model, why}`) when the model
+provider the worker asked first did not answer the turn before its first
+words and another model wrote the reply: `provider` is `openagents`,
+`openrouter`, `vercel`, or `other`; `model` the id that provider was running
+(1 to 128 printable bytes); `why` is `error`, `timeout`, or `refused`. The
+client says so in one short line beside the answer, naming the result's
+`model` as the one that answered; an unknown word drops the field. The first valid result
 or terminal error ends observation; subsequent events do not change it.
 
 A worker that answers callers it has not admitted by name meters them and

@@ -657,6 +657,55 @@ pub enum Meta {
     /// gateway and its `openagents:route` event named one (`vertex`,
     /// `openrouter`, `vercel`, ...). Emitted with [`Meta::Model`].
     Upstream(String),
+    /// Another door wrote this answer because an earlier one in the chain
+    /// failed, refused, or went quiet before its first words, or sits
+    /// benched for doing so ([`FallbackDoor`], #11132). Emitted with the
+    /// answering door's [`Meta::Model`]; the worker puts it on the result
+    /// as `switched`, and the chat says so beside the answer.
+    Switched(Switched),
+}
+
+/// A turn an earlier door in a chain did not answer, as NIP-CJ carries it
+/// on a result (`switched`, #11132).
+pub use nostr::cj_conversation::switched::{Missed, Provider, Switched};
+
+/// Why `error` made a door miss its turn: a refused key, account, or rate
+/// (HTTP 401, 402, 403, or 429), no answer in time, or any other failure.
+#[must_use]
+pub fn missed(error: &GenerateError) -> Missed {
+    match error {
+        GenerateError::Status(401..=403 | 429, _) => Missed::Refused,
+        GenerateError::Quiet { .. } | GenerateError::Silent { .. } => Missed::Timeout,
+        _ => Missed::Error,
+    }
+}
+
+/// Who runs `door`: our inference gateway, OpenRouter, the Vercel AI
+/// Gateway, or another.
+#[must_use]
+pub fn provider(door: &ResponsesDoor) -> Provider {
+    let url = door.url.trim_end_matches('/');
+    if door.is_gateway() {
+        Provider::OpenAgents
+    } else if url == OPENROUTER_DOOR_URL {
+        Provider::OpenRouter
+    } else if url == DEFAULT_DOOR_URL {
+        Provider::Vercel
+    } else {
+        Provider::Other
+    }
+}
+
+/// `door` missed this turn because of `why`; who answered is filled in
+/// when someone does.
+#[must_use]
+pub fn switched(door: &ResponsesDoor, why: Missed) -> Switched {
+    Switched {
+        provider: provider(door),
+        model: door.model.clone(),
+        why,
+        answered: None,
+    }
 }
 
 /// What generation can fail with.
@@ -1526,7 +1575,10 @@ pub struct FallbackDoor {
 }
 
 /// Benched doors, shared by every copy of a chain ([`FallbackDoor::before`]).
-type Bench = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Instant>>>;
+///
+/// Each holds when the door may be asked again and why it was benched, so
+/// a turn that skips it can say why another door answered (#11132).
+type Bench = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (Instant, Missed)>>>;
 
 /// How long a door whose model is gone (HTTP 404) sits out before it is
 /// asked again.
@@ -1689,14 +1741,16 @@ impl FallbackDoor {
 
     /// Whether `door` is benched now.
     fn is_benched(&self, door: &ResponsesDoor) -> bool {
+        self.benched_for(door).is_some()
+    }
+
+    /// Why `door` is benched now, or `None` when it is not.
+    fn benched_for(&self, door: &ResponsesDoor) -> Option<Missed> {
         let now = Instant::now();
-        self.benched
-            .lock()
-            .map(|mut benched| {
-                benched.retain(|_, until| *until > now);
-                benched.contains_key(&bench_key(door))
-            })
-            .unwrap_or(false)
+        self.benched.lock().ok().and_then(|mut benched| {
+            benched.retain(|_, (until, _)| *until > now);
+            benched.get(&bench_key(door)).map(|(_, why)| *why)
+        })
     }
 
     /// Benches `door` when `error` says its next turn will fail the same
@@ -1706,7 +1760,7 @@ impl FallbackDoor {
             return;
         };
         if let Ok(mut benched) = self.benched.lock() {
-            benched.insert(bench_key(door), Instant::now() + wait);
+            benched.insert(bench_key(door), (Instant::now() + wait, missed(error)));
         }
         eprintln!(
             "door {} at {} benched for {} s ({})",
@@ -1839,6 +1893,13 @@ impl Generate for FallbackDoor {
         if asked.first().is_none_or(|(at, _)| *at != 0) {
             self.down.store(true, ordering);
         }
+        // The first door that did not answer this turn, and why: a benched
+        // door skipped, or a door that missed its first words (#11132).
+        let mut switch: Option<Switched> = self
+            .doors()
+            .next()
+            .filter(|_| asked.first().is_some_and(|(at, _)| *at != 0))
+            .map(|primary| switched(primary, self.benched_for(primary).unwrap_or(Missed::Error)));
         let last = asked.len() - 1;
         for (step, (at, door)) in asked.iter().copied().enumerate() {
             if step == last {
@@ -1847,6 +1908,10 @@ impl Generate for FallbackDoor {
                 let answered = door.generate(instructions, input, sink, meta).await;
                 match &answered {
                     Ok(_) => {
+                        if let Some(mut switch) = switch.take() {
+                            switch.answered = (!door.is_gateway()).then(|| door.model.clone());
+                            meta(Meta::Switched(switch));
+                        }
                         if !door.is_gateway() {
                             meta(Meta::Model(door.model.clone()));
                         }
@@ -1877,6 +1942,14 @@ impl Generate for FallbackDoor {
                 .await
             {
                 First::Answered(done) => {
+                    if let Some(mut switch) = switch.take() {
+                        switch.answered = match (&routed, door.is_gateway()) {
+                            (Some((model, _)), true) => Some(model.clone()),
+                            (None, true) => None,
+                            (_, false) => Some(door.model.clone()),
+                        };
+                        meta(Meta::Switched(switch));
+                    }
                     name_answer(door, meta, routed);
                     self.answered.store(at, ordering);
                     if at == 0 {
@@ -1895,6 +1968,7 @@ impl Generate for FallbackDoor {
                         self.down.store(true, ordering);
                     }
                     self.bench(door, &error);
+                    switch.get_or_insert_with(|| switched(door, missed(&error)));
                     let (_, next) = asked[step + 1];
                     // Door, model, cause, and the door's own words: never
                     // the turn's.

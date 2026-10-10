@@ -116,7 +116,7 @@ async fn report(
         match &event {
             Event::Shell(ShellEvent::Proposed(proposal)) => eprintln!("$ {}", proposal.command),
             Event::Program(slug) => eprintln!("running program {slug}"),
-            Event::Judgment(line) => eprintln!("  {line}"),
+            Event::Judgment(line) | Event::Switched(line) => eprintln!("  {line}"),
             _ => {}
         }
         if options.json
@@ -225,6 +225,10 @@ fn event_object(event: &Event, deltas: bool) -> Option<Value> {
         Event::Classified(classified) => Some(classified_object(classified)),
         Event::Judgment(line) => Some(json!({
             "event": "judgment",
+            "line": line,
+        })),
+        Event::Switched(line) => Some(json!({
+            "event": "switched",
             "line": line,
         })),
         Event::Shell(shell) => Some(shell_object(shell)),

@@ -148,6 +148,9 @@ enum Work {
     Classified(Classified),
     /// A remote worker's judgment feedback line (NIP-CJ), drawn dim.
     Judgment(String),
+    /// Another model answered because the first provider missed the turn
+    /// (#11132): one plain line, drawn dim.
+    Switched(String),
     /// A shell-loop event: a proposal, an outcome, or the judge's verdict.
     Shell(ShellEvent),
     /// A reply delta streamed in.
@@ -483,6 +486,7 @@ async fn work_turn(agent: &mut Agent, draft: String, feed: &Feed<Work>) {
         let work = match event {
             TurnEvent::Classified(classified) => Work::Classified(classified),
             TurnEvent::Judgment(line) => Work::Judgment(line),
+            TurnEvent::Switched(line) => Work::Switched(line),
             TurnEvent::Shell(shell) => Work::Shell(shell),
             TurnEvent::Delta(delta) => Work::Delta(delta),
             TurnEvent::Program(slug) => Work::Program(slug),
@@ -680,6 +684,7 @@ impl App {
                 self.push_detail("  ", note);
                 self.status = "generating".to_string();
             }
+            Work::Switched(line) => self.push_detail("  ", line),
             Work::Judgment(line) => {
                 // A delegated turn's progress lines name their own phase,
                 // such as `survey ▸ …`; a relay worker's line is a

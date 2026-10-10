@@ -1357,6 +1357,75 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
     assert!(!streaming.contains("data-oa-tier"), "{streaming}");
 }
 
+/// A reply another model wrote because the first provider missed the turn
+/// says so in one quiet line after the reply's markers, naming the
+/// provider, why, and the model that answered (#11132); a reply with no
+/// switch shows no line.
+#[test]
+fn a_reply_another_provider_answered_says_so() {
+    use nostr::cj_conversation::switched::{Missed, Provider, Switched};
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 2,
+        title: "Paris".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "capital of france?".into(),
+                request_id: Some(CHAT.into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: "Paris.".into(),
+                request_id: Some(CHAT.into()),
+            },
+        ],
+        pending: None,
+        requests: vec![Request {
+            id: CHAT.into(),
+            digest: String::new(),
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            reply: Some(openagents_chat::router::Meta {
+                tier: Some("model".into()),
+                switched: Some(Switched {
+                    provider: Provider::OpenRouter,
+                    model: "google/gemini-3.8-flash".into(),
+                    why: Missed::Refused,
+                    answered: Some("z-ai/glm-5.3-flash".into()),
+                }),
+                ..openagents_chat::router::Meta::default()
+            }),
+        }],
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+    };
+    let html = messages(&chat, None, false).into_string();
+    let line = "OpenRouter turned the request down, so z-ai/glm-5.3-flash answered instead.";
+    let visible = oa_copy::visible_text(&html);
+    assert!(visible.contains(line), "{visible}");
+    assert!(html.contains(r#"data-oa-switched="openrouter""#), "{html}");
+    let end = html.find("data-oa-reply-end").unwrap();
+    assert!(
+        html.find(line).unwrap() > end,
+        "the line is outside the reply"
+    );
+    assert_eq!(oa_copy::violations(&visible, &[]), vec![], "{visible}");
+    chat.requests[0].reply.as_mut().unwrap().switched = None;
+    let plain = messages(&chat, None, false).into_string();
+    assert!(!plain.contains("answered instead"), "{plain}");
+}
+
 /// A reply still streaming shows only what renders cleanly so far: no
 /// half-written fence, table row, link, list marker, emphasis, or heading
 /// shows as raw syntax, and it is marked to grow smoothly. Once answered
