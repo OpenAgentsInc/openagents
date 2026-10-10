@@ -23,6 +23,10 @@ with the [Orbs research](../research/orbs.md), current native Cloud jobs, and th
 web composer. Its terms and implementation boundaries match the
 [glossary](../glossary.md#cloud-computers-and-repository-environments).
 
+Steps that only run on macOS (iOS builds, the release gate, TestFlight
+uploads, desktop captures) go to a Mac linked to the account:
+[Mac-only steps on a linked Mac](linked-mac.md).
+
 The [OpenInspect source study](../research/openinspect.md) compares durable
 session ownership, provider checkpoints, tool capture, and collaboration with
 these existing Rust boundaries and the remaining environment work.

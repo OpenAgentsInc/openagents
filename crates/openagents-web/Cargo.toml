@@ -41,6 +41,8 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 jev = { path = "../jev" }
 inference = { path = "../inference" }
 libc = "0.2"
+# Mac jobs: the recipes and what a linked Mac reports (#11223).
+mac-jobs = { path = "../mac-jobs" }
 maud = { version = "=0.27.0", features = ["axum"] }
 oa-auth = { path = "../oa-auth" }
 oa-seal = { path = "../oa-seal" }

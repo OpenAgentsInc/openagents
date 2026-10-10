@@ -1,0 +1,15 @@
+[package]
+name = "mac-jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Typed jobs a linked Mac runs for the account (#11223): the recipes, their allowlisted arguments, the steps each runs, and what the Mac reports it can do."
+
+[dependencies]
+secret-screen = { path = "../secret-screen" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

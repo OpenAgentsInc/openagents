@@ -8,6 +8,7 @@ description = "Save Coder chats to the signed-in openagents.com account: the set
 
 [dependencies]
 atif = { path = "../atif" }
+mac-jobs = { path = "../mac-jobs" }
 openagents-login = { path = "../openagents-login" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secret-screen = { path = "../secret-screen" }

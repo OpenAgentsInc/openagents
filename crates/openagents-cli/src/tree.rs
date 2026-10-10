@@ -284,6 +284,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("cloud", Some(crate::cloud::USAGE), crate::cloud::EFFECTS),
         group("deploy", Some(crate::deploy::USAGE), crate::deploy::EFFECTS),
         group("pr", Some(crate::pr::USAGE), crate::pr::EFFECTS),
+        group("mac", Some(crate::mac::USAGE), crate::mac::EFFECTS),
         group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
         GroupHelp {
             name: "xp",

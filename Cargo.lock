@@ -3580,6 +3580,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
+ "mac-jobs",
  "openagents-login",
  "reqwest 0.12.28",
  "secret-screen",
@@ -8644,6 +8645,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3d25b0e0b648a86960ac23b7ad4abb9717601dec6f66c165f5b037f3f03065f"
 
 [[package]]
+name = "mac-jobs"
+version = "0.1.0"
+dependencies = [
+ "secret-screen",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mac_address"
 version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10426,6 +10436,7 @@ dependencies = [
  "coder-reach",
  "coder-service",
  "coder-ssh",
+ "coder-sync",
  "coder-vt",
  "commercial-accounts",
  "commercial-spend",
@@ -10442,6 +10453,7 @@ dependencies = [
  "jsonschema",
  "knowledge",
  "libc",
+ "mac-jobs",
  "microcoder",
  "model-access",
  "nostr",
@@ -10449,6 +10461,7 @@ dependencies = [
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
+ "openagents-login",
  "openagents-spark",
  "openagents-terminal",
  "openagents-wallet",
@@ -10694,6 +10707,7 @@ dependencies = [
  "inference",
  "jev",
  "libc",
+ "mac-jobs",
  "markdown-stream",
  "maud",
  "nostr",

@@ -11,7 +11,7 @@
 //! ```
 //!
 //! A file never loosens a rule that has a floor: production deploys, DNS,
-//! secrets, and payments stay at `ask` at least, whatever a checkout says,
+//! secrets, payments, and a linked Mac's store uploads stay at `ask` at least, whatever a checkout says,
 //! because a file a model can write must not be how the owner's gate
 //! opens.
 //!
@@ -49,6 +49,9 @@ pub const DNS: &str = "dns";
 pub const SECRETS: &str = "secrets";
 /// Money sent.
 pub const PAYMENTS: &str = "payments";
+/// A linked Mac sends a build outside: a TestFlight upload, or App Store
+/// Connect's validation (#11223, `mac_jobs::UPLOAD_ABILITY`).
+pub const MAC_UPLOAD: &str = "mac.upload";
 
 /// What one ability does without the owner.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,7 +77,7 @@ impl Rule {
 }
 
 /// The abilities whose rule a file can't set below `ask`.
-const FLOORED: [&str; 4] = [DEPLOY_PRODUCTION, DNS, SECRETS, PAYMENTS];
+const FLOORED: [&str; 5] = [DEPLOY_PRODUCTION, DNS, SECRETS, PAYMENTS, MAC_UPLOAD];
 
 /// The rule for each ability.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,6 +95,7 @@ impl Default for Policy {
             (DNS, Rule::Ask),
             (SECRETS, Rule::Ask),
             (PAYMENTS, Rule::Ask),
+            (MAC_UPLOAD, Rule::Ask),
         ]
         .into_iter()
         .map(|(ability, rule)| (ability.to_owned(), rule))
@@ -355,7 +359,7 @@ mod tests {
         assert_eq!(policy.rule(DEPLOY_PRODUCTION), Rule::Ask);
         assert_eq!(policy.rule(PR_MERGE), Rule::Ask);
         assert_eq!(policy.rule(PR_REVIEW), Rule::Allow);
-        for ability in [DNS, SECRETS, PAYMENTS, "something.new"] {
+        for ability in [DNS, SECRETS, PAYMENTS, MAC_UPLOAD, "something.new"] {
             assert_eq!(policy.rule(ability), Rule::Ask, "{ability}");
         }
     }
@@ -365,9 +369,10 @@ mod tests {
         let policy = Policy::parse(
             r#"{"schema":"openagents.approval-policy.v1","rules":{
                 "deploy.staging":"ask","deploy.production":"allow",
-                "payments":"deny","pr.merge":"allow"}}"#,
+                "payments":"deny","pr.merge":"allow","mac.upload":"allow"}}"#,
         )
         .unwrap();
+        assert_eq!(policy.rule(MAC_UPLOAD), Rule::Ask);
         assert_eq!(policy.rule(DEPLOY_STAGING), Rule::Ask);
         assert_eq!(policy.rule(DEPLOY_PRODUCTION), Rule::Ask);
         assert_eq!(policy.rule(PAYMENTS), Rule::Deny);

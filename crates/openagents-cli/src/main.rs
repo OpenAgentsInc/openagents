@@ -57,6 +57,8 @@ mod key;
 mod labor;
 mod lease;
 mod lease_place;
+mod mac;
+mod mac_serve;
 mod mcp;
 mod out;
 #[cfg(unix)]
@@ -198,6 +200,8 @@ Coder:
                production once the owner approves.
   pr           Read, review, and merge a GitHub pull request; merge waits for
                the owner and passing checks.
+  mac          Send Mac-only steps (iOS builds, the release gate, TestFlight
+               uploads, desktop captures) to a Mac linked to your account.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -439,6 +443,8 @@ fn main() -> ExitCode {
         // owner's approval policy (#11169, #11170).
         "deploy" => deploy::run(&output, &rest),
         "pr" => pr::run(&output, &rest),
+        // Mac-only steps on a Mac linked to the account (#11223).
+        "mac" => mac::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),

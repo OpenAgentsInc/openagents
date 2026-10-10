@@ -44,6 +44,7 @@
 pub mod account_export;
 pub mod activity;
 pub mod claude_session;
+pub mod mac_jobs;
 pub mod memory;
 pub mod own_runs;
 pub mod schedules;

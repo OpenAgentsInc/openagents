@@ -21406,6 +21406,426 @@
       ]
     },
     {
+      "name": "mac",
+      "summary": "Send Mac-only steps (iOS builds, the release gate, TestFlight uploads, desktop captures) to a Mac linked to your account.",
+      "children": [
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "mac",
+              "run"
+            ],
+            "usage": [
+              "run RECIPE --ref REF [--repo OWNER/NAME] [--computer NAME] [--out DIR] [--no-wait] [-- ARGS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "RECIPE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ref",
+                    "value": "REF",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "computer",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-wait",
+                    "optional": true
+                  },
+                  {
+                    "kind": "rest",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Send a job to a Mac linked to your account and follow it: its log, the owner's approval when it needs one, its result, and with --out its files. RECIPE is ios-release-gate (--simulator NAME), ios-testflight (--validate-only, --build N; waits for the owner), desktop-capture (--kept), or xcodebuild (allowlisted arguments).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "jobs",
+          "leaf": {
+            "path": [
+              "mac",
+              "jobs"
+            ],
+            "usage": [
+              "jobs"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "jobs"
+                  }
+                ]
+              }
+            ],
+            "summary": "Your Mac jobs, newest first.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "mac",
+              "show"
+            ],
+            "usage": [
+              "show ID [--follow]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "follow",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "One job and its log; --follow waits for it to end.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "fetch",
+          "leaf": {
+            "path": [
+              "mac",
+              "fetch"
+            ],
+            "usage": [
+              "fetch ID --out DIR"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "fetch"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "DIR",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Save the files a job made.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "cancel",
+          "leaf": {
+            "path": [
+              "mac",
+              "cancel"
+            ],
+            "usage": [
+              "cancel ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "cancel"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop a job.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "macs",
+          "leaf": {
+            "path": [
+              "mac",
+              "macs"
+            ],
+            "usage": [
+              "macs"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "macs"
+                  }
+                ]
+              }
+            ],
+            "summary": "Your linked Macs and what each can do.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "capabilities",
+          "leaf": {
+            "path": [
+              "mac",
+              "capabilities"
+            ],
+            "usage": [
+              "capabilities [--root DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "capabilities"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "root",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "What this Mac reports: macOS, Xcode, signing identities by name, simulators, and whether an App Store Connect key is here.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "serve",
+          "leaf": {
+            "path": [
+              "mac",
+              "serve"
+            ],
+            "usage": [
+              "serve [--computer NAME] [--root DIR] [--repo OWNER/NAME[=PATH]]... [--min-free-gb N] [--once]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "serve"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "computer",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "root",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true,
+                    "repeated": true
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "=PATH",
+                    "optional": true,
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "min-free-gb",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "once",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run on the Mac: take your account's jobs and run each in its own worktree and build folder. Signing and App Store keys stay here.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "ref",
+          "value": "REF",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "repo",
+          "value": "OWNER/NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "computer",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-wait",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "simulator",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "validate-only",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "build",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "kept",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "follow",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "min-free-gb",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "once",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "verse",
       "summary": "See who is around, listen, speak, move, gesture, drive owned entities, and read quests, XP, and the board.",
       "children": [

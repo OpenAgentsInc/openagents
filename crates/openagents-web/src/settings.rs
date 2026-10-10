@@ -165,9 +165,15 @@ async fn settings(
     .await;
     let computers = crate::device::computers_section(&app, service, &headers, &viewer).await;
     let plan = plan_section(&app, service, &headers, &viewer, returned);
+    let macs = crate::mac_jobs_page::settings_row(
+        &app.config.chat_store,
+        &crate::chat_store::account_owner(&viewer.account_id),
+    )
+    .await;
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
         (computers)
+        (macs)
     };
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }

@@ -41,6 +41,8 @@ mod docs_mcp;
 mod environments;
 mod github_tools;
 mod layout;
+pub mod mac_jobs;
+mod mac_jobs_page;
 mod markdown;
 mod oauth;
 mod older_paths;
@@ -277,6 +279,8 @@ pub fn router(config: Config) -> Router {
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
         .merge(own_runs::routes())
+        .merge(mac_jobs::routes())
+        .merge(mac_jobs_page::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())
         .merge(account_schedules::routes())

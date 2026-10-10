@@ -797,20 +797,43 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
         (Ok(agents), Ok(computers)) => (agents, computers),
         (Err(error), _) | (_, Err(error)) => return stored(&error),
     };
-    let mut boards: Vec<(&String, &Board)> = agents.boards.iter().collect();
+    let boards = with_mac_jobs(
+        agents.boards,
+        crate::mac_jobs::board_items(store, &owner).await,
+    );
+    let mut boards: Vec<(String, Board)> = boards.into_iter().collect();
     boards.sort_by_key(|(_, board)| std::cmp::Reverse(board.updated_unix));
     answer(
         StatusCode::OK,
         json!({"computers": boards
             .into_iter()
             .map(|(name, board)| json!({
+                "online": online(&computers, &name),
                 "name": name,
-                "online": online(&computers, name),
                 "updated_unix": board.updated_unix,
                 "items": board.items,
             }))
             .collect::<Vec<_>>()}),
     )
+}
+
+/// The boards with each Mac job (#11223) as an item on its Mac's board,
+/// after what Coder reported there, so the phone and the web show a Mac's
+/// jobs with its other work.
+pub(crate) fn with_mac_jobs(
+    mut boards: BTreeMap<String, Board>,
+    jobs: Vec<(String, Item)>,
+) -> BTreeMap<String, Board> {
+    for (computer, item) in jobs {
+        let board = boards.entry(computer).or_default();
+        board.updated_unix = board
+            .updated_unix
+            .max(item.finished_unix.unwrap_or(item.started_unix));
+        if board.items.len() < MAX_ITEMS * 2 {
+            board.items.push(item);
+        }
+    }
+    boards
 }
 
 #[derive(Deserialize)]
@@ -904,6 +927,24 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             "secret",
             "This looks like it holds a password or key, so it wasn't sent.",
         );
+    }
+    // A Mac job's item (#11223): Approve, Deny, and Stop reach the job
+    // itself; the Mac takes the answer at its next report.
+    if crate::mac_jobs::is_job(&sent.item) {
+        let store = &app.config.chat_store;
+        return match crate::mac_jobs::act(
+            store,
+            &owner,
+            &sent.item,
+            &sent.action,
+            sent.question.as_deref(),
+        )
+        .await
+        {
+            Ok(Ok(())) => answer(StatusCode::ACCEPTED, json!({"queued": true})),
+            Ok(Err((status, code, message))) => refused(status, code, message),
+            Err(error) => stored(&error),
+        };
     }
     let computer = line(&sent.computer, 64);
     let command = Command {
