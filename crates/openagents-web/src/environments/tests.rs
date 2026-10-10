@@ -618,3 +618,51 @@ async fn on_a_public_host_environments_are_for_the_site_admin_and_their_own() {
     assert_eq!(forged.status, StatusCode::FORBIDDEN);
     crate::copy_guard::assert_plain("/environments", &list.body);
 }
+
+/// A studio that couldn't open at start (Boat down) opens on a later try:
+/// the slot fills and the left panel offers Environments, with no restart.
+#[tokio::test]
+async fn environments_open_on_a_retry_after_boat_was_down_at_start() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let state = tempfile::tempdir().unwrap();
+    let studio = fake_studio(state.path());
+    let slot = crate::Environments::default();
+    assert!(slot.is_none());
+    let tries = std::sync::Arc::new(AtomicUsize::new(0));
+    let counted = tries.clone();
+    crate::retry_environments(
+        slot.clone(),
+        std::time::Duration::from_millis(1),
+        move || {
+            let studio = studio.clone();
+            let n = counted.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if n < 2 {
+                    Err(
+                        "Boat's templates couldn't be listed: Boat API returned HTTP 502."
+                            .to_owned(),
+                    )
+                } else {
+                    Ok(studio)
+                }
+            }
+        },
+    )
+    .await;
+    assert_eq!(tries.load(Ordering::SeqCst), 3);
+    assert!(slot.is_some(), "every clone of the config sees the studio");
+    assert!(super::shown(), "the left panel offers Environments");
+
+    // Already open: the loop stops without trying again.
+    crate::retry_environments(
+        slot.clone(),
+        std::time::Duration::from_millis(1),
+        || async {
+            Err::<std::sync::Arc<coder_environment_operator::studio::Studio>, _>(
+                "unused".to_owned(),
+            )
+        },
+    )
+    .await;
+    assert!(slot.is_some());
+}

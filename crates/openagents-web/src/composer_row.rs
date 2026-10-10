@@ -237,7 +237,7 @@ pub(crate) async fn choices(
     let connected = !matches!(sidebar.status.access, Access::None);
     let mut environments = Vec::new();
     let mut claude_connect = false;
-    if let Some(studio) = app.config.environments.as_ref()
+    if let Some(studio) = app.config.environments.studio()
         && let Some(scope) = crate::agent_work::scope(app, headers).await
         // Not connected yet, but the person can add their own key here:
         // offered, with the connect card (#11234).

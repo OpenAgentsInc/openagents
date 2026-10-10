@@ -88,6 +88,99 @@ use crate::backend::{Backend, Development};
 const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
      base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// The Environments studio, shared by every clone of [`Config`] and filled
+/// at most once: at start, or later by [`retry_environments`] once Boat
+/// answers (#11248 follow-up: an instance that started during a Boat outage
+/// used to stay without Environments for its whole life).
+#[derive(Clone, Default)]
+pub struct Environments(Arc<std::sync::OnceLock<Arc<coder_environment_operator::studio::Studio>>>);
+
+impl Environments {
+    /// The studio, once there is one.
+    #[must_use]
+    pub fn studio(&self) -> Option<&Arc<coder_environment_operator::studio::Studio>> {
+        self.0.get()
+    }
+
+    /// A handle on the studio, once there is one.
+    #[must_use]
+    pub fn get(&self) -> Option<Arc<coder_environment_operator::studio::Studio>> {
+        self.0.get().cloned()
+    }
+
+    #[must_use]
+    pub fn is_some(&self) -> bool {
+        self.0.get().is_some()
+    }
+
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        self.0.get().is_none()
+    }
+
+    /// Fill the slot and offer Environments in the left panel; `false`
+    /// when it was already filled (the first studio stays).
+    pub fn set(&self, studio: Arc<coder_environment_operator::studio::Studio>) -> bool {
+        let filled = self.0.set(studio).is_ok();
+        if filled {
+            environments::mark_shown();
+        }
+        filled
+    }
+}
+
+impl From<Option<Arc<coder_environment_operator::studio::Studio>>> for Environments {
+    fn from(studio: Option<Arc<coder_environment_operator::studio::Studio>>) -> Self {
+        let slot = Self::default();
+        if let Some(studio) = studio {
+            slot.0.set(studio).ok();
+        }
+        slot
+    }
+}
+
+impl std::fmt::Debug for Environments {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.is_some() {
+            "Environments(on)"
+        } else {
+            "Environments(off)"
+        })
+    }
+}
+
+/// Open the studio until it opens: `open` is tried every `every`, and the
+/// first studio fills `slot`. A failure is logged when its message changes,
+/// so an outage writes one line, not one a minute.
+pub async fn retry_environments<F, Fut>(slot: Environments, every: std::time::Duration, open: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<
+            Output = Result<Arc<coder_environment_operator::studio::Studio>, String>,
+        >,
+{
+    let mut last = String::new();
+    loop {
+        tokio::time::sleep(every).await;
+        if slot.is_some() {
+            return;
+        }
+        match open().await {
+            Ok(studio) => {
+                slot.set(studio);
+                println!("Environments are on at /environments (Boat answered on a retry)");
+                return;
+            }
+            Err(error) => {
+                if error != last {
+                    eprintln!("Environments are still off, retrying: {error}");
+                    last = error;
+                }
+            }
+        }
+    }
+}
+
 /// How the server runs.
 #[derive(Clone)]
 pub struct Config {
@@ -185,9 +278,11 @@ pub struct Config {
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
     /// Repository environments set up by an agent, saved, and used by
-    /// Claude Code (`--environments PRIVATE_JSON`); absence leaves the
-    /// Environments pages unavailable and out of the left panel.
-    pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
+    /// Claude Code (`--environments PRIVATE_JSON`); empty leaves the
+    /// Environments pages unavailable and out of the left panel. Filled
+    /// once, possibly after start: when Boat can't be reached at start the
+    /// server keeps trying ([`retry_environments`]).
+    pub environments: Environments,
     /// The Pro plan and its environment meter (`--plan-meter`,
     /// `--plan-checkout`). Absent, Settings shows the plan and says hours
     /// and subscribing aren't set up on this server.
@@ -238,7 +333,7 @@ impl Config {
             connections: None,
             google: None,
             pilot: None,
-            environments: None,
+            environments: Environments::default(),
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
             agent_accounts: Vec::new(),

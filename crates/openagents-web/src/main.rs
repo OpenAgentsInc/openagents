@@ -87,13 +87,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let studio =
                     coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
                 // A studio that can't open (Boat or the model unreachable)
-                // leaves the rest of the site up, without Environments.
-                match coder_environment_operator::studio::Studio::open(studio).await {
-                    Ok(studio) => {
-                        config.environments = Some(studio);
+                // leaves the rest of the site up, without Environments
+                // until a retry opens it.
+                // Boat down at start no longer leaves this instance without
+                // Environments for good: it tries again every minute.
+                match coder_environment_operator::studio::Studio::open(studio.clone()).await {
+                    Ok(opened) => {
+                        config.environments.set(opened);
                         println!("Environments are on at /environments");
                     }
-                    Err(error) => eprintln!("Environments are off: {error}"),
+                    Err(error) => {
+                        eprintln!("Environments are off for now, retrying every minute: {error}");
+                        tokio::spawn(openagents_web::retry_environments(
+                            config.environments.clone(),
+                            std::time::Duration::from_secs(60),
+                            move || {
+                                coder_environment_operator::studio::Studio::open(studio.clone())
+                            },
+                        ));
+                    }
                 }
             }
             "--pilot-config" => {
