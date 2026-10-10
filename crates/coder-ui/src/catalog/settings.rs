@@ -1067,9 +1067,9 @@ pub(super) fn render(
                     if state.variant == "long-label" {
                         "A deliberately long fixture model name that remains bounded"
                     } else {
-                        "Free router (current)"
+                        "Auto (current)"
                     },
-                    "Automatic free text model",
+                    "OpenAgents picks the model",
                 ),
             };
             return Some(model_choice(0, label.into(), description, &fixture));
@@ -2059,8 +2059,8 @@ struct Model {
 const MODELS: [Model; 7] = [
     Model {
         id: "openrouter/free",
-        name: "Free router",
-        description: "Automatic free text model",
+        name: "Auto",
+        description: "OpenAgents picks the model",
         efforts: &[],
         default: "",
     },
