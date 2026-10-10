@@ -1992,3 +1992,25 @@ To roll back: `sudo ln -sfn /opt/coder-worker/releases/156b301714
 coder-worker-chat` (Jev through the Vercel AI Gateway, OpenRouter, and
 TypeSafe, as before). To keep this release but ask Jev again, add
 `OPENAGENTS_DECISIONS=jev` and `TYPESAFE_API_KEY` back and restart.
+
+Release `7ccd13da60` (2026-10-10 UTC, #11219, #11220) carries #11225's
+decision judge (`aeaa5771ca` and its follow-ups `d810124a82`, `c68cbbf86a`)
+plus #11220's Vertex-first personalization (`gemini-2.5-flash-lite` on
+Vertex, thinking off, the `CODER_PERSONALIZE` provider behind it) and the
+Vertex-built codebase index. Built with `cargo zigbuild --locked --release
+-p coder --bin coder-worker --target x86_64-unknown-linux-musl` at that
+commit (sha256 `53580ebddb6da577…`), installed with `knowledge/` from `git
+archive 7ccd13da60 knowledge/` and the Vertex `codebase-kb.gz`, checked with
+`--check`, and put live by moving the `chat` symlink; the environment file
+did not change. A brief rollback to `156b301714` (the release before
+#11225) came up with `judge none`, because #11225 removed
+`TYPESAFE_API_KEY` from the environment file; any rollback from here goes
+to `aeaa5771ca`, not `156b301714`, unless that file is restored from
+`.before-11225`. With the Clef judge at 5.7–6.0 s, three turns took 4.6–8.3 s
+end to end and "What is OpenAgents?" was answered grounded on Gemini rather
+than from the bank (the judge's `route_p` was 0.27–0.35); that is the
+judge's speed and calibration (#11225, #11193), not the Vertex door, which
+wrote each answer (`at aiplatform.googleapis.com`).
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/aeaa5771ca
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
