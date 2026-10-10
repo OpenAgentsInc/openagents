@@ -96,8 +96,17 @@ def main():
         # First-party analytics (#11153, docs/deployment/analytics.md).
         plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", "openagentsgemini-web-analytics-prod"),
         secret("openagents-web-analytics-key", "OPENAGENTS_WEB_ANALYTICS_KEY"),
+        # Agent work (#11162, docs/deployment/agent-work.md): Boat machines,
+        # and the setup agent's model through the gateway on the house key.
+        plain("STACK_STATE", "/stack"),
+        plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
+        secret("boat-api-key", "BOAT_API_KEY"),
     ])
-    web["volumeMounts"] = [{"name": "webstate", "mountPath": "/state"}]
+    # The gateway's store read-only: the web reads only its house key.
+    web["volumeMounts"] = [
+        {"name": "webstate", "mountPath": "/state"},
+        {"name": "stack", "mountPath": "/stack", "readOnly": True},
+    ]
     # The coder-serve sidecar's secrets from Secret Manager, not plain values.
     # No third-party analytics (privacy policy section 5): the sidecar gets
     # no PostHog token or host, so it sends no PostHog events.

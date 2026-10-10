@@ -82,8 +82,12 @@ alias forwards that route only on staging (`OPENAGENTS_WEB_API_OPERATOR_SIGNUP`)
 
 ## Production
 
-Not on production yet. The steps, after the owner tries staging, are on
-#11162: grant the production runtime account `boat-api-key`, add the
-`stack` read-only mount, `BOAT_API_KEY`, `STACK_STATE`, and
-`ENVIRONMENTS_MODEL` (a model production's gateway routes for the house key) to the `web` container with the same launcher lines,
-promote the staged image, and smoke the tag URL.
+On openagents.com since 2026-10-10 for the site admin (the owner) only;
+`OPENAGENTS_WEB_AGENT_ACCOUNTS` is unset there. `deploy/production/web.sh`
+carries the same launcher lines; `deploy/production/render.py` and
+`scripts/deploy/web.sh promote` add `BOAT_API_KEY` (`boat-api-key`, read by
+the runtime account `157437760789-compute`), `STACK_STATE`,
+`ENVIRONMENTS_MODEL` and the read-only `/stack` mount when the live spec
+lacks them, and refresh the launcher. `--production` smoke checks that a
+signed-out visitor, and a forged session, are sent to log in from
+`/environments` and a chat's Claude Code run.

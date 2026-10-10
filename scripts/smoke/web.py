@@ -724,12 +724,25 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                  if re.search(r'href="/environments[/"]', site.get(p, headers=HTML).text)]
         record("environments: no link on the public pages", not links, ", ".join(links))
         env = site.get("/environments", headers=HTML)
-        if production:
-            ok = env.status in (303, 404) and len(env.body) < 20000
-        else:
-            ok = env.status == 303 and env.location().startswith("/login?return_to=%2Fenvironments")
+        ok = env.status == 303 and env.location().startswith("/login?return_to=%2Fenvironments")
         record("environments: signed out goes to log in",
                ok, f"{env.status} {env.location() or plain(env.text)[:40]}")
+        # Running Claude Code from a chat is behind the same gate.
+        run = site.get("/chat/00000000-0000-4000-8000-000000000000/claude", headers=HTML)
+        record("environments: a chat's Claude Code run, signed out, goes to log in",
+               run.status == 303 and run.location().startswith("/login?return_to="),
+               f"{run.status} {run.location()}")
+        # A stale or forged session is nobody: log in, never the page.
+        forged = Site(base)
+        forged.cookies["oa_cloud_session"] = "sess_" + "0" * 64
+        fake = forged.get("/environments", headers=HTML)
+        record("environments: a forged session goes to log in",
+               fake.status in (303, 403) and "Environments" not in fake.text[:20000].split("<title>")[-1][:40],
+               f"{fake.status} {fake.location()}")
+        # The local task browser stays local on a public host.
+        app = site.get("/app", headers=HTML)
+        record("environments: the local task browser is refused on a public host",
+               app.status in (403, 404), f"{app.status}")
 
     # Accounts: open sign-up is refused; GitHub sign-in is the way in. The
     # signed-in checks use one test account made with the staging operator

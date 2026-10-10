@@ -26,7 +26,26 @@ if [ -n "${INVITE_ONLY_JSON:-}" ]; then
 fi
 printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"%s}' \
     "${PUBLIC_ORIGIN:?}" "$p" "$invite" > "$p/cloud.json"
-exec /usr/local/bin/openagents-web "$@" \
+# Agent work (#11162, docs/deployment/agent-work.md): Environments and
+# Claude Code runs for the site admin. The machines are Boat's
+# (BOAT_API_KEY); the setup agent's model goes through the gateway sidecar
+# on the house service key it keeps in $STACK_STATE/service.key (mounted
+# read-only); records live in $WEB_STATE/environments. Without the key or
+# the service key, the site starts without them.
+environments=""
+stack=${STACK_STATE:-/stack}
+if [ -n "${BOAT_API_KEY:-}" ] && [ -s "$stack/service.key" ]; then
+    envs=$WEB_STATE/environments
+    mkdir -p "$envs"
+    chmod 700 "$envs"
+    cat "$stack/service.key" > "$p/model.key"
+    printf '{"schema":"openagents.environment.studio.v1","state":"%s","machines":{"schema":"openagents.environment.owners.v1","provider":"boat","workdir":"/home/user/repo","credential_names":[],"tick_seconds":15},"owner":{"workspace":"openagents-web","principal":"web"},"model":"%s","size":"small","deadline_seconds":7200,"model_api":{"url":"http://127.0.0.1:8791/v1/responses","key_file":"%s/model.key"}}' \
+        "$envs" "${ENVIRONMENTS_MODEL:-google/gemini-3.8-flash}" "$p" > "$p/environments.json"
+    environments="--environments $p/environments.json"
+fi
+# $environments is one flag and a path without spaces, split on purpose.
+# shellcheck disable=SC2086
+exec /usr/local/bin/openagents-web "$@" $environments \
     --cloud-config "$p/cloud.json" --github-oauth "$p/github-oauth.json" \
     --cloud-byo "$byo" --plan-meter /tmp/plan-meter.sqlite \
     --inference http://127.0.0.1:8791

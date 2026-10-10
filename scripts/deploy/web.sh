@@ -211,11 +211,12 @@ promote() {
     spec=$STATE/$name.json
     g run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/service.json"
     g run revisions describe "$previous" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/revision.json"
-    python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" > "$spec" << 'PY'
+    python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" \
+        "$ROOT/deploy/production/web.sh" > "$spec" << 'PY'
 import json, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
-image, name = sys.argv[3:5]
+image, name, launcher_path = sys.argv[3:6]
 
 def keep(entries, drop):
     return {k: v for k, v in (entries or {}).items() if not k.startswith(drop)}
@@ -249,6 +250,27 @@ if "OPENAGENTS_WEB_ANALYTICS_KEY" not in env:
     envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_KEY",
                  "valueFrom": {"secretKeyRef": {"name": "openagents-web-analytics-key",
                                                 "key": "latest"}}})
+# Agent work (#11162, docs/deployment/agent-work.md): the launcher that
+# turns Environments on (deploy/production/web.sh, the site's own arguments
+# kept), Boat's key, the setup agent's model, and the gateway's store
+# mounted read-only for its house key. Each is a no-op once the spec has it.
+launcher = open(launcher_path).read()
+if web.get("command") == ["/bin/sh"] and len(args) >= 2 and args[0] == "-c" and args[1] != launcher:
+    args[1] = launcher
+    sys.stderr.write("  web launcher refreshed from deploy/production/web.sh\n")
+env = {e["name"] for e in envs}
+for e in ({"name": "STACK_STATE", "value": "/stack"},
+          {"name": "ENVIRONMENTS_MODEL", "value": "google/gemini-3.8-flash"},
+          {"name": "BOAT_API_KEY",
+           "valueFrom": {"secretKeyRef": {"name": "boat-api-key", "key": "latest"}}}):
+    if e["name"] not in env:
+        envs.append(e)
+        sys.stderr.write(f"  web env {e['name']} added\n")
+mounts = web.setdefault("volumeMounts", [])
+if any(v["name"] == "stack" for v in spec.get("volumes", [])) and \
+        not any(m["mountPath"] == "/stack" for m in mounts):
+    mounts.append({"name": "stack", "mountPath": "/stack", "readOnly": True})
+    sys.stderr.write("  web mount /stack (read-only) added\n")
 # The coder-serve sidecar's secrets come from Secret Manager, never as
 # plain values in the spec (same values; a no-op once the live spec has it).
 SIDECAR_SECRETS = {"CODER_GITHUB_CLIENT_SECRET": "coder-github-client-secret"}
