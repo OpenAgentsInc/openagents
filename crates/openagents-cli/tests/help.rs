@@ -156,9 +156,9 @@ fn each_group_prints_only_its_own_usage() {
 
 #[test]
 fn an_unknown_issue_command_is_refused_before_gh_runs() {
-    let (code, _, stderr) = run(&["issue", "list"]);
+    let (code, _, stderr) = run(&["issue", "frobnicate"]);
     assert_eq!(code, Some(64), "{stderr}");
-    assert!(stderr.contains("unknown command `list`"), "{stderr}");
+    assert!(stderr.contains("unknown command `frobnicate`"), "{stderr}");
     assert!(!stderr.contains("gh"), "{stderr}");
 }
 

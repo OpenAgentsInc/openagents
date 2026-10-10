@@ -144,7 +144,7 @@ impl ExecutionSettings {
             ToolBinding::BoatDelegate | ToolBinding::BoatJob => self.boat.enabled,
             ToolBinding::GceDelegate | ToolBinding::GceJob => self.gce.enabled,
             ToolBinding::Microcoder => self.microcoder,
-            ToolBinding::OpenAgentsCli => self.cli,
+            ToolBinding::OpenAgentsCli | ToolBinding::Github => self.cli,
             ToolBinding::AcpSubagent => self.acp,
             ToolBinding::Jev => self.jev_enabled,
             ToolBinding::BrainstormSearch | ToolBinding::BrainstormRank => self
@@ -208,6 +208,7 @@ impl ExecutionSettings {
                     )),
                     ToolBinding::Microcoder => Some(bundled_runtime::microcoder_tool_definition()),
                     ToolBinding::OpenAgentsCli => Some(bundled_runtime::cli_tool_definition()),
+                    ToolBinding::Github => Some(crate::github_tool::definition()),
                     ToolBinding::AcpSubagent => bundled_runtime::acp_tool_definition(&self.agents),
                     ToolBinding::Jev => Some(jev_plugin::tool_definition()),
                     ToolBinding::BrainstormSearch => {
@@ -238,6 +239,7 @@ impl ExecutionSettings {
             guidance.push_str(crate::computer_tool::instructions());
             guidance.push_str(crate::ops_tool::instructions());
             guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
+            guidance.push_str("For GitHub issues and Project boards (create, comment, close, reopen, list, view; list a board by status, add an issue, move its status) use the github tool rather than gh or raw API calls.\n");
         }
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
@@ -482,6 +484,10 @@ impl ExecutionSettings {
                     &mut emit,
                 )
                 .await
+            }
+            "github" if self.registered(ToolBinding::Github) => {
+                let words = crate::github_tool::arguments(arguments)?;
+                bundled_runtime::cli(&words, &self.cwd, cancel, &mut emit).await
             }
             "acp_subagent" if self.registered(ToolBinding::AcpSubagent) => {
                 let args: AcpArguments = serde_json::from_value(arguments).map_err(

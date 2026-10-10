@@ -44,6 +44,7 @@ mod ext_defaults;
 mod ext_eval;
 mod ext_eval_init;
 mod ext_run;
+mod github_verbs;
 mod gym;
 mod host_observers;
 mod hosts;
@@ -158,8 +159,11 @@ Chat:
 Coder:
   coder        Coder chat, models, plugins, ACP agents, sessions, and ATIF exports.
   task         Durable local task requests and explicit execution.
-  issue        Claim, release, and pick up GitHub issues: the claim record
-               every agent and Coder share.
+  issue        GitHub issues: create, comment, close, reopen, list, view, and
+               claim, release, and pick up (the claim record every agent and
+               Coder share).
+  project      GitHub Project boards: list items by status, add an issue, and
+               move it to a status.
   lease        Run a command under a lease on a shared resource (build slots,
                quiet, the screen, the GPU), and list holders and waiters.
   sales        Inspect and update the host-private lead/account pipeline.
@@ -367,6 +371,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
+        "project" => issue::project(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),

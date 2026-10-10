@@ -75,14 +75,14 @@ const CODER: &[Declared] = &[
     Declared::computer("sessions list", Effect::ReadOnly),
     Declared::computer("sessions read", Effect::ReadOnly),
     Declared::computer("sessions delete", Effect::LocalWrite),
-    Declared::computer("export", Effect::LocalWrite),
-    Declared::computer("import", Effect::LocalWrite),
-    Declared::computer("trace upload", Effect::Publishes),
-    Declared::computer("trace list", Effect::ReadOnly),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("memory show", Effect::ReadOnly),
     Declared::computer("memory forget", Effect::LocalWrite),
     Declared::computer("memory instructions", Effect::ReadOnly),
+    Declared::computer("export", Effect::LocalWrite),
+    Declared::computer("import", Effect::LocalWrite),
+    Declared::computer("trace upload", Effect::Publishes),
+    Declared::computer("trace list", Effect::ReadOnly),
 ];
 
 const PAIR: &[Declared] = &[Declared::screen("", Effect::Grants, "account.computers")];
@@ -215,6 +215,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("coder", Some(coder_new::programmatic::USAGE), CODER),
         group("task", Some(coder::task::cli::USAGE), TASK),
         group("issue", Some(crate::issue::USAGE), crate::issue::EFFECTS),
+        group(
+            "project",
+            Some(crate::github_verbs::PROJECT_USAGE),
+            crate::github_verbs::PROJECT_EFFECTS,
+        ),
         group("sales", Some(crate::sales::USAGE), crate::sales::EFFECTS),
         group(
             "customer",

@@ -6387,7 +6387,7 @@
     },
     {
       "name": "issue",
-      "summary": "Claim, release, and pick up GitHub issues: the claim record every agent and Coder share.",
+      "summary": "GitHub issues: create, comment, close, reopen, list, view, and claim, release, and pick up (the claim record every agent and Coder share).",
       "children": [
         {
           "name": "claim",
@@ -6595,6 +6595,339 @@
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "create",
+          "leaf": {
+            "path": [
+              "issue",
+              "create"
+            ],
+            "usage": [
+              "create --title TEXT [--body TEXT] [--body-file FILE] [--label NAME] [--project N] [--status NAME] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "create"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "title",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "body",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "body-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "label",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "status",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Open an issue (--body-file - reads standard input; --label repeats or takes a comma list), and put it on board N with that status.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "comment",
+          "leaf": {
+            "path": [
+              "issue",
+              "comment"
+            ],
+            "usage": [
+              "comment N [--body TEXT] [--body-file FILE] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "comment"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "body",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "body-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Comment on issue N.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "close",
+          "leaf": {
+            "path": [
+              "issue",
+              "close"
+            ],
+            "usage": [
+              "close N [--reason completed|not_planned] [--comment TEXT] [--comment-file FILE] [--project N] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "close"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "completed|not_planned",
+                    "choices": [
+                      "completed",
+                      "not_planned"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "comment",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "comment-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Close issue N, after the comment when given, and move it to \"Done\" on every open board it is on (only board N with --project).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "reopen",
+          "leaf": {
+            "path": [
+              "issue",
+              "reopen"
+            ],
+            "usage": [
+              "reopen N [--comment TEXT] [--comment-file FILE] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "reopen"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "comment",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "comment-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Reopen issue N.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "issue",
+              "list"
+            ],
+            "usage": [
+              "list [--state open|closed|all] [--label NAME] [--limit N] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "state",
+                    "value": "open|closed|all",
+                    "choices": [
+                      "open",
+                      "closed",
+                      "all"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "label",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The repository's issues, newest first (30 unless --limit).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "view",
+          "leaf": {
+            "path": [
+              "issue",
+              "view"
+            ],
+            "usage": [
+              "view N [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "view"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Issue N with its body and comments.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -6624,6 +6957,281 @@
           "kind": "option",
           "name": "label",
           "value": "LABEL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "title",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "body",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "body-file",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "status",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reason",
+          "value": "completed|not_planned",
+          "choices": [
+            "completed",
+            "not_planned"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "comment",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "comment-file",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "state",
+          "value": "open|closed|all",
+          "choices": [
+            "open",
+            "closed",
+            "all"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "project",
+      "summary": "GitHub Project boards: list items by status, add an issue, and move it to a status.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "project",
+              "list"
+            ],
+            "usage": [
+              "list [--project N] [--status NAME] [--every-repo] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "status",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "every-repo",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The board's items in board order, with their status; --status keeps one status (\"none\" for items without one). Only this repository's items unless --every-repo.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add",
+          "leaf": {
+            "path": [
+              "project",
+              "add"
+            ],
+            "usage": [
+              "add ISSUE [--project N] [--status NAME] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ISSUE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "status",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Add the issue to the board, and set its status when --status names one.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "move",
+          "leaf": {
+            "path": [
+              "project",
+              "move"
+            ],
+            "usage": [
+              "move ISSUE --status NAME [--project N] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "move"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ISSUE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "status",
+                    "value": "NAME",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Set the issue's status, such as \"In Progress\". With --project, on that board (adding it first); without, on every open board of the owner the issue is on.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "status",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "every-repo",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "repo",
+          "value": "OWNER/NAME",
           "open": true,
           "optional": true,
           "repeated": true

@@ -1572,7 +1572,7 @@ fn only_help(args: &[&str]) -> bool {
 }
 
 /// Subcommands of `openagents` that only read, under any command group.
-const OPENAGENTS_READS: &[&str] = &["status", "list", "ls", "show", "doctor"];
+const OPENAGENTS_READS: &[&str] = &["status", "list", "ls", "show", "view", "doctor"];
 
 /// Command groups whose `show` or `list` can reveal secrets.
 const OPENAGENTS_SECRETS: &[&str] = &["key", "keys", "wallet", "pay", "x402", "sov", "provider"];
