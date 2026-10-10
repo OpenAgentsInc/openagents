@@ -648,7 +648,27 @@ def skip_for_tokens(path):
         path.endswith((".jsonl", ".lock", ".svg", ".png", ".jpg", ".gif", ".wasm", ".glb", ".ttf"))
 
 
-class TokenIndex:
+class _ThreadDb:
+    """One SQLite connection per thread. A single connection shared by the
+    feature workers' threads corrupted reads ("database disk image is
+    malformed") and crashed Python 3.9's sqlite3 (segfault) during a retrain
+    (#11220), though the file itself checked clean."""
+
+    def _open(self, path):
+        import threading
+        self._path = path
+        self._local = threading.local()
+
+    @property
+    def db(self):
+        con = getattr(self._local, "con", None)
+        if con is None:
+            import sqlite3
+            con = self._local.con = sqlite3.connect(self._path)
+        return con
+
+
+class TokenIndex(_ThreadDb):
     """Inverted index, per blob: identifier and kebab tokens, and defined names.
 
     Keyed by blob, so one index answers for any revision: a query maps the
@@ -656,8 +676,7 @@ class TokenIndex:
     """
 
     def __init__(self, cache):
-        import sqlite3
-        self.db = sqlite3.connect(os.path.join(cache, "tokens.sqlite"), check_same_thread=False)
+        self._open(os.path.join(cache, "tokens.sqlite"))
         self.db.executescript(
             "CREATE TABLE IF NOT EXISTS blob(id INTEGER PRIMARY KEY, sha TEXT UNIQUE);"
             "CREATE TABLE IF NOT EXISTS tok(t TEXT, b INTEGER);"
@@ -809,12 +828,11 @@ def iface_strings(path, text):
     return out
 
 
-class IfaceIndex:
+class IfaceIndex(_ThreadDb):
     """Interface strings per blob, with each string's document frequency."""
 
     def __init__(self, cache):
-        import sqlite3
-        self.db = sqlite3.connect(os.path.join(cache, "iface.sqlite"), check_same_thread=False)
+        self._open(os.path.join(cache, "iface.sqlite"))
         self.db.executescript(
             "CREATE TABLE IF NOT EXISTS blob(id INTEGER PRIMARY KEY, sha TEXT UNIQUE);"
             "CREATE TABLE IF NOT EXISTS s(t TEXT, b INTEGER);"
