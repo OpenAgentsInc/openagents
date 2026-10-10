@@ -57,7 +57,7 @@ and the Workers AI model pages.
 
 - **Mac:** everything fits, including Ollama `clef-flash` and `clef` together with the MLX 4-bit builds.
 - **coderos-4080, Ollama:** won't work there. Its `clef-flash` is 11–12 GB of weights, which does not fit beside the Pylon services in 11.6 GB, and it would break the 50 GB disk floor. nixpkgs ships Ollama 0.32.3, which is too old. The user unit's 0.34.0 is also too old, and we did not touch it.
-- **coderos-4080, llama.cpp:** runs. llama.cpp b11538 (Clef support merged in ggml-org/llama.cpp#29831, text only) serves `ggml-org/Clef-Flash-GGUF` Q4_K_M (6.5 GB). The 27B Q4 (about 16 GB) does not fit.
+- **coderos-4080, llama.cpp:** runs. llama.cpp b11538 (Clef support merged in ggml-org/llama.cpp#29831, text only) serves `ggml-org/Clef-Flash-GGUF` Q4_K_M (6.5 GB). The 27B Q4_K_M (17.7–19.2 GB) does not fit fully on the GPU. It runs with 13 of 65 layers on the GPU (see the prefill benchmark).
 
 ## How to run it
 
@@ -133,7 +133,7 @@ These were measured, not taken from documentation.
 | `model` echo | `typesafe/jev-1.13-…` | llama.cpp echoes the file path unless you pass `--alias`. |
 | Choice `probabilities` order | request order | llama.cpp sorts the keys alphabetically. Read them by key. |
 | `GET /v1/models` | TypeSafe's `{"models": …}` | OpenAI's `{"object":"list","data":…}`. `client.models().list()` fails with `ResponseValidation`, but decisions work. |
-| Prompt cache | none visible | Ollama and llama.cpp reuse a cached prompt prefix. A repeated identical request answers in 17–80 ms, so benchmark with a unique state. |
+| Prompt cache | none visible | Ollama reuses a cached prompt (a repeat takes 0.2–0.25 s), so benchmark with a unique state. llama.cpp does not cache Clef: a repeat costs the same as a new request. |
 | Token counts | 28,905 (router) / 3,306 (note check) | 24,466 / 3,195 for the same requests (Qwen tokenizer). |
 
 ## Measurements
@@ -204,6 +204,134 @@ timed out on all 10 cases: the router gives a decision 6 s, and a 24k-token
 request takes about 25 s on this loaded Mac. The crate itself parsed every
 Clef answer it received (the quickstart and the replay bodies).
 
+## Prefill benchmark by prompt size (second pass, 2026-10-09 evening)
+
+A decision model generates no tokens, so the total latency of a call is the
+time to its answer, and prefill speed is input tokens ÷ latency. Every call
+below uses a fresh random state (a random number plus random words about a
+failed checkout) and the same two questions: an `urgent` noul and a four-way
+`area` choice. p50 and p90 are over 5 runs per size (8 for the 4080
+Clef-Flash run), after one warmup call. Token counts are llama.cpp's
+`usage.input_tokens`.
+
+**Setup on coderos-4080.** llama.cpp **b11539**, the newest release on
+2026-10-09. The only change since b11538 is a vendored JSON patch, so Clef
+support is the same as in #29831. Open PRs touch Clef only for Hexagon (#30143) and a
+`--decision-type` override for GGUFs that lack metadata (#30113); neither
+matters for the official GGUFs. The only decision route is
+**`POST /v1/systemone`**: `/systemone` and `/v1/decisions` return 404. The
+response is `{"answers": {id: {"type", "noul" | "choice", "probabilities",
+"confidence"}}, "usage": {"input_tokens", "output_tokens": 0}}`. The README
+documents up to 255 options per choice for Clef. Pylon, the desk VM and the
+host service were left running, so about 11.7 GB of VRAM was free.
+
+### coderos-4080, Clef-Flash Q4_K_M, fully on the GPU
+
+`ggml-org/Clef-Flash-GGUF` `Clef-Flash-Q4_K_M.gguf` (6.5 GB):
+`-ngl 99 -np 1 -fa on -c 17408 -b 17408 -ub 17408`. The llama-server
+process uses **10.3 GB of VRAM**, which puts the card at 14.3 of 16 GB.
+
+| Input tokens | p50 | p90 | Prefill tok/s (p50) |
+| ---: | ---: | ---: | ---: |
+| 414 | 0.07 s | 0.08 s | 5,600 |
+| 964 | 0.16 s | 0.16 s | 6,050 |
+| 3,064 | 0.51 s | 0.52 s | 5,960 |
+| 5,864 | 1.04 s | 1.04 s | 5,640 |
+| 11,764 | 2.39 s | 2.40 s | 4,920 |
+| 15,764 | 3.47 s | 3.52 s | 4,540 |
+
+The 267-token sanity request takes 0.05 s. A first 5-run pass, taken while
+the desktop was busy, had the same p50s but p90s up to 2.2× higher
+(7.6 s at 15.8k tokens): other GPU work on the card shows up in the tail.
+
+### coderos-4080, Clef 27B Q4_K_M, partial offload
+
+`bartowski/Cloudflare_clef-GGUF` `Cloudflare_clef-Q4_K_M.gguf` (17.65 GB;
+bartowski keeps the decision head at Q8_0). `ggml-org/Clef-GGUF` also ships a
+Q4_K_M, at 19.2 GB. Both are too big for the ~11.7 GB free. The run used
+`-fitt 2048 -c 17408 -b 17408 -ub 17408`, so llama.cpp's own fitter picks the
+layer count and leaves a 2 GB margin.
+
+**Offload split.** 13 of 65 layers are on the GPU: 12 repeating layers plus
+the output layer.
+
+- **GPU:** 3.97 GB of weights and a 5.6 GB compute buffer for the
+  17k-token batch, about 10.0–10.3 GB in all. The card sits at 14.2 of 16 GB.
+- **CPU:** 13.9 GB of mapped weights and a 1.9 GB pinned host compute buffer.
+  The process RSS is about 31 GB, which counts the page cache of the mapped
+  file. The box's RAM is 125 GB.
+
+Most of the space on the card goes to the compute buffer, because the whole
+prompt must fit in one batch. llama.cpp's op offload then streams the
+CPU-resident weights to the GPU for each large batch. Prefill therefore costs
+a fixed ~1 s of PCIe transfer and then runs at about 1,300 tok/s.
+
+| Input tokens | p50 | p90 | Prefill tok/s (p50) |
+| ---: | ---: | ---: | ---: |
+| 414 | 1.20 s | 1.22 s | 345 |
+| 964 | 1.48 s | 1.50 s | 650 |
+| 3,064 | 2.59 s | 2.61 s | 1,180 |
+| 5,864 | 4.27 s | 4.31 s | 1,370 |
+| 11,764 | 8.73 s | 8.75 s | 1,350 |
+| 15,764 | 11.92 s | 12.05 s | 1,320 |
+
+An earlier 3-run pass taken under heavier load measured 1.25, 2.11, 3.73, 4.80,
+12.50 and 12.00 s. Lower quants would fit more layers but leave the compute
+buffer the same size: IQ3_M is 13.8 GB and Q3_K_M is 14.5 GB. Bartowski also
+warns that sub-4-bit quants are static, without an imatrix, because a decision
+model cannot be calibrated. So the 27B on this card is about 12× slower than
+Clef-Flash at 3k tokens and about 3.4× slower at 16k, and only usable for
+decisions that are off the hot path.
+
+### No prompt cache for Clef in llama.cpp
+
+Sending the same state again costs the same as a new one: 0.52 s at 3k and
+2.39 s at 11.8k tokens for Clef-Flash, and 2.5–4.7 s and 8.4–9.7 s for the
+27B, which is within its noise. The Clef head needs the hidden state of
+every prompt token, and the prompt is evaluated in one batch, so there is no
+prefix to reuse. An earlier version of this page reported 17–80 ms "cached" repeats; those were small
+requests, which are that fast anyway. Ollama on the Mac does cache:
+0.2–0.25 s for a repeat.
+
+### Mac (M5 Max, Ollama 0.40.0), same script
+
+| Input tokens | Clef-Flash (12 GB), load avg 60–90 | Clef-Flash, load avg 14–17 | Clef 27B (18 GB), load avg 14–17 |
+| ---: | ---: | ---: | ---: |
+| 414 | 0.49 s | 0.54 s (773 tok/s) | 1.33 s (310 tok/s) |
+| 964 | 1.12 s | 1.01 s (954 tok/s) | 3.20 s (302 tok/s) |
+| 3,064 | 3.61 s | 3.05 s (1,005 tok/s) | 9.80 s (313 tok/s) |
+| 5,864 | 6.68 s (≈850 tok/s) | 5.60 s (1,047 tok/s) | 18.34 s (320 tok/s) |
+| ~11k | refused: over Ollama's 64 KiB body limit | refused | refused |
+
+On the Mac, a repeated identical state answers in 0.2–0.25 s from Ollama's
+cache. The first call after a model load (cold) takes 2.7 s.
+
+### Sanity check: the urgent/area example
+
+| State | Model | `urgent` (P true) | `area` |
+| --- | --- | --- | --- |
+| "Checkout is failing for every customer since the 3pm deploy; card payments return a 500 error." | 4080 Clef-Flash Q4 | 0.969 | payments 0.969 (other 0.019, auth 0.006, search 0.005) |
+| same | 4080 Clef 27B Q4 | 0.995 | payments 0.982 (other 0.010, auth 0.004, search 0.003) |
+| "Could you update the footer copyright year on the search results page when you get a chance?" | 4080 Clef-Flash Q4 | 0.016 | search 0.950 (other 0.037) |
+| same | 4080 Clef 27B Q4 | 0.006 | search 0.929 (other 0.060) |
+
+Both models give sensible, confident answers. The 27B is a little sharper
+on urgency.
+
+### Summary
+
+| | Clef-Flash 4080 | Clef 27B 4080 (13/65 layers on GPU) | Clef-Flash Mac | Clef 27B Mac |
+| --- | --- | --- | --- | --- |
+| ~3k tokens | 0.51 s | 2.6 s | 3.1 s | 9.8 s |
+| ~16k tokens | 3.5 s | 11.9 s | refused (Ollama) | refused (Ollama) |
+| Prefill | 4.5–6k tok/s | ~1.3k tok/s after ~1 s fixed | ~1k tok/s | ~310 tok/s |
+
+For anything latency-bound, Clef-Flash on the 4080 is the door to use. The
+27B on the 4080 beats the 27B on the Mac by 3.8× at 3k tokens and can take
+16k-token prompts, which Ollama refuses. It still costs about 10 GB of VRAM
+for a 17k-token batch, the same as Clef-Flash. Results and logs are on the
+box in `~/clef-test/results-2026-10-09b/`. The model files were deleted.
+
 ## Recommendation
 
 1. **Yes to Clef as an own-capacity door, scoped by admission.** Add a Clef door to the judge failover chain (`crates/jev/src/doors.rs`: gateway → OpenRouter → TypeSafe → **local Clef**). It should take a decision only when the request fits:
@@ -221,7 +349,7 @@ Clef answer it received (the quickstart and the replay bodies).
    - fix the `risk` / `none` wording
 
    Then re-measure. On the split route question, Clef 27B already agreed 12/12. Speed decides the rest. The router's 6 s budget needs the 4080 (0.2–3 s per request) or a bigger GPU, not the Mac.
-3. **Machine choice.** coderos-4080 with llama.cpp Q4 is the fastest box we have: about 10× the loaded Mac. Running it next to `pylon-psionic` leaves only about 2 GB of VRAM spare at a 17k batch, so it should be a managed service that unloads when Pylon needs the GPU. The Mac (Ollama) is the right place for development and for the 27B. Clef 27B on the 4080 does not fit.
+3. **Machine choice.** coderos-4080 with llama.cpp Q4 is the fastest box we have: about 10× the loaded Mac. Running it next to `pylon-psionic` leaves only about 2 GB of VRAM spare at a 17k batch, so it should be a managed service that unloads when Pylon needs the GPU. The Mac (Ollama) is the right place for development and for the 27B. Clef 27B on the 4080 runs only with partial offload, at about 2.6 s for 3k tokens and 12 s for 16k (see the prefill benchmark).
 4. **Pylon / psionic angle.** psionic already serves Qwen3.5 on CUDA on this box (`crates/psionic/crates/psionic-serve/src/qwen35.rs` is what `pylon-psionic` runs) and has Qwen3.8 GGUF conversion work (`psionic-models/src/qwen38_gguf_*`). Serving Clef in psionic means three additions:
    - a prefill-only path that returns the final hidden states
    - the joint head: a small transformer over the question and option spans, about 240 MB in bf16, with the same span marking llama.cpp added in #29831 (`llama_batch_ext_set_decision_order`)
