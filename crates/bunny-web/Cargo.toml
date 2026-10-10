@@ -36,6 +36,7 @@ web-sys = { version = "0.3", features = [
     "EventTarget",
     "HtmlButtonElement",
     "HtmlCanvasElement",
+    "HtmlCollection",
     "HtmlElement",
     "KeyboardEvent",
     "Location",

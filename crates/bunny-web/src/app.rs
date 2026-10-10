@@ -6,17 +6,17 @@ use std::rc::Rc;
 use bunny_rules::game::Move;
 use bunny_rules::{
     EdibleKind, Event, FarmerState, Game, HZ, Input, ObstacleKind, PowerKind, Status, TIER_HEIGHT,
-    TIER_JUMP, TIER_NAMES, UNIT, level, shade,
+    TIER_JUMP, UNIT, level, shade,
 };
 use glam::{Mat4, Quat, Vec2, Vec3};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    Document, HtmlCanvasElement, HtmlElement, KeyboardEvent, PointerEvent,
-    WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlUniformLocation,
-    WebGlVertexArrayObject, Window,
+    Document, HtmlCanvasElement, KeyboardEvent, PointerEvent, WebGl2RenderingContext as Gl,
+    WebGlBuffer, WebGlProgram, WebGlUniformLocation, WebGlVertexArrayObject, Window,
 };
 
+use crate::hud::{Action, Card, Hud, css, element, show};
 use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
 use crate::mesh::{Mesh, STRIDE, rgb};
@@ -333,23 +333,8 @@ struct Particle {
 enum Phase {
     Title,
     Playing,
+    Paused,
     Over,
-}
-
-struct Hud {
-    root: HtmlElement,
-    stats: HtmlElement,
-    carrots: HtmlElement,
-    size: HtmlElement,
-    pips: Vec<HtmlElement>,
-    restart: HtmlElement,
-    card: HtmlElement,
-    heading: HtmlElement,
-    line: HtmlElement,
-    hint: HtmlElement,
-    swatch: HtmlElement,
-    action: HtmlElement,
-    map_label: HtmlElement,
 }
 
 struct App {
@@ -361,7 +346,13 @@ struct App {
     options: Options,
     meshes: Meshes,
     hud: Hud,
+    /// A touch screen: swipes and the turn-back button.
+    coarse: bool,
     game: Game,
+    /// The garden being played, 1-based.
+    garden: usize,
+    /// Runs started, for each run's seed.
+    runs: u64,
     phase: Phase,
     wins: u32,
     queue: Vec<Input>,
@@ -382,26 +373,6 @@ struct App {
     stride: f32,
     particles: Vec<Particle>,
     touch: Option<(f32, f32, f64)>,
-    shown: (usize, u8, Phase),
-}
-
-fn element(document: &Document, tag: &str) -> HtmlElement {
-    document
-        .create_element(tag)
-        .expect("an element")
-        .dyn_into()
-        .expect("an HTML element")
-}
-
-fn css(element: &HtmlElement, pairs: &[(&str, &str)]) {
-    let style = element.style();
-    for (name, value) in pairs {
-        let _ = style.set_property(name, value);
-    }
-}
-
-fn hex(colour: u32) -> String {
-    format!("#{colour:06x}")
 }
 
 fn wrap(angle: f32) -> f32 {
@@ -445,216 +416,6 @@ fn save_wins(window: &Window, wins: u32) {
     }
 }
 
-fn build_hud(document: &Document, parent: &web_sys::Element, touch: bool) -> Hud {
-    let root = element(document, "div");
-    css(
-        &root,
-        &[
-            ("position", "absolute"),
-            ("inset", "0"),
-            ("pointer-events", "none"),
-            (
-                "font-family",
-                "system-ui, -apple-system, 'Segoe UI', sans-serif",
-            ),
-            ("color", "#1e1e1e"),
-            ("user-select", "none"),
-            ("-webkit-user-select", "none"),
-        ],
-    );
-    let panel = [
-        ("position", "absolute"),
-        ("background", "rgba(244, 244, 242, 0.9)"),
-        ("border", "2px solid #1e1e1e"),
-        ("border-radius", "12px"),
-        ("padding", "8px 12px"),
-    ];
-    let stats = element(document, "div");
-    css(&stats, &panel);
-    css(
-        &stats,
-        &[
-            ("top", "calc(12px + env(safe-area-inset-top))"),
-            ("left", "calc(12px + env(safe-area-inset-left))"),
-            ("min-width", "104px"),
-        ],
-    );
-    let label = element(document, "div");
-    label.set_text_content(Some(copy::CARROTS));
-    css(
-        &label,
-        &[
-            ("font-size", "12px"),
-            ("letter-spacing", "0.04em"),
-            ("text-transform", "uppercase"),
-        ],
-    );
-    let carrots = element(document, "div");
-    css(
-        &carrots,
-        &[
-            ("font-size", "30px"),
-            ("font-weight", "700"),
-            ("line-height", "1.1"),
-            ("color", "#d86f00"),
-            ("font-variant-numeric", "tabular-nums"),
-        ],
-    );
-    let size = element(document, "div");
-    css(
-        &size,
-        &[
-            ("font-size", "14px"),
-            ("font-weight", "600"),
-            ("margin-top", "6px"),
-        ],
-    );
-    let row = element(document, "div");
-    css(
-        &row,
-        &[("display", "flex"), ("gap", "4px"), ("margin-top", "4px")],
-    );
-    let pips: Vec<HtmlElement> = (0..TIER_NAMES.len())
-        .map(|_| {
-            let pip = element(document, "span");
-            css(
-                &pip,
-                &[
-                    ("width", "14px"),
-                    ("height", "14px"),
-                    ("border", "2px solid #1e1e1e"),
-                    ("border-radius", "50%"),
-                    ("box-sizing", "border-box"),
-                ],
-            );
-            let _ = row.append_child(&pip);
-            pip
-        })
-        .collect();
-    for child in [&label, &carrots, &size, &row] {
-        let _ = stats.append_child(child);
-    }
-    let button = [
-        ("font", "inherit"),
-        ("font-weight", "650"),
-        ("color", "#1e1e1e"),
-        ("border", "2px solid #1e1e1e"),
-        ("border-radius", "999px"),
-        ("cursor", "pointer"),
-        ("pointer-events", "auto"),
-    ];
-    let restart = element(document, "button");
-    restart.set_text_content(Some(copy::RESTART));
-    css(&restart, &button);
-    css(
-        &restart,
-        &[
-            ("position", "absolute"),
-            ("top", "calc(12px + env(safe-area-inset-top))"),
-            ("right", "calc(12px + env(safe-area-inset-right))"),
-            ("padding", "8px 16px"),
-            ("font-size", "15px"),
-            ("background", "rgba(244, 244, 242, 0.9)"),
-        ],
-    );
-    let card = element(document, "div");
-    css(&card, &panel);
-    css(
-        &card,
-        &[
-            ("left", "50%"),
-            ("top", "50%"),
-            ("transform", "translate(-50%, -50%)"),
-            ("width", "min(86vw, 400px)"),
-            ("box-sizing", "border-box"),
-            ("padding", "20px 22px"),
-            ("text-align", "center"),
-            ("pointer-events", "auto"),
-            ("background", "rgba(244, 244, 242, 0.96)"),
-        ],
-    );
-    let heading = element(document, "h1");
-    css(
-        &heading,
-        &[
-            ("margin", "0 0 6px"),
-            ("font-size", "28px"),
-            ("line-height", "1.15"),
-        ],
-    );
-    let swatch = element(document, "div");
-    css(
-        &swatch,
-        &[
-            ("width", "34px"),
-            ("height", "34px"),
-            ("margin", "8px auto"),
-            ("border", "3px solid #1e1e1e"),
-            ("border-radius", "50%"),
-        ],
-    );
-    let line = element(document, "p");
-    css(&line, &[("margin", "0 0 8px"), ("font-size", "16px")]);
-    let hint = element(document, "p");
-    hint.set_text_content(Some(if touch { copy::SWIPES } else { copy::KEYS }));
-    css(
-        &hint,
-        &[
-            ("margin", "0 0 14px"),
-            ("font-size", "14px"),
-            ("color", "#55554f"),
-        ],
-    );
-    let action = element(document, "button");
-    css(&action, &button);
-    css(
-        &action,
-        &[
-            ("padding", "10px 30px"),
-            ("font-size", "18px"),
-            ("background", "#f28a1e"),
-        ],
-    );
-    for child in [&heading, &swatch, &line, &hint, &action] {
-        let _ = card.append_child(child);
-    }
-    let map_label = element(document, "span");
-    map_label.set_text_content(Some(copy::MAP));
-    css(
-        &map_label,
-        &[
-            ("position", "absolute"),
-            ("width", "1px"),
-            ("height", "1px"),
-            ("overflow", "hidden"),
-            ("clip", "rect(0 0 0 0)"),
-        ],
-    );
-    for child in [&stats, &restart, &card, &map_label] {
-        let _ = root.append_child(child);
-    }
-    let _ = parent.append_child(&root);
-    Hud {
-        root,
-        stats,
-        carrots,
-        size,
-        pips,
-        restart,
-        card,
-        heading,
-        line,
-        hint,
-        swatch,
-        action,
-        map_label,
-    }
-}
-
-fn show(element: &HtmlElement, visible: bool) {
-    css(element, &[("display", if visible { "" } else { "none" })]);
-}
-
 impl App {
     fn fur(&self) -> u32 {
         shade::fur(self.wins)
@@ -668,15 +429,18 @@ impl App {
         self.gpu.refill(&mut self.meshes.ear, &scene::ear(fur));
     }
 
-    fn new_run(&mut self) {
-        self.game = Game::new(level::garden(1));
-        #[cfg(feature = "autoplay")]
-        if self
-            .window
-            .location()
-            .hash()
-            .is_ok_and(|hash| hash == "#quiet")
-        {
+    fn new_run(&mut self, garden: usize) {
+        let garden = garden.clamp(1, level::COUNT);
+        if garden != self.garden {
+            let g = level::garden(garden);
+            self.gpu.refill(&mut self.meshes.ground, &scene::ground(&g));
+            self.gpu.refill(&mut self.meshes.hedges, &scene::hedges(&g));
+            self.garden = garden;
+        }
+        self.runs += 1;
+        let seed = (js_sys::Math::random() * 1e15) as u64 ^ self.runs;
+        self.game = Game::with_seed(level::garden(garden), seed, false);
+        if self.options.quiet {
             self.game.farmer_on = false;
         }
         self.queue.clear();
@@ -695,10 +459,108 @@ impl App {
         self.camera_size = 0.0;
     }
 
-    fn play(&mut self) {
-        self.new_run();
+    fn play(&mut self, garden: usize) {
+        self.new_run(garden);
         self.phase = Phase::Playing;
         let _ = self.canvas.focus();
+    }
+
+    fn act(&mut self, action: Action) {
+        match action {
+            Action::Play(garden) => self.play(garden),
+            Action::Restart => self.play(self.garden),
+            Action::Pause if self.phase == Phase::Playing => self.phase = Phase::Paused,
+            Action::Resume if self.phase == Phase::Paused => {
+                self.phase = Phase::Playing;
+                self.last = 0.0;
+                let _ = self.canvas.focus();
+            }
+            Action::Leave => {
+                self.game.step(&[Input::Leave]);
+                self.phase = Phase::Title;
+            }
+            Action::TurnBack => self.press(Input::Back),
+            Action::Close => self.phase = Phase::Title,
+            _ => {}
+        }
+    }
+
+    /// The card for the current phase, if one shows.
+    fn card(&self) -> Option<Card> {
+        let garden_buttons = || {
+            (1..=level::COUNT)
+                .map(|n| {
+                    (
+                        copy::garden_button(n, &level::garden(n).name),
+                        Action::Play(n),
+                        false,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        match self.phase {
+            Phase::Playing => None,
+            Phase::Title => {
+                let mut buttons = vec![(copy::PLAY.to_owned(), Action::Play(self.garden), true)];
+                buttons.extend(garden_buttons());
+                Some(Card {
+                    title: copy::TITLE.to_owned(),
+                    swatch: (self.wins > 0).then(|| self.fur()),
+                    lines: vec![copy::GOAL.to_owned()],
+                    hint: Some(self.hint().to_owned()),
+                    buttons,
+                })
+            }
+            Phase::Paused => Some(Card {
+                title: copy::PAUSED.to_owned(),
+                swatch: None,
+                lines: vec![self.game.garden.name.clone()],
+                hint: Some(self.hint().to_owned()),
+                buttons: vec![
+                    (copy::RESUME.to_owned(), Action::Resume, true),
+                    (copy::RESTART.to_owned(), Action::Restart, false),
+                    (copy::LEAVE.to_owned(), Action::Leave, false),
+                ],
+            }),
+            Phase::Over => {
+                if self.time - self.over_at < 0.8 {
+                    return None;
+                }
+                let won = self.game.status == Status::Won;
+                let mut lines = Vec::new();
+                if won {
+                    lines.push(copy::won_line(self.wins));
+                    let seconds = self.game.clear_tick.unwrap_or(self.game.tick) / HZ;
+                    lines.push(copy::time_line(seconds));
+                } else {
+                    lines.push(copy::CAUGHT_LINE.to_owned());
+                }
+                lines.push(copy::score_line(self.game.score));
+                let mut buttons = Vec::new();
+                if won && self.garden < level::COUNT {
+                    buttons.push((copy::NEXT.to_owned(), Action::Play(self.garden + 1), true));
+                    buttons.push((copy::PLAY_AGAIN.to_owned(), Action::Restart, false));
+                } else {
+                    buttons.push((copy::PLAY_AGAIN.to_owned(), Action::Restart, true));
+                }
+                buttons.push((copy::GARDENS.to_owned(), Action::Close, false));
+                Some(Card {
+                    title: (if won { copy::WON } else { copy::CAUGHT }).to_owned(),
+                    swatch: won.then(|| self.fur()),
+                    lines,
+                    hint: None,
+                    buttons,
+                })
+            }
+        }
+    }
+
+    fn hint(&self) -> &'static str {
+        if self.coarse {
+            copy::SWIPES
+        } else {
+            copy::KEYS
+        }
     }
 
     fn press(&mut self, input: Input) {
@@ -716,6 +578,9 @@ impl App {
         self.last = now;
         let dtf = dt as f32;
         self.time += dtf;
+        for action in self.hud.take_actions() {
+            self.act(action);
+        }
         if self.phase == Phase::Playing {
             self.carry += dt;
             let mut steps = 0;
@@ -736,7 +601,19 @@ impl App {
         };
         self.animate(dtf);
         self.render(alpha, dtf);
-        self.update_hud();
+        let playing = matches!(self.phase, Phase::Playing | Phase::Paused);
+        self.hud.show_game(playing && !self.options.kit);
+        self.hud.show_run_buttons(self.phase == Phase::Playing);
+        if playing {
+            let elements = crate::zone::BunnyGame::hud_of(&self.game);
+            let (w, h) = (
+                self.canvas.client_width() as f32,
+                self.canvas.client_height() as f32,
+            );
+            self.hud.update(&elements, w, h);
+        }
+        let card = if self.options.kit { None } else { self.card() };
+        self.hud.card(card);
     }
 
     fn tick(&mut self) {
@@ -800,7 +677,7 @@ impl App {
                     i32::from(c.lane) * bunny_rules::LANE_WIDTH,
                 ));
                 let at = Vec3::new(at.x, 0.3, at.y);
-                self.burst(at, 6, scene::CARROT, 0.07, 1.6);
+                self.burst(at, 6, scene::edible_colour(c.kind), 0.07, 1.6);
                 self.burst(at, 3, scene::LEAF, 0.06, 1.4);
             }
             Event::Smashed(index, _) => {
@@ -815,6 +692,12 @@ impl App {
             Event::Tumbled => self.burst(bunny, 8, 0xC9C9C4, 0.1, 1.8),
             Event::Grew(_) => self.burst(bunny, 10, self.fur(), 0.08, 2.0),
             Event::Escaped => self.burst(bunny, 12, 0x6E6E6A, 0.08, 3.0),
+            Event::AteBonus(_) => self.burst(bunny, 16, 0x7CC242, 0.09, 2.6),
+            Event::PowerUp(_) => self.burst(bunny, 12, scene::GOLD, 0.07, 2.2),
+            Event::Bumped(_) => {
+                let at = point(self.game.farmer_point());
+                self.burst(Vec3::new(at.x, 0.8, at.y), 14, scene::GOLD, 0.09, 2.6);
+            }
             _ => {}
         }
     }
@@ -968,7 +851,7 @@ impl App {
         }
         self.gpu.lined.set(false);
         self.gpu.look.set(Look::Gray);
-        if !self.options.kit {
+        if !self.options.kit && matches!(self.phase, Phase::Playing | Phase::Paused) {
             self.draw_map(width, height, bunny, farmer);
         }
     }
@@ -978,8 +861,8 @@ impl App {
         let mut back = 3.5 + 2.5 * t;
         let mut up = 1.6 + 1.6 * t;
         if aspect < 1.0 {
-            back *= 1.35;
-            up *= 1.15;
+            back *= 1.25;
+            up *= 1.7;
         }
         let forward = Vec3::new(self.camera_yaw.sin(), 0.0, self.camera_yaw.cos());
         let target_ground = Vec3::new(bunny.x, 0.0, bunny.y);
@@ -999,7 +882,7 @@ impl App {
             reach -= 0.25;
         }
         let eye = target_ground - forward * reach + Vec3::Y * up;
-        let ahead = if aspect < 1.0 { 3.0 } else { 4.0 };
+        let ahead = if aspect < 1.0 { 2.0 } else { 4.0 };
         let look = target_ground + forward * ahead + Vec3::Y * (0.4 + 0.3 * t);
         let fov = if aspect < 1.0 {
             (2.0 * ((35.0_f32).to_radians().tan() / aspect).atan()).min(80.0_f32.to_radians())
@@ -1061,6 +944,18 @@ impl App {
             gpu.draw(m.obstacle(cell.kind), &model, WHITE, line);
         }
         gpu.look.set(Look::Chroma);
+        if game.bonus_out() {
+            let spot = garden.bonus;
+            let at = point(garden.point(spot.edge, spot.s, i32::from(spot.lane) * lane));
+            let pop = (self.time * 4.0).sin() * 0.05 + 0.1;
+            let model = scene::place(Vec3::new(at.x, pop, at.y), self.time * 2.0, 1.0);
+            gpu.draw(
+                m.edible(EdibleKind::Bonus),
+                &model,
+                WHITE,
+                Some((ink, LINE * 1.5)),
+            );
+        }
         for (index, p) in garden.powers.iter().enumerate() {
             if game.taken[index] {
                 continue;
@@ -1240,7 +1135,39 @@ impl App {
         } else {
             0.0
         };
-        let base = scene::place(Vec3::new(at.x, 0.0, at.y), self.farmer_yaw + stagger, 1.0);
+        let mut base = scene::place(Vec3::new(at.x, 0.0, at.y), self.farmer_yaw + stagger, 1.0);
+        // Spooked he crouches and wobbles, flickering in his last 2 s;
+        // dazed he lies in the compost with stars over him.
+        let mut tint = WHITE;
+        match f.state {
+            FarmerState::Spooked { left } => {
+                let wobble = (self.time * 14.0).sin() * 0.08;
+                base = base
+                    * Mat4::from_rotation_z(wobble)
+                    * Mat4::from_scale(Vec3::new(1.0, 0.82, 1.0));
+                let flicker = left < 2 * HZ && (self.time * 10.0).sin() > 0.0;
+                tint = if flicker { WHITE } else { [1.25, 1.25, 1.25] };
+            }
+            FarmerState::Dazed { .. } => {
+                base = base
+                    * Mat4::from_translation(Vec3::new(0.0, 0.25, 0.0))
+                    * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+                gpu.look.set(Look::Chroma);
+                for i in 0..4 {
+                    let a = self.time * 3.0 + i as f32 * std::f32::consts::FRAC_PI_2;
+                    let star = Vec3::new(at.x + a.cos() * 0.5, 0.9, at.y + a.sin() * 0.5);
+                    gpu.draw(
+                        &m.crumb,
+                        &(Mat4::from_translation(star)
+                            * Mat4::from_rotation_y(a)
+                            * Mat4::from_scale(Vec3::splat(0.12))),
+                        rgb(scene::GOLD),
+                        None,
+                    );
+                }
+            }
+            _ => {}
+        }
         gpu.look.set(Look::Ground);
         gpu.draw(
             &m.shadow,
@@ -1249,13 +1176,13 @@ impl App {
             None,
         );
         gpu.look.set(Look::Gray);
-        gpu.draw(&m.farmer, &base, WHITE, line);
+        gpu.draw(&m.farmer, &base, tint, line);
         let swing = self.stride.sin() * 0.55;
         for (side, phase) in [(-1.0_f32, 1.0_f32), (1.0, -1.0)] {
             let leg = base
                 * Mat4::from_translation(Vec3::new(0.12 * side, 0.86, 0.0))
                 * Mat4::from_rotation_x(swing * phase);
-            gpu.draw(&m.leg, &leg, WHITE, line);
+            gpu.draw(&m.leg, &leg, tint, line);
         }
         let windup = self.game.windup() as f32;
         let (angle, width) = if f.windup > 0 {
@@ -1354,67 +1281,6 @@ impl App {
             None,
         );
         gl.disable(Gl::SCISSOR_TEST);
-    }
-
-    fn update_hud(&mut self) {
-        let left = self.game.food_left;
-        let tier = self.game.bunny.tier;
-        let shown = (left, tier, self.phase);
-        let late = self.phase == Phase::Over && self.time - self.over_at > 0.7;
-        let card_visible = self.phase == Phase::Title || late;
-        let hud = &self.hud;
-        let showing_card = hud
-            .card
-            .style()
-            .get_property_value("display")
-            .unwrap_or_default()
-            != "none";
-        if shown == self.shown && card_visible == showing_card {
-            return;
-        }
-        self.shown = shown;
-        hud.carrots.set_text_content(Some(&left.to_string()));
-        hud.size
-            .set_text_content(Some(TIER_NAMES[usize::from(tier)]));
-        let fur = hex(self.fur());
-        for (index, pip) in hud.pips.iter().enumerate() {
-            let filled = index <= usize::from(tier);
-            css(
-                pip,
-                &[("background", if filled { "#1e1e1e" } else { "transparent" })],
-            );
-        }
-        show(&hud.stats, self.phase != Phase::Title);
-        show(&hud.restart, self.phase == Phase::Playing);
-        show(&hud.card, card_visible);
-        match self.phase {
-            Phase::Title => {
-                hud.heading.set_text_content(Some(copy::TITLE));
-                hud.line.set_text_content(Some(copy::GOAL));
-                hud.action.set_text_content(Some(copy::PLAY));
-                show(&hud.hint, true);
-                show(&hud.swatch, self.wins > 0);
-                css(&hud.swatch, &[("background", fur.as_str())]);
-            }
-            Phase::Over => {
-                let won = self.game.status == Status::Won;
-                hud.heading
-                    .set_text_content(Some(if won { copy::WON } else { copy::CAUGHT }));
-                let text = if won {
-                    copy::won_line(self.wins)
-                } else {
-                    copy::CAUGHT_LINE.to_owned()
-                };
-                hud.line.set_text_content(Some(&text));
-                hud.action.set_text_content(Some(copy::PLAY_AGAIN));
-                show(&hud.hint, false);
-                show(&hud.swatch, won);
-                css(&hud.swatch, &[("background", fur.as_str())]);
-            }
-            Phase::Playing => {}
-        }
-        let _ = &hud.root;
-        let _ = &hud.map_label;
     }
 }
 
@@ -1555,7 +1421,7 @@ pub fn start() {
         .ok()
         .flatten()
         .is_some_and(|query| query.matches());
-    let hud = build_hud(&document, &parent, touch);
+    let hud = Hud::new(&document, &parent, touch);
     let options = Options::parse(&window.location().hash().unwrap_or_default());
     let tier = options.tier.unwrap_or(Tier::default_for(touch));
     let outline = match crate::outline::Outline::new(&gpu.gl) {
@@ -1575,6 +1441,9 @@ pub fn start() {
         meshes,
         hud,
         game: Game::new(garden),
+        garden: 1,
+        runs: 0,
+        coarse: touch,
         phase: Phase::Title,
         wins,
         queue: Vec::new(),
@@ -1595,9 +1464,12 @@ pub fn start() {
         stride: 0.0,
         particles: Vec::new(),
         touch: None,
-        shown: (usize::MAX, 0, Phase::Over),
     };
-    app.new_run();
+    let first = app.options.garden.unwrap_or(1).clamp(1, level::COUNT);
+    app.new_run(first);
+    if app.options.garden.is_some() && !app.options.kit {
+        app.phase = Phase::Playing;
+    }
     if app.options.kit {
         show(&app.hud.root, false);
     }
@@ -1617,14 +1489,13 @@ pub fn start() {
                 }
                 return;
             }
-            let start = matches!(key.as_str(), "Enter" | " " | "ArrowUp" | "w" | "W");
-            if start && app.phase != Phase::Playing {
-                event.prevent_default();
-                app.play();
+            let pause = matches!(key.as_str(), "Escape" | "p" | "P");
+            if pause && app.phase == Phase::Playing {
+                app.act(Action::Pause);
+            } else if pause && app.phase == Phase::Paused {
+                app.act(Action::Resume);
             } else if (key == "r" || key == "R") && app.phase == Phase::Playing {
-                app.play();
-            } else if key == " " {
-                event.prevent_default();
+                app.act(Action::Restart);
             }
         });
     }
@@ -1659,19 +1530,6 @@ pub fn start() {
             app.borrow_mut().touch = None;
         });
     }
-    {
-        let app_click = app.clone();
-        let action = app.borrow().hud.action.clone();
-        listen::<web_sys::Event>(action.as_ref(), "click", move |_| {
-            app_click.borrow_mut().play();
-        });
-        let app_restart = app.clone();
-        let restart = app.borrow().hud.restart.clone();
-        listen::<web_sys::Event>(restart.as_ref(), "click", move |_| {
-            app_restart.borrow_mut().play();
-        });
-    }
-
     let next: FrameLoop = Rc::new(RefCell::new(None));
     let first = next.clone();
     let looping = window.clone();

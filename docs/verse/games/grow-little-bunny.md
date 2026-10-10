@@ -1027,8 +1027,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done, 6c0de441c7 |
 | B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done, 67898d1470 |
 | B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, 3551012941; the rest is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206) |
-| B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done (see below) |
-| B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
+| B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done, 581a122fb4 |
+| B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Done (see below) |
 | B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
 
 ### B1: the rules
@@ -1173,9 +1173,43 @@ Deviations, and why:
   squashes to duck, arcs through jumps and rolls in a tumble; the farmer
   walks, swings and staggers.
 
+### B5: gardens 1 to 5 playable
+
+`crates/bunny-web/src/hud.rs` and `app.rs`: all five gardens play in the
+browser. The HUD is drawn from the game's `verse-game` HUD elements: food
+left with a ring filling as the garden empties, the five size pips and a
+growth bar, the score and the munch-chain multiplier, a ring for the golden
+carrot and one for the running power-up, an arrow at the screen's edge
+toward the farmer when he is out of view (with `!` while he chases, `?` while
+he searches), and the map (bottom left). Controls are the spec's: arrows or
+WASD to dodge and turn, Up, W or Space to jump, Down or S to duck, X or
+Backspace to turn back, Esc or P to pause; on phones, swipes, a turn-back
+button at the bottom and a pause button at the top right. Pause offers
+Resume, Restart and Leave the garden (neither a win nor a loss). Results
+show cleared or caught, the clear time and the score, with Next garden,
+Play again and All gardens. The farmer crouches and wobbles while spooked
+(flickering in his last 2 s) and lies dazed under circling stars; the bonus
+vegetable pops up in the middle; crumbs take each edible's colour. The
+portrait camera sits higher and looks nearer, so the corridor fills a
+phone. `#garden=N` opens a garden straight away; `BUNNY_FEATURES=autoplay
+scripts/build-bunny-web.sh DIR` builds the capture build where the bot plays
+(with `#quiet`, the farmer stays home).
+
+Checked in the browser: each garden opens and plays; a run is caught
+(garden 1, standing still) and one is cleared (garden 2, the capture build),
+with the results card each time; pause and the phone layout.
+
+Deviations, and why:
+
+- **A garden list on the title card** stands in for the meadow's holes
+  until B6.
+- **No camera swing on turns** beyond the existing smoothing, and the
+  camera can sit close behind a Giant at the end of a run.
+- **No sounds yet.** The spec's audio is unbuilt.
+
 ### What's next
 
-B5: gardens 1 to 5 playable with the full HUD.
+B6: Warren Meadow, the hub.
 
 ## Engine gaps
 

@@ -34,6 +34,13 @@ pub const MAP_BONUS: u32 = 0x7CC242;
 pub struct BunnyGame(pub Game);
 
 impl BunnyGame {
+    /// The HUD for a game the page holds directly.
+    #[must_use]
+    pub fn hud_of(game: &Game) -> verse_game::Hud {
+        // The HUD reads only; a clone keeps the page's game where it is.
+        Self(game.clone()).hud()
+    }
+
     /// The farmer's bearing from the bunny, in radians from its heading,
     /// positive to the right, and how close he is from 0 (far) to 1.
     #[must_use]

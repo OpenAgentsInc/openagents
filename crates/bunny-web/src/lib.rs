@@ -27,6 +27,8 @@ pub mod zone;
 #[cfg(target_arch = "wasm32")]
 mod app;
 #[cfg(target_arch = "wasm32")]
+mod hud;
+#[cfg(target_arch = "wasm32")]
 mod outline;
 
 /// Starts the game when the module loads.

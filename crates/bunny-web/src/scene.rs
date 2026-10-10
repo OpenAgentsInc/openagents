@@ -259,6 +259,22 @@ pub fn carrot() -> Mesh {
     carrot_in(CARROT)
 }
 
+/// The colour of an edible's crumbs.
+#[must_use]
+pub fn edible_colour(kind: bunny_rules::EdibleKind) -> u32 {
+    use bunny_rules::EdibleKind as E;
+    match kind {
+        E::Seedling => SEEDLING,
+        E::Carrot => CARROT,
+        E::Golden => GOLD,
+        E::Radish => RADISH,
+        E::Lettuce => LETTUCE,
+        E::Strawberry => BERRY,
+        E::Pumpkin => PUMPKIN,
+        E::Bonus => 0x7CC242,
+    }
+}
+
 /// Each edible's model, standing on the ground and facing `+z`.
 #[must_use]
 pub fn edible(kind: bunny_rules::EdibleKind) -> Mesh {

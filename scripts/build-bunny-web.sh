@@ -52,7 +52,8 @@ if [ "$installed" != "$locked" ]; then
 fi
 
 cd "$root"
-cargo build --release --locked --target "$target" -p bunny-web
+# BUNNY_FEATURES=autoplay builds the capture build, where the bot plays.
+cargo build --release --locked --target "$target" -p bunny-web ${BUNNY_FEATURES:+--features "$BUNNY_FEATURES"}
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \
   "$target_dir/$target/release/bunny_web.wasm"
