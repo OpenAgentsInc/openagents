@@ -241,6 +241,7 @@ revision.
 | [`jev-unmasked.md`](jev-unmasked.md) | What Archer Hume's probes established about the real Jev, and what stays inferred. |
 | [`model-cards.md`](model-cards.md) | `kev-0.5b` in detail — data, recipe, metrics, mechanism tests, limitations — plus the preview family and the research findings behind it. |
 | [`port-roadmap.md`](port-roadmap.md) | The completed fixture-pinned port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
+| [`../training.md`](../training.md) | Outside report on fine-tuning upstream Kev, Unsloth decision heads, and Clef on a Mac or an NVIDIA PC: data format, splits, calibration, and hardware sizing. The baseline our own decision trainer must match. |
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
 | [`jev-comparison.md`](jev-comparison.md) | Side-by-side answers from the local port and hosted Jev on identical requests, with the divergence analysis: where the port tracks Jev and where the weights' limits show. |
 | [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md) | All four checkpoints scored on `support-v2-three-way` through the Gym: the panel, what clears the suite's noise floor, why no calibration map is admitted, and why the latency column settles nothing yet. |

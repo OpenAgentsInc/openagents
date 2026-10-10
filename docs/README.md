@@ -38,6 +38,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Call the Pro inference door (GPT-5.6 Sol, Terra, and Luna) | [Pro inference door](gateway/README.md) |
 | Plan our own inference gateway: every model account behind one Open Responses API, for our apps and the public | [Inference gateway spec](inference/gateway.md) |
 | Work on model implementations | [Kev](kev/README.md), [Lev](lev/README.md), [Laya](laya/README.md) |
+| Train decision models: consumer-hardware recipes, what we have, and the training roadmap | [Training decision models](training.md), [training system audit](audits/2026-10-10-training-system-audit/README.md), [roadmap](audits/2026-10-10-training-system-audit/roadmap.md) |
 | Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |
 | Operate the relay | [Deployment](deployment/README.md) |
 | Plan CoderOS | [CoderOS index](os/README.md), [audit of what moves from the private tree](os/2026-09-28-coderos-audit.md) |
