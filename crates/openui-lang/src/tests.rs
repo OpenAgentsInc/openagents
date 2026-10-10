@@ -355,6 +355,19 @@ fn the_prompt_describes_the_catalog() {
 }
 
 #[test]
+fn every_node_names_a_catalog_component() {
+    let mut seen = Vec::new();
+    embed::walk(&parse(CONNECT).root.unwrap(), &mut |node| {
+        let name = node.component();
+        assert!(catalog::component(name).is_some(), "{name}");
+        seen.push(name);
+    });
+    for name in ["Columns", "Card", "Button", "Steps", "Command", "CodeBlock"] {
+        assert!(seen.contains(&name), "{name}: {seen:?}");
+    }
+}
+
+#[test]
 fn statements_print_back_as_source_that_parses_the_same() {
     for (text, parsed) in lex::program(CONNECT) {
         let statement = parsed.unwrap_or_else(|e| panic!("{text}: {e}"));

@@ -108,6 +108,26 @@ pub enum Node {
     },
 }
 
+impl Node {
+    /// The component's name in the catalog.
+    #[must_use]
+    pub fn component(&self) -> &'static str {
+        match self {
+            Node::Stack { .. } => "Stack",
+            Node::Columns { .. } => "Columns",
+            Node::Card { .. } => "Card",
+            Node::Text { .. } => "Text",
+            Node::Link { .. } => "Link",
+            Node::Button { .. } => "Button",
+            Node::CodeBlock { .. } => "CodeBlock",
+            Node::Command { .. } => "Command",
+            Node::Steps { .. } => "Steps",
+            Node::Tabs { .. } => "Tabs",
+            Node::LinkCard { .. } => "LinkCard",
+        }
+    }
+}
+
 /// Something the parser fixed or dropped, for logs and for feeding back to
 /// a model; never shown to a reader.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

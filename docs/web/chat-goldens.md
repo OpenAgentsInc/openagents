@@ -87,6 +87,31 @@ own text, and it rejects a source name it doesn't know.
 | smalltalk | greetings and thanks |
 | general | general questions, and code work the website can't do |
 | followup | a question after another in the same chat |
+| interactive | answers the model writes with components, and a follow-up that edits them (#11113) |
+
+### Components (#11113)
+
+A golden may also say what the reply's components must draw, in `ui`:
+`required` (a reply in prose alone fails `ui`), the catalog `components`
+that must appear, the `links` a button or link must point to (site paths
+or URLs), and the `commands` a code block or command must let the reader
+copy. Two checks come of it:
+
+- `ui_valid`: every ```` ```openui-lang ```` block in the reply parses with
+  nothing fixed or dropped. A block that needed fixes is a wrong reply.
+- `ui`: what `ui` asks for is drawn. A right reply in prose where
+  components were expected is right but slow, like a model reply where a
+  prepared answer was expected.
+
+The checks read the reply as written: `check` reads each accepted answer's
+own text (its `ui` included), `router` reads a prepared answer's text, and
+`local`/`http` fetch `/chat/{id}/messages/{n}/original` after the page
+draws the reply. A grounded reply in `router` mode has no written text, so
+`ui` is skipped there. The how-tos whose accepted answers all carry
+components (`starters.codebase`, `github.connect_repo`,
+`account.sign_in`, `account.connect_computer`, `coder.install`,
+`coder.login`, `coder.sync`, `followup.repo_after_hello`) ask for the
+components every one of those answers shares.
 
 Budgets: an instant answer shows its first words within 3 s and is whole
 within 3.5 s on the page; a model answer within 10 s and 60 s. The router

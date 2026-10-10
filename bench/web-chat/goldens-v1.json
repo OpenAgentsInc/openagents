@@ -91,7 +91,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["openagents.com/projects"], ["connect GitHub", "connect your GitHub"], ["install.sh"], ["install.ps1"], ["coder login"], ["openagents.com/device"], ["/sync on"]],
-          "forbidden": ["computer you connect"]
+          "forbidden": ["computer you connect"],
+          "ui": {"required": true, "components": ["Columns", "Card", "Steps", "Command", "Button"], "links": ["/auth/github/repos?access=private", "/device"], "commands": ["curl -fsSL https://openagents.com/cli/install.sh | bash", "coder login", "/sync on"]}
         },
         {
           "id": "starters.plugins",
@@ -189,7 +190,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["Projects"], ["connect GitHub", "connect your GitHub", "sign in with GitHub"], ["https://openagents.com/projects"]],
-          "forbidden": ["computer you connect"]
+          "forbidden": ["computer you connect"],
+          "ui": {"required": true, "components": ["Card", "Button"], "links": ["/auth/github/repos?access=private"]}
         },
         {
           "id": "github.projects",
@@ -215,7 +217,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["GitHub"], ["https://openagents.com/login"]],
-          "forbidden": ["download the app", "OpenAgents app does"]
+          "forbidden": ["download the app", "OpenAgents app does"],
+          "ui": {"required": true, "components": ["Button"], "links": ["/login"]}
         },
         {
           "id": "account.connect_computer",
@@ -225,7 +228,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["curl -fsSL https://openagents.com/cli/install.sh | bash"], ["`coder login`"], ["https://openagents.com/device"], ["`/sync on`"]],
-          "forbidden": ["QR code", "scan", "OpenAgents for Mac", "tap "]
+          "forbidden": ["QR code", "scan", "OpenAgents for Mac", "tap "],
+          "ui": {"required": true, "components": ["Steps", "Command", "Button"], "links": ["/settings/terminal", "/device"], "commands": ["curl -fsSL https://openagents.com/cli/install.sh | bash", "coder login", "/sync on"]}
         }
       ]
     },
@@ -251,7 +255,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["curl -fsSL https://openagents.com/cli/install.sh | bash"], ["https://openagents.com/download", "install.ps1"]],
-          "forbidden": ["QR code", "scan"]
+          "forbidden": ["QR code", "scan"],
+          "ui": {"required": true, "components": ["Command", "Button"], "links": ["/download"], "commands": ["curl -fsSL https://openagents.com/cli/install.sh | bash"]}
         },
         {
           "id": "coder.login",
@@ -261,7 +266,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["`coder login`", "`/login`"], ["https://openagents.com/device"]],
-          "forbidden": []
+          "forbidden": [],
+          "ui": {"required": true, "components": ["Steps", "Button"], "links": ["/device"], "commands": ["coder login", "/sync on"]}
         },
         {
           "id": "coder.sync",
@@ -271,7 +277,8 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["`/sync on`"]],
-          "forbidden": []
+          "forbidden": [],
+          "ui": {"required": true, "components": ["Steps", "Button"], "links": ["/device"], "commands": ["coder login", "/sync on"]}
         }
       ]
     },
@@ -552,7 +559,37 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["Projects"]],
-          "forbidden": []
+          "forbidden": [],
+          "ui": {"required": true, "components": ["Card", "Button"], "links": ["/auth/github/repos?access=private"]}
+        }
+      ]
+    },
+    {
+      "id": "interactive",
+      "title": "Answers with components the model writes (#11113)",
+      "goldens": [
+        {
+          "id": "interactive.walkthrough",
+          "phrasings": ["walk me through getting coder running, step by step", "give me the steps to set up coder on my laptop"],
+          "route": [],
+          "answers": [],
+          "tier": [],
+          "speed": "model",
+          "required": [["install.sh"]],
+          "forbidden": [],
+          "ui": {"required": true, "components": ["Command"], "commands": ["curl -fsSL https://openagents.com/cli/install.sh | bash"]}
+        },
+        {
+          "id": "interactive.edit_followup",
+          "earlier": ["How do I connect my codebase?"],
+          "phrasings": ["just show me the steps for my computer", "ok only the terminal part please"],
+          "route": [],
+          "answers": [],
+          "tier": [],
+          "speed": "model",
+          "required": [["coder login"]],
+          "forbidden": [],
+          "ui": {"required": false}
         }
       ]
     }

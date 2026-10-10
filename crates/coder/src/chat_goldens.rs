@@ -118,6 +118,10 @@ pub struct Golden {
     /// (#11114): [`GROUNDING_SOURCES`] words. Empty is no trace check.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub grounded: Vec<String>,
+    /// What the reply's components must hold (#11113); none checks nothing
+    /// about components.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<UiExpect>,
 }
 
 /// The sources a golden's `grounded` may name: the public rate card
@@ -173,6 +177,123 @@ pub fn trace_check(golden: &Golden, text: &str) -> Check {
             ),
         )
     }
+}
+
+/// A golden's expectations of the components a reply draws (#11113).
+/// Every block a reply has must parse with no fixes (`ui_valid`), whether
+/// or not this asks for any.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct UiExpect {
+    /// Whether the reply must draw components; false lets a reply in prose
+    /// alone pass.
+    #[serde(default)]
+    pub required: bool,
+    /// Catalog component names that must appear.
+    #[serde(default)]
+    pub components: Vec<String>,
+    /// Link targets a component must point to: site paths or URLs.
+    #[serde(default)]
+    pub links: Vec<String>,
+    /// Commands or code a component must let the reader copy.
+    #[serde(default)]
+    pub commands: Vec<String>,
+}
+
+/// The components a reply drew, read from its source (#11113).
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct UiSeen {
+    /// Catalog names, each once, in the order first drawn.
+    pub components: Vec<String>,
+    /// Link targets, absolute.
+    pub links: Vec<String>,
+    pub commands: Vec<String>,
+    /// What the validator fixed or dropped in its blocks.
+    pub problems: Vec<String>,
+}
+
+/// What `source`, a reply as written (Markdown with any ```` ```openui-lang ````
+/// blocks), draws.
+#[must_use]
+pub fn ui_seen(source: &str) -> UiSeen {
+    let mut seen = UiSeen::default();
+    for segment in openui_lang::embed::segments(source) {
+        let openui_lang::embed::Segment::Ui { source, closed } = segment else {
+            continue;
+        };
+        if !closed {
+            seen.problems.push("a block is not closed".into());
+            continue;
+        }
+        let document = openui_lang::parse(source);
+        seen.problems
+            .extend(document.diagnostics.iter().map(|d| match &d.statement {
+                Some(name) => format!("`{name}`: {}", d.message),
+                None => d.message.clone(),
+            }));
+        let Some(root) = document.root else {
+            seen.problems.push("a block draws nothing".into());
+            continue;
+        };
+        openui_lang::embed::walk(&root, &mut |node| {
+            let name = node.component();
+            if !seen.components.iter().any(|c| c == name) {
+                seen.components.push(name.to_owned());
+            }
+        });
+        seen.links.extend(openui_lang::embed::links(&root));
+        seen.commands.extend(openui_lang::embed::commands(&root));
+    }
+    seen
+}
+
+/// The component checks: `ui_valid` (every block parses clean) and `ui`
+/// (what `expect` asks for is drawn). Skipped when the mode cannot see
+/// the reply's source.
+#[must_use]
+pub fn ui_checks(expect: &UiExpect, seen: Option<&UiSeen>) -> Vec<Check> {
+    let Some(seen) = seen else {
+        return vec![mk("ui", Status::Skip, "not observed")];
+    };
+    let valid = if seen.problems.is_empty() {
+        mk("ui_valid", Status::Pass, "")
+    } else {
+        mk("ui_valid", Status::Fail, seen.problems.join("; "))
+    };
+    if seen.components.is_empty() {
+        let drawn = if expect.required {
+            mk("ui", Status::Fail, "no components")
+        } else {
+            mk("ui", Status::Pass, "prose only")
+        };
+        return vec![valid, drawn];
+    }
+    let mut missing: Vec<String> = Vec::new();
+    for name in &expect.components {
+        if !seen.components.contains(name) {
+            missing.push(format!("component {name}"));
+        }
+    }
+    for link in &expect.links {
+        let want = openui_lang::embed::absolute(link);
+        if !seen.links.contains(&want) {
+            missing.push(format!("link {link}"));
+        }
+    }
+    for command in &expect.commands {
+        if !seen.commands.iter().any(|c| c.trim() == command.trim()) {
+            missing.push(format!("command `{command}`"));
+        }
+    }
+    let drawn = if missing.is_empty() {
+        mk("ui", Status::Pass, seen.components.join(", "))
+    } else {
+        mk(
+            "ui",
+            Status::Fail,
+            format!("missing {}", missing.join("; ")),
+        )
+    };
+    vec![valid, drawn]
 }
 
 /// Instant: Jev picks a prepared answer or note, shown at once. Model: the
@@ -280,6 +401,10 @@ pub struct Observed {
     /// What the system says about why it answered so, when it says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
+    /// The components the reply drew, when the mode can read the reply as
+    /// written ([`ui_seen`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<UiSeen>,
 }
 
 /// A check's outcome.
@@ -354,7 +479,9 @@ impl Grade {
             });
         let only_how = self.failed().all(|c| {
             TIMES.contains(&c.name.as_str())
-                || ["route", "tier", "answer"].contains(&c.name.as_str())
+                // A right reply in prose where components were expected
+                // is slow, not wrong; a block that needed fixes is wrong.
+                || ["route", "tier", "answer", "ui"].contains(&c.name.as_str())
         });
         if text_passed && only_how && self.observed.error.is_none() {
             Outcome::Slow
@@ -517,6 +644,9 @@ pub fn grade(set: &Set, case: &Case<'_>, observed: Observed) -> Grade {
         }
         None => checks.push(mk("text", Status::Skip, "no reply text in this mode")),
     }
+    if let Some(expect) = &golden.ui {
+        checks.extend(ui_checks(expect, observed.ui.as_ref()));
+    }
     let budget = set.budget(golden.speed);
     checks.push(within("first_ms", budget.first_ms, observed.first_ms));
     checks.push(within("total_ms", budget.total_ms, observed.total_ms));
@@ -586,6 +716,22 @@ pub fn check(
                     "{at}: an instant golden lists the answers that are right"
                 ));
             }
+            if let Some(expect) = &golden.ui {
+                for name in &expect.components {
+                    if openui_lang::catalog::component(name).is_none() {
+                        problems.push(format!(
+                            "{at}: ui names {name}, which is not in the catalog"
+                        ));
+                    }
+                }
+                for link in &expect.links {
+                    if !openui_lang::safe_href(link) {
+                        problems.push(format!(
+                            "{at}: ui link {link} is not a link a component may have"
+                        ));
+                    }
+                }
+            }
             for id in &golden.answers {
                 let text = match (bank.entry(id), notes.get(id)) {
                     (Some(entry), _) => {
@@ -614,10 +760,16 @@ pub fn check(
                         continue;
                     }
                 };
+                let ui = golden
+                    .ui
+                    .as_ref()
+                    .map(|expect| ui_checks(expect, Some(&ui_seen(&text))))
+                    .unwrap_or_default();
                 let text = readable(&text);
                 for failed in text_checks(set, golden, &text)
                     .into_iter()
                     .chain([trace_check(golden, &text)])
+                    .chain(ui)
                     .filter(|c| c.status == Status::Fail)
                 {
                     problems.push(format!(
@@ -1061,6 +1213,93 @@ mod tests {
         let md = report.markdown();
         assert!(md.contains("1 of 2 cases pass"), "{md}");
         assert!(md.contains("pricing.plan#1"), "{md}");
+    }
+
+    const DRAWN: &str = "Install it.\n\n```openui-lang\nroot = Steps([install, signin])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\nsignin = Step(\"Sign in\", [CodeBlock(\"coder login\"), Button(\"Approve sign-in\", \"/device\"), CodeBlock(\"/sync on\")])\n```\n";
+
+    #[test]
+    fn a_reply_is_read_for_the_components_it_draws() {
+        let seen = ui_seen(DRAWN);
+        assert_eq!(seen.components, ["Steps", "Command", "CodeBlock", "Button"]);
+        assert_eq!(seen.links, ["https://openagents.com/device"]);
+        assert!(seen.commands.iter().any(|c| c == "coder login"));
+        assert!(seen.problems.is_empty(), "{:?}", seen.problems);
+
+        let broken = ui_seen("```openui-lang\nroot = Stack([Bogus(\"x\")])\n```\n");
+        assert!(!broken.problems.is_empty());
+        let open = ui_seen("Here.\n\n```openui-lang\nroot = Text(\"half");
+        assert_eq!(open.problems, ["a block is not closed"]);
+        assert_eq!(ui_seen("Prose alone."), UiSeen::default());
+    }
+
+    #[test]
+    fn the_ui_checks_ask_for_what_the_golden_names() {
+        let expect = UiExpect {
+            required: true,
+            components: vec!["Steps".into(), "Command".into()],
+            links: vec!["/device".into()],
+            commands: vec!["coder login".into()],
+        };
+        let pass = ui_checks(&expect, Some(&ui_seen(DRAWN)));
+        assert!(pass.iter().all(|c| c.status == Status::Pass), "{pass:?}");
+        let prose = ui_checks(&expect, Some(&ui_seen("Run coder login.")));
+        assert!(
+            prose
+                .iter()
+                .any(|c| c.name == "ui" && c.status == Status::Fail)
+        );
+        let optional = UiExpect::default();
+        let fine = ui_checks(&optional, Some(&ui_seen("Run coder login.")));
+        assert!(fine.iter().all(|c| c.status == Status::Pass), "{fine:?}");
+        let fewer = UiExpect {
+            links: vec!["/settings/terminal".into()],
+            ..expect.clone()
+        };
+        let missing = ui_checks(&fewer, Some(&ui_seen(DRAWN)));
+        assert!(
+            missing
+                .iter()
+                .any(|c| c.name == "ui" && c.detail.contains("/settings/terminal")),
+            "{missing:?}"
+        );
+        assert_eq!(ui_checks(&expect, None)[0].status, Status::Skip);
+    }
+
+    #[test]
+    fn a_golden_with_components_grades_them() {
+        let set = set();
+        let case = case(&set, "coder.login");
+        assert!(case.golden.ui.is_some(), "coder.login expects components");
+        let observed = |text: &str| Observed {
+            route: Some("product.kb".into()),
+            tier: Some("canned".into()),
+            answer: Some("openagents.coder-sync@2".into()),
+            text: Some(text.into()),
+            ui: Some(ui_seen(text)),
+            first_ms: Some(900),
+            total_ms: Some(900),
+            ..Observed::default()
+        };
+        let drawn = grade(&set, &case, observed(DRAWN));
+        assert!(drawn.pass, "{:?}", drawn.checks);
+        // A block that needed fixes is wrong, not slow.
+        let broken = grade(
+            &set,
+            &case,
+            observed(
+                "Run coder login and approve it at https://openagents.com/device.\n\n```openui-lang\nroot = Stack([Bogus(\"x\")])\n```\n",
+            ),
+        );
+        assert_eq!(broken.outcome(), Outcome::Fail, "{:?}", broken.checks);
+        // Right words without the components are slow.
+        let prose = grade(
+            &set,
+            &case,
+            observed(
+                "Run coder login, approve it at https://openagents.com/device, then /sync on.",
+            ),
+        );
+        assert_eq!(prose.outcome(), Outcome::Slow, "{:?}", prose.checks);
     }
 
     #[test]

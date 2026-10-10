@@ -422,6 +422,8 @@ impl Routed {
             router::Tier::CannedFinal { answer, text, .. }
             | router::Tier::Capability { answer, text, .. } => {
                 observed.answer = Some(answer.tag());
+                // The answer as written, so its components are read too.
+                observed.ui = Some(chat_goldens::ui_seen(text));
                 observed.text = Some(if answer.plugins {
                     format!("{text}\n{}", self.plugin_names.join("\n"))
                 } else {
@@ -581,6 +583,26 @@ impl Site {
         }
     }
 
+    /// Message `index` of chat `id` as it was written: the Markdown with
+    /// any component blocks, which the page draws instead of showing.
+    async fn original(&self, visitor: &Visitor, id: &str, index: usize) -> Result<String, String> {
+        let path = format!("/chat/{id}/messages/{index}/original");
+        let response = self
+            .client
+            .get(format!("{}{path}", self.base))
+            .header(reqwest::header::COOKIE, &visitor.cookie)
+            .send()
+            .await
+            .map_err(|e| format!("GET {path}: {e}"))?;
+        let status = response.status();
+        let body = response.text().await.map_err(|e| e.to_string())?;
+        if status.is_success() {
+            Ok(body)
+        } else {
+            Err(format!("GET {path}: {status}"))
+        }
+    }
+
     /// Sends one message and waits for its reply, the `nth` (from 1).
     async fn turn(
         &self,
@@ -637,6 +659,13 @@ impl Site {
                         observed.error = Some(format!("no reply: {}", reply.after));
                     } else {
                         observed.text = Some(reply.text.clone());
+                        // The reply as written, for the components it
+                        // draws (#11113): the `nth` reply follows the
+                        // `nth` message sent.
+                        match self.original(visitor, chat, 2 * nth - 1).await {
+                            Ok(source) => observed.ui = Some(chat_goldens::ui_seen(&source)),
+                            Err(e) => eprintln!("{e}"),
+                        }
                     }
                     return observed;
                 }
