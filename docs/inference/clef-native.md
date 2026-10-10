@@ -3,7 +3,7 @@
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: M1 `implemented_early` on the CPU (2026-10-09); M2–M4 `planned`. See [M1 status](#m1-status-2026-10-09).
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2 `implemented_early` on CUDA (2026-10-10), gate partly met; M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -111,6 +111,160 @@ on decisive product requests.
 **Speed.** On the CPU this is development speed, not serving speed: about
 7–13 s per 150-token request, depending on load. M2 (#11195) owns CUDA
 speed.
+
+## M2 status (2026-10-10)
+
+The Clef lane runs on CUDA ([#11195](https://github.com/OpenAgentsInc/openagents/issues/11195)):
+`crates/psionic/crates/psionic-serve/src/qwen35/clef_cuda.rs`, kernels in
+`crates/psionic-backend-cuda/src/kernels/clef_prefill.cu` (with
+`clef_prefill.rs`). `psionic-openai-server --decision-device auto|cpu|cuda`
+picks the device (`auto`, the default, uses CUDA when it loads and says so
+when it falls back to the CPU).
+
+### Per-layer check: is the 0.989 cosine quantization noise?
+
+**Yes.** Every layer's residual rows and the final normalized rows were
+compared on encoder records 7 (155 tokens) and 10 (970 tokens). The four
+sources were:
+
+- llama.cpp b11538 on the 4080 (CUDA), dumped through libllama's `cb_eval` hook
+  with `tools/lldump.cpp`;
+- Psionic's CPU lane;
+- Psionic's new CUDA lane;
+- the Hugging Face f32 reference.
+
+Report: `crates/psionic/fixtures/clef/reports/layer-parity-2026-10-10.json`.
+Each cell is mean cosine / min row cosine / mean normalized RMSE.
+
+| Pair (record 7 / record 10) | Layer 0 | Layer 15 | Layer 30 | Final rows |
+| --- | --- | --- | --- | --- |
+| Psionic CPU vs Psionic CUDA | 1.00000 / 1.0000 / 0.000 | 1.00000 / 1.0000 / 0.001 | 1.00000 / 1.0000 / 0.001 | 1.00000 / 0.9999 / 0.001 |
+| llama.cpp (CUDA) vs Psionic | 0.99997 / 0.9999 / 0.008 | 0.99934 / 0.994 / 0.034 | 0.99809 / 0.963 / 0.051 | **0.9986** / 0.972 / 0.045 (r7), 0.9986 / 0.930 / 0.044 (r10) |
+| HF f32 vs llama.cpp | 0.99978 / 0.9985 / 0.021 | 0.99410 / 0.973 / 0.103 | 0.98533 / 0.742 / 0.150 | **0.9873** / 0.770 / 0.142 (r7), 0.9887 (r10) |
+| HF f32 vs Psionic | 0.99981 / 0.9987 / 0.019 | 0.99476 / 0.971 / 0.098 | 0.98696 / 0.826 / 0.143 | **0.9893** / 0.855 / 0.132 (r7), 0.9900 (r10) |
+
+What this shows:
+
+- On the same GGUF, Psionic and llama.cpp agree to a final mean cosine of
+  0.9986. The drift grows smoothly with depth (normalized RMSE 0.008 at layer
+  0, 0.05 at layer 30). No layer jumps, which is what different activation
+  rounding looks like (llama.cpp quantizes activations to Q8_1; Psionic uses
+  f16/f32), not what a wrong kernel looks like.
+- Against f32 weights, llama.cpp is *further* from the reference than
+  Psionic (0.987 vs 0.989). The M1 figure of 0.989 is therefore Q4_K_M
+  quantization noise and is shared by every Q4_K_M runtime.
+- The CUDA lane reproduces the CPU lane row for row.
+
+### What runs
+
+- **Projections.**
+  - Weights stay on the device in their GGUF layout (Q8_0 attention and SSM
+    projections, Q4_K FFN, about 5 GB).
+  - Each projection is dequantized to f16, on a side stream into one of two
+    scratch slots, then multiplied by the chunk's f16 activations with
+    cuBLAS.
+  - The output projections accumulate into the f32 residual inside the GEMM.
+- **Gated DeltaNet.**
+  - A parallel causal conv1d carries the last three inputs between chunks.
+  - The delta rule runs as a sequential scan: one warp per two value rows,
+    with the state in registers.
+  - Each token needs one fused reduction, because
+    `o = S'q + delta (k.q)` and `k.q` comes from the prep kernel.
+- **Full attention.**
+  - One kernel does q/k RMSNorm, rotary (the CPU lane's cos/sin table), the
+    q scale, and appends to the f16 K/V caches.
+  - Scores and `P V` run as strided-batched cuBLAS GEMMs per KV group, with a
+    causal softmax between them.
+  - The score buffer is capped at 512 MB, so long prompts run fewer heads at
+    a time instead of failing.
+- **Head inputs on the device.**
+  - Output RMSNorm, then the head's `hidden_norm`, then `W_mem`, so the
+    1024-wide memory rows stay on the GPU.
+  - Span sums of `LN(H)` accumulate on the GPU; only the span sums and the
+    last row come back.
+  - `token_embd` and `output` stay on the host; only rows are gathered.
+- **Head.**
+  - Memory attention uses the query-side form. MHA has no mask, so a head's
+    score against a memory row is `(W_k,h^T q_h) . m`, and its output is
+    `W_v,h (sum p m) + b_v`. Nothing is projected per memory row.
+  - The softmax-weighted sums run as GEMMs over the device memory rows.
+  - Every dense head product goes through the device too (head matrices
+    resident, f32), batched over options and questions.
+  - The head takes about 10–15 ms. On the CPU it took 55 ms.
+  - The CPU lane uses the same head code, so it is faster than in M1 as well.
+- **Flags.**
+  - `--decision-chunk` (default 2048 on CUDA, 256 on the CPU).
+  - `--decision-accumulate f16|f32` (default f16; see the precision rows).
+  - `PSIONIC_CLEF_PROFILE=1` prints a per-request split.
+  - The receipt adds `backend: "cuda"`, `device` and `accumulate`.
+
+### Measured (RTX 4080, coderos-4080, idle except the resident pylon-psionic and desktop apps)
+
+Psionic and llama.cpp b11538 were measured back to back in one session, on
+localhost, with a fresh nonce per request and the median of 9 runs after
+warmup. llama.cpp ran as `-ngl 99 -fa on -c 17408 -b 17408 -ub 17408`.
+Details and command lines:
+`crates/psionic/fixtures/clef/reports/cuda-latency-2026-10-10.json`.
+
+| Prompt | Gate | llama.cpp b11538 | **Psionic CUDA, f16 accumulate** | Psionic CUDA, f32 accumulate |
+| --- | --- | --- | --- | --- |
+| 1,082 tokens | ≤ 0.20 s | 0.180 s | **0.215 s** (not met) | 0.263 s |
+| 3,917 tokens | ≤ 0.65 s | 0.676 s | **0.673 s** (not met; ties llama.cpp) | 0.883 s |
+| 15,511 tokens | ≤ 3.25 s | 3.415 s | **2.931 s** (met; 1.17× llama.cpp) | 3.768 s |
+| 30,659 / 60,955 tokens | admitted | refused (one physical batch) | 6.5 s / 17.7 s (`--decision-max-tokens 65536`) | — |
+| Process VRAM (nvidia-smi, includes the CUDA context) | ≤ 7.5 GB at 16k | 10.3 GB at a 17k batch | 7.5 GB at 16k, 9.8 GB at 61k | same |
+
+- **Per file.** For the Coder per-file relevance request (about 1.5k
+  tokens), Psionic takes about 0.28 s locally. llama.cpp takes about 0.26 s
+  (its 0.35 s p50 in [clef-jev-relevance-bench.md](clef-jev-relevance-bench.md)
+  includes about 0.09 s of ssh tunnel).
+- **Where 16k goes** (f16):
+  - about 1.15 s of GEMMs;
+  - about 0.2 s of weight dequantization;
+  - about 0.7 s of Gated DeltaNet scan, conv and norms;
+  - about 0.45 s of attention;
+  - about 15 ms of head.
+- **Where 1k goes.** The dequantization, about 30–40 ms, and the
+  sequential delta scan, about 25 ms, are what keep 1k above llama.cpp. Its
+  int8 MMQ kernels read the quantized weights directly.
+
+**Precision** (`clef::tests::cuda_chunks_and_cpu_agree` and the e2e fixtures):
+
+| Check | f32 accumulate | f16 accumulate (default) |
+| --- | --- | --- |
+| CUDA vs CPU lane, 155-token record | max \|Δlogit\| 3.8e-4, max \|Δp\| 1.3e-5 | — |
+| CUDA vs CPU lane, 40 e2e requests (104 questions) | top answer 100 %, max \|Δp\| 0.0009 | top answer 99.0 % (one near tie), median \|Δp\| 0.0006, max 0.018 |
+| CUDA vs the HF f32 reference, same 40 requests | top answer 94.2 %, max \|Δp\| 0.178 | top answer 95.2 %, max \|Δp\| 0.173 (CPU lane: 94.2 %; llama.cpp: 92.6 %) |
+| Chunk equivalence {whole, 2048, 512, 64}, 155 tokens | max \|Δlogit\| 6.4e-4, same argmax | 2.3e-2, same argmax |
+| Chunk equivalence, 7,274 tokens | 1.8e-3, same argmax | 2.0e-2, same argmax |
+| A repeat on the same chunk | bitwise identical | bitwise identical |
+
+**Gate status.**
+
+- **Met:**
+  - 16k latency, 1.17× llama.cpp;
+  - 16k memory, 7.5 GB including the context;
+  - 32k and 64k admitted with no physical-batch limit;
+  - bitwise repeats;
+  - agreement with the CPU lane.
+- **Not met:**
+  - **1k latency.** 0.215 s against the 0.20 s gate (llama.cpp 0.180 s).
+  - **4k latency.** 0.673 s against 0.65 s; this is a tie with llama.cpp's
+    0.676 s in the same session.
+  - **The 1e-3 chunk-equivalence bound as written.**
+    - With f32 accumulation the bound holds on short prompts; long prompts
+      reach 1.8e-3 because of the f16 K/V and per-shape GEMM rounding.
+    - f16 accumulation, the speed default, gives about 2e-2 logit (about
+      0.005 in p). That is an order of magnitude under the
+      Q4_K_M-vs-f32 noise above, but over the bound.
+    - `--decision-accumulate f32` is the strict mode.
+
+**Next for M2 speed:**
+
+1. A fused dequantize-in-GEMM kernel, or int8 MMQ for the Q8_0/Q4_K
+   weights. This removes the 30–40 ms at 1k and the 0.2 s at 16k.
+2. A chunked (WY) delta rule in place of the sequential scan.
+3. Flash attention for long prompts.
 
 ## Sources read
 

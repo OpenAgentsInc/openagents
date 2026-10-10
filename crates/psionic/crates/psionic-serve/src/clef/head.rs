@@ -6,6 +6,15 @@
 //! just those: the 1024-wide memory rows `LN(H) W_mem`, the span sums of
 //! `LN(H)` over each question and option span, and the last normalized row.
 //! The 4096-wide activations are dropped as they arrive.
+//!
+//! Memory attention (options and fields attending to every memory row) runs
+//! through [`MemoryAttention`] in a query-side form: MHA has no mask, so a
+//! head's score against memory row `m` is `(W_k,h^T q_h) . m` plus a
+//! per-query constant that cancels in the softmax, and its output is
+//! `W_v,h (sum_t p_t m_t) + b_v,h` because the weights sum to one. Nothing
+//! is projected per memory row, so the cost is (queries x heads x L x width)
+//! instead of (L x width^2) per layer, and the rows can stay on a device
+//! ([`HostMemory`] is the CPU provider).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -59,7 +68,7 @@ impl Matrix {
     }
 
     /// `X W^T (+ b)` for `n` rows of `X`.
-    fn apply_rows(&self, input: &[f32], n: usize, bias: Option<&[f32]>) -> Vec<f32> {
+    pub(crate) fn apply_rows(&self, input: &[f32], n: usize, bias: Option<&[f32]>) -> Vec<f32> {
         debug_assert_eq!(input.len(), n * self.columns);
         let mut out = vec![0.0f32; n * self.rows];
         out.par_chunks_mut(self.rows)
@@ -167,6 +176,30 @@ pub struct ClefHeadWeights {
     /// SHA-256 over the head's tensors (name, dtype, shape, bytes; sorted by
     /// name), or of the safetensors file.
     pub digest: String,
+}
+
+impl ClefHeadWeights {
+    /// Every matrix the head multiplies through [`MemoryAttention::linear`]
+    /// (a device backend uploads these once).
+    #[must_use]
+    pub fn linear_matrices(&self) -> Vec<&Matrix> {
+        let mut out = vec![
+            &self.question_projection,
+            &self.option_question_projection,
+            &self.global_projection,
+            &self.option_context_projection,
+            &self.option_lexical_projection,
+            &self.scorer,
+        ];
+        for layer in &self.evidence_layers {
+            out.extend([&layer.attention.q, &layer.attention.out, &layer.up, &layer.down]);
+        }
+        for layer in &self.layers {
+            let (a, c) = (&layer.self_attention, &layer.cross_attention);
+            out.extend([&a.q, &a.k, &a.v, &a.out, &c.q, &c.out, &layer.up, &layer.down]);
+        }
+        out
+    }
 }
 
 /// Why a head could not be admitted.
@@ -807,7 +840,9 @@ fn softmax(values: &[f32]) -> Vec<f32> {
 }
 
 /// Multi-head attention of `n_query` rows against projected keys and values.
+#[allow(clippy::too_many_arguments)]
 fn attend(
+    backend: &mut dyn MemoryAttention,
     attention: &Attention,
     heads: usize,
     queries: &[f32],
@@ -816,10 +851,8 @@ fn attend(
     values: &[f32],
     n_key: usize,
     width: usize,
-) -> Vec<f32> {
-    let projected = attention
-        .q
-        .apply_rows(queries, n_query, Some(&attention.q_bias));
+) -> Result<Vec<f32>, String> {
+    let projected = backend.linear(&attention.q, queries, n_query, Some(&attention.q_bias))?;
     let head_dim = width / heads;
     let scale = 1.0 / (head_dim as f32).sqrt();
     let mut context = vec![0.0f32; n_query * width];
@@ -845,32 +878,179 @@ fn attend(
                 }
             }
         });
-    attention
-        .out
-        .apply_rows(&context, n_query, Some(&attention.out_bias))
+    backend.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
 }
 
-/// Keys and values of one attention against `n` memory rows.
-fn project_memory(attention: &Attention, memory: &[f32], n: usize) -> (Vec<f32>, Vec<f32>) {
-    (
-        attention.k.apply_rows(memory, n, Some(&attention.k_bias)),
-        attention.v.apply_rows(memory, n, Some(&attention.v_bias)),
-    )
+/// Keys and values of one attention against `n` rows.
+fn project_memory(
+    backend: &mut dyn MemoryAttention,
+    attention: &Attention,
+    memory: &[f32],
+    n: usize,
+) -> Result<(Vec<f32>, Vec<f32>), String> {
+    Ok((
+        backend.linear(&attention.k, memory, n, Some(&attention.k_bias))?,
+        backend.linear(&attention.v, memory, n, Some(&attention.v_bias))?,
+    ))
+}
+
+/// Which memory the attention reads: an evidence layer's `LN_m(M)` or the
+/// raw memory rows (field layers).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryView {
+    Evidence(usize),
+    Raw,
+}
+
+/// Softmax-weighted memory rows for query-side vectors.
+pub trait MemoryAttention {
+    /// For each of `rows` query vectors `u` (`rows x width`), returns
+    /// `sum_t softmax_t(scale * u . m_t) m_t` over the rows `m_t` of `view`.
+    fn attend(
+        &mut self,
+        view: MemoryView,
+        queries: &[f32],
+        rows: usize,
+        scale: f32,
+    ) -> Result<Vec<f32>, String>;
+
+    /// `X W^T (+ b)` for `n` rows of `X`: every dense matrix product of the
+    /// head goes through here, so a device backend can keep the head's
+    /// weights resident. The default runs on the CPU.
+    fn linear(
+        &mut self,
+        matrix: &Matrix,
+        input: &[f32],
+        n: usize,
+        bias: Option<&[f32]>,
+    ) -> Result<Vec<f32>, String> {
+        Ok(matrix.apply_rows(input, n, bias))
+    }
+}
+
+/// Memory rows held on the host.
+pub struct HostMemory<'a> {
+    weights: &'a ClefHeadWeights,
+    memory: &'a [f32],
+    normalized: BTreeMap<usize, Vec<f32>>,
+}
+
+impl<'a> HostMemory<'a> {
+    #[must_use]
+    pub fn new(weights: &'a ClefHeadWeights, memory: &'a [f32]) -> Self {
+        Self {
+            weights,
+            memory,
+            normalized: BTreeMap::new(),
+        }
+    }
+}
+
+impl MemoryAttention for HostMemory<'_> {
+    fn attend(
+        &mut self,
+        view: MemoryView,
+        queries: &[f32],
+        rows: usize,
+        scale: f32,
+    ) -> Result<Vec<f32>, String> {
+        let w = self.weights.config.width;
+        let memory: &[f32] = match view {
+            MemoryView::Raw => self.memory,
+            MemoryView::Evidence(layer) => {
+                let norm = &self
+                    .weights
+                    .evidence_layers
+                    .get(layer)
+                    .ok_or_else(|| format!("no evidence layer {layer}"))?
+                    .memory_norm;
+                let memory = self.memory;
+                self.normalized
+                    .entry(layer)
+                    .or_insert_with(|| norm.apply_rows(memory, w))
+                    .as_slice()
+            }
+        };
+        let n = memory.len() / w;
+        let mut out = vec![0.0f32; rows * w];
+        out.par_chunks_mut(w)
+            .zip(queries.par_chunks(w))
+            .for_each(|(slot, query)| {
+                let scores: Vec<f32> = memory
+                    .chunks(w)
+                    .map(|row| dot(query, row) * scale)
+                    .collect();
+                let weights = softmax(&scores);
+                for (weight, row) in weights.iter().zip(memory.chunks(w)) {
+                    for (target, value) in slot.iter_mut().zip(row) {
+                        *target += weight * value;
+                    }
+                }
+                debug_assert_eq!(weights.len(), n);
+            });
+        Ok(out)
+    }
+}
+
+/// Multi-head attention of `n_query` (already normalized) rows against
+/// memory, in the query-side form ([module docs](self)).
+fn attend_memory(
+    attention: &Attention,
+    heads: usize,
+    queries: &[f32],
+    n_query: usize,
+    memory: &mut dyn MemoryAttention,
+    view: MemoryView,
+    width: usize,
+) -> Result<Vec<f32>, String> {
+    let projected = memory.linear(&attention.q, queries, n_query, Some(&attention.q_bias))?;
+    let head_dim = width / heads;
+    // u[i, h] = W_k,h^T q[i, h]   (rows of W_k for head h are its outputs)
+    let mut side = vec![0.0f32; n_query * heads * width];
+    side.par_chunks_mut(width)
+        .enumerate()
+        .for_each(|(index, slot)| {
+            let (row, head) = (index / heads, index % heads);
+            let query = &projected[row * width..(row + 1) * width];
+            for d in head * head_dim..(head + 1) * head_dim {
+                let coefficient = query[d];
+                for (target, weight) in slot.iter_mut().zip(attention.k.row(d)) {
+                    *target += coefficient * weight;
+                }
+            }
+        });
+    let scale = 1.0 / (head_dim as f32).sqrt();
+    let mixed = memory.attend(view, &side, n_query * heads, scale)?;
+    // context[i, h*hd + e] = W_v[h*hd + e] . z[i, h] + b_v
+    let mut context = vec![0.0f32; n_query * width];
+    context
+        .par_chunks_mut(width)
+        .enumerate()
+        .for_each(|(row, out)| {
+            for head in 0..heads {
+                let z = &mixed[(row * heads + head) * width..(row * heads + head + 1) * width];
+                for e in head * head_dim..(head + 1) * head_dim {
+                    out[e] = dot(attention.v.row(e), z) + attention.v_bias[e];
+                }
+            }
+        });
+    memory.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
 }
 
 fn feedforward(
+    backend: &mut dyn MemoryAttention,
     up: &Matrix,
     up_bias: &[f32],
     down: &Matrix,
     down_bias: &[f32],
     input: &[f32],
     n: usize,
-) -> Vec<f32> {
-    let mut hidden = up.apply_rows(input, n, Some(up_bias));
+) -> Result<Vec<f32>, String> {
+    let mut hidden = backend.linear(up, input, n, Some(up_bias))?;
     hidden
         .par_iter_mut()
         .for_each(|value| *value = gelu(*value));
-    down.apply_rows(&hidden, n, Some(down_bias))
+    backend.linear(down, &hidden, n, Some(down_bias))
 }
 
 /// Streamed head input for one encoded record ([module docs](self)).
@@ -969,210 +1149,253 @@ impl<'a> ClefHeadStream<'a> {
                 self.received, self.length
             ));
         }
-        let weights = self.weights;
-        let config = weights.config;
-        let (d, w) = (config.hidden_size, config.width);
-        let n_memory = self.length;
-        let question_count = record.questions.len();
-        let question_vectors: Vec<Vec<f32>> = (0..question_count)
+        let span_means: Vec<Vec<f32>> = (0..self.spans.len())
             .map(|index| self.span_mean(index))
             .collect();
-        let global = self.last.clone();
-
-        // Option context and lexical vectors.
-        let mut option_context = Vec::new();
-        let mut lexical = Vec::new();
-        let mut owner = Vec::new();
-        let mut span_index = question_count;
-        for (question_index, question) in record.questions.iter().enumerate() {
-            for (start, end) in &question.option_spans {
-                option_context.push(self.span_mean(span_index));
-                span_index += 1;
-                let ids = &record.input_ids[*start..*end];
-                let rows = lexical_rows(ids)?;
-                let mut mean = vec![0.0f32; d];
-                for row in &rows {
-                    if row.len() != d {
-                        return Err(format!(
-                            "lexical row width {} does not match hidden size {d}",
-                            row.len()
-                        ));
-                    }
-                    add_into(&mut mean, row);
-                }
-                let count = rows.len().max(1) as f32;
-                mean.iter_mut().for_each(|value| *value /= count);
-                lexical.push(mean);
-                owner.push(question_index);
-            }
-        }
-        let n_options = owner.len();
-
-        // R = W_oc c + W_ol l + W_oq q
-        let option_question: Vec<Vec<f32>> = question_vectors
-            .iter()
-            .map(|vector| weights.option_question_projection.apply(vector, None))
-            .collect();
-        let mut routed = vec![0.0f32; n_options * w];
-        routed
-            .par_chunks_mut(w)
-            .enumerate()
-            .for_each(|(index, row)| {
-                let context = weights
-                    .option_context_projection
-                    .apply(&option_context[index], None);
-                let lexical_part = weights
-                    .option_lexical_projection
-                    .apply(&lexical[index], None);
-                for column in 0..w {
-                    row[column] = context[column]
-                        + lexical_part[column]
-                        + option_question[owner[index]][column];
-                }
-            });
-
-        for layer in &weights.evidence_layers {
-            let normalized_memory = layer.memory_norm.apply_rows(&self.memory, w);
-            let (keys, values) = project_memory(&layer.attention, &normalized_memory, n_memory);
-            let queries = layer.query_norm.apply_rows(&routed, w);
-            let attended = attend(
-                &layer.attention,
-                config.heads,
-                &queries,
-                n_options,
-                &keys,
-                &values,
-                n_memory,
-                w,
-            );
-            add_into(&mut routed, &attended);
-            let normalized = layer.feedforward_norm.apply_rows(&routed, w);
-            let ff = feedforward(
-                &layer.up,
-                &layer.up_bias,
-                &layer.down,
-                &layer.down_bias,
-                &normalized,
-                n_options,
-            );
-            add_into(&mut routed, &ff);
-        }
-
-        // Fields.
-        let base_fields: Vec<Vec<f32>> = question_vectors
-            .iter()
-            .map(|vector| weights.question_projection.apply(vector, None))
-            .collect();
-        let global_projected = weights.global_projection.apply(&global, None);
-        let mut fields = vec![0.0f32; question_count * w];
-        let mut first_option = 0;
-        let mut option_ranges = Vec::with_capacity(question_count);
-        for (question_index, question) in record.questions.iter().enumerate() {
-            let count = question.option_spans.len();
-            option_ranges.push(first_option..first_option + count);
-            let field = &base_fields[question_index];
-            let scores: Vec<f32> = (first_option..first_option + count)
-                .map(|option| dot(&routed[option * w..(option + 1) * w], field) / (w as f32).sqrt())
-                .collect();
-            let routing = softmax(&scores);
-            let mut summary = vec![0.0f32; w];
-            for (offset, weight) in routing.iter().enumerate() {
-                let option = first_option + offset;
-                for (target, value) in summary
-                    .iter_mut()
-                    .zip(&routed[option * w..(option + 1) * w])
-                {
-                    *target += weight * value;
-                }
-            }
-            let summary = weights.option_summary_norm.apply(&summary);
-            let type_row = weights.type_embedding.row(question.question_type);
-            let slot = &mut fields[question_index * w..(question_index + 1) * w];
-            for column in 0..w {
-                slot[column] =
-                    field[column] + summary[column] + global_projected[column] + type_row[column];
-            }
-            first_option += count;
-        }
-
-        for layer in &weights.layers {
-            let normalized = layer.self_norm.apply_rows(&fields, w);
-            let (keys, values) = project_memory(&layer.self_attention, &normalized, question_count);
-            let attended = attend(
-                &layer.self_attention,
-                config.heads,
-                &normalized,
-                question_count,
-                &keys,
-                &values,
-                question_count,
-                w,
-            );
-            add_into(&mut fields, &attended);
-            // Memory is not normalized in the field layers.
-            let (keys, values) = project_memory(&layer.cross_attention, &self.memory, n_memory);
-            let normalized = layer.cross_norm.apply_rows(&fields, w);
-            let attended = attend(
-                &layer.cross_attention,
-                config.heads,
-                &normalized,
-                question_count,
-                &keys,
-                &values,
-                n_memory,
-                w,
-            );
-            add_into(&mut fields, &attended);
-            let normalized = layer.feedforward_norm.apply_rows(&fields, w);
-            let ff = feedforward(
-                &layer.up,
-                &layer.up_bias,
-                &layer.down,
-                &layer.down_bias,
-                &normalized,
-                question_count,
-            );
-            add_into(&mut fields, &ff);
-        }
-        let fields = weights.field_norm.apply_rows(&fields, w);
-
-        // Scores.
-        let mut logits = Vec::with_capacity(question_count);
-        for (question_index, range) in option_ranges.into_iter().enumerate() {
-            let field = &fields[question_index * w..(question_index + 1) * w];
-            let mut anchor = question_vectors[question_index].clone();
-            add_into(&mut anchor, &global);
-            let anchor = l2_normalize(&anchor, 1e-12);
-            let field_unit = l2_normalize(field, 1e-8);
-            let question_logits: Vec<f32> = range
-                .into_par_iter()
-                .map(|option| {
-                    let lexical_unit = l2_normalize(&lexical[option], 1e-12);
-                    let prior = weights.prior_scale * dot(&lexical_unit, &anchor);
-                    let options = weights
-                        .option_norm
-                        .apply(&routed[option * w..(option + 1) * w]);
-                    let cosine = dot(&field_unit, &l2_normalize(&options, 1e-8));
-                    let mut features = Vec::with_capacity(4 * w);
-                    features.extend_from_slice(field);
-                    features.extend_from_slice(&options);
-                    features.extend(field.iter().zip(&options).map(|(f, o)| f * o));
-                    features.extend(field.iter().zip(&options).map(|(f, o)| (f - o).abs()));
-                    let hidden = weights.scorer.apply(&features, Some(&weights.scorer_bias));
-                    let residual = hidden
-                        .iter()
-                        .zip(&weights.scorer_out)
-                        .map(|(value, weight)| gelu(*value) * weight)
-                        .sum::<f32>()
-                        + weights.scorer_out_bias;
-                    let joint = weights.joint_scale * cosine + residual;
-                    prior + weights.gate * joint
-                })
-                .collect();
-            logits.push(question_logits);
-        }
-        Ok(logits)
+        let mut memory = HostMemory::new(self.weights, &self.memory);
+        run_head(
+            self.weights,
+            record,
+            &span_means,
+            &self.last,
+            &mut memory,
+            lexical_rows,
+        )
     }
+}
+
+/// The head spans of a record, in the order [`run_head`] reads their means:
+/// every question span, then each question's option spans in order.
+#[must_use]
+pub fn head_spans(record: &EncodedRecord) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = record.questions.iter().map(|q| q.question_span).collect();
+    for question in &record.questions {
+        spans.extend(question.option_spans.iter().copied());
+    }
+    spans
+}
+
+/// The head after the backbone: `span_means` are the means of `LN(H)` over
+/// [`head_spans`], `global` is `LN(H)` of the last token, and `memory`
+/// attends over `LN(H) W_mem`.
+pub fn run_head(
+    weights: &ClefHeadWeights,
+    record: &EncodedRecord,
+    span_means: &[Vec<f32>],
+    global: &[f32],
+    memory: &mut dyn MemoryAttention,
+    lexical_rows: &dyn Fn(&[u32]) -> Result<Vec<Vec<f32>>, String>,
+) -> Result<Vec<Vec<f32>>, String> {
+    let config = weights.config;
+    let (d, w) = (config.hidden_size, config.width);
+    let question_count = record.questions.len();
+    let question_vectors: Vec<Vec<f32>> = span_means[..question_count].to_vec();
+    let global = global.to_vec();
+
+    // Option context and lexical vectors.
+    let mut option_context = Vec::new();
+    let mut lexical = Vec::new();
+    let mut owner = Vec::new();
+    let mut span_index = question_count;
+    for (question_index, question) in record.questions.iter().enumerate() {
+        for (start, end) in &question.option_spans {
+            option_context.push(span_means[span_index].clone());
+            span_index += 1;
+            let ids = &record.input_ids[*start..*end];
+            let rows = lexical_rows(ids)?;
+            let mut mean = vec![0.0f32; d];
+            for row in &rows {
+                if row.len() != d {
+                    return Err(format!(
+                        "lexical row width {} does not match hidden size {d}",
+                        row.len()
+                    ));
+                }
+                add_into(&mut mean, row);
+            }
+            let count = rows.len().max(1) as f32;
+            mean.iter_mut().for_each(|value| *value /= count);
+            lexical.push(mean);
+            owner.push(question_index);
+        }
+    }
+    let n_options = owner.len();
+    let flat = |rows: &[Vec<f32>]| rows.concat();
+
+    // R = W_oc c + W_ol l + W_oq q
+    let option_question = memory.linear(
+        &weights.option_question_projection,
+        &flat(&question_vectors),
+        question_count,
+        None,
+    )?;
+    let context = memory.linear(
+        &weights.option_context_projection,
+        &flat(&option_context),
+        n_options,
+        None,
+    )?;
+    let lexical_part = memory.linear(
+        &weights.option_lexical_projection,
+        &flat(&lexical),
+        n_options,
+        None,
+    )?;
+    let mut routed = vec![0.0f32; n_options * w];
+    for (index, row) in routed.chunks_mut(w).enumerate() {
+        let question = &option_question[owner[index] * w..(owner[index] + 1) * w];
+        for column in 0..w {
+            row[column] = context[index * w + column]
+                + lexical_part[index * w + column]
+                + question[column];
+        }
+    }
+
+    for (layer_index, layer) in weights.evidence_layers.iter().enumerate() {
+        let queries = layer.query_norm.apply_rows(&routed, w);
+        let attended = attend_memory(
+            &layer.attention,
+            config.heads,
+            &queries,
+            n_options,
+            memory,
+            MemoryView::Evidence(layer_index),
+            w,
+        )?;
+        add_into(&mut routed, &attended);
+        let normalized = layer.feedforward_norm.apply_rows(&routed, w);
+        let ff = feedforward(
+            memory,
+            &layer.up,
+            &layer.up_bias,
+            &layer.down,
+            &layer.down_bias,
+            &normalized,
+            n_options,
+        )?;
+        add_into(&mut routed, &ff);
+    }
+
+    // Fields.
+    let base_fields = memory.linear(
+        &weights.question_projection,
+        &flat(&question_vectors),
+        question_count,
+        None,
+    )?;
+    let global_projected = memory.linear(&weights.global_projection, &global, 1, None)?;
+    let mut fields = vec![0.0f32; question_count * w];
+    let mut first_option = 0;
+    let mut option_ranges = Vec::with_capacity(question_count);
+    for (question_index, question) in record.questions.iter().enumerate() {
+        let count = question.option_spans.len();
+        option_ranges.push(first_option..first_option + count);
+        let field = &base_fields[question_index * w..(question_index + 1) * w];
+        let scores: Vec<f32> = (first_option..first_option + count)
+            .map(|option| dot(&routed[option * w..(option + 1) * w], field) / (w as f32).sqrt())
+            .collect();
+        let routing = softmax(&scores);
+        let mut summary = vec![0.0f32; w];
+        for (offset, weight) in routing.iter().enumerate() {
+            let option = first_option + offset;
+            for (target, value) in summary
+                .iter_mut()
+                .zip(&routed[option * w..(option + 1) * w])
+            {
+                *target += weight * value;
+            }
+        }
+        let summary = weights.option_summary_norm.apply(&summary);
+        let type_row = weights.type_embedding.row(question.question_type);
+        let slot = &mut fields[question_index * w..(question_index + 1) * w];
+        for column in 0..w {
+            slot[column] =
+                field[column] + summary[column] + global_projected[column] + type_row[column];
+        }
+        first_option += count;
+    }
+
+    for layer in &weights.layers {
+        let normalized = layer.self_norm.apply_rows(&fields, w);
+        let (keys, values) =
+            project_memory(memory, &layer.self_attention, &normalized, question_count)?;
+        let attended = attend(
+            memory,
+            &layer.self_attention,
+            config.heads,
+            &normalized,
+            question_count,
+            &keys,
+            &values,
+            question_count,
+            w,
+        )?;
+        add_into(&mut fields, &attended);
+        // Memory is not normalized in the field layers.
+        let normalized = layer.cross_norm.apply_rows(&fields, w);
+        let attended = attend_memory(
+            &layer.cross_attention,
+            config.heads,
+            &normalized,
+            question_count,
+            memory,
+            MemoryView::Raw,
+            w,
+        )?;
+        add_into(&mut fields, &attended);
+        let normalized = layer.feedforward_norm.apply_rows(&fields, w);
+        let ff = feedforward(
+            memory,
+            &layer.up,
+            &layer.up_bias,
+            &layer.down,
+            &layer.down_bias,
+            &normalized,
+            question_count,
+        )?;
+        add_into(&mut fields, &ff);
+    }
+    let fields = weights.field_norm.apply_rows(&fields, w);
+
+    // Scores: the residual scorer runs over every option of every question
+    // in one product.
+    let options_normed = weights.option_norm.apply_rows(&routed, w);
+    let mut features = Vec::with_capacity(n_options * 4 * w);
+    for (option, owner_question) in owner.iter().enumerate() {
+        let field = &fields[owner_question * w..(owner_question + 1) * w];
+        let options = &options_normed[option * w..(option + 1) * w];
+        features.extend_from_slice(field);
+        features.extend_from_slice(options);
+        features.extend(field.iter().zip(options).map(|(f, o)| f * o));
+        features.extend(field.iter().zip(options).map(|(f, o)| (f - o).abs()));
+    }
+    let hidden = memory.linear(&weights.scorer, &features, n_options, Some(&weights.scorer_bias))?;
+    let mut logits = Vec::with_capacity(question_count);
+    for (question_index, range) in option_ranges.into_iter().enumerate() {
+        let field = &fields[question_index * w..(question_index + 1) * w];
+        let mut anchor = question_vectors[question_index].clone();
+        add_into(&mut anchor, &global);
+        let anchor = l2_normalize(&anchor, 1e-12);
+        let field_unit = l2_normalize(field, 1e-8);
+        let question_logits: Vec<f32> = range
+            .map(|option| {
+                let lexical_unit = l2_normalize(&lexical[option], 1e-12);
+                let prior = weights.prior_scale * dot(&lexical_unit, &anchor);
+                let options = &options_normed[option * w..(option + 1) * w];
+                let cosine = dot(&field_unit, &l2_normalize(options, 1e-8));
+                let residual = hidden[option * w..(option + 1) * w]
+                    .iter()
+                    .zip(&weights.scorer_out)
+                    .map(|(value, weight)| gelu(*value) * weight)
+                    .sum::<f32>()
+                    + weights.scorer_out_bias;
+                let joint = weights.joint_scale * cosine + residual;
+                prior + weights.gate * joint
+            })
+            .collect();
+        logits.push(question_logits);
+    }
+    Ok(logits)
 }
 
 /// `softmax` over one question's logits.

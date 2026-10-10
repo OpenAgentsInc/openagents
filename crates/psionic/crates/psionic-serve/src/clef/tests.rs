@@ -539,3 +539,192 @@ fn chunked_prefill_matches_token_at_a_time() {
         assert!(worst_cos > 0.9999, "chunk {chunk}: {worst_cos}");
     }
 }
+
+/// Per-layer parity dump: writes `l_out-N.f32` (every layer's residual
+/// rows, `n x hidden`, before the output norm) and `result_norm.f32` for
+/// the token ids in `PSIONIC_CLEF_LAYER_TOKENS` (whitespace-separated), in
+/// the layout `lldump` writes for llama.cpp (see
+/// `fixtures/clef/tools/layer_parity.py`). Needs `PSIONIC_CLEF_GGUF` and
+/// `PSIONIC_CLEF_LAYER_DIR`; `PSIONIC_CLEF_LAYER_CHUNK` (default 256);
+/// `PSIONIC_CLEF_LAYER_DEVICE=cuda` runs the CUDA trunk.
+#[test]
+fn dump_layer_rows() {
+    let (Ok(gguf), Ok(tokens), Ok(out)) = (
+        std::env::var("PSIONIC_CLEF_GGUF"),
+        std::env::var("PSIONIC_CLEF_LAYER_TOKENS"),
+        std::env::var("PSIONIC_CLEF_LAYER_DIR"),
+    ) else {
+        eprintln!("skipped: set PSIONIC_CLEF_GGUF, PSIONIC_CLEF_LAYER_TOKENS and PSIONIC_CLEF_LAYER_DIR");
+        return;
+    };
+    let chunk: usize = std::env::var("PSIONIC_CLEF_LAYER_CHUNK")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(256);
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).expect("dump dir");
+    let tokens: Vec<psionic_models::TokenId> = std::fs::read_to_string(tokens)
+        .expect("tokens")
+        .split_whitespace()
+        .map(|value| psionic_models::TokenId(value.parse().expect("token id")))
+        .collect();
+    let mut layers: Vec<Vec<f32>> = Vec::new();
+    let mut final_rows: Vec<f32> = Vec::new();
+    let mut on_layer = |layer: usize, _: usize, rows: &[f32]| {
+        if layers.len() <= layer {
+            layers.resize_with(layer + 1, Vec::new);
+        }
+        layers[layer].extend_from_slice(rows);
+    };
+    if std::env::var("PSIONIC_CLEF_LAYER_DEVICE").as_deref() == Ok("cuda") {
+        let lane = super::ClefDecisionLane::load(
+            std::path::Path::new(&gguf),
+            super::ClefHeadSource::Embedded,
+            super::ClefLimits {
+                device: super::ClefDevice::Cuda,
+                ..super::ClefLimits::default()
+            },
+        )
+        .expect("lane");
+        let trunk = lane.cuda.as_ref().expect("cuda trunk");
+        let mut on_final = |_: usize, _: usize, rows: &[f32]| final_rows.extend_from_slice(rows);
+        trunk
+            .prefill(
+                &lane.backbone,
+                &tokens,
+                &[],
+                chunk,
+                Some(&mut on_layer),
+                Some(&mut on_final),
+            )
+            .expect("prefill");
+    } else {
+        let backbone =
+            crate::CpuGgufQwen35TextGenerationService::from_gguf_path(&gguf).expect("load");
+        backbone
+            .stream_layer_rows(
+                &tokens,
+                chunk,
+                &mut |_, row| {
+                    final_rows.extend_from_slice(row);
+                    Ok(())
+                },
+                &mut on_layer,
+            )
+            .expect("prefill");
+    }
+    let write = |name: String, values: &[f32]| {
+        let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+        std::fs::write(out.join(name), bytes).expect("write");
+    };
+    for (layer, rows) in layers.iter().enumerate() {
+        write(format!("l_out-{layer}.f32"), rows);
+    }
+    write(String::from("result_norm.f32"), &final_rows);
+}
+
+/// CUDA trunk: chunk sizes {whole, 2048, 512, 64} give the same argmax and
+/// logits within the bounds below, a repeat is bitwise identical, and
+/// with f32 accumulation the CUDA lane matches the CPU lane within the M1
+/// tolerance (|dp| <= 0.02). Needs `PSIONIC_CLEF_GGUF` and
+/// `PSIONIC_CLEF_CUDA_CHECK=1` and a CUDA device.
+#[test]
+fn cuda_chunks_and_cpu_agree() {
+    let (Ok(gguf), Ok(_)) = (
+        std::env::var("PSIONIC_CLEF_GGUF"),
+        std::env::var("PSIONIC_CLEF_CUDA_CHECK"),
+    ) else {
+        eprintln!("skipped: set PSIONIC_CLEF_GGUF and PSIONIC_CLEF_CUDA_CHECK");
+        return;
+    };
+    let path = std::path::Path::new(&gguf);
+    let load = |device, accumulate_f16| {
+        super::ClefDecisionLane::load(
+            path,
+            super::ClefHeadSource::Embedded,
+            super::ClefLimits {
+                device,
+                accumulate_f16,
+                ..super::ClefLimits::default()
+            },
+        )
+        .expect("lane")
+    };
+    let corpus = std::fs::read_to_string(fixtures().join("encoder/corpus.jsonl")).expect("corpus");
+    let requests = std::fs::read_to_string(fixtures().join("e2e/requests.jsonl")).expect("requests");
+    let short = requests.lines().nth(6).expect("record").to_string();
+    let worst = |a: &[Vec<f32>], b: &[Vec<f32>]| {
+        a.iter()
+            .flatten()
+            .zip(b.iter().flatten())
+            .map(|(x, y)| (x - y).abs())
+            .fold(0.0f32, f32::max)
+    };
+    let argmax = |logits: &[Vec<f32>]| {
+        logits
+            .iter()
+            .map(|q| {
+                q.iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.total_cmp(b.1))
+                    .map(|(i, _)| i)
+                    .unwrap_or(0)
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut failures = Vec::new();
+    for accumulate_f16 in [true, false] {
+        let lane = load(super::ClefDevice::Cuda, accumulate_f16);
+        // the longest corpus record that the default budget admits
+        let long = corpus
+            .lines()
+            .filter_map(|line| {
+                let record = lane.encode(&lane.parse_request(line).ok()?).ok()?;
+                Some((record.input_ids.len(), line.to_string()))
+            })
+            .max_by_key(|(len, _)| *len)
+            .expect("long record")
+            .1;
+        for body in [&short, &long] {
+            let record = lane.encode(&lane.parse_request(body).expect("request")).expect("encode");
+            let length = record.input_ids.len();
+            let whole = lane.logits_at_chunk(&record, length, None, None).expect("whole");
+            let again = lane.logits_at_chunk(&record, length, None, None).expect("repeat");
+            assert_eq!(whole, again, "a repeat is bitwise identical");
+            for chunk in [2048, 512, 64] {
+                let logits = lane.logits_at_chunk(&record, chunk, None, None).expect("chunk");
+                let delta = worst(&whole, &logits);
+                eprintln!(
+                    "accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: max |dlogit| {delta:.2e}"
+                );
+                // f32 accumulation: the M2 bound (1e-3) on short prompts,
+                // 2e-3 on long ones (f16 KV and per-shape GEMM rounding);
+                // f16 accumulation: 5e-2 (measured ~2e-2).
+                let bound = if accumulate_f16 { 5e-2 } else if length > 2048 { 2e-3 } else { 1e-3 };
+                if delta > bound || argmax(&whole) != argmax(&logits) {
+                    failures.push(format!("accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: {delta}"));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+    // CUDA (f32 accumulate) vs the CPU lane on the short record.
+    let cuda = load(super::ClefDevice::Cuda, false);
+    let cpu = load(super::ClefDevice::Cpu, false);
+    let record = cpu.encode(&cpu.parse_request(&short).expect("request")).expect("encode");
+    let a = cuda.logits(&record).expect("cuda");
+    let b = cpu.logits(&record).expect("cpu");
+    let dp = a
+        .iter()
+        .zip(&b)
+        .flat_map(|(x, y)| {
+            super::head::probabilities(x)
+                .into_iter()
+                .zip(super::head::probabilities(y))
+                .map(|(p, q)| (p - q).abs())
+        })
+        .fold(0.0f64, f64::max);
+    eprintln!("cuda vs cpu: max |dlogit| {:.2e}, max |dp| {dp:.2e}", worst(&a, &b));
+    assert!(dp <= 0.02, "{dp}");
+    assert_eq!(argmax(&a), argmax(&b));
+}

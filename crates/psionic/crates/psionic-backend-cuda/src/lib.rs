@@ -9464,6 +9464,7 @@ mod platform {
     const CUBLASLT_MATMUL_DESC_TRANSB: u32 = 1;
     const CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES: u32 = 1;
     const CUBLAS_COMPUTE_32F: c_int = 68;
+    const CUBLAS_COMPUTE_16F: c_int = 64;
     const CUBLAS_COMPUTE_32F_FAST_16F: c_int = 74;
     const CUBLAS_GEMM_DEFAULT_TENSOR_OP: c_int = 99;
     const CUBLASLT_DEFAULT_MAX_WORKSPACE_BYTES: usize = 4 * 1024 * 1024;
@@ -17193,6 +17194,188 @@ mod platform {
         }
         Err(RuntimeError::Backend(String::from(failure)))
     }
+
+    /// Raw handles for the Clef prefill module (`crate::clef_prefill`),
+    /// which launches its own kernels and cuBLAS calls on a submission's
+    /// stream.
+    impl PlatformBuffer {
+        pub(super) fn raw_device_ptr(&self) -> *mut c_void {
+            self.inner.device_ptr
+        }
+    }
+
+    impl PlatformSubmission {
+        pub(super) fn raw_stream(&self) -> Result<*mut c_void, RuntimeError> {
+            self.runtime.set_device()?;
+            Ok(self.stream)
+        }
+
+        pub(super) fn check_raw(&self, code: i32, operation: &str) -> Result<(), RuntimeError> {
+            self.runtime.check(code, operation)
+        }
+
+        /// `cublasGemmEx` on this submission's stream (column-major
+        /// arguments as cuBLAS takes them). `compute_16f` selects
+        /// `CUBLAS_COMPUTE_16F` (f16 alpha/beta) instead of `32F`.
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn gemm_ex_raw(
+            &mut self,
+            transpose_a: bool,
+            transpose_b: bool,
+            m: usize,
+            n: usize,
+            k: usize,
+            alpha: f32,
+            a: *const c_void,
+            a_type: i32,
+            lda: usize,
+            b: *const c_void,
+            b_type: i32,
+            ldb: usize,
+            beta: f32,
+            c: *mut c_void,
+            c_type: i32,
+            ldc: usize,
+            compute_16f: bool,
+        ) -> Result<(), RuntimeError> {
+            let int = |value: usize, what: &str| {
+                c_int::try_from(value).map_err(|_| {
+                    RuntimeError::Backend(format!("cuda clef gemm {what} exceeds cublas limits"))
+                })
+            };
+            let (m, n, k) = (int(m, "m")?, int(n, "n")?, int(k, "k")?);
+            let (lda, ldb, ldc) = (int(lda, "lda")?, int(ldb, "ldb")?, int(ldc, "ldc")?);
+            self.runtime.bind_stream(self.stream)?;
+            let alpha_half = half_bits(alpha);
+            let beta_half = half_bits(beta);
+            let (alpha_ptr, beta_ptr, compute): (*const c_void, *const c_void, c_int) = if compute_16f {
+                (
+                    (&alpha_half as *const u16).cast(),
+                    (&beta_half as *const u16).cast(),
+                    CUBLAS_COMPUTE_16F,
+                )
+            } else {
+                (
+                    (&alpha as *const f32).cast(),
+                    (&beta as *const f32).cast(),
+                    CUBLAS_COMPUTE_32F,
+                )
+            };
+            self.runtime.check_cublas(
+                unsafe {
+                    (self.runtime.cublas_gemm_ex)(
+                        self.runtime.cublas_handle,
+                        if transpose_a { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        if transpose_b { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        m,
+                        n,
+                        k,
+                        alpha_ptr,
+                        a,
+                        a_type,
+                        lda,
+                        b,
+                        b_type,
+                        ldb,
+                        beta_ptr,
+                        c,
+                        c_type,
+                        ldc,
+                        compute,
+                        CUBLAS_GEMM_DEFAULT_TENSOR_OP,
+                    )
+                },
+                "cublasGemmEx (clef)",
+            )
+        }
+
+        /// `cublasGemmStridedBatchedEx` with `CUBLAS_COMPUTE_32F`.
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn gemm_strided_batched_ex_raw(
+            &mut self,
+            transpose_a: bool,
+            transpose_b: bool,
+            m: usize,
+            n: usize,
+            k: usize,
+            a: *const c_void,
+            a_type: i32,
+            lda: usize,
+            stride_a: i64,
+            b: *const c_void,
+            b_type: i32,
+            ldb: usize,
+            stride_b: i64,
+            c: *mut c_void,
+            c_type: i32,
+            ldc: usize,
+            stride_c: i64,
+            batch: usize,
+        ) -> Result<(), RuntimeError> {
+            let int = |value: usize, what: &str| {
+                c_int::try_from(value).map_err(|_| {
+                    RuntimeError::Backend(format!("cuda clef batched gemm {what} exceeds cublas limits"))
+                })
+            };
+            let (m, n, k) = (int(m, "m")?, int(n, "n")?, int(k, "k")?);
+            let (lda, ldb, ldc) = (int(lda, "lda")?, int(ldb, "ldb")?, int(ldc, "ldc")?);
+            let batch = int(batch, "batch")?;
+            let alpha = 1.0_f32;
+            let beta = 0.0_f32;
+            self.runtime.bind_stream(self.stream)?;
+            self.runtime.check_cublas(
+                unsafe {
+                    (self.runtime.cublas_gemm_strided_batched_ex)(
+                        self.runtime.cublas_handle,
+                        if transpose_a { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        if transpose_b { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        m,
+                        n,
+                        k,
+                        (&alpha as *const f32).cast(),
+                        a,
+                        a_type,
+                        lda,
+                        stride_a,
+                        b,
+                        b_type,
+                        ldb,
+                        stride_b,
+                        (&beta as *const f32).cast(),
+                        c,
+                        c_type,
+                        ldc,
+                        stride_c,
+                        batch,
+                        CUBLAS_COMPUTE_32F,
+                        CUBLAS_GEMM_DEFAULT_TENSOR_OP,
+                    )
+                },
+                "cublasGemmStridedBatchedEx (clef)",
+            )
+        }
+    }
+
+    fn half_bits(value: f32) -> u16 {
+        // Round-to-nearest-even f32 -> f16 for the small alpha/beta values
+        // the Clef GEMMs pass (0 and 1).
+        let bits = value.to_bits();
+        let sign = ((bits >> 16) & 0x8000) as u16;
+        let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+        let mantissa = bits & 0x7f_ffff;
+        if value == 0.0 {
+            return sign;
+        }
+        if exponent <= 0 || exponent >= 31 {
+            return sign | if exponent >= 31 { 0x7c00 } else { 0 };
+        }
+        let mut half = sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16);
+        let rest = mantissa & 0x1fff;
+        if rest > 0x1000 || (rest == 0x1000 && (half & 1) == 1) {
+            half += 1;
+        }
+        half
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -17215,6 +17398,79 @@ mod platform {
     pub(super) struct PlatformSubmission;
 
     pub(super) struct ConfiguredBackend;
+
+    impl PlatformBuffer {
+        pub(super) fn raw_device_ptr(&self) -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
+    }
+
+    impl PlatformSubmission {
+        pub(super) fn raw_stream(&self) -> Result<*mut std::ffi::c_void, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn check_raw(&self, _code: i32, operation: &str) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(format!(
+                "{operation}: cuda runtime substrate currently requires Linux libcudart"
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn gemm_ex_raw(
+            &mut self,
+            _transpose_a: bool,
+            _transpose_b: bool,
+            _m: usize,
+            _n: usize,
+            _k: usize,
+            _alpha: f32,
+            _a: *const std::ffi::c_void,
+            _a_type: i32,
+            _lda: usize,
+            _b: *const std::ffi::c_void,
+            _b_type: i32,
+            _ldb: usize,
+            _beta: f32,
+            _c: *mut std::ffi::c_void,
+            _c_type: i32,
+            _ldc: usize,
+            _compute_16f: bool,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn gemm_strided_batched_ex_raw(
+            &mut self,
+            _transpose_a: bool,
+            _transpose_b: bool,
+            _m: usize,
+            _n: usize,
+            _k: usize,
+            _a: *const std::ffi::c_void,
+            _a_type: i32,
+            _lda: usize,
+            _stride_a: i64,
+            _b: *const std::ffi::c_void,
+            _b_type: i32,
+            _ldb: usize,
+            _stride_b: i64,
+            _c: *mut std::ffi::c_void,
+            _c_type: i32,
+            _ldc: usize,
+            _stride_c: i64,
+            _batch: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
 
     impl ConfiguredBackend {
         pub(super) fn allocator_pool_report(&self) -> AllocatorPoolReport {
@@ -18925,6 +19181,8 @@ mod platform {
         )))
     }
 }
+
+pub mod clef_prefill;
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,20 @@
+{
+  "issue": "OpenAgentsInc/openagents#11195",
+  "device": "NVIDIA GeForce RTX 4080 (coderos-4080), shared with idle pylon-psionic (1.6 GB) and desktop apps",
+  "artifact": "ggml-org/Clef-Flash-GGUF Clef-Flash-Q4_K_M.gguf sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "method": "fixtures/clef/tools/bench_latency.py: one warmup, then N timed POST /v1/systemone calls on localhost, each with a fresh nonce line at the start of the state (no prefix reuse); median reported. Prompts: the 1k/4k/16k synthetic support-log requests from the clef-self-host prefill benchmark (3 questions: noul, choice, score). Psionic and llama.cpp measured back to back in one session.",
+  "commands": {
+    "psionic": "psionic-openai-server -m Clef-Flash-Q4_K_M.gguf --port 18094 --decision-device cuda [--decision-accumulate f16|f32] (chunk 2048)",
+    "llama.cpp": "llama-server (b11538 cuda-12.8 release) -m Clef-Flash-Q4_K_M.gguf --port 18093 -ngl 99 -np 1 -fa on --alias clef-flash -c 17408 -b 17408 -ub 17408"
+  },
+  "median_seconds": {
+    "psionic_cuda_f16_accumulate": {"runs": 9, "1k": 0.2145, "4k": 0.6731, "16k": 2.9313},
+    "psionic_cuda_f32_accumulate": {"runs": 5, "1k": 0.2627, "4k": 0.8825, "16k": 3.7682},
+    "llama_cpp_b11538": {"runs": 9, "1k": 0.1804, "4k": 0.6759, "16k": 3.4146},
+    "gate": {"1k": 0.20, "4k": 0.65, "16k": 3.25}
+  },
+  "input_tokens": {"1k": 1082, "4k": 3917, "16k": 15511},
+  "long_prompts_psionic_f16": {"30659_tokens_s": 6.54, "60955_tokens_s": 17.67, "note": "--decision-max-tokens 65536; out_of_training_distribution: true; llama.cpp needs one physical batch of the whole prompt"},
+  "process_vram_mib": {"psionic_16k": 7504, "psionic_61k": 9816, "llama_cpp_17k_batch": 10292, "note": "nvidia-smi per-process, includes the CUDA context"},
+  "split_16k_f16": "from PSIONIC_CLEF_PROFILE / PSIONIC_CLEF_SKIP runs: GEMMs ~1.15 s, weight dequant ~0.2 s, Gated DeltaNet scan + conv + norms ~0.7 s, attention ~0.45 s, head ~0.015 s"
+}

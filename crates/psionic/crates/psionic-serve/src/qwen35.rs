@@ -57,6 +57,9 @@ use crate::{
     select_psion_rvllm_fa3_decode_attention_backend,
 };
 
+mod clef_cuda;
+pub use clef_cuda::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver};
+
 /// Stable schema for one opt-in Qwen3.8 MTP execution report.
 pub const QWEN38_MTP_EXECUTION_REPORT_SCHEMA_VERSION: &str = "psionic.qwen38.mtp_execution.v1";
 
@@ -2074,7 +2077,7 @@ impl CpuGgufQwen35TextGenerationService {
         if chunk > 1 {
             return self
                 .model
-                .prefill_final_hidden_rows(&mut state, tokens, chunk, sink);
+                .prefill_final_hidden_rows(&mut state, tokens, chunk, sink, None);
         }
         for (index, token) in tokens.iter().enumerate() {
             let position = state.position;
@@ -2084,6 +2087,35 @@ impl CpuGgufQwen35TextGenerationService {
             sink(index, step.final_hidden.as_slice())?;
         }
         Ok(())
+    }
+
+    /// Diagnostic: the chunked prefill with every layer's residual output
+    /// handed to `layer_sink(layer, first_token, rows)` (`rows` is
+    /// `n x hidden`, before the output RMSNorm; llama.cpp's `l_out-N`), and
+    /// the final normalized rows to `sink`. Used by the per-layer parity
+    /// harness against llama.cpp and the Hugging Face reference.
+    pub fn stream_layer_rows(
+        &self,
+        tokens: &[TokenId],
+        chunk: usize,
+        sink: &mut dyn FnMut(usize, &[f32]) -> Result<(), ReferenceTextGenerationError>,
+        layer_sink: &mut dyn FnMut(usize, usize, &[f32]),
+    ) -> Result<(), ReferenceTextGenerationError> {
+        if tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+        let mut state = self.model.initial_state(qwen35_cache_capacity_tokens(
+            tokens.len(),
+            1,
+            tokens.len().max(self.model.descriptor.config.max_context),
+        ));
+        self.model.prefill_final_hidden_rows(
+            &mut state,
+            tokens,
+            chunk.max(1),
+            sink,
+            Some(layer_sink),
+        )
     }
 
     /// Decodes rows of the untied output projection (`output.weight`, the LM
@@ -4499,6 +4531,7 @@ impl CpuQwen35Model {
         tokens: &[TokenId],
         chunk: usize,
         sink: &mut dyn FnMut(usize, &[f32]) -> Result<(), ReferenceTextGenerationError>,
+        mut layer_sink: Option<&mut dyn FnMut(usize, usize, &[f32])>,
     ) -> Result<(), ReferenceTextGenerationError> {
         let hidden_size = self.descriptor.config.hidden_size;
         let mut done = 0usize;
@@ -4515,7 +4548,9 @@ impl CpuQwen35Model {
                 hidden.extend(self.token_embedding.decode_row(token.as_u32() as usize)?);
             }
             let first_position = state.position;
-            for (layer, layer_state) in self.layers.iter().zip(state.layers.iter_mut()) {
+            for (layer_index, (layer, layer_state)) in
+                self.layers.iter().zip(state.layers.iter_mut()).enumerate()
+            {
                 hidden = layer.forward_chunk(
                     &self.family_metadata,
                     self.descriptor.config.block.attention.head_count,
@@ -4526,6 +4561,9 @@ impl CpuQwen35Model {
                     n,
                     layer_state,
                 )?;
+                if let Some(layer_sink) = layer_sink.as_mut() {
+                    layer_sink(layer_index, done, hidden.as_slice());
+                }
             }
             for (offset, row) in hidden.chunks_exact(hidden_size).enumerate() {
                 let normalized = rms_norm(

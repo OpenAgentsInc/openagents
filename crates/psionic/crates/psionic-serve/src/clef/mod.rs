@@ -10,8 +10,10 @@
 //!   `joint_head.safetensors` beside it ([`ClefHeadSource`]);
 //! - builds the prompt byte for byte as the reference `encode_record` does
 //!   ([`encode`]);
-//! - runs the Qwen3.5 backbone on the CPU one token at a time, streaming each
-//!   final hidden row into the head ([`head::ClefHeadStream`]);
+//! - runs the Qwen3.5 backbone as a chunked prefill: on CUDA
+//!   ([`crate::ClefCudaTrunk`], milestone M2, #11195) with the head's memory
+//!   rows kept on the device, or on the CPU, streaming each final hidden row
+//!   into the head ([`head::ClefHeadStream`]);
 //! - runs the joint head in f32 and answers in the Jev / System One shape,
 //!   with a `psionic` provenance block in every answer.
 //!
@@ -42,12 +44,43 @@ use psionic_models::{GgufBlobArtifact, GgufContent, TokenId};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::CpuGgufQwen35TextGenerationService;
+use crate::{ClefCudaHeadParams, ClefCudaTrunk, CpuGgufQwen35TextGenerationService};
 use encode::{
     BudgetRefusal, ClefQuestion, ClefRequest, EncodedRecord, QuestionType, RequestLimits,
     RequestRefusal, TRAINED_LENGTH, encode_record,
 };
-use head::{ClefHeadStream, ClefHeadWeights, probabilities};
+use head::{
+    ClefHeadStream, ClefHeadWeights, HEAD_NORM_EPSILON, MemoryAttention, MemoryView, head_spans,
+    probabilities, run_head,
+};
+
+/// Where the backbone runs (`--decision-device`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ClefDevice {
+    /// CUDA when a device is present and the trunk loads, else the CPU.
+    #[default]
+    Auto,
+    Cpu,
+    Cuda,
+}
+
+impl std::str::FromStr for ClefDevice {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "cpu" => Ok(Self::Cpu),
+            "cuda" => Ok(Self::Cuda),
+            other => Err(format!("unknown decision device `{other}` (auto, cpu, cuda)")),
+        }
+    }
+}
+
+/// Default prefill chunk on CUDA.
+pub const CUDA_PREFILL_CHUNK: usize = 2048;
+/// Default prefill chunk on the CPU.
+pub const CPU_PREFILL_CHUNK: usize = 256;
 
 /// The served limits.
 #[derive(Clone, Copy, Debug)]
@@ -62,9 +95,15 @@ pub struct ClefLimits {
     pub max_body_bytes: usize,
     /// Requests that may wait behind the one running before `busy`.
     pub max_queue: usize,
-    /// Tokens per CPU prefill chunk (`--decision-chunk`); 1 runs the
-    /// token-at-a-time path.
+    /// Tokens per prefill chunk (`--decision-chunk`); 0 picks the device's
+    /// default ([`CUDA_PREFILL_CHUNK`], [`CPU_PREFILL_CHUNK`]). On the CPU, 1
+    /// runs the token-at-a-time path.
     pub prefill_chunk: usize,
+    /// Where the backbone runs (`--decision-device`).
+    pub device: ClefDevice,
+    /// CUDA projections accumulate in f16 (`--decision-accumulate f16`,
+    /// the default: twice the tensor-core rate on GeForce cards) or f32.
+    pub accumulate_f16: bool,
 }
 
 impl Default for ClefLimits {
@@ -75,7 +114,9 @@ impl Default for ClefLimits {
             max_options: 255,
             max_body_bytes: 8 * 1024 * 1024,
             max_queue: 8,
-            prefill_chunk: 256,
+            prefill_chunk: 0,
+            device: ClefDevice::Auto,
+            accumulate_f16: true,
         }
     }
 }
@@ -148,6 +189,9 @@ pub struct ClefDecisionLane {
     artifact_path: PathBuf,
     artifact_digest: String,
     backbone: CpuGgufQwen35TextGenerationService,
+    /// The trunk on CUDA; the CPU backbone then only serves embedding and
+    /// output rows.
+    cuda: Option<ClefCudaTrunk>,
     head: ClefHeadWeights,
     limits: ClefLimits,
     waiting: AtomicUsize,
@@ -262,12 +306,57 @@ impl ClefDecisionLane {
                 gguf_path.display()
             ));
         }
+        let cuda = match limits.device {
+            ClefDevice::Cpu => None,
+            device => {
+                let params = ClefCudaHeadParams {
+                    hidden_norm_weight: &head.hidden_norm.weight,
+                    hidden_norm_bias: &head.hidden_norm.bias,
+                    memory_projection: &head.memory_projection.values,
+                    width: head.config.width,
+                    evidence_norms: head
+                        .evidence_layers
+                        .iter()
+                        .map(|layer| {
+                            (
+                                layer.memory_norm.weight.as_slice(),
+                                layer.memory_norm.bias.as_slice(),
+                            )
+                        })
+                        .collect(),
+                    norm_epsilon: HEAD_NORM_EPSILON,
+                    linear_matrices: head
+                        .linear_matrices()
+                        .into_iter()
+                        .map(|matrix| (matrix.values.as_slice(), matrix.rows, matrix.columns))
+                        .collect(),
+                };
+                match ClefCudaTrunk::load(
+                    &backbone,
+                    &params,
+                    limits.accumulate_f16,
+                ) {
+                    Ok(trunk) => Some(trunk),
+                    Err(error) if device == ClefDevice::Auto => {
+                        eprintln!(
+                            "{}: CUDA decision trunk unavailable ({error}); deciding on the CPU",
+                            gguf_path.display()
+                        );
+                        None
+                    }
+                    Err(error) => {
+                        return Err(format!("{}: CUDA decision trunk: {error}", gguf_path.display()));
+                    }
+                }
+            }
+        };
         let artifact_digest = sha256_file(gguf_path)?;
         Ok(Self {
             id,
             artifact_path: gguf_path.to_path_buf(),
             artifact_digest,
             backbone,
+            cuda,
             head,
             limits,
             waiting: AtomicUsize::new(0),
@@ -285,6 +374,22 @@ impl ClefDecisionLane {
     #[must_use]
     pub fn limits(&self) -> ClefLimits {
         self.limits
+    }
+
+    /// `cuda` or `cpu`.
+    #[must_use]
+    pub fn backend(&self) -> &'static str {
+        if self.cuda.is_some() { "cuda" } else { "cpu" }
+    }
+
+    /// The prefill chunk in effect.
+    #[must_use]
+    pub fn prefill_chunk(&self) -> usize {
+        match (self.limits.prefill_chunk, self.cuda.is_some()) {
+            (0, true) => CUDA_PREFILL_CHUNK,
+            (0, false) => CPU_PREFILL_CHUNK,
+            (chunk, _) => chunk,
+        }
     }
 
     #[must_use]
@@ -346,7 +451,7 @@ impl ClefDecisionLane {
     /// Final hidden rows for a record, streamed into the head; returns the
     /// logits per question (prompt option order).
     pub fn logits(&self, record: &EncodedRecord) -> Result<Vec<Vec<f32>>, ClefRefusal> {
-        self.logits_with_rows(record, &mut |_, _| {})
+        self.logits_observed(record, None, None)
     }
 
     /// As [`Self::logits`], also handing each hidden row to `observe` (for
@@ -356,26 +461,110 @@ impl ClefDecisionLane {
         record: &EncodedRecord,
         observe: &mut dyn FnMut(usize, &[f32]),
     ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
+        self.logits_observed(record, Some(observe), None)
+    }
+
+    /// The logits, with optional observers of the final hidden rows and (on
+    /// CUDA) of every layer's residual rows `(layer, first_token, rows)`.
+    pub fn logits_observed(
+        &self,
+        record: &EncodedRecord,
+        observe: Option<&mut dyn FnMut(usize, &[f32])>,
+        layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
+    ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
+        self.logits_at_chunk(record, self.prefill_chunk(), observe, layers)
+    }
+
+    /// As [`Self::logits_observed`] with an explicit prefill chunk (the
+    /// chunk-equivalence checks).
+    pub fn logits_at_chunk(
+        &self,
+        record: &EncodedRecord,
+        chunk: usize,
+        mut observe: Option<&mut dyn FnMut(usize, &[f32])>,
+        layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
+    ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
         let tokens: Vec<TokenId> = record.input_ids.iter().map(|id| TokenId(*id)).collect();
-        let mut stream = ClefHeadStream::new(&self.head, record);
-        let mut push_error = None;
-        self.backbone
-            .stream_final_hidden_rows(&tokens, self.limits.prefill_chunk, &mut |index, row| {
-                observe(index, row);
-                if let Err(error) = stream.push(index, row) {
-                    push_error.get_or_insert(error);
-                }
-                Ok(())
-            })
-            .map_err(|error| ClefRefusal::internal(format!("backbone: {error}")))?;
-        if let Some(error) = push_error {
-            return Err(ClefRefusal::internal(error));
-        }
         let lexical = |ids: &[u32]| {
             self.backbone
                 .output_embedding_rows(ids)
                 .map_err(|error| error.to_string())
         };
+        if let Some(trunk) = &self.cuda {
+            let spans = head_spans(record);
+            let width = self.head.config.hidden_size;
+            let mut final_rows = observe.as_mut().map(|observe| {
+                move |_: usize, first: usize, rows: &[f32]| {
+                    for (offset, row) in rows.chunks(width).enumerate() {
+                        observe(first + offset, row);
+                    }
+                }
+            });
+            let prefill = trunk
+                .prefill(
+                    &self.backbone,
+                    &tokens,
+                    &spans,
+                    chunk,
+                    layers,
+                    final_rows
+                        .as_mut()
+                        .map(|f| f as &mut dyn FnMut(usize, usize, &[f32])),
+                )
+                .map_err(|error| ClefRefusal::internal(format!("cuda backbone: {error}")))?;
+            let span_means: Vec<Vec<f32>> = spans
+                .iter()
+                .zip(prefill.span_sums.chunks(width))
+                .map(|((start, end), sum)| {
+                    let count = end.saturating_sub(*start).max(1) as f32;
+                    sum.iter().map(|value| value / count).collect()
+                })
+                .collect();
+            let head_began = Instant::now();
+            let mut memory = DeviceMemory(trunk);
+            let logits = run_head(
+                &self.head,
+                record,
+                &span_means,
+                &prefill.last,
+                &mut memory,
+                &lexical,
+            )
+            .map_err(ClefRefusal::internal);
+            if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
+                eprintln!(
+                    "clef head: {:.1} ms",
+                    head_began.elapsed().as_secs_f64() * 1e3
+                );
+            }
+            return logits;
+        }
+        let mut stream = ClefHeadStream::new(&self.head, record);
+        let mut push_error = None;
+        let mut sink = |index: usize, row: &[f32]| {
+            if let Some(observe) = observe.as_mut() {
+                observe(index, row);
+            }
+            if let Err(error) = stream.push(index, row) {
+                push_error.get_or_insert(error);
+            }
+            Ok(())
+        };
+        match layers {
+            Some(layers) => self.backbone.stream_layer_rows(
+                &tokens,
+                chunk,
+                &mut sink,
+                layers,
+            ),
+            None => self
+                .backbone
+                .stream_final_hidden_rows(&tokens, chunk, &mut sink),
+        }
+        .map_err(|error| ClefRefusal::internal(format!("backbone: {error}")))?;
+        if let Some(error) = push_error {
+            return Err(ClefRefusal::internal(error));
+        }
         stream
             .finish(record, &lexical)
             .map_err(ClefRefusal::internal)
@@ -431,9 +620,10 @@ impl ClefDecisionLane {
             "artifact_digest": self.artifact_digest,
             "head_source": self.head.source,
             "head_digest": self.head.digest,
-            "backend": "cpu",
+            "backend": self.backend(),
             "execution_mode": "native",
-            "prefill_chunk": self.limits.prefill_chunk,
+            "prefill_chunk": self.prefill_chunk(),
+            "accumulate": if self.cuda.is_some() && self.limits.accumulate_f16 { "f16" } else { "f32" },
             "prompt_tokens": prompt_tokens,
             "truncated_state_tokens": record.truncated_state_tokens,
             "trained_length": TRAINED_LENGTH,
@@ -464,13 +654,55 @@ impl ClefDecisionLane {
                 "artifact_digest": self.artifact_digest,
                 "head_source": self.head.source,
                 "head_digest": self.head.digest,
-                "backend": "cpu",
+                "backend": self.backend(),
+                "device": self.cuda.as_ref().map(ClefCudaTrunk::device_name),
+                "prefill_chunk": self.prefill_chunk(),
                 "max_tokens": self.limits.max_tokens,
                 "max_questions": self.limits.max_questions,
                 "max_options": self.limits.max_options,
                 "trained_length": TRAINED_LENGTH,
             },
         })
+    }
+}
+
+/// The head's memory attention against the rows the CUDA trunk left on the
+/// device.
+struct DeviceMemory<'a>(&'a ClefCudaTrunk);
+
+impl MemoryAttention for DeviceMemory<'_> {
+    fn attend(
+        &mut self,
+        view: MemoryView,
+        queries: &[f32],
+        rows: usize,
+        scale: f32,
+    ) -> Result<Vec<f32>, String> {
+        let evidence = match view {
+            MemoryView::Evidence(layer) => Some(layer),
+            MemoryView::Raw => None,
+        };
+        self.0.attend_memory(evidence, queries, rows, scale)
+    }
+
+    fn linear(
+        &mut self,
+        matrix: &head::Matrix,
+        input: &[f32],
+        n: usize,
+        bias: Option<&[f32]>,
+    ) -> Result<Vec<f32>, String> {
+        let Some(mut out) = self.0.head_linear(&matrix.values, input, n)? else {
+            return Ok(matrix.apply_rows(input, n, bias));
+        };
+        if let Some(bias) = bias {
+            for row in out.chunks_mut(matrix.rows) {
+                for (value, bias) in row.iter_mut().zip(bias) {
+                    *value += bias;
+                }
+            }
+        }
+        Ok(out)
     }
 }
 

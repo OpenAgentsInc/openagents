@@ -64,6 +64,11 @@ async fn run() -> Result<(), String> {
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("failed to load decision model: {error}"))?;
+    let backends = lanes
+        .iter()
+        .map(|lane| lane.backend())
+        .collect::<Vec<_>>()
+        .join(",");
     let lanes = clef::ClefLanes::new(lanes);
     let address = config.socket_addr().map_err(|error| error.to_string())?;
     let listener = TcpListener::bind(address)
@@ -72,7 +77,7 @@ async fn run() -> Result<(), String> {
     if config.model_paths.is_empty() {
         let _ = writeln!(
             io::stdout(),
-            "psionic openai server listening on http://{} decision_models={} backend=cpu execution_mode=native route=/v1/systemone",
+            "psionic openai server listening on http://{} decision_models={} backend={} execution_mode=native route=/v1/systemone",
             listener
                 .local_addr()
                 .map_err(|error| format!("failed to query listener address: {error}"))?,
@@ -81,6 +86,7 @@ async fn run() -> Result<(), String> {
                 .map(|path| path.display().to_string())
                 .collect::<Vec<_>>()
                 .join(","),
+            backends,
         );
         return clef::serve(listener, clef::decision_router(lanes))
             .await
@@ -153,6 +159,16 @@ where
             "--decision-max-tokens" => {
                 decision.limits.max_tokens =
                     number(&argument, next_value(&mut args, argument.as_str())?)?;
+            }
+            "--decision-device" => {
+                decision.limits.device = next_value(&mut args, argument.as_str())?.parse()?;
+            }
+            "--decision-accumulate" => {
+                decision.limits.accumulate_f16 = match next_value(&mut args, argument.as_str())?.as_str() {
+                    "f16" => true,
+                    "f32" => false,
+                    other => return Err(format!("--decision-accumulate takes f16 or f32, not `{other}`")),
+                };
             }
             "--decision-chunk" => {
                 decision.limits.prefill_chunk =
@@ -269,7 +285,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda] [--decision-accumulate f16|f32]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
     )
 }
 

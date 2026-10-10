@@ -9,6 +9,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/quantized_matvec.cu");
     println!("cargo:rerun-if-changed=src/kernels/qwen38_quant_tables.cuh");
     println!("cargo:rerun-if-changed=src/kernels/quantized_matvec_stub.c");
+    println!("cargo:rerun-if-changed=src/kernels/clef_prefill.cu");
+    println!("cargo:rerun-if-changed=src/kernels/clef_prefill_stub.c");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     if let Some(nvcc) = find_nvcc() {
@@ -16,6 +18,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         cc::Build::new()
             .file("src/kernels/quantized_matvec_stub.c")
+            .file("src/kernels/clef_prefill_stub.c")
             .compile("psionic_cuda_quantized_kernels");
     }
     Ok(())
@@ -39,29 +42,40 @@ fn find_nvcc() -> Option<PathBuf> {
         .find(|candidate| Command::new(candidate).arg("--version").output().is_ok())
 }
 
-fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let object = out_dir.join("quantized_matvec.o");
+fn compile_cuda_object(
+    nvcc: &Path,
+    source: &str,
+    object: &Path,
+    fast_math: bool,
+) -> Result<(), Box<dyn Error>> {
     let mut command = Command::new(nvcc);
-    command.args([
-        "-std=c++17",
-        "-O3",
-        "--use_fast_math",
-        "-Xcompiler",
-        "-fPIC",
-        "-c",
-        "src/kernels/quantized_matvec.cu",
-    ]);
+    command.args(["-std=c++17", "-O3"]);
+    if fast_math {
+        command.arg("--use_fast_math");
+    }
+    command.args(["-Xcompiler", "-fPIC", "-c", source]);
     if let Some(arch) = find_cuda_arch() {
         command.arg(format!("-arch={arch}"));
     }
-    let status = command.arg("-o").arg(&object).status()?;
+    let status = command.arg("-o").arg(object).status()?;
     if !status.success() {
-        return Err("nvcc failed to compile quantized CUDA kernels".into());
+        return Err(format!("nvcc failed to compile {source}").into());
     }
+    Ok(())
+}
+
+fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let object = out_dir.join("quantized_matvec.o");
+    compile_cuda_object(nvcc, "src/kernels/quantized_matvec.cu", &object, true)?;
+    // The Clef prefill kernels keep IEEE expf/division: decisions compare
+    // against f32 references.
+    let clef_object = out_dir.join("clef_prefill.o");
+    compile_cuda_object(nvcc, "src/kernels/clef_prefill.cu", &clef_object, false)?;
 
     cc::Build::new()
         .cpp(true)
         .object(&object)
+        .object(&clef_object)
         .compile("psionic_cuda_quantized_kernels");
 
     println!("cargo:rustc-link-lib=cudart");
