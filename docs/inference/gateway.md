@@ -492,6 +492,24 @@ is never a candidate. With Gym scores configured for a class, step 4's
 credit rule orders the survivors instead (Z.ai's credit, expiring sooner,
 before Google's); the deployed gateways configure none.
 
+Deployed 2026-10-10 13:40 UTC on staging: revision
+`openagents-web-1-staging-d6501885b3-gw134040` (only the `gateway`
+container swapped, to `openagents-stack@sha256:ba6e184c…`, built from
+`d6501885b3`). Real turns with the house key through
+`https://staging.openagents.com/api/v1/responses` answered from `vertex` on
+attempt 1 for `openagents/fast`, `classify`, `chat`, `auto` (judged
+`fast`), and `google/gemini-3.8-flash` (first text 0.6–2.3 s). Rollback:
+`gcloud run services update-traffic openagents-web-1-staging --region
+us-central1 --project openagentsgemini --to-revisions
+openagents-web-1-staging-c9054b18f2-132215=100`. Production (`coder`)
+still runs gateway image `sha256:2ac3ea72…`, which already answers every
+one of those routes from `vertex` (Pro door and Z.ai hold no keys there);
+the image with this order for production is
+`openagents-stack:892d294ce1` (`sha256:348a5420…`, tag
+`gateway-prod-892d294ce1`: the serving `023a3fb39b` plus only this
+change), not applied because the automation account is refused `actAs` on
+production's runtime account.
+
 ### Credit-aware routing
 
 Each account we hold has a ledger row: balance, currency, expiry, and cost

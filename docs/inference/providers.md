@@ -37,7 +37,12 @@ Owners of a row update it when they change the path. The gateway spec's
 | Path | Call site | First door | Fallbacks |
 | --- | --- | --- | --- |
 | Chat worker (production, `coder-worker` on the worker VM) | `crates/coder/src/bin/coder-worker.rs` `main` door chain; `crates/coder/src/generate.rs` `vertex_door_from_env` | Vertex AI `gemini-3.8-flash` (global), `CODER_WORKER_VERTEX` / `VERTEX_PROJECT`, GCE metadata token | OpenRouter primary (`CODER_WORKER_PRIMARY`), the `CODER_DOOR_KEY` door, then `CODER_WORKER_BACKUPS` (`openrouter:gemini,openrouter:glm,vercel:gemini,vercel:glm`). With `CODER_INFERENCE_KEY` set, the inference gateway instead. |
-| Inference gateway | `crates/gateway/src/inference_routes.rs`; `crates/inference/src/upstream/*` | (owned by the gateway router agent; row to be updated) | (to be updated) |
+| Inference gateway, `openagents/chat` (and `openagents/auto` when unjudged or judged `chat`) | `crates/inference/src/router.rs` `ClassTable::default`; adapters in `crates/gateway/src/inference_routes.rs` `upstreams` | Vertex AI `google/gemini-3.8-flash` (prepaid `google-credit`) | Pro door `openai/gpt-5.6-terra`, then OpenRouter `google/gemini-3.8-flash` |
+| Inference gateway, `openagents/fast` | same | Vertex AI `google/gemini-3.8-flash` | Z.ai `zai/glm-5.3-flash`, then OpenRouter `google/gemini-3.8-flash` |
+| Inference gateway, `openagents/classify` | same | Vertex AI `google/gemini-2.5-flash-lite` | Pro door `openai/gpt-5.6-luna`, then Z.ai `zai/glm-5.3-flash` |
+| Inference gateway, `openagents/long` | same | Vertex AI `google/gemini-3.8-flash` | Z.ai `zai/glm-5.3-flash` |
+| Inference gateway, `openagents/code`, `openagents/reason` | same | Pro door `openai/gpt-5.6-sol` (Vertex serves no Gemini Pro id; `gemini-3.8-pro` is 404) | `google/gemini-3.8-pro` on OpenRouter (reason); Z.ai (code) |
+| Inference gateway, a model id such as `google/gemini-3.8-flash` (the Environments setup agent, `ENVIRONMENTS_MODEL`) | `crates/inference/src/router.rs` `plan`, step 4 (prepaid credit first) | Vertex AI | OpenRouter, then the Vercel AI Gateway (`privacy: standard` only) |
 | Web chat vision | `crates/openagents-web/src/chat_vision.rs` | (owned by the chat-vision agent; row to be updated) | (to be updated) |
 | Coder web search tool | `crates/coder-new` `web_search` | (owned by the web-search agent; row to be updated) | (to be updated) |
 
