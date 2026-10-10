@@ -175,11 +175,17 @@ fn main() {
                 usage();
             };
             match book.delete_corpus(&name, &now(), &reason) {
-                Ok(tombstone) => println!(
-                    "Deleted corpus {name} at {}. Kept the SHA-256 digests of its {} items as a record of what was deleted.",
-                    tombstone.deleted_at,
-                    tombstone.item_digests.len()
-                ),
+                Ok(tombstone) => {
+                    println!(
+                        "Deleted corpus {name} at {}. Kept the SHA-256 digests of its {} items as a record of what was deleted.",
+                        tombstone.deleted_at,
+                        tombstone.item_digests.len()
+                    );
+                    for derived in &tombstone.derived {
+                        println!("{} {}: {}", derived.kind, derived.name, derived.disposition);
+                    }
+                    println!("{}", tombstone.outside);
+                }
                 Err(trouble) => {
                     eprintln!("{trouble}");
                     exit(1);

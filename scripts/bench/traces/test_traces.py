@@ -70,6 +70,14 @@ def _ns(**kw):
     return type("NS", (), kw)()
 
 
+def corpus_map(tmp: Path, roles: dict) -> Path:
+    """An issues.tsv in the #11215 corpus's shape."""
+    path = tmp / "issues.tsv"
+    path.write_text("issue\tpartition\tfix\tparent\tissue_sha256\n" +
+                    "".join(f"{n}\t{r}\tf\tp\tsha256:x\n" for n, r in roles.items()))
+    return path
+
+
 class ReplayTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -87,9 +95,11 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(rec["class"], "exact_replay")
         with open(self.f.store / "replays.jsonl", "w") as out:
             out.write(json.dumps(rec) + "\n")
-        traces.cmd_admit(_ns(store=self.f.store))
+        traces.cmd_admit(_ns(store=self.f.store,
+                             corpus_map=corpus_map(Path(self.tmp.name), {11218: "training"})))
         rows = traces.read_jsonl(self.f.store / "admitted.jsonl")
         self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["partition"]["role"], "training")
         self.assertEqual(rows[0]["trace"]["evidence_class"], "exact_replay")
         labels = {i["id"].split("#")[1]: i["label"] for i in rows[0]["items"]}
         self.assertEqual(labels, {"outcome": "accepted", "greet.txt": "changed"})
@@ -237,6 +247,64 @@ class InventoryTests(unittest.TestCase):
         mark = json.loads((folder / "trace-captured.json").read_text())
         self.assertEqual(mark["trace"], "issue-run:11218-1")
         self.assertEqual(mark["diff_digest"], traces.sha256(self.f.patch))
+
+
+class PartitionTests(unittest.TestCase):
+    """LEARN-02: an admitted trace takes its partition from the corpus's
+    issue-group map. A held-out group never lands in training."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.f = Fixture(Path(self.tmp.name))
+        self.f.issue_run()
+        self.t = self.f.capture()["issue-run:11218-1"]
+        self.rec = self.f.replay(self.t)
+        self.assertEqual(self.rec["verdict"], "verified")
+        with open(self.f.store / "replays.jsonl", "w") as out:
+            out.write(json.dumps(self.rec) + "\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def admit(self, roles):
+        traces.cmd_admit(_ns(store=self.f.store, corpus_map=corpus_map(Path(self.tmp.name), roles)))
+        return traces.read_jsonl(self.f.store / "admitted.jsonl")
+
+    def test_a_held_out_group_never_lands_in_training(self):
+        for role in ("calibration", "development", "locked"):
+            rows = self.admit({11218: role, 1: "training"})
+            self.assertEqual(rows[0]["partition"]["role"], role)
+            self.assertTrue(rows[0]["items"])
+            for item in rows[0]["items"]:
+                self.assertEqual(item["partition"], role)
+                self.assertNotEqual(item["partition"], "training")
+                self.assertEqual(item["group"], "issue-11218")
+
+    def test_an_issue_outside_the_map_yields_no_items(self):
+        rows = self.admit({1: "training"})
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["partition"]["role"])
+        self.assertEqual(rows[0]["items"], [])
+
+    def test_the_committed_map_keeps_the_41_traces_out_of_training(self):
+        # The 41 admitted traces (docs/coder/traces/2026-10-10-manifest.json)
+        # are issues #10074, #10228 and #10273: calibration and development.
+        pmap = traces.load_partition_map()
+        manifest = json.loads((traces.HERE.parents[2] / "docs" / "coder" / "traces" /
+                               "2026-10-10-manifest.json").read_text())
+        admitted = [r for r in manifest["rows"] if r["verdict"] == "verified"]
+        self.assertEqual(len(admitted), 41)
+        for r in admitted:
+            role = pmap["issues"].get(r["issue"])
+            self.assertIn(role, ("calibration", "development"), r["trace"])
+            self.assertEqual(r["partition"], role, r["trace"])
+            t = dict(self.t, issue=r["issue"])
+            for item in traces.corpus_items(t, self.rec, pmap):
+                self.assertEqual(item["partition"], role)
+
+    def test_an_unknown_partition_name_is_refused(self):
+        with self.assertRaises(ValueError):
+            traces.load_partition_map(corpus_map(Path(self.tmp.name), {11218: "train"}))
 
 
 if __name__ == "__main__":

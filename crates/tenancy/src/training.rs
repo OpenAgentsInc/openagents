@@ -285,6 +285,52 @@ pub struct Tombstone {
     /// `sha256:` digest of each item's content at deletion, by item id,
     /// so what was removed is still provable.
     pub item_digests: BTreeMap<String, String>,
+    /// What the deletion did to each store derived from the corpus inside
+    /// this book: its headroom report and the sealed candidates that pin
+    /// its digest (DATA-03). Stores outside the book are named in
+    /// `outside`, never assumed reached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub derived: Vec<DerivedStore>,
+    /// The copies this book cannot reach, said plainly: raw trace blobs,
+    /// exports, caches, backups, and weights already trained.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub outside: String,
+}
+
+/// One derived store a corpus deletion handled, and how.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DerivedStore {
+    /// `headroom` or `candidate`.
+    pub kind: String,
+    /// Its name in the book.
+    pub name: String,
+    /// `removed`, or `kept` with why.
+    pub disposition: String,
+}
+
+/// What a corpus deletion cannot reach from inside the book.
+pub const DELETION_OUTSIDE: &str = "not reached by this deletion: raw trace stores and their \
+blobs, exported copies of the corpus file, finder caches and feedback, backups, and the \
+weights of any candidate already trained on the corpus (kept candidates are listed; their \
+training is not undone)";
+
+/// Clear every content-bearing field of an item, teacher included. What
+/// remains is the item's id, group, partition, label source, evidence
+/// class and provenance strings — the tombstone's approved identifiers.
+fn scrub(item: &mut CorpusItem) -> bool {
+    let had = !item.state.is_null()
+        || item.question.is_some()
+        || !item.label.is_empty()
+        || item.label_rule.is_some()
+        || !item.annotations.is_empty()
+        || item.teacher.is_some();
+    item.state = Value::Null;
+    item.question = None;
+    item.label = String::new();
+    item.label_rule = None;
+    item.annotations = Annotations::default();
+    item.teacher = None;
+    had
 }
 
 /// A pair of items the leakage check caught across a partition
@@ -573,7 +619,11 @@ impl Corpus {
     /// one the all-pairs comparison gives, at a cost that grows with the
     /// pairs that share rare tokens instead of with every pair.
     fn leak_check(&self) -> Result<(), CorpusFault> {
-        let texts: Vec<String> = self.items.iter().map(|item| normalized(&item.state)).collect();
+        let texts: Vec<String> = self
+            .items
+            .iter()
+            .map(|item| normalized(&item.state))
+            .collect();
         let mut same_text: HashMap<&str, Vec<usize>> = HashMap::new();
         let mut exact: Option<(usize, usize)> = None;
         for (index, text) in texts.iter().enumerate() {
@@ -635,7 +685,11 @@ impl Corpus {
                     continue;
                 }
                 let (a, b) = (set, &sets[other]);
-                let (small, large) = if a.len() <= b.len() { (a.len(), b.len()) } else { (b.len(), a.len()) };
+                let (small, large) = if a.len() <= b.len() {
+                    (a.len(), b.len())
+                } else {
+                    (b.len(), a.len())
+                };
                 if (small as f64) < LEAK_JACCARD * large as f64 {
                     continue;
                 }
@@ -1693,44 +1747,75 @@ impl Book {
         Ok(candidate)
     }
 
-    /// Tombstone a corpus: item content leaves the store and each
+    /// Tombstone a corpus: item content — state, question, label, label
+    /// rule, annotations and teacher answer — leaves the store and each
     /// item's content digest is kept, so the corpus's own digest — and
-    /// any candidate trained on it — still resolves.
+    /// any candidate trained on it — still resolves. The headroom report
+    /// derived from the corpus is removed; sealed candidates that pin its
+    /// digest are kept and listed. A corpus tombstoned before
+    /// the teacher field was cleared is scrubbed again.
     pub fn delete_corpus(&self, name: &str, at: &str, reason: &str) -> Result<Tombstone, Trouble> {
         let path = self.dir.join("corpora").join(format!("{name}.json"));
         let text =
             fs::read_to_string(&path).map_err(|_| Trouble::NotFound(format!("corpus {name}")))?;
         let mut corpus: Corpus = serde_json::from_str(&text)
             .map_err(|e| Trouble::Store(format!("corpus {name}: {e}")))?;
-        if let Some(tombstone) = corpus.tombstone {
-            return Ok(tombstone);
-        }
-        let item_digests = corpus
-            .items
-            .iter()
-            .map(|item| (item.id.clone(), content_digest(item)))
-            .collect();
-        corpus.items = corpus
-            .items
-            .into_iter()
-            .map(|mut item| {
-                item.state = Value::Null;
-                item.question = None;
-                item.label = String::new();
-                item.label_rule = None;
-                item.annotations = Annotations::default();
-                item
-            })
-            .collect();
-        let tombstone = Tombstone {
-            deleted_at: at.to_string(),
-            reason: reason.to_string(),
-            item_digests,
+        let mut tombstone = match corpus.tombstone.take() {
+            Some(tombstone) => tombstone,
+            None => Tombstone {
+                deleted_at: at.to_string(),
+                reason: reason.to_string(),
+                item_digests: corpus
+                    .items
+                    .iter()
+                    .map(|item| (item.id.clone(), content_digest(item)))
+                    .collect(),
+                derived: Vec::new(),
+                outside: String::new(),
+            },
         };
+        let mut changed = false;
+        for item in corpus.items.iter_mut() {
+            changed |= scrub(item);
+        }
+        let headroom = self.dir.join("headroom").join(format!("{name}.json"));
+        if headroom.exists() {
+            fs::remove_file(&headroom)
+                .map_err(|e| Trouble::Store(format!("remove {}: {e}", headroom.display())))?;
+            tombstone.derived.push(DerivedStore {
+                kind: "headroom".into(),
+                name: name.to_string(),
+                disposition: "removed".into(),
+            });
+            changed = true;
+        }
+        for candidate in self.candidates() {
+            let Ok(doc) = self.candidate(&candidate) else {
+                continue;
+            };
+            let entry = DerivedStore {
+                kind: "candidate".into(),
+                name: candidate.clone(),
+                disposition: "kept: trained on the corpus before deletion; its weights are not \
+                              unlearned and it is no longer eligible for new training"
+                    .into(),
+            };
+            if doc.identities.corpus_digest == corpus.digest && !tombstone.derived.contains(&entry)
+            {
+                tombstone.derived.push(entry);
+                changed = true;
+            }
+        }
+        if tombstone.outside.is_empty() {
+            tombstone.outside = DELETION_OUTSIDE.to_string();
+            changed = true;
+        }
         corpus.tombstone = Some(tombstone.clone());
-        let text =
-            serde_json::to_string_pretty(&corpus).map_err(|e| Trouble::Store(e.to_string()))?;
-        write_synced(&path, &text)?;
+        if changed {
+            let text =
+                serde_json::to_string_pretty(&corpus).map_err(|e| Trouble::Store(e.to_string()))?;
+            write_synced(&path, &text)?;
+        }
         Ok(tombstone)
     }
 

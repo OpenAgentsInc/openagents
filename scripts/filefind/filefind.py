@@ -35,8 +35,20 @@ Usage
     python3 scripts/filefind/filefind.py query --repo . --issue 11210 --k 50
     python3 scripts/filefind/filefind.py query --repo . --text "..." --json
 
-The index lives in ~/.cache/openagents/filefind/<repo name>/ (override with
---cache). It holds vectors, paths and issue numbers/titles, no file contents.
+The index lives in ~/.cache/openagents/filefind/<repo name>-<identity>/ (override
+with --cache). The identity is the repository's normalized remote URL, its root
+commit(s), and the workspace (--workspace, else FILEFIND_WORKSPACE or
+OPENAGENTS_WORKSPACE, else "local"), so every worktree of one repository shares a
+cache and two repositories with the same name never do (DATA-04). The cache
+records it in identity.json; a cache stamped for another identity is refused. It
+holds vectors, paths and issue numbers/titles, no file contents.
+
+Feedback rows carry the same identity and an authority (LEARN-04): a "label" is
+a file a verify-replayed trace changed, whose checks passed on replay and whose
+issue group is in the corpus's training partition; everything else (issue-run
+summaries, A/B results, reads outside a briefing, held-out or failed traces) is
+an "observation". Only labels change the ranking; a query on the issue lists its
+observations separately, for exploration.
 """
 import argparse, bisect, gzip, json, math, os, pickle, re, subprocess, sys, time
 import urllib.parse, urllib.request, urllib.error
@@ -370,19 +382,42 @@ def issue_text(title, body):
 FEEDBACK_WEIGHT = {"changed": 1.0, "read_outside": 0.5}
 
 
-def load_feedback(cache):
-    """issue -> {path: weight}: files earlier agent runs on the issue changed, or opened
-    outside their briefing (`filefind.py feedback`)."""
-    out = defaultdict(dict)
+FEEDBACK_SCHEMA = "openagents.filefind.feedback.v2"
+LABEL, OBSERVATION = "label", "observation"
+
+
+def feedback_rows(cache, authority=None):
+    """The cache's feedback rows bound to its identity (identity.json); rows of
+    another repository or workspace, or without one, are never read."""
+    ident = read_identity(cache)
     p = os.path.join(cache, "feedback.jsonl")
-    if os.path.exists(p):
-        for line in open(p):
-            try:
-                r = json.loads(line)
-            except ValueError:
-                continue
-            w = FEEDBACK_WEIGHT.get(r.get("kind"), 0.5)
-            out[int(r["issue"])][r["path"]] = max(w, out[int(r["issue"])].get(r["path"], 0))
+    if not ident or not os.path.exists(p):
+        return []
+    out = []
+    with open(p) as f:
+        lines = f.readlines()
+    for line in lines:
+        try:
+            r = json.loads(line)
+            int(r["issue"]), r["path"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        if r.get("v") != FEEDBACK_SCHEMA or r.get("repo") != ident["id"] or r.get("workspace") != ident["workspace"]:
+            continue
+        if authority and r.get("authority") != authority:
+            continue
+        out.append(r)
+    return out
+
+
+def load_feedback(cache):
+    """issue -> {path: weight}: the learning labels only, files verify-replayed,
+    training-partition traces changed (`filefind.py feedback`). Observations never
+    reach the ranking."""
+    out = defaultdict(dict)
+    for r in feedback_rows(cache, LABEL):
+        w = FEEDBACK_WEIGHT.get(r.get("kind"), 0.5)
+        out[int(r["issue"])][r["path"]] = max(w, out[int(r["issue"])].get(r["path"], 0))
     return out
 
 
@@ -1699,52 +1734,187 @@ def rank_two_stage(model, q, feats):
 
 # ---------------------------------------------------------------- CLI
 
-def default_cache(repo):
-    """One cache per repository, shared by all its worktrees (named after the main checkout)."""
+CACHE_ROOT = os.path.expanduser("~/.cache/openagents/filefind")
+IDENTITY_SCHEMA = "openagents.filefind.identity.v1"
+
+
+def workspace_of(workspace=None):
+    return workspace or os.environ.get("FILEFIND_WORKSPACE") or os.environ.get("OPENAGENTS_WORKSPACE") or "local"
+
+
+def normalize_remote(url):
+    """host/owner/name for any spelling of a remote (ssh, scp-like, https with
+    credentials, trailing .git); never keeps a user name or token."""
+    u = url.strip()
+    m = re.match(r"^(?:[^@/]+@)?([^:/]+):(?!//)(.+)$", u)
+    if m and "://" not in u:
+        host, path = m.group(1), m.group(2)
+    else:
+        sp = urllib.parse.urlsplit(u)
+        if sp.scheme in ("", "file"):
+            return "file:" + os.path.realpath(sp.path or u)
+        host, path = sp.hostname or "", sp.path
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return f"{host.lower()}/{path}"
+
+
+def repo_identity(repo, workspace=None):
+    """The stable identity a cache and its feedback are keyed by: the remote URL
+    plus the root commit(s), and the workspace. A repository with no remote is
+    named by its checkout's git directory instead."""
+    def out(*args):
+        try:
+            return git(repo, *args).decode().strip()
+        except Exception:
+            return ""
+    remote = out("config", "--get", "remote.origin.url")
+    common = out("rev-parse", "--path-format=absolute", "--git-common-dir")
+    ident = {"v": IDENTITY_SCHEMA, "remote": normalize_remote(remote) if remote else "",
+             "root": ",".join(sorted(out("rev-list", "--max-parents=0", "HEAD").split())),
+             "workspace": workspace_of(workspace)}
+    if not ident["remote"]:
+        ident["checkout"] = os.path.realpath(common or repo)
+    ident["id"] = "sha256:" + __import__("hashlib").sha256(
+        json.dumps(ident, sort_keys=True).encode()).hexdigest()[:24]
+    name = os.path.basename(os.path.dirname(common.rstrip("/"))) if common else os.path.basename(
+        os.path.abspath(repo))
+    ident["name"] = name
+    return ident
+
+
+def read_identity(cache):
     try:
-        common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip()
-        name = os.path.basename(os.path.dirname(common.rstrip("/")))
+        with open(os.path.join(cache, "identity.json")) as f:
+            r = json.load(f)
+        return r if r.get("v") == IDENTITY_SCHEMA and r.get("id") else None
+    except (OSError, ValueError):
+        return None
+
+
+class ForeignCache(SystemExit):
+    pass
+
+
+def bind_cache(cache, ident):
+    """Stamp `cache` with the identity, or refuse it when it is stamped for
+    another repository or workspace (a restored or copied cache)."""
+    os.makedirs(cache, exist_ok=True)
+    have = read_identity(cache)
+    if have is None:
+        atomic(os.path.join(cache, "identity.json"),
+               lambda f: f.write(json.dumps(ident, sort_keys=True, indent=1).encode()))
+        return ident
+    if have["id"] != ident["id"]:
+        raise ForeignCache(f"filefind: {cache} belongs to {have.get('remote') or have.get('checkout')} "
+                           f"(workspace {have.get('workspace')}), not {ident.get('remote') or ident.get('checkout')} "
+                           f"(workspace {ident['workspace']}); pass another --cache")
+    return have
+
+
+def _adopt_legacy(legacy, new, ident, repo):
+    """A cache from before identities (named after the checkout only) becomes this
+    repository's when its history was built from this repository: the indexed head
+    is a commit here with the same root. Its feedback is unbound and never read."""
+    if not os.path.isdir(legacy) or os.path.exists(new) or read_identity(legacy):
+        return
+    try:
+        with open(os.path.join(legacy, "history.pkl"), "rb") as f:
+            rev = pickle.load(f).get("rev")
+        roots = git(repo, "rev-list", "--max-parents=0", rev).decode().split()
     except Exception:
-        name = os.path.basename(os.path.abspath(repo))
-    return os.path.expanduser(f"~/.cache/openagents/filefind/{name}")
+        return
+    if ",".join(sorted(roots)) != ident["root"]:
+        return
+    try:
+        os.rename(legacy, new)
+    except OSError:
+        return
+    fb = os.path.join(new, "feedback.jsonl")
+    if os.path.exists(fb):
+        os.replace(fb, os.path.join(new, "feedback.unbound.jsonl"))
+
+
+def default_cache(repo, workspace=None):
+    """One cache per repository identity and workspace, shared by all the
+    repository's worktrees; stamped with that identity."""
+    ident = repo_identity(repo, workspace)
+    new = os.path.join(CACHE_ROOT, f"{ident['name']}-{ident['id'].split(':')[1][:12]}"
+                       + ("" if ident["workspace"] == "local" else "-" + re.sub(r"[^\w.-]", "_", ident["workspace"])))
+    if ident["workspace"] == "local":
+        _adopt_legacy(os.path.join(CACHE_ROOT, ident["name"]), new, ident, repo)
+    bind_cache(new, ident)
+    return new
+
+
+def cache_for(a):
+    """--cache, bound to the repository's identity, or the default cache."""
+    if getattr(a, "cache", None):
+        bind_cache(a.cache, repo_identity(a.repo, getattr(a, "workspace", None)))
+        return a.cache
+    return default_cache(a.repo, getattr(a, "workspace", None))
 
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")
 
 
+def _commit_here(repo, sha):
+    return bool(sha) and subprocess.run(["git", "-C", repo, "cat-file", "-e", f"{sha}^{{commit}}"],
+                                        capture_output=True).returncode == 0
+
+
 def cmd_feedback(a):
-    """Collect late files from agent runs into the index's feedback.jsonl: what an
-    issue-run (`coder issue-run`) or a briefed-agent A/B trial changed, and the files it
-    opened outside its briefing. Similar-issue lookups use them; a query on the same
-    issue keeps them in its list."""
-    cache = a.cache or default_cache(a.repo)
+    """Collect late files from agent runs into the index's feedback.jsonl, each row
+    bound to this repository's identity and workspace and labelled with its
+    authority (LEARN-04, DATA-04):
+
+      label        a file a verify-replayed trace (scripts/bench/traces admitted.jsonl)
+                   changed, when its replayed checks passed, its base commit is in this
+                   repository, and its issue group is in the corpus's training partition.
+      observation  everything else: issue-run summaries and A/B results (not replayed),
+                   files opened outside a briefing, failed or held-out traces.
+
+    Only labels change the ranking. A run whose base commit is not in this
+    repository is skipped before its patch is read."""
+    cache = cache_for(a)
+    ident = read_identity(cache)
     path = os.path.join(cache, "feedback.jsonl")
-    seen = set()
-    if os.path.exists(path):
-        for line in open(path):
-            try:
-                r = json.loads(line)
-                seen.add((r["issue"], r["path"], r["kind"], r["source"]))
-            except (ValueError, KeyError):
-                pass
-    rows = []
+    keep, seen = [], set()
+    for r in feedback_rows(cache):
+        k = (int(r["issue"]), r["path"], r["kind"], r["source"], r["authority"])
+        if k not in seen:
+            seen.add(k)
+            keep.append(r)
+    rows, skipped = [], Counter()
+
+    def add(issue, p, kind, src, authority, basis):
+        rows.append({"v": FEEDBACK_SCHEMA, "repo": ident["id"], "workspace": ident["workspace"],
+                     "issue": int(issue), "path": p, "kind": kind, "source": src,
+                     "authority": authority, "basis": basis})
     import glob
     for d in a.issue_runs or []:
         for f in glob.glob(os.path.join(os.path.expanduser(d), "*", "summary.json")):
             try:
-                r = json.load(open(f))
+                with open(f) as fh:
+                    r = json.load(fh)
             except ValueError:
+                continue
+            if r.get("base") and not _commit_here(a.repo, r["base"]):
+                skipped["issue-run from another repository"] += 1
                 continue
             src = "issue-run:" + os.path.basename(os.path.dirname(f))
             checks = (r.get("checks") or []) + (r.get("agent_checks") or [])
             patch = os.path.join(os.path.dirname(f), "change.patch")
             if checks and all(c.get("ok") for c in checks) and not r.get("error") and os.path.exists(patch):
-                # Only a change whose checks passed, read from the run's own diff,
-                # never from the summary's account of it (#11218).
-                for p in sorted(set(re.findall(r"(?m)^diff --git a/.+? b/(.+)$", open(patch, errors="replace").read()))):
-                    rows.append((r["issue"], p, "changed", src))
+                # Read from the run's own diff, never the summary's account (#11218);
+                # checks the run recorded, not a replay: an observation.
+                with open(patch, errors="replace") as fh:
+                    diff = fh.read()
+                for p in sorted(set(re.findall(r"(?m)^diff --git a/.+? b/(.+)$", diff))):
+                    add(r["issue"], p, "changed", src, OBSERVATION, "recorded checks passed; not replayed")
             for p in r.get("opened_outside_briefing") or []:
-                rows.append((r["issue"], p, "read_outside", src))
+                add(r["issue"], p, "read_outside", src, OBSERVATION, "read outside the briefing")
     for d in a.ab or []:
         for f in glob.glob(os.path.join(os.path.expanduser(d), "**", "result.json"), recursive=True):
             try:
@@ -1754,40 +1924,59 @@ def cmd_feedback(a):
             src = "ab:" + os.path.relpath(os.path.dirname(f), d)
             if r.get("tests_pass"):
                 for p in r.get("files_changed") or []:
-                    rows.append((r["issue"], p, "changed", src))
+                    add(r["issue"], p, "changed", src, OBSERVATION, "A/B grade passed; not replayed")
             for m in r.get("misses") or []:
                 p = m.get("file") if isinstance(m, dict) else m
                 if p:
-                    rows.append((r["issue"], p, "read_outside", src))
+                    add(r["issue"], p, "read_outside", src, OBSERVATION, "read outside the briefing")
     for t_path in a.traces or []:
-        # Verify-replayed traces (scripts/bench/traces, #11218): admitted only after
-        # their diff and checks were replayed from a clean checkout.
-        for line in open(os.path.expanduser(t_path)):
+        # Verify-replayed traces (scripts/bench/traces, #11218); the partition is the
+        # one admit took from the corpus map (#11215, LEARN-02).
+        with open(os.path.expanduser(t_path)) as f:
+            lines = f.readlines()
+        for line in lines:
             try:
-                t = json.loads(line)["trace"]
+                row = json.loads(line)
+                t = row["trace"]
             except (ValueError, KeyError):
+                continue
+            if not _commit_here(a.repo, t.get("base")):
+                skipped["trace from another repository"] += 1
                 continue
             src = "trace:" + t["id"]
             if t["replay"]["verdict"] != "verified":
                 continue
+            part = row.get("partition") or {}
+            role = part.get("role") if part.get("map_digest") else None
             ok = t["replay"]["checks"].get("tests_pass") if "tests_pass" in t["replay"]["checks"] else all(t["replay"]["checks"].values())
             if ok:
                 for p in t["files_changed"]:
-                    rows.append((t["issue"], p, "changed", src))
+                    if role == "training":
+                        add(t["issue"], p, "changed", src, LABEL,
+                            "replayed checks passed; training partition " + part["map_digest"][:19])
+                    else:
+                        add(t["issue"], p, "changed", src, OBSERVATION,
+                            f"replayed, but the issue group is {role or 'not in the corpus map'}")
             for p in t.get("opened_outside_briefing") or []:
-                rows.append((t["issue"], p, "read_outside", src))
-    new = [x for x in rows if x not in seen]
-    with open(path, "a") as f:
-        for issue, p, kind, src in new:
-            f.write(json.dumps({"issue": int(issue), "path": p, "kind": kind, "source": src}) + "\n")
-    print(f"feedback: {len(new)} new rows ({len(rows)} read) -> {path}")
+                add(t["issue"], p, "read_outside", src, OBSERVATION, "read outside the briefing")
+    new = []
+    for r in rows:
+        k = (r["issue"], r["path"], r["kind"], r["source"], r["authority"])
+        if k not in seen:
+            seen.add(k)
+            new.append(r)
+    out = keep + new
+    atomic(path, lambda f: f.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in out).encode()))
+    labels = sum(1 for r in out if r["authority"] == LABEL)
+    print(f"feedback: {len(new)} new rows ({len(rows)} read; {labels} labels, {len(out) - labels} observations"
+          + (f"; skipped {dict(skipped)}" if skipped else "") + f") -> {path}")
 
 
 def cmd_index(a):
     # Building uses the first door (Vertex when a Google credential is here), so an index
     # built before the switch is rebuilt with Vertex beside it; queries read whichever
     # model's vectors are there (`index_embedder`) until the rebuild is done.
-    ix = Index(a.cache or default_cache(a.repo), embed_key(required=False) or None)
+    ix = Index(cache_for(a), embed_key(required=False) or None)
     key = ix.key
     if not key:
         print("no embeddings key: refreshing history and the token indexes only", file=sys.stderr)
@@ -1882,7 +2071,7 @@ def cmd_query(a):
         title, body = a.text.split("\n", 1)[0], a.text
     timing["fetch_issue"] = time.perf_counter() - t0
     t_all = time.perf_counter()  # "total" counts from here: the issue text in hand
-    cache = a.cache or default_cache(a.repo)
+    cache = cache_for(a)
     key = embed_key(required=False, cache=cache)
     pool = ThreadPoolExecutor(1)
     if key:  # the one network call runs while the indexes load and the token stages run
@@ -1933,6 +2122,10 @@ def cmd_query(a):
                                    ("changed it" if w >= 1 else "opened it outside its briefing"))
         ranked_all = sorted(conf.items(), key=lambda kv: -kv[1])
     ranked = ranked_all[:a.k]
+    # Observations on this issue (unreplayed runs, reads outside a briefing): listed
+    # for exploration, never in the ranking (LEARN-04).
+    observed = sorted({(r["path"], r["kind"], r["basis"]) for r in feedback_rows(cache, OBSERVATION)
+                       if a.issue and int(r["issue"]) == a.issue and r["path"] in tree})
     timing["score"] = time.perf_counter() - t0
     timing["total"] = time.perf_counter() - t_all
     if a.json:
@@ -1944,13 +2137,17 @@ def cmd_query(a):
                        "stages": [s_ for s_ in STAGES_OUT if p in q.src[s_]],
                        "reasons": tidy(q.reason.get(p, [])) or ["ranked by the scorer from weak signals"]}
                       for i, (p, s) in enumerate(ranked, 1)],
-            "map": map_json(ranked_all, a.map, q) if a.map else None}, indent=1))
+            "map": map_json(ranked_all, a.map, q) if a.map else None,
+            "observations": [{"path": p, "kind": k, "basis": b, "authority": OBSERVATION}
+                             for p, k, b in observed]}, indent=1))
         return
     print(f"# {('#' + str(a.issue) + ' ') if a.issue else ''}{title}")
     for i, (p, s) in enumerate(ranked, 1):
         why = "; ".join(tidy(q.reason.get(p, []), 3)) or "scorer: " + ", ".join(
             s_ for s_ in SOURCES if p in q.src[s_])
         print(f"{i:3d}. {s:.3f}  {p}  — {why}")
+    for p, k, b in observed:
+        print(f"  observed: {p} ({'changed' if k == 'changed' else 'opened outside its briefing'}; {b}; not ranked)")
     print("timing " + ", ".join(f"{k} {v*1000:.0f} ms" for k, v in timing.items()), file=sys.stderr)
 
 
@@ -1966,6 +2163,8 @@ def main():
     i.add_argument("--no-issues", action="store_true", help="skip the similar-issue index")
     i.add_argument("--full", action="store_true", help="rebuild the history index from scratch")
     i.add_argument("--cache")
+    i.add_argument("--workspace", help="the workspace the cache belongs to (default: FILEFIND_WORKSPACE, "
+                   "OPENAGENTS_WORKSPACE, else local)")
     q = sub.add_parser("query", help="rank the files an issue needs")
     q.add_argument("--repo", default=".")
     q.add_argument("--rev", default="HEAD")
@@ -1977,13 +2176,16 @@ def main():
                    help="also print the map: the top N files grouped by crate (0: off)")
     q.add_argument("--json", action="store_true")
     q.add_argument("--cache")
+    q.add_argument("--workspace")
     q.add_argument("--model", default=MODEL_PATH)
     fb = sub.add_parser("feedback", help="collect late files from issue-run and A/B runs")
     fb.add_argument("--repo", default=".")
     fb.add_argument("--cache")
+    fb.add_argument("--workspace")
     fb.add_argument("--issue-runs", nargs="*", default=["~/.openagents/coder-new/issue-runs"])
     fb.add_argument("--ab", nargs="*", default=[], help="briefed-agent A/B results directories")
-    fb.add_argument("--traces", nargs="*", default=[],
+    fb.add_argument("--traces", nargs="*", default=[os.path.expanduser("~/.openagents/traces/admitted.jsonl")]
+                    if os.path.exists(os.path.expanduser("~/.openagents/traces/admitted.jsonl")) else [],
                     help="admitted.jsonl files from scripts/bench/traces (verify-replayed runs)")
     a = ap.parse_args()
     {"index": cmd_index, "query": cmd_query, "feedback": cmd_feedback}[a.cmd](a)

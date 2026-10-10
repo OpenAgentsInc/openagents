@@ -64,7 +64,15 @@ The intended use in a briefing:
    files".
 3. Add `Cargo.lock` whenever a `Cargo.toml` is in the top 50.
 
-The index lives in `~/.cache/openagents/filefind/<repo>/`. It is about
+The index lives in `~/.cache/openagents/filefind/<repo>-<identity>/`. The
+identity is the normalized remote URL, the root commit(s) and the workspace
+(`--workspace`, else `FILEFIND_WORKSPACE` / `OPENAGENTS_WORKSPACE`, else
+`local`), stamped in `identity.json`. Every worktree of one repository shares
+the cache; two repositories with the same name or the same issue numbers never
+do, and a cache stamped for another identity is refused (#11232, DATA-04). A
+cache from before identities is adopted once by the repository its history was
+built from; its old feedback is set aside as `feedback.unbound.jsonl` and never
+read. It is about
 1.9 GB for this repository with 1,700 replayed revisions, and it holds no
 file contents:
 
@@ -88,27 +96,43 @@ file contents:
   after every pull, and also refreshes recently closed issues and the
   run feedback. To install it, link it as `.git/hooks/post-merge`.
   `filefind.py index` is incremental: about 5 s after a day of commits.
-- `scripts/filefind/retrain.sh` retrains the ranker on every fix up to
-  now. It rebuilds the issue → fix dataset from main, replays every
-  parent, trains with cross-fitting, and writes `model.json` trained on
-  all cases. The shipped model is trained on every replayable fix up to
-  Oct 9 (1,692 issues).
+- `scripts/filefind/retrain.sh` trains a **candidate** ranker; it never
+  writes `model.json` (#11231, LEARN-01). It rebuilds the issue → fix
+  dataset from main, replays every parent, trains with cross-fitting on the
+  train cases only, and copies the model to an immutable
+  `candidates/model-<digest>.json` in its work directory. Then
+  `file-finding-bench.py compare` measures the active model and the
+  candidate on the same held-out eval cases under the frozen plan in
+  `scripts/filefind/ranker_gate.py` (recall@50 gain of at least 2 SE; no
+  loss beyond 2 SE at recall@20 or @100; no rise beyond 2 SE in the Brier
+  score of the top 100) and writes a receipt. Only
+  `ranker_gate.py promote --candidate C --receipt R` changes the active
+  model, atomically, and only when the receipt passed, names that exact
+  candidate, and compared against the model active now; the receipt is
+  kept beside it as `model.receipt.json`. `compare` and `eval` refuse a
+  model trained on any eval case (`train --all` marks its model so);
+  `eval --allow-overlap` labels such numbers as development. The shipped
+  model predates the gate: it was trained on every replayable fix up to
+  Oct 9 (1,692 issues), so its numbers on those issues are optimistic.
 
 **Late files from agent runs.** `filefind.py feedback` collects these
-into `feedback.jsonl` in the index:
+into `feedback.jsonl` in the index. Every row is bound to the cache's
+identity and carries an authority (#11231, LEARN-04):
 
-- the files a `coder issue-run` (#11214) changed when its checks passed,
-  and the files it opened outside its briefing;
-- the files a briefed-agent A/B trial (#11211) changed when its tests
-  passed, and the files it opened outside its briefing (`misses`), read
-  with `--ab <results dir>`.
+- **label**: a file a verify-replayed trace (`admitted.jsonl`, read by
+  default) changed, when its replayed checks passed, its base commit is in
+  this repository, and its issue group is in the corpus's `training`
+  partition (#11215 map).
+- **observation**: everything else: the files a `coder issue-run` (#11214)
+  changed (recorded checks, not replayed), A/B trial results (#11211,
+  `--ab <results dir>`), files opened outside a briefing, and failed or
+  held-out traces.
 
-The feedback is used in two places:
-
-- The similar-issue stage treats them as fix files of that issue.
-- A query on the same issue pins them into the list, with the reason "an
-  earlier agent run on this issue changed it" or "opened it outside its
-  briefing".
+Only labels change the ranking: the similar-issue stage treats them as fix
+files of that issue, and a query on the same issue pins them into the list.
+Observations are listed after the ranking (`observations` in `--json`) for
+exploration, and never scored. A run whose base commit is not in this
+repository is skipped before its patch is read.
 
 The bench never uses feedback, because every run is newer than the
 replayed fix.
@@ -468,8 +492,8 @@ The map holds **95%** of the existing files a fix edits on the bench, and
 - **The agent's own checks catch them.** The briefed agent's `verify` tool
   compiles and tests the change (#11211). A missing consumer shows up as
   a compile error or a failing test, and the agent then opens the file.
-  `filefind.py feedback` records it as a late file, and `retrain.sh`
-  learns from it.
+  `filefind.py feedback` records it as an observation; once a replayed,
+  training-partition trace changes it, it becomes a label.
 
 How to keep it fresh and learning:
 
@@ -480,8 +504,8 @@ How to keep it fresh and learning:
   the background after every pull. One refresh runs at a time, and it
   never fails the merge. It refreshes history, recently closed issues,
   embeddings and the token indexes, then collects run feedback.
-- **Retrain weekly** with `scripts/filefind/retrain.sh`, so the ranker is
-  trained up to the newest fix and on the late files.
+- **Retrain weekly** with `scripts/filefind/retrain.sh`, which trains and
+  compares a candidate; promote it only when its receipt passes.
 - **Embeddings are optional.** Without an embeddings key, or with an
   account out of credit (as the shared OpenRouter account is at the time
   of writing), every stage except emb/sim/hist still runs. The finder

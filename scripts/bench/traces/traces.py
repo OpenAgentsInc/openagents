@@ -18,7 +18,10 @@ training traces, and admits a trace only after an independent replay:
              the first field that diverged.
     admit    write the verified traces, with corpus items in the
              `tenancy::training` CorpusItem shape, to admitted.jsonl.
-             Rejected and unverifiable traces are never admitted.
+             Rejected and unverifiable traces are never admitted. Each
+             item's partition is its issue group's partition in the
+             file-relevance-v1 corpus map (#11215, `--corpus-map`); an
+             issue the map does not hold gets no items at all.
     manifest digests only (no diffs, no content), for committing.
 
 The store defaults to ~/.openagents/traces (override with --store). Nothing
@@ -61,6 +64,9 @@ STORE = Path(os.environ.get("TRACES_STORE", os.path.expanduser("~/.openagents/tr
 REPO = Path(os.environ.get("TRACES_REPO", "/Users/christopherdavid/work/openagents"))
 MIN_FREE_GB = float(os.environ.get("TRACES_MIN_FREE_GB", "30"))
 OVERLAY = HERE.parent / "briefed-ab" / "remote" / "overlay.py"
+# The #11215 corpus's issue-group map: one partition per issue, for every feed.
+CORPUS_MAP = HERE.parents[2] / "crates" / "gym" / "suites" / "file-relevance-v1" / "issues.tsv"
+ROLES = ("training", "calibration", "development", "locked")
 # The fields of the A/B grade (remote/eval.sh) a replay must reproduce.
 AB_FIELDS = ["applied", "compiles", "tests_applied", "tests_compiled", "tests_pass", "passed", "failed"]
 
@@ -606,21 +612,51 @@ def accepted(t: dict, checks: dict) -> bool:
     return bool(checks) and all(checks.values())
 
 
-def corpus_items(t: dict, rec: dict) -> list[dict]:
+def load_partition_map(path: Path = CORPUS_MAP) -> dict:
+    """The corpus's issue -> partition map (issues.tsv: issue, partition, ...),
+    with the file's digest so an admitted row names the map it used."""
+    data = Path(path).read_bytes()
+    issues = {}
+    for i, line in enumerate(data.decode().splitlines()):
+        cols = line.split("\t")
+        if i == 0 or len(cols) < 2:
+            continue
+        if cols[1] not in ROLES:
+            raise ValueError(f"{path}: issue {cols[0]} has unknown partition {cols[1]!r}")
+        issues[int(cols[0])] = cols[1]
+    return {"path": str(path), "digest": sha256(data), "issues": issues}
+
+
+def partition_of(t: dict, pmap: dict) -> dict:
+    """The trace's partition: its issue group's role in the corpus map. Never
+    a default: an issue the map does not hold has no role, and no items."""
+    role = pmap["issues"].get(int(t["issue"]))
+    out = {"role": role, "group": f"issue-{t['issue']}", "map": os.path.basename(pmap["path"]),
+           "map_digest": pmap["digest"]}
+    if role is None:
+        out["why"] = "the issue is not in the corpus map; no partition until the corpus assigns its group"
+    return out
+
+
+def corpus_items(t: dict, rec: dict, pmap: dict | None = None) -> list[dict]:
     """The trace's corpus items, in the `tenancy::training` CorpusItem
     shape. One outcome item (did the replayed checks pass), and one
     file item per path the diff changed when they did.
 
-    TODO(#11215): partition comes from the N8 corpus's time split once it
-    lands; until then every item is `training` and its group (the issue)
-    keeps all of one issue's items in one partition."""
+    The partition is the issue group's partition in the #11215 corpus map
+    (LEARN-02): a calibration, development or locked group keeps its role,
+    and an issue outside the map yields no items."""
+    pmap = pmap if pmap is not None else load_partition_map()
+    role = partition_of(t, pmap)["role"]
+    if role is None:
+        return []
     ok = accepted(t, rec["checks"])
     prov = {
         "source": f"openagents repository, {t['id']} (#11218)",
         "license": "Apache-2.0 (repository)",
         "permission": "owner-run agent trace on the public repository, admitted by replay receipt " + rec["digest"],
     }
-    common = {"group": f"issue-{t['issue']}", "partition": "training", "label_source": "measurement",
+    common = {"group": f"issue-{t['issue']}", "partition": role, "label_source": "measurement",
               "provenance": prov}
     items = [dict(common,
                   id=f"{t['id']}#outcome",
@@ -636,25 +672,30 @@ def corpus_items(t: dict, rec: dict) -> list[dict]:
                               state={"issue": t["issue"], "base": t["base"], "path": path},
                               label="changed",
                               label_rule="the file is in a diff whose replayed checks passed"))
+    assert all(i["partition"] == pmap["issues"][int(t["issue"])] for i in items)
     return items
 
 
 def cmd_admit(a) -> None:
     store = Path(a.store)
+    pmap = load_partition_map(Path(getattr(a, "corpus_map", None) or CORPUS_MAP))
     traces = {t["id"]: t for t in read_jsonl(store / "traces.jsonl")}
     latest = {}
     for r in read_jsonl(store / "replays.jsonl"):
         latest[r["trace"]] = r
-    rows, counts = [], {}
+    rows, counts, roles = [], {}, {}
     for tid, rec in sorted(latest.items()):
         counts[rec["verdict"]] = counts.get(rec["verdict"], 0) + 1
         t = traces.get(tid)
         if t is None or rec["verdict"] != "verified":
             continue
         admitted = dict(t, evidence_class=EXACT_REPLAY, replay=rec)
-        rows.append({"trace": admitted, "items": corpus_items(t, rec)})
+        part = partition_of(t, pmap)
+        roles[part["role"] or "unmapped"] = roles.get(part["role"] or "unmapped", 0) + 1
+        rows.append({"trace": admitted, "partition": part, "items": corpus_items(t, rec, pmap)})
     write_jsonl(store / "admitted.jsonl", rows)
-    print(f"admit: {len(rows)} traces admitted to {store / 'admitted.jsonl'} (replays: {counts})")
+    print(f"admit: {len(rows)} traces admitted to {store / 'admitted.jsonl'} (replays: {counts}; "
+          f"partitions from {os.path.basename(pmap['path'])} {pmap['digest'][:19]}: {roles})")
 
 
 def attempt_inventory(traces: dict, latest: dict) -> list[dict]:
@@ -684,10 +725,12 @@ def cmd_manifest(a) -> None:
     latest = {}
     for r in read_jsonl(store / "replays.jsonl"):
         latest[r["trace"]] = r
+    pmap = load_partition_map(Path(getattr(a, "corpus_map", None) or CORPUS_MAP))
     rows = []
     for tid, rec in sorted(latest.items()):
         t = traces.get(tid, {})
         rows.append({
+            "partition": pmap["issues"].get(t.get("issue")) if t else None,
             "trace": tid, "issue": t.get("issue"), "base": t.get("base"), "arm": t.get("arm"),
             "diff_digest": t.get("diff_digest"), "result_tree": t.get("result_tree"),
             "files_changed": t.get("files_changed"), "checks": t.get("checks"),
@@ -696,6 +739,7 @@ def cmd_manifest(a) -> None:
             "claim_mismatch": rec.get("claim_mismatch"), "receipt_digest": rec["digest"],
         })
     body = {"v": "openagents.coder-trace-manifest.v1", "generated": _now(),
+            "partition_map": {"map": os.path.basename(pmap["path"]), "digest": pmap["digest"]},
             "admitted": sum(1 for r in rows if r["verdict"] == "verified"), "rows": rows}
     body["digest"] = sha256(canonical(rows))
     # Every captured attempt, replayed or not: failed setups, cancellations,
@@ -724,8 +768,10 @@ def main(argv=None) -> None:
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--timeout", type=int, default=1500)
     r.add_argument("--again", action="store_true", help="replay traces that already have a receipt")
-    sub.add_parser("admit")
+    ad = sub.add_parser("admit")
+    ad.add_argument("--corpus-map", default=str(CORPUS_MAP), help="the corpus's issues.tsv (#11215)")
     m = sub.add_parser("manifest")
+    m.add_argument("--corpus-map", default=str(CORPUS_MAP))
     m.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     {"capture": cmd_capture, "replay": cmd_replay, "admit": cmd_admit, "manifest": cmd_manifest}[a.cmd](a)

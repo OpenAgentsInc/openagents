@@ -10,8 +10,14 @@ Steps (each writes into --work, a scratch directory):
 
   prepare   embed every blob of every case's parent tree (cached per blob)
   features  run the candidate stages per case; per-stage recall and latency
-  train     fit the scorer on the train cases -> scripts/filefind/model.json
-  eval      rank the eval cases; recall / precision at 20, 50, 100; misses
+  train     fit the scorer on the train cases -> --model (a candidate file; the
+            active scripts/filefind/model.json changes only through
+            scripts/filefind/ranker_gate.py promote)
+  eval      rank the eval cases; recall / precision at 20, 50, 100; misses.
+            Refuses a model trained on any eval case (--allow-overlap labels
+            the numbers as development instead)
+  compare   the active model against a candidate on the eval cases under the
+            gate's frozen plan; writes the receipt promote needs
   judge     ask our decision API (batch nouls; connected Pylons first, #11225)
             about the files the scorer is unsure of
   plan      stage 4: a model writes the change plan; map steps to files
@@ -34,6 +40,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filefind"))
 import filefind as ff  # noqa: E402
+import ranker_gate as gate  # noqa: E402
 
 KS = (20, 50, 100, 200, 300, 400)
 
@@ -86,7 +93,7 @@ def load(a):
 
 
 def cmd_prepare(a):
-    ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    ix = ff.Index(ff.cache_for(a)).load()
     key = ix.key or ff.embed_key()
     cases = load(a)
     total = 0
@@ -135,7 +142,7 @@ def run_case(ix, repo, c, key, keep_query=False):
 
 
 def cmd_features(a):
-    ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    ix = ff.Index(ff.cache_for(a)).load()
     key = ix.key
     cases = load(a)
     out = {}
@@ -230,7 +237,7 @@ def fit(cases, feats, a, names=None):
 
 def stage2_features(a, cases, feats1, models_for):
     """Re-run each case's query and add the stage-2 features from its stage-1 model."""
-    ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    ix = ff.Index(ff.cache_for(a)).load()
     out = {}
     for i, c in enumerate(cases):
         r = run_case(ix, a.repo, c, ix.key, keep_query=True)
@@ -277,10 +284,20 @@ def cmd_train(a):
 
 
 def save_model(a, train, m1, m2):
+    if os.path.abspath(a.model) == os.path.abspath(ff.MODEL_PATH):
+        sys.exit("train writes a candidate, never the active model: pass --model elsewhere and "
+                 "promote it with scripts/filefind/ranker_gate.py (LEARN-01)")
+    issues = sorted({c["issue"] for c in train})
+    with open(a.dataset, "rb") as f:
+        dataset_digest = "sha256:" + __import__("hashlib").sha256(f.read()).hexdigest()
     model = {"schema": "openagents.filefind.model.v1", "stage1": m1, "stage2": m2,
-             "trained_on": {"cases": len(train), "issues": f"#{min(c['issue'] for c in train)}.."
-                            f"#{max(c['issue'] for c in train)}"}}
-    json.dump(model, open(a.model, "w"))
+             "trained_on": {"cases": len(train), "issues": f"#{min(issues)}..#{max(issues)}",
+                            "issue_list": issues, "dataset": dataset_digest,
+                            "includes_eval": bool(a.all)}}
+    tmp = f"{a.model}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(model, f)
+    os.replace(tmp, a.model)
     print(f"trained on {len(train)} cases -> {a.model}")
 
 
@@ -312,6 +329,15 @@ def cmd_eval(a):
     cases = load(a)
     model = json.load(open(a.model))
     ev, _ = split(cases, a.eval)
+    seen = gate.overlap(model, [c["issue"] for c in ev])
+    evidence = "held-out"
+    if seen:
+        if not a.allow_overlap:
+            sys.exit(f"{a.model} was trained on {len(seen)} of the {len(ev)} eval cases (e.g. #{seen[0]}): "
+                     "its numbers would not be held-out. Evaluate the work dir's held-out model, or pass "
+                     "--allow-overlap to label them development")
+        evidence = f"development (trained on {len(seen)} of {len(ev)} eval cases)"
+        print(f"== DEVELOPMENT NUMBERS: {evidence}")
     f1 = pickle.load(open(os.path.join(a.work, "features.pkl"), "rb"))
     f2 = pickle.load(open(os.path.join(a.work, "features2.pkl"), "rb"))
     print("== stage 1 candidates")
@@ -321,7 +347,54 @@ def cmd_eval(a):
     print("\n== stage 1 + stage 2 (propagation)")
     res = evaluate(ev, f2, model["stage2"], a)
     res["map"] = map_report(ev, f2, model["stage2"], a.repo)
+    res["evidence"] = evidence
+    res["model_digest"] = gate.digest_file(a.model)
     json.dump(res, open(os.path.join(a.work, "eval.json"), "w"), indent=1)
+
+
+def gate_rows(ev, feats, model):
+    """Per-case rows for the gate: hits at 20/50/100 and the Brier score of the
+    top 100 confidences against whether each file is in the fix."""
+    rows = []
+    for c in ev:
+        r = feats[c["issue"]]
+        ranked = ff.rank(model, r["feats"])
+        hand = set(r["hand"])
+        order = [p for p, _ in ranked]
+        row = {"issue": c["issue"], "n": len(hand)}
+        for k in (20, 50, 100):
+            row[f"r{k}"] = len(hand & set(order[:k]))
+        top = ranked[:100]
+        row["brier_top100"] = sum((s - (p in hand)) ** 2 for p, s in top) / max(1, len(top))
+        rows.append(row)
+    return rows
+
+
+def cmd_compare(a):
+    """The active model (--baseline) against --candidate on the eval cases; the
+    receipt goes to WORK/compare-<candidate digest>.json. Never promotes."""
+    cases = load(a)
+    ev, _ = split(cases, a.eval)
+    issues = [c["issue"] for c in ev]
+    base, cand = json.load(open(a.baseline)), json.load(open(a.candidate))
+    seen = gate.overlap(cand, issues)
+    if seen:
+        sys.exit(f"refused: the candidate was trained on {len(seen)} of the {len(ev)} eval cases "
+                 f"(e.g. #{seen[0]}); a comparison on them is not held-out")
+    base_seen = gate.overlap(base, issues)
+    if base_seen:
+        print(f"note: the baseline was trained on {len(base_seen)} of the {len(ev)} eval cases; its numbers "
+              "are optimistic, which only makes the gate harder to pass", file=sys.stderr)
+    f2 = pickle.load(open(os.path.join(a.work, "features2.pkl"), "rb"))
+    rec = gate.receipt(a.baseline, a.candidate, issues, gate_rows(ev, f2, base["stage2"]),
+                       gate_rows(ev, f2, cand["stage2"]), base_seen)
+    out = os.path.join(a.work, f"compare-{rec['candidate']['digest'].split(':')[1][:12]}.json")
+    with open(out, "w") as f:
+        json.dump(rec, f, indent=1, sort_keys=True)
+    for name, m in rec["metrics"].items():
+        print(f"{name}: baseline {m['baseline']:.4f} candidate {m['candidate']:.4f} "
+              f"diff {m['diff']:+.4f} (SE {m['se']:.4f})")
+    print(("PASS" if rec["pass"] else "FAIL: " + "; ".join(rec["why"])) + f" -> {out}")
 
 
 def evaluate(ev, feats, model, a, judged=None):
@@ -685,7 +758,7 @@ def cmd_rerank(a):
     f2 = pickle.load(open(f2p, "rb")) if os.path.exists(f2p) and not a.live else {}
     if f2:
         cases, _ = split(cases, a.eval)
-    ix = None if f2 else ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    ix = None if f2 else ff.Index(ff.cache_for(a)).load()
     out_path = os.path.join(a.work, f"rerank-{os.path.basename(a.dataset)}.json")
     done = json.load(open(out_path)) if os.path.exists(out_path) else {}
 
@@ -740,7 +813,7 @@ def cmd_rerank(a):
 
 def cmd_check(a):
     """Run the shipped two-stage finder on every case of a small dataset (e.g. fresh fixes)."""
-    ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    ix = ff.Index(ff.cache_for(a)).load()
     model = json.load(open(a.model))
     key = ix.key
     print("| Issue | Hand-written files (existing) | " + " | ".join(f"@{k}" for k in KS) + " | Missed at 400 |")
@@ -764,7 +837,8 @@ def cmd_check(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "judge", "judge-eval", "plan", "check", "rerank"])
+    ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "compare", "judge", "judge-eval", "plan",
+                                    "check", "rerank"])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--work", required=True)
@@ -776,7 +850,12 @@ def main():
     ap.add_argument("--trees", type=int, default=200)
     ap.add_argument("--neg-keep", type=float, default=0.3)
     ap.add_argument("--reuse-stage2", action="store_true")
-    ap.add_argument("--all", action="store_true", help="train on every case (with --reuse-stage2)")
+    ap.add_argument("--all", action="store_true", help="train on every case (with --reuse-stage2); the model "
+                    "is marked as trained on the eval cases, so eval and compare refuse it")
+    ap.add_argument("--allow-overlap", action="store_true",
+                    help="eval: report a model trained on eval cases, labelled development")
+    ap.add_argument("--baseline", default=ff.MODEL_PATH, help="compare: the active model")
+    ap.add_argument("--candidate", help="compare: the candidate model")
     ap.add_argument("--plan-backend", choices=["openrouter", "claude-cli"], default="claude-cli")
     ap.add_argument("--plan-cli-model", default="sonnet")
     ap.add_argument("--live", action="store_true", help="rerank: run the finder live instead of features2.pkl")
@@ -788,7 +867,7 @@ def main():
     ap.add_argument("--plan-top", type=int, default=60)
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
-    {"prepare": cmd_prepare, "features": cmd_features, "train": cmd_train, "eval": cmd_eval,
+    {"prepare": cmd_prepare, "features": cmd_features, "train": cmd_train, "eval": cmd_eval, "compare": cmd_compare,
      "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check, "rerank": cmd_rerank}[a.cmd](a)
 
 

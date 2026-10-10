@@ -167,7 +167,10 @@ fn the_pruned_leak_check_reports_the_all_pairs_verdict() {
                 if items[i]["partition"] == items[j]["partition"] {
                     continue;
                 }
-                let (a, b) = (normalized(&items[i]["state"]), normalized(&items[j]["state"]));
+                let (a, b) = (
+                    normalized(&items[i]["state"]),
+                    normalized(&items[j]["state"]),
+                );
                 let id = |k: usize| items[k]["id"].as_str().unwrap().to_string();
                 if a == b {
                     return Some((id(i), id(j), "exact"));
@@ -185,7 +188,9 @@ fn the_pruned_leak_check_reports_the_all_pairs_verdict() {
     }
     let mut seed: u64 = 0x5eed;
     let mut next = move || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (seed >> 33) as usize
     };
     let parts = ["training", "calibration", "development", "locked"];
@@ -200,7 +205,12 @@ fn the_pruned_leak_check_reports_the_all_pairs_verdict() {
                 words.push(format!("r{}", next() % 30));
             }
             let partition = parts[(k + round) % if round % 5 == 0 { 1 } else { 4 }];
-            items.push(item(&format!("i{k}"), &format!("g{k}"), partition, &words.join(" ")));
+            items.push(item(
+                &format!("i{k}"),
+                &format!("g{k}"),
+                partition,
+                &words.join(" "),
+            ));
         }
         items[0]["partition"] = json!("training");
         let expected = brute(&items);
@@ -443,4 +453,69 @@ fn a_recipe_with_an_edit_after_freeze_is_tampered() {
     text["adapter"]["rank"] = json!(16);
     let fault = book.freeze_recipe(&text.to_string()).unwrap_err();
     assert!(matches!(fault, Trouble::Recipe(_)), "{fault}");
+}
+
+/// DATA-03 / LEARN-08: deleting a corpus removes every content-bearing
+/// field, the teacher answer included, from the stored file; the derived
+/// headroom report is removed; what the book cannot reach is said.
+#[test]
+fn delete_removes_teacher_content_and_handles_derived_stores() {
+    const PHRASE: &str = "zanzibar-quokka-7731";
+    let dir = tempfile::tempdir().unwrap();
+    let book = Book::open(dir.path()).unwrap();
+    let mut doc = eligible();
+    for (index, item) in doc["items"].as_array_mut().unwrap().iter_mut().enumerate() {
+        item["state"] =
+            json!({"text": format!("{PHRASE} state {index}"), "nested": {"deep": [PHRASE]}});
+        item["question"] = json!({"text": format!("{PHRASE} question")});
+        item["label_rule"] = json!(format!("{PHRASE} rule"));
+        item["teacher"] = json!({"model": "jev", "answer": format!("{PHRASE} teacher {index}"),
+                                 "copied": {"source": [PHRASE]}});
+        item["annotations"]["ambiguous"] = json!(index == 4);
+    }
+    book.register_corpus(&doc.to_string()).unwrap();
+    let rows: Vec<Value> = ["d1", "d2", "d3", "d4"]
+        .iter()
+        .map(|id| json!({"item_id": id, "predicted": "no", "correct": false}))
+        .collect();
+    let scores = json!({
+        "v": "openagents.tenant_training.scores.v1",
+        "door": "baseline-1",
+        "measured": "2026-09-24",
+        "rows": rows
+    });
+    book.assess("corpus-one", &scores.to_string(), "now")
+        .unwrap();
+    let headroom = book.dir().join("headroom").join("corpus-one.json");
+    assert!(headroom.exists());
+    let raw_path = book.dir().join("corpora").join("corpus-one.json");
+    assert!(std::fs::read_to_string(&raw_path).unwrap().contains(PHRASE));
+
+    let tombstone = book
+        .delete_corpus("corpus-one", "2026-10-10", "request")
+        .unwrap();
+    let raw = std::fs::read_to_string(&raw_path).unwrap();
+    assert!(!raw.contains(PHRASE), "content survived deletion: {raw}");
+    assert!(!raw.contains("\"teacher\""));
+    assert!(!headroom.exists(), "the derived headroom report is removed");
+    assert!(
+        tombstone
+            .derived
+            .iter()
+            .any(|d| d.kind == "headroom" && d.disposition == "removed")
+    );
+    assert!(tombstone.outside.contains("weights"));
+    assert_eq!(tombstone.item_digests.len(), 8);
+
+    // A corpus tombstoned by the older routine (teacher left behind) is
+    // scrubbed again on the next delete, keeping its first tombstone.
+    let mut legacy: Value = serde_json::from_str(&raw).unwrap();
+    legacy["items"][0]["teacher"] = json!({"answer": PHRASE});
+    legacy["tombstone"]["derived"] = json!([]);
+    std::fs::write(&raw_path, legacy.to_string()).unwrap();
+    let again = book
+        .delete_corpus("corpus-one", "2026-10-11", "again")
+        .unwrap();
+    assert_eq!(again.deleted_at, "2026-10-10");
+    assert!(!std::fs::read_to_string(&raw_path).unwrap().contains(PHRASE));
 }

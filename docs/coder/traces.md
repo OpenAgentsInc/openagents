@@ -95,12 +95,18 @@ receipt, plus corpus items in the `tenancy::training` `CorpusItem` shape
 - one **outcome** item, `accepted` or `rejected` from the replayed checks;
 - one **file** item per changed path, `changed`, when the checks passed.
 
-All of an issue's items share the group `issue-N`. Until the N8 corpus's time
-split lands (#11215), every item's partition is `training`. That is the
-TODO in `corpus_items`.
+All of an issue's items share the group `issue-N`, and take that group's
+partition from the file-relevance-v1 corpus map
+(`crates/gym/suites/file-relevance-v1/issues.tsv`, #11215; `--corpus-map`).
+A calibration, development or locked group keeps its role; an issue the map
+does not hold gets no items. Each row records the map's digest under
+`partition` (#11231, LEARN-02). The 41 admitted traces of
+`docs/coder/traces/2026-10-10-manifest.json` are issues #10074 and #10228
+(calibration) and #10273 (development); none is training.
 
-`filefind.py feedback --traces ~/.openagents/traces/admitted.jsonl` feeds
-admitted traces to the context finder. The issue-run input now reads changed
+`filefind.py feedback` reads `~/.openagents/traces/admitted.jsonl` by default.
+Only a training-partition trace whose replayed checks passed yields learning
+labels; the rest are observations. The issue-run input now reads changed
 files from the run's own `change.patch`, never from the summary.
 
 ## Hooks
