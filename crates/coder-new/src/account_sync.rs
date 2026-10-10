@@ -74,6 +74,9 @@ pub(crate) struct SyncState {
     pub(crate) board: crate::supervise::Board,
     /// Memory notes on the account (#11182).
     pub(crate) memory: crate::memory_sync::MemorySync,
+    /// Coding runs for the account's own API key (#11080), taken while
+    /// sync is on.
+    own_runs: Option<crate::own_runs::Host>,
 }
 
 /// What one take brought for one chat.
@@ -157,6 +160,7 @@ impl App {
             told: None,
             board: crate::supervise::Board::default(),
             memory: crate::memory_sync::MemorySync::default(),
+            own_runs: None,
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -195,6 +199,7 @@ impl App {
             sync.heartbeat = None;
             sync.listening = false;
             sync.taking.clear();
+            sync.own_runs = None;
         }
     }
 
@@ -359,6 +364,8 @@ impl App {
         self.poll_memory();
         let busy = self.live.busy;
         let open = self.session_id().map(str::to_owned);
+        let account_dir = self.account_dir.clone();
+        let cwd = self.cwd.clone();
         let asked = self
             .sync
             .as_mut()
@@ -380,6 +387,24 @@ impl App {
                 computer: sync.listening.then(|| sync.computer.clone()),
             });
         }
+        // Coding runs for the account's own API key (#11080): taken while
+        // this computer checks in.
+        if !sync.listening {
+            sync.own_runs = None;
+        } else if sync.own_runs.is_none()
+            && let Some(saved) = account_dir.as_deref().and_then(signed_in)
+        {
+            sync.own_runs = Some(crate::own_runs::Host::start(
+                saved,
+                sync.computer.clone(),
+                cwd,
+            ));
+        }
+        let own_events = sync
+            .own_runs
+            .as_ref()
+            .map(crate::own_runs::Host::drain)
+            .unwrap_or_default();
         if let Some(session) = open.filter(|session| sync.settings.sent.contains_key(session)) {
             let due = match &sync.heartbeat {
                 Some((last, working, at)) => {
@@ -402,6 +427,9 @@ impl App {
                 self.apply_sync(event);
             }
             self.store_sync();
+        }
+        if let Some(event) = own_events.last() {
+            self.notice = Some(crate::own_runs::notice(event));
         }
         self.report_activity();
         self.answer_web_reply();

@@ -28,15 +28,16 @@ mod fleet_app;
 pub mod issue_run;
 pub mod jev_plugin;
 pub mod live;
-pub mod media;
 pub mod login_choice;
 mod long_session;
 mod loops;
+pub mod media;
 pub mod memory;
 mod memory_sync;
 pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
+mod own_runs;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;

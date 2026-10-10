@@ -57,6 +57,7 @@ pub mod funding;
 mod github_repos;
 pub mod inference_byok;
 pub mod inference_openapi;
+pub mod inference_own_coder;
 pub mod inference_public;
 pub mod inference_pylon;
 pub mod inference_rates;

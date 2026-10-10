@@ -256,6 +256,12 @@ pub struct Inference {
     /// to use and the provider-key routes are not mounted.
     #[serde(default)]
     pub byok: Option<crate::inference_byok::Config>,
+    /// Own coding capacity (#11080): the web server on loopback that
+    /// knows the owner's linked computers, and the token both share.
+    /// Absent, `openagents/code` under `pay: "mine"` has no linked
+    /// computers to run on.
+    #[serde(default)]
+    pub own_coders: Option<crate::inference_own_coder::Config>,
     /// Pylon providers registered as upstreams (`pylon:<pylon>`), each
     /// with its models, its own price, and its stated data policy. They
     /// are mounted only with `earnings.ledger` and `sats_rate`, so their

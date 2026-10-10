@@ -145,6 +145,7 @@ pub fn owned(path: &str) -> bool {
         || crate::agent_ready::owns(path)
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
+        || crate::own_runs::owns(path)
         || OWNED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
         || REMOVED.iter().any(|section| {
             path.strip_prefix(section)

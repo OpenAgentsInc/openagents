@@ -6,7 +6,7 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
-[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN]";
+[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,6 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // account service), when checkout is set up.
             "--plan-meter" => plan_meter = Some(PathBuf::from(value)),
             "--plan-checkout" => plan_checkout = Some(value),
+            // The inference gateway's token for starting coding runs on a
+            // person's own linked computers (#11080); read when asked, so
+            // the gateway may write it after this server starts.
+            "--own-runs-token" => openagents_web::own_runs::set_token(PathBuf::from(value)),
             // The OAuth App's private file ({client_id, client_secret,
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),

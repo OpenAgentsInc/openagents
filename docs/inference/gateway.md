@@ -351,8 +351,12 @@ the upstream `pylon:<pylon>`.
 
 ### Own coding capacity
 
-Built for #11080 in `crates/inference/src/upstream/coder.rs` (library
-and router; the gateway does not mount it yet).
+Built for #11080: the upstream and router in
+`crates/inference/src/upstream/coder.rs`, the gateway's side in
+`crates/gateway/src/inference_own_coder.rs`, the web server's records
+and routes in `crates/openagents-web/src/own_runs.rs`, and Coder's side
+in `crates/coder-sync/src/own_runs.rs` and
+`crates/coder-new/src/own_runs.rs`.
 
 - Each subscription account on one of the key owner's linked computers
   (`coder::Linked`: owner, computer, account, Codex or Claude Code, and
@@ -372,10 +376,37 @@ and router; the gateway does not mount it yet).
 - The subscription's provider terms apply, which we have not verified as
   zero retention, so a run needs `openagents.privacy: "standard"`, like a
   direct own key.
-- Not yet: the gateway's `coder::Runs` (starting a run on the owner's
-  linked computer through their Coder link) and its source of linked
-  computers with free sessions. `tests/own_capacity.rs` runs the path
-  with a stub.
+- Linked computers: while sync is on, Coder reports each agent installed
+  on the computer (Codex, Claude Code) as one account with how many more
+  runs it can take now (one at a time by default,
+  `CODER_OWN_RUN_SESSIONS` for more, none for 30 minutes after a usage
+  limit, `CODER_OWN_RUNS=off` for none) to the web server's
+  `POST /v1/computers/{name}/runs`, whose answer hands it the runs
+  waiting for it, each once. Coder runs each in the folder it was opened
+  in, on the sign-in the agent holds there, and reports progress lines
+  and the answer to `POST /v1/computers/{name}/runs/{id}`, whose answer
+  says whether the caller left.
+- The gateway: for a `pay: "mine"` request naming `openagents/code` or
+  `openagents/auto`, `inference_own_coder::attach` (in `run_responses`
+  and `run_chat`, beside the workspace's own keys from `inference_byok`)
+  finds the account that owns the key's personal workspace (an
+  organization workspace offers none), reads its computers that reported
+  in the last 45 seconds from the web server on loopback
+  (`GET /v1/own-runs/capacity`), and adds them through `own_upstreams`.
+  A run is started with `POST /v1/own-runs` and waits up to 25 seconds
+  for Coder to take it before the router tries the next account; its
+  progress is read with `GET /v1/own-runs/{id}` (waiting up to 20
+  seconds for news), and a caller that leaves cancels it
+  (`POST /v1/own-runs/{id}/cancel`). The WebSocket transport does not
+  attach them yet.
+- Configuration: `inference.own_coders` `{web, token_file}` in the
+  gateway, and `--own-runs-token` on the web server, naming the same
+  file. The gateway makes it on first use (32 random bytes, hex, 0600);
+  the launchers use `$STACK_STATE/own-runs.key`, which the web container
+  mounts read-only. The web server answers the gateway's routes only on
+  its loopback address with that token.
+- `tests/own_capacity.rs` runs the router path with a stub; the web
+  server's, Coder's, and the gateway's modules carry their own tests.
 
 ## 5. Routing
 
@@ -959,7 +990,7 @@ Sources: [241](../transcripts/241.md), [242](../transcripts/242.md),
 | 243 | Free tier sized from a cost model, not a guess | Kept | Section 5 burn-down feeds decision 9 |
 | 243 | Head-to-head Gym and honest published numbers | Kept | Section 6 (Quality, Published comparisons) |
 | 243, 245 | Free tier paid for with data; selling traces | Dropped | Decision 12; section 9 keeps no text |
-| 244 | Coding requests run on the caller's own subscriptions through their own Pylon or Coder; own capacity only, no resale, semantic routing | Library and router built; gateway mount next | Sections 4 and 5, [#11080](https://github.com/OpenAgentsInc/openagents/issues/11080) |
+| 244 | Coding requests run on the caller's own subscriptions through their own Pylon or Coder; own capacity only, no resale, semantic routing | Built end to end; checks pending | Sections 4 and 5, [#11080](https://github.com/OpenAgentsInc/openagents/issues/11080) |
 | 244 | Pooling other people's subscription capacity | Dropped | Section 4: never pooled or resold |
 | 245 | "Your coding agent pays you": payouts from trace-derived plugins | Dropped for the gateway | No automatic royalties (roadmap); paid agent work is #11082 instead |
 | 246 | Fail over across a user's several accounts when one is spent | Kept | Section 5 (the caller's own keys fail over too) |

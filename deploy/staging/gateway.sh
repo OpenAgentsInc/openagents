@@ -206,6 +206,7 @@ cat > "$private/gateway.json" << EOF
   },
   "inference": {
     "admin_token_env": "INFERENCE_ADMIN_TOKEN",
+    "own_coders": {"web": "http://127.0.0.1:8080", "token_file": "$state/own-runs.key"},
     "service_tenants": ["house"],
     "journal": "$state/gateway/attempts",
     "public": {"free_tier": {"requests_per_day": 20, "models": ["google/gemini-2.5-flash-lite"]}},

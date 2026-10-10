@@ -85,7 +85,7 @@ pub fn every(items: &[Item]) -> Duration {
 }
 
 /// The computer's name as a path segment.
-fn segment(computer: &str) -> String {
+pub(crate) fn segment(computer: &str) -> String {
     line(computer, 64)
         .bytes()
         .map(|b| {

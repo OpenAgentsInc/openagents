@@ -339,6 +339,9 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
             },
         )))
     });
+    // The workspace's own provider keys; `run_responses` and `run_chat`
+    // add the key owner's own linked computers (#11080,
+    // `crate::inference_own_coder::attach`), which need an async read.
     let own = crate::inference_byok::own(state, &scope);
     Ok(Caller {
         request_id: request_id(),
@@ -475,10 +478,13 @@ async fn responses(
 /// came before any answer.
 async fn run_responses(
     state: &Arc<ServeState>,
-    caller: Caller,
+    mut caller: Caller,
     request: CreateResponse,
     events: bool,
 ) -> Result<Response, Response> {
+    // Beside the workspace's own keys (`crate::inference_byok::own`, in
+    // `admit`): the key owner's own linked computers (#11080).
+    crate::inference_own_coder::attach(state, &mut caller, &request).await;
     let id = caller.request_id.clone();
     let sessions = match crate::inference_state::engine(state) {
         Ok(sessions) => sessions.clone(),
@@ -561,10 +567,11 @@ async fn chat(
 /// Run an admitted Chat Completions request (already translated).
 async fn run_chat(
     state: &Arc<ServeState>,
-    caller: Caller,
+    mut caller: Caller,
     request: CreateResponse,
     include_usage: bool,
 ) -> Result<Response, Response> {
+    crate::inference_own_coder::attach(state, &mut caller, &request).await;
     let id = caller.request_id.clone();
     let gateway = match engine(state) {
         Ok(gateway) => gateway.clone(),

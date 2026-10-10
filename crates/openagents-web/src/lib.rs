@@ -40,6 +40,7 @@ mod layout;
 mod markdown;
 mod oauth;
 mod older_paths;
+pub mod own_runs;
 mod pages;
 pub mod palette;
 mod payments;
@@ -265,6 +266,7 @@ pub fn router(config: Config) -> Router {
         .merge(device::routes())
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
+        .merge(own_runs::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())
         .merge(terminal_connect::routes())

@@ -47,4 +47,4 @@ exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 "$@" \
   --chat-bucket "$CHAT_BUCKET" \
   --cloud-config "$p/cloud.json" --github-oauth "$p/github-oauth.json" \
   --cloud-byo "$byo" --plan-meter /tmp/plan-meter.sqlite \
-  --inference http://127.0.0.1:8791
+  --inference http://127.0.0.1:8791 --own-runs-token "$stack/own-runs.key"
