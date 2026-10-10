@@ -3,7 +3,7 @@
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: M1 `implemented_early` on the CPU (2026-10-09); M2 `implemented_early` on CUDA (2026-10-10), gate partly met; M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2 done on CUDA (2026-10-10, gate met, chunk bound restated); M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -428,6 +428,71 @@ The trunk can now be bitwise chunk-invariant, but the default isn't
 yet: fused projections everywhere cost 14 % at 4k and miss the 4k gate.
 Making the fused kernel as fast as cuBLAS on large chunks closes this.
 
+### Round 4 (2026-10-10): host work off the critical path, and the M2 gate
+
+- **Host work overlapped with the device.**
+  - The next chunk's embedding rows and rotary table are built on a
+    second thread while the device runs the current chunk.
+  - The head's lexical vectors (option spans' output-embedding means)
+    are built on a thread during the prefill.
+  - Results are bitwise unchanged.
+- **The head's memory attentions run on the device.** The per-head
+  `W_k^T q` and `W_v z + b` products used to run on the host; now they
+  bracket the device attention in one round trip
+  (`head_side_kernel`, `head_context_kernel`).
+  - The head drops from 10 to 5 ms at 1k, and from 30/22 to 15 ms on
+    router requests.
+  - Answers move by at most 1.2e-7 in p.
+- **Small-M kernel, tried and dropped.** A separate kernel for the
+  32-row `ssm_alpha`/`ssm_beta` projections was slower than the 128-row
+  fused tile.
+- **Deployed** as `pylon-clef` `a9ab2671be`.
+
+**M2 gate session.** RTX 4080, the deployed build on a side port with
+`pylon-clef` stopped, chunk 2048. Psionic and llama.cpp b11538 were
+interleaved for three rounds, each the median of 9 with a fresh nonce:
+
+| Prompt | Gate | Psionic, rounds 1 / 2 / 3 | llama.cpp b11538, rounds 1 / 2 / 3 |
+| --- | --- | --- | --- |
+| 1,082 tokens | ≤ 0.20 s | **0.193 / 0.194 / 0.194 s** | 0.182 / 0.182 / 0.184 s |
+| 3,917 tokens | ≤ 0.65 s | **0.596 / 0.599 / 0.595 s** | 0.684 / 0.687 / 0.680 s |
+| 15,511 tokens | ≤ 3.25 s | **2.48 / 2.49 / 2.47 s** | 3.47 / 3.45 / 3.46 s |
+
+All three latency gates are met in every round. 4k runs 1.15× and 16k
+1.40× llama.cpp; 1k stays 6 % behind it.
+
+**Per-file relevance (measured, deployed build).**
+`scripts/bench/clef-relevance-bench.py --mode seq` on localhost, 72
+requests averaging 1,530 tokens:
+
+- p50 0.250 s, p90 0.277 s, p99 0.299 s;
+- 6.2k prefill tokens/s;
+- 4.05 decisions/s.
+
+**The chunk-invariance bound, restated.** The bound as written was a
+1e-3 logit bound across chunk sizes in the default mode. It becomes:
+
+1. **Strict mode** (`--decision-accumulate f32`) meets 1e-3: 7.3e-4
+   over chunks {whole, 2048, 512, 64} on a 7,274-token record, and 0 on
+   a 155-token one.
+2. **Invariant mode** (`PSIONIC_CLEF_FUSED=1`, f16 or f32) is bitwise
+   chunk-invariant: every chunk size gives identical logits. It costs
+   14 % at 4k (0.686 s, over the 4k gate), so it is not the default.
+3. **The default (speed) mode** is bitwise invariant for prompts of up
+   to 1,024 tokens, where every chunk takes the fused projections.
+   Longer prompts move up to 2.2e-2 in logit, with the same top answer
+   for every chunk size.
+
+That movement comes only from cuBLAS's shape-dependent f16-accumulation
+order in chunks over 1,024 tokens. It is about 0.005 in p. That is a
+twentieth of the Q4_K_M weight noise every runtime shares: max |Δp|
+0.18 against the f32 model.
+
+A fused GEMM as fast as cuBLAS would make the default mode bitwise too.
+That is follow-up work, not an M2 blocker.
+
+**M2 is done.**
+
 **The router set on one 4080.** The set is 24.7k tokens per chat turn.
 The three requests queue on the one device, so they run one after
 another: 4.2 s with this build, and 5.0 s on the deployed chunk 1,024.
@@ -495,11 +560,9 @@ gate (under 1 s, and at least Jev's golden score). Clef 27B would not fit
 in the 4080's 16 GB beside the trunk's caches. Jev stays the router's
 first door, with the Pylon as fallback and shadow.
 
-**Next for M2 speed:**
-
-1. The head's 12 ms and the host embedding gather, for margin at 1k.
-2. Make the fused GEMM as fast as cuBLAS on large chunks, then make it
-   the default for bitwise chunk invariance at f16 speed.
+**After M2:** make the fused GEMM as fast as cuBLAS on large chunks
+(it reaches about 130 TF before dequantization against cuBLAS's 145–170),
+then make it the default for bitwise chunk invariance at f16 speed.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

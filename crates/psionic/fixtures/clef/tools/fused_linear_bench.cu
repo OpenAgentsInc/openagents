@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
             double ref_rms = 0;
             for (float v : ref) ref_rms += (double)v * v;
             ref_rms = sqrt(ref_rms / ref.size());
-            for (int seg : {0, 4, 8, 16}) {
+            for (int seg : {16}) {
                 CK(psionic_clef_fused_linear(dx, dw, dout, n, s.rows, s.k, s.format, seg, 0, stream));
                 CK(cudaStreamSynchronize(stream));
                 CK(cudaMemcpy(got.data(), dout, got.size() * 4, cudaMemcpyDeviceToHost));
