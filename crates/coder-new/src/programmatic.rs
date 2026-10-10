@@ -68,6 +68,8 @@ macro_rules! command_usage {
   memory forget NAME                  Delete one memory.
   memory instructions                 List the AGENTS.md/CLAUDE.md files it loads here.
   export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
+  export --account [--output FILE]     Save everything on your openagents.com account
+                                      to one file; keys and passwords never in it.
   import FILE [--session ID]           Open an ATIF file to view or continue it.
   trace upload [ID | --last | --file FILE] [--share]
                                       Upload a chat to your openagents.com account
@@ -1617,6 +1619,12 @@ fn read_document(path: &Path) -> Result<Value, Error> {
     local_sessions::read_document(path).map_err(Error::from)
 }
 fn export(args: &[String], context: &Context) -> Result<Value, Error> {
+    if args.iter().any(|arg| arg == "--account") {
+        // The same as `coder export --account` (#11134).
+        return crate::account_export::run(args, &context.root, &context.cwd)
+            .map(|outcome| outcome.json())
+            .map_err(Error::from);
+    }
     let mut args = args.to_vec();
     let output = take_option(&mut args, "--output")?;
     if args.len() != 1 {

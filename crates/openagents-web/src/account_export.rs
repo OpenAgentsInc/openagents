@@ -1,7 +1,12 @@
 //! `/settings/export` (#11134, promise A8): everything on the signed-in
 //! account in one file, to keep or to take elsewhere.
 //!
-//! Settings has a Download button for it. The file is plain JSON that opens
+//! Settings has a Download button for it, and `coder export --account`
+//! downloads the same file with Coder's own sign-in (`Authorization: Bearer
+//! sess_…`, from `coder login`, the same as the `/v1` app routes): a
+//! request with that token is answered as the app (JSON refusals, `401
+//! signed_out` for a token that no longer signs in) and never from
+//! cookies. The file is plain JSON that opens
 //! without OpenAgents: every chat (archived ones too) with its messages and
 //! a Markdown copy to read, the account's projects, its uploaded traces
 //! (each ATIF document and its agents), its signed-in computers, and its
@@ -37,7 +42,7 @@ use serde_json::{Value, json};
 use crate::App;
 use crate::chat_store::{Conversation, Error, Message, Role, Store, account_owner, now_unix};
 use crate::cloud::protect;
-use crate::cloud::session::{CloudSession, Viewer, now};
+use crate::cloud::session::{CloudSession, SessionError, Viewer, now};
 
 /// The download.
 pub(crate) const PATH: &str = "/settings/export";
@@ -50,10 +55,98 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route(PATH, get(download))
 }
 
+/// Who asks for the file: the browser's own session (Settings' Download
+/// button), or a signed-in app's own token (`coder export --account`).
+pub(crate) enum Signer<'a> {
+    Browser(&'a HeaderMap),
+    App(&'a str),
+}
+
+/// The app token a request carries (`Authorization: Bearer sess_…`, from
+/// `coder login`), when it carries one. A request with one is answered as
+/// the app, never from the browser's cookies.
+pub(crate) fn app_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+}
+
+impl Signer<'_> {
+    async fn github_status(
+        &self,
+        service: &CloudSession,
+    ) -> Result<oa_auth::repos::Status, crate::cloud::session::github::RepoCallError> {
+        match self {
+            Self::Browser(headers) => service.github_status(headers).await,
+            Self::App(token) => service.github_status_as(token).await,
+        }
+    }
+
+    async fn app_sessions(
+        &self,
+        service: &CloudSession,
+    ) -> Result<Vec<crate::cloud::session::device::AppSession>, SessionError> {
+        match self {
+            Self::Browser(headers) => service.app_sessions(headers).await,
+            Self::App(token) => service.app_sessions_as(token).await,
+        }
+    }
+
+    /// The refusal to answer: a page for the browser, the app API's JSON
+    /// for an app.
+    fn failed(&self, status: StatusCode) -> Response {
+        const WORDS: &str = "Your export couldn't be made right now. Try again in a minute.";
+        match self {
+            Self::Browser(_) => protect(crate::layout::problem(
+                status,
+                "Export",
+                WORDS,
+                (crate::settings::PAGE, "Settings"),
+            )),
+            Self::App(_) => crate::coder_sync::refused(status, "unavailable", WORDS),
+        }
+    }
+}
+
+/// The signed-in app's view, or its JSON refusal.
+async fn app_viewer<'a>(app: &'a App, token: &str) -> Result<(&'a CloudSession, Viewer), Response> {
+    let Some(service) = app.config.cloud.as_deref() else {
+        return Err(crate::coder_sync::refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "This site doesn't offer accounts.",
+        ));
+    };
+    match service.app_viewer(token).await {
+        Ok(viewer) => Ok((service, viewer)),
+        Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => {
+            Err(crate::coder_sync::refused(
+                StatusCode::UNAUTHORIZED,
+                "signed_out",
+                "Sign in again with coder login.",
+            ))
+        }
+        Err(_) => Err(crate::coder_sync::refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Try again later.",
+        )),
+    }
+}
+
 async fn download(State(app): State<App>, headers: HeaderMap) -> Response {
-    let (service, viewer) = match crate::settings::viewer(&app, &headers, PATH).await {
-        Ok(value) => value,
-        Err(response) => return response,
+    let (signer, (service, viewer)) = match app_token(&headers) {
+        Some(token) => match app_viewer(&app, token).await {
+            Ok(value) => (Signer::App(token), value),
+            Err(response) => return response,
+        },
+        None => match crate::settings::viewer(&app, &headers, PATH).await {
+            Ok(value) => (Signer::Browser(&headers), value),
+            Err(response) => return response,
+        },
     };
     let owner = account_owner(&viewer.account_id);
     let origin = service.origin().trim_end_matches('/').to_owned();
@@ -62,27 +155,15 @@ async fn download(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(error) => {
             eprintln!("openagents-web: account export: {error}");
-            return protect(crate::layout::problem(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Export",
-                "Your export couldn't be made right now. Try again in a minute.",
-                (crate::settings::PAGE, "Settings"),
-            ));
+            return signer.failed(StatusCode::SERVICE_UNAVAILABLE);
         }
     };
-    let account = account_section(&app, service, &headers, &viewer, &owner).await;
+    let account = account_section(&app, service, &signer, &viewer, &owner).await;
     let generated = now_unix();
     let document = assemble(&stored, &account, &origin, generated);
     let bytes = match serde_json::to_vec_pretty(&document) {
         Ok(bytes) => bytes,
-        Err(_) => {
-            return protect(crate::layout::problem(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Export",
-                "Your export couldn't be made right now. Try again in a minute.",
-                (crate::settings::PAGE, "Settings"),
-            ));
-        }
+        Err(_) => return signer.failed(StatusCode::INTERNAL_SERVER_ERROR),
     };
     let mut response = (StatusCode::OK, bytes).into_response();
     let headers = response.headers_mut();
@@ -242,7 +323,7 @@ pub(crate) struct AccountParts {
 async fn account_section(
     app: &App,
     service: &CloudSession,
-    headers: &HeaderMap,
+    signer: &Signer<'_>,
     viewer: &Viewer,
     owner: &str,
 ) -> AccountParts {
@@ -250,11 +331,11 @@ async fn account_section(
         profile: profile(viewer),
         ..AccountParts::default()
     };
-    match service.github_status(headers).await {
+    match signer.github_status(service).await {
         Ok(status) => parts.projects = Some(projects(&status)),
         Err(_) => parts.unavailable.push("projects"),
     }
-    match service.app_sessions(headers).await {
+    match signer.app_sessions(service).await {
         Ok(sessions) => {
             let choices = app
                 .config
@@ -694,6 +775,26 @@ mod tests {
     fn the_file_is_named_for_its_day() {
         assert_eq!(file_name(0), "openagents-export-1970-01-01.json");
         assert_eq!(file_name(86_400 * 365), "openagents-export-1971-01-01.json");
+    }
+
+    #[test]
+    fn an_app_token_is_read_only_from_a_bearer_header() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(app_token(&headers), None);
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("oa_cloud_session=x"),
+        );
+        assert_eq!(app_token(&headers), None);
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Basic abc"));
+        assert_eq!(app_token(&headers), None);
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer "));
+        assert_eq!(app_token(&headers), None);
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer sess_abc"),
+        );
+        assert_eq!(app_token(&headers), Some("sess_abc"));
     }
 
     #[test]

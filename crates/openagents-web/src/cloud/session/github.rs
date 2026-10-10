@@ -50,6 +50,15 @@ impl CloudSession {
         Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
+    /// The same, under a signed-in app's own token (`coder export
+    /// --account`, #11134).
+    pub(crate) async fn github_status_as(&self, token: &str) -> Result<Status> {
+        let body = self
+            .account_call_as(token, Method::GET, "/v1/account/github", None, None)
+            .await?;
+        Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
+    }
+
     /// Finish connecting repositories with GitHub's code and its verifier.
     pub(crate) async fn github_grant(
         &self,
@@ -204,7 +213,21 @@ impl CloudSession {
     ) -> Result<Value> {
         self.request_host(headers)?;
         let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
-        if !session_token(&token) {
+        self.account_call_as(&token, method, path, older, body)
+            .await
+    }
+
+    /// [`Self::account_call_or`] under a user session token: the browser's
+    /// cookie, or a signed-in app's own token (#11134).
+    async fn account_call_as(
+        &self,
+        token: &str,
+        method: Method,
+        path: &str,
+        older: Option<&str>,
+        body: Option<Value>,
+    ) -> Result<Value> {
+        if !session_token(token) {
             return Err(SessionError::Unauthenticated.into());
         }
         self.ready()?;
@@ -214,7 +237,7 @@ impl CloudSession {
             let mut request = self
                 .http
                 .request(method.clone(), format!("{}{path}", self.account_service))
-                .bearer_auth(&token)
+                .bearer_auth(token)
                 // A call may read GitHub up to three times.
                 .timeout(Duration::from_secs(30));
             if let Some(body) = &body {

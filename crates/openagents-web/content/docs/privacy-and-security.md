@@ -29,6 +29,8 @@
     settings. It opens in any text editor, without OpenAgents. It holds only
     your own account's things, and never a key, token, or password: an API
     key shows by name only, and a saved Claude credential by its kind only.
+    From a terminal signed in with `coder login`, `coder export --account`
+    saves the same file (`--output FILE` to choose where).
 - **In the Mac app, Terminal, and phone app,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
   messages are encrypted before they leave your device, and the OpenAgents

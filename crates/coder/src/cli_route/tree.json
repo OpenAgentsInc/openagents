@@ -5372,7 +5372,8 @@
               "export"
             ],
             "usage": [
-              "export ID [--output FILE]"
+              "export ID [--output FILE]",
+              "export --account [--output FILE]"
             ],
             "forms": [
               {
@@ -5384,6 +5385,25 @@
                   {
                     "kind": "positional",
                     "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "output",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              },
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "account"
                   },
                   {
                     "kind": "option",

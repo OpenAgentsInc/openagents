@@ -66,6 +66,9 @@ fn run() -> io::Result<()> {
     if args.first().is_some_and(|command| command == "trace") {
         return trace_command(&args[1..]);
     }
+    if args.first().is_some_and(|command| command == "export") {
+        return export_command(&args[1..]);
+    }
     if args.first().is_some_and(|command| command == "update") {
         return update_command(&args[1..]);
     }
@@ -549,6 +552,44 @@ fn trace_command(rest: &[String]) -> io::Result<()> {
     }
 }
 
+/// `coder export --account [--output FILE] [--state DIR]` (#11134).
+fn export_command(rest: &[String]) -> io::Result<()> {
+    let mut args = rest.to_vec();
+    let mut dir = None;
+    if let Some(at) = args.iter().position(|arg| arg == "--state") {
+        if at + 1 >= args.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--state needs a folder.",
+            ));
+        }
+        dir = Some(std::path::PathBuf::from(args.remove(at + 1)));
+        args.remove(at);
+    }
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+        || args.is_empty()
+    {
+        println!("{}", coder_new::account_export::USAGE);
+        return Ok(());
+    }
+    let dir = dir
+        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    let cwd = std::env::current_dir()?;
+    match coder_new::account_export::run(&args, &dir, &cwd) {
+        Ok(outcome) => {
+            println!("{}", outcome.text());
+            Ok(())
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn help() -> String {
     let (demo_option, snapshot_mode) = if DEMO_AVAILABLE {
         (
@@ -567,6 +608,7 @@ Usage:
   coder logout           Sign this computer out.
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.
+  coder export --account Save everything on your account to one file (coder export --help).
   coder update           Install the newest Coder now (coder update --help).
   coder issue-run N      Play issue N from issue to pull request as a test run (coder issue-run --help).
 

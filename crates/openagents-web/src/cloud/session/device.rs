@@ -244,11 +244,19 @@ impl CloudSession {
     /// The viewer's signed-in apps and computers.
     pub async fn app_sessions(&self, headers: &HeaderMap) -> Result<Vec<AppSession>> {
         let token = self.browser_token(headers)?;
+        self.app_sessions_as(&token).await
+    }
+
+    /// The same, under a signed-in app's own token (#11134).
+    pub async fn app_sessions_as(&self, token: &str) -> Result<Vec<AppSession>> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
         let answer = self
             .device_call(
                 reqwest::Method::GET,
                 "/v1/account/sessions",
-                Some(&token),
+                Some(token),
                 None,
             )
             .await?;
@@ -311,6 +319,22 @@ impl CloudSession {
                 Ok(account.to_owned())
             }
             _ => Err(SessionError::Unauthenticated),
+        }
+    }
+
+    /// The whole signed-in view (account, workspaces) for an app's own
+    /// token, as a browser session reads it, for a request an app makes
+    /// for the account itself (`coder export --account`, #11134). The
+    /// account's own workspace is selected, as Settings selects it for a
+    /// browser that has none; the token must be a live user session.
+    pub async fn app_viewer(&self, token: &str) -> Result<super::Viewer> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        let viewer = self.read_view(token, None).await?;
+        match crate::cloud::default_workspace(&viewer).map(|w| w.id.clone()) {
+            Some(id) => self.read_view(token, Some(&id)).await,
+            None => Ok(viewer),
         }
     }
 

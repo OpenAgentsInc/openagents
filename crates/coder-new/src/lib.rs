@@ -1,6 +1,7 @@
 //! A Coder terminal with bundled plugins, live chat, and demo fixtures.
 
 pub mod account;
+pub mod account_export;
 pub mod account_sync;
 pub mod acp_discovery;
 pub mod agents;
