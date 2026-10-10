@@ -192,11 +192,12 @@ impl ClefHeadWeights {
             &self.scorer,
         ];
         for layer in &self.evidence_layers {
-            out.extend([&layer.attention.q, &layer.attention.out, &layer.up, &layer.down]);
+            let a = &layer.attention;
+            out.extend([&a.q, &a.k, &a.v, &a.out, &layer.up, &layer.down]);
         }
         for layer in &self.layers {
             let (a, c) = (&layer.self_attention, &layer.cross_attention);
-            out.extend([&a.q, &a.k, &a.v, &a.out, &c.q, &c.out, &layer.up, &layer.down]);
+            out.extend([&a.q, &a.k, &a.v, &a.out, &c.q, &c.k, &c.v, &c.out, &layer.up, &layer.down]);
         }
         out
     }
@@ -914,6 +915,23 @@ pub trait MemoryAttention {
         scale: f32,
     ) -> Result<Vec<f32>, String>;
 
+    /// The memory attention between the query and output projections of
+    /// `attention`: for each of `n_query` projected queries, the attended
+    /// context before `W_out`. The default runs the per-head products on
+    /// the host ([`attend_projected_host`]); a device backend can keep them
+    /// on the device.
+    fn attend_projected(
+        &mut self,
+        attention: &Attention,
+        heads: usize,
+        projected: &[f32],
+        n_query: usize,
+        view: MemoryView,
+        width: usize,
+    ) -> Result<Vec<f32>, String> {
+        attend_projected_host(self, attention, heads, projected, n_query, view, width)
+    }
+
     /// `X W^T (+ b)` for `n` rows of `X`: every dense matrix product of the
     /// head goes through here, so a device backend can keep the head's
     /// weights resident. The default runs on the CPU.
@@ -1004,6 +1022,22 @@ fn attend_memory(
     width: usize,
 ) -> Result<Vec<f32>, String> {
     let projected = memory.linear(&attention.q, queries, n_query, Some(&attention.q_bias))?;
+    let context = memory.attend_projected(attention, heads, &projected, n_query, view, width)?;
+    memory.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
+}
+
+/// The memory attention between the query and output projections, on the
+/// host: `u[i, h] = W_k,h^T q[i, h]`, the attention of each `u` over the
+/// view's rows, then `W_v,h z[i, h] + b_v` ([`MemoryAttention::attend_projected`]).
+pub fn attend_projected_host<M: MemoryAttention + ?Sized>(
+    memory: &mut M,
+    attention: &Attention,
+    heads: usize,
+    projected: &[f32],
+    n_query: usize,
+    view: MemoryView,
+    width: usize,
+) -> Result<Vec<f32>, String> {
     let head_dim = width / heads;
     // u[i, h] = W_k,h^T q[i, h]   (rows of W_k for head h are its outputs)
     let mut side = vec![0.0f32; n_query * heads * width];
@@ -1034,7 +1068,7 @@ fn attend_memory(
                 }
             }
         });
-    memory.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
+    Ok(context)
 }
 
 fn feedforward(

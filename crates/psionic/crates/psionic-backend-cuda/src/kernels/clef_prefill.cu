@@ -924,23 +924,32 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
         cp_async_commit();
         const __half *xa = xs + (kt % kXStages) * kTokens * kLds;
         const __half *wb = ws + (kt & 1) * kRows * kLds;
-#pragma unroll
-        for (int ks = 0; ks < kTileK / 16; ++ks) {
-            uint32_t a[4][4];
+        // fragments double-buffered across the k steps: the next step's
+        // ldmatrix loads issue before this step's mma
+        uint32_t a[2][4][4];
+        uint32_t b[2][4][2];
+        auto load_fragments = [&](int ks, int fb) {
 #pragma unroll
             for (int i = 0; i < 4; ++i) {
-                ldmatrix_x4(a[i], xa + (warp_t + i * 16 + (lane % 16)) * kLds + ks * 16 + (lane / 16) * 8);
+                ldmatrix_x4(a[fb][i], xa + (warp_t + i * 16 + (lane % 16)) * kLds + ks * 16 + (lane / 16) * 8);
             }
-            uint32_t b[4][2];
 #pragma unroll
             for (int jj = 0; jj < 2; ++jj) {
                 const int mat = lane / 8;
                 uint32_t r[4];
                 ldmatrix_x4(r, wb + (warp_m + jj * 16 + (mat / 2) * 8 + (lane % 8)) * kLds + ks * 16 + (mat % 2) * 8);
-                b[2 * jj][0] = r[0];
-                b[2 * jj][1] = r[1];
-                b[2 * jj + 1][0] = r[2];
-                b[2 * jj + 1][1] = r[3];
+                b[fb][2 * jj][0] = r[0];
+                b[fb][2 * jj][1] = r[1];
+                b[fb][2 * jj + 1][0] = r[2];
+                b[fb][2 * jj + 1][1] = r[3];
+            }
+        };
+        load_fragments(0, 0);
+#pragma unroll
+        for (int ks = 0; ks < kTileK / 16; ++ks) {
+            const int fb = ks & 1;
+            if (ks + 1 < kTileK / 16) {
+                load_fragments(ks + 1, fb ^ 1);
             }
             if constexpr (SEG == 0) {
 #pragma unroll
@@ -951,7 +960,8 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
                             "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, "
                             "{%8,%9}, {%0,%1,%2,%3};\n"
                             : "+f"(acc[i][j][0]), "+f"(acc[i][j][1]), "+f"(acc[i][j][2]), "+f"(acc[i][j][3])
-                            : "r"(a[i][0]), "r"(a[i][1]), "r"(a[i][2]), "r"(a[i][3]), "r"(b[j][0]), "r"(b[j][1]));
+                            : "r"(a[fb][i][0]), "r"(a[fb][i][1]), "r"(a[fb][i][2]), "r"(a[fb][i][3]), "r"(b[fb][j][0]),
+                              "r"(b[fb][j][1]));
                     }
                 }
             } else {
@@ -973,7 +983,8 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
                             "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0,%1}, {%2,%3,%4,%5}, {%6,%7}, "
                             "{%0,%1};\n"
                             : "+r"(seg[i][j][0]), "+r"(seg[i][j][1])
-                            : "r"(a[i][0]), "r"(a[i][1]), "r"(a[i][2]), "r"(a[i][3]), "r"(b[j][0]), "r"(b[j][1]));
+                            : "r"(a[fb][i][0]), "r"(a[fb][i][1]), "r"(a[fb][i][2]), "r"(a[fb][i][3]), "r"(b[fb][j][0]),
+                              "r"(b[fb][j][1]));
                     }
                 }
                 if ((kt * (kTileK / 16) + ks + 1) % SEG == 0 || (kt + 1 == tiles && ks + 1 == kTileK / 16)) {
@@ -992,6 +1003,7 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
                 }
             }
         }
+#ifndef CLEF_FUSED_EXPERIMENT_NO_DEQUANT
         if (kt + 1 < tiles) {
             store_slice<FMT>(raw, ws + ((kt + 1) & 1) * kRows * kLds + slice_row * kLds + slice_half * 32, kt + 1,
                              slice_half);
@@ -999,6 +1011,7 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
                 load_slice<FMT>(raw, w, row_bytes, m0 + slice_row, rows, kt + 2, slice_half);
             }
         }
+#endif
         cp_async_wait<1>();
         __syncthreads();
     }
@@ -1079,6 +1092,49 @@ __global__ void __launch_bounds__(256) linear_f32_ordered_kernel(const float *__
                 out[static_cast<long long>(row) * m + col] = acc[i][j];
             }
         }
+    }
+}
+
+// ---- the joint head's memory attention, query side ----
+// side[i, h, :] = sum_{d in head h} q[i, d] W_k[d, :]  (W_k [width, width],
+// rows are outputs). One block per (i, h), threads over the width.
+__global__ void head_side_kernel(const float *__restrict__ q, const float *__restrict__ wk, float *__restrict__ side,
+                                 int heads, int width, int head_dim) {
+    const int i = blockIdx.x / heads;
+    const int h = blockIdx.x % heads;
+    const float *query = q + static_cast<long long>(i) * width + h * head_dim;
+    float *dst = side + static_cast<long long>(blockIdx.x) * width;
+    for (int c = threadIdx.x; c < width; c += blockDim.x) {
+        float acc = 0.0f;
+        for (int d = 0; d < head_dim; ++d) {
+            acc = fmaf(query[d], wk[static_cast<long long>(h * head_dim + d) * width + c], acc);
+        }
+        dst[c] = acc;
+    }
+}
+
+// context[i, e] = W_v[e, :] . mixed[i, head(e), :] + b_v[e]. One warp per
+// (i, e), a fixed-order lane split and butterfly.
+__global__ void head_context_kernel(const float *__restrict__ mixed, const float *__restrict__ wv,
+                                    const float *__restrict__ bv, float *__restrict__ out, int n, int heads, int width,
+                                    int head_dim) {
+    const long long warp_id = (static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x) / kWarp;
+    const int lane = threadIdx.x % kWarp;
+    if (warp_id >= static_cast<long long>(n) * width) {
+        return;
+    }
+    const int i = static_cast<int>(warp_id / width);
+    const int e = static_cast<int>(warp_id % width);
+    const int h = e / head_dim;
+    const float *z = mixed + (static_cast<long long>(i) * heads + h) * width;
+    const float *row = wv + static_cast<long long>(e) * width;
+    float acc = 0.0f;
+    for (int c = lane; c < width; c += kWarp) {
+        acc = fmaf(row[c], z[c], acc);
+    }
+    acc = warp_sum(acc);
+    if (lane == 0) {
+        out[static_cast<long long>(i) * width + e] = acc + bv[e];
     }
 }
 
@@ -1556,6 +1612,34 @@ extern "C" int psionic_clef_linear_f32_ordered(const void *x, const void *w, voi
     dim3 grid((m + 63) / 64, (n + 63) / 64);
     linear_f32_ordered_kernel<<<grid, 256, 0, STREAM>>>(static_cast<const float *>(x), static_cast<const float *>(w),
                                                         static_cast<float *>(out), n, m, k);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_side(const void *q, const void *wk, void *side, int n, int heads, int width,
+                                      void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (heads <= 0 || width % heads != 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    head_side_kernel<<<n * heads, 256, 0, STREAM>>>(static_cast<const float *>(q), static_cast<const float *>(wk),
+                                                   static_cast<float *>(side), heads, width, width / heads);
+    DONE;
+}
+
+extern "C" int psionic_clef_head_context(const void *mixed, const void *wv, const void *bv, void *out, int n,
+                                         int heads, int width, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (heads <= 0 || width % heads != 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    const long long threads = static_cast<long long>(n) * width * kWarp;
+    head_context_kernel<<<blocks_for(threads, 256), 256, 0, STREAM>>>(
+        static_cast<const float *>(mixed), static_cast<const float *>(wv), static_cast<const float *>(bv),
+        static_cast<float *>(out), n, heads, width, width / heads);
     DONE;
 }
 

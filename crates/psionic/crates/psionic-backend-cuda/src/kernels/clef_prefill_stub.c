@@ -253,3 +253,27 @@ int psionic_clef_linear_f32_ordered(const void *x, const void *w, void *out, int
     (void)stream;
     return 1;
 }
+
+int psionic_clef_head_side(const void *q, const void *wk, void *side, int n, int heads, int width, void *stream) {
+    (void)q;
+    (void)wk;
+    (void)side;
+    (void)n;
+    (void)heads;
+    (void)width;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_head_context(const void *mixed, const void *wv, const void *bv, void *out, int n, int heads, int width,
+                              void *stream) {
+    (void)mixed;
+    (void)wv;
+    (void)bv;
+    (void)out;
+    (void)n;
+    (void)heads;
+    (void)width;
+    (void)stream;
+    return 1;
+}

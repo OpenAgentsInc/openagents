@@ -39,6 +39,8 @@ unsafe extern "C" {
     fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_side(q: *const c_void, wk: *const c_void, side: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_head_context(mixed: *const c_void, wv: *const c_void, bv: *const c_void, out: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
 }
 
@@ -348,6 +350,54 @@ impl CudaSubmission {
             psionic_clef_linear_f32_ordered(xp, wp, op, int(n, "n")?, int(m, "m")?, int(k, "k")?, stream)
         };
         self.clef_launch(code, "psionic_clef_linear_f32_ordered")
+    }
+
+    /// The joint head's memory-attention query side:
+    /// `side[i, h, :] = Σ_{d ∈ head h} q[i, d] W_k[d, :]` for `n` rows of
+    /// `q` (`[n, width]`), `W_k` `[width, width]`; `side` is
+    /// `[n · heads, width]`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_side(
+        &mut self,
+        q: &CudaBuffer,
+        wk: &CudaBuffer,
+        side: &CudaBuffer,
+        n: usize,
+        heads: usize,
+        width: usize,
+    ) -> Result<(), RuntimeError> {
+        let qp = f32s(q, n * width, "head side q")?;
+        let wp = f32s(wk, width * width, "head side W_k")?;
+        let sp = f32s(side, n * heads * width, "head side out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_side(qp, wp, sp, int(n, "n")?, int(heads, "heads")?, int(width, "width")?, stream)
+        };
+        self.clef_launch(code, "psionic_clef_head_side")
+    }
+
+    /// `out[i, e] = W_v[e, :] · mixed[i, head(e), :] + b_v[e]` for `n`
+    /// rows (`mixed` `[n · heads, width]`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_head_context(
+        &mut self,
+        mixed: &CudaBuffer,
+        wv: &CudaBuffer,
+        bv: &CudaBuffer,
+        out: &CudaBuffer,
+        n: usize,
+        heads: usize,
+        width: usize,
+    ) -> Result<(), RuntimeError> {
+        let mp = f32s(mixed, n * heads * width, "head context mixed")?;
+        let wp = f32s(wv, width * width, "head context W_v")?;
+        let bp = f32s(bv, width, "head context b_v")?;
+        let op = f32s(out, n * width, "head context out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_head_context(mp, wp, bp, op, int(n, "n")?, int(heads, "heads")?, int(width, "width")?, stream)
+        };
+        self.clef_launch(code, "psionic_clef_head_context")
     }
 
     /// Causal flash attention of `n` queries at positions `first..` (f16,

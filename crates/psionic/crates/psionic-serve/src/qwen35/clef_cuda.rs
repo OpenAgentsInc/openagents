@@ -210,7 +210,22 @@ struct DeviceState {
     head_matrices: std::collections::HashMap<usize, (CudaBuffer, usize, usize)>,
     /// Staging for head products: input and output capacity in floats.
     head_io: Option<(usize, CudaBuffer, usize, CudaBuffer)>,
+    /// Buffers for [`ClefCudaTrunk::attend_memory_projected`].
+    projected_attention: Option<ProjectedAttention>,
     weight_bytes: u64,
+}
+
+/// Device buffers for the head's memory attention on projected queries:
+/// capacity in side rows (queries x heads) and memory length.
+struct ProjectedAttention {
+    rows: usize,
+    length: usize,
+    query: CudaBuffer,
+    side: CudaBuffer,
+    scores: CudaBuffer,
+    mixed: CudaBuffer,
+    context: CudaBuffer,
+    bias: CudaBuffer,
 }
 
 // SAFETY: the CUDA handles inside are process-wide runtime objects (device
@@ -464,6 +479,7 @@ impl ClefCudaTrunk {
             weight_bytes: weight_total + (largest as u64) * 4 + head_bytes,
             head_matrices,
             head_io: None,
+            projected_attention: None,
             weight_scratch,
             layers,
             scratch: None,
@@ -826,6 +842,136 @@ impl ClefCudaTrunk {
 }
 
 impl ClefCudaTrunk {
+    /// The whole memory attention between the query and output
+    /// projections, on the device: `u[i, h] = W_k,h^T q[i, h]`, the
+    /// attention of each `u` over the memory view, and `W_v,h z[i, h] + b_v`
+    /// for `rows` projected queries (`rows x width`). `W_k` and `W_v` are
+    /// head matrices uploaded at load, named by their host values; `None`
+    /// when they are not resident (the caller runs the host path).
+    #[allow(clippy::too_many_arguments)]
+    pub fn attend_memory_projected(
+        &self,
+        evidence: Option<usize>,
+        key_matrix: &[f32],
+        value_matrix: &[f32],
+        value_bias: &[f32],
+        projected: &[f32],
+        rows: usize,
+        heads: usize,
+        scale: f32,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let dims = self.dims;
+        let w = dims.width;
+        if projected.len() != rows * w || value_bias.len() != w || heads == 0 || w % heads != 0 {
+            return Err(String::from("memory attention: shape mismatch"));
+        }
+        let mut guard = self
+            .device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = &mut *guard;
+        let key = key_matrix.as_ptr() as usize;
+        let value = value_matrix.as_ptr() as usize;
+        if !state.head_matrices.contains_key(&key) || !state.head_matrices.contains_key(&value) {
+            return Ok(None);
+        }
+        let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
+        if let Some(layer) = evidence {
+            let request = state.request.as_mut().ok_or("no prefill")?;
+            if request.normalized_memory.len() <= layer {
+                request.normalized_memory.resize_with(layer + 1, || None);
+            }
+            if request.normalized_memory[layer].is_none() {
+                let buffer = state.backend.f32_buffer(length * w).map_err(err)?;
+                let (nw, nb) = state.evidence_norms.get(layer).ok_or("no evidence layer")?;
+                let mut submission = state.backend.begin_submission().map_err(err)?;
+                submission
+                    .clef_layer_norm_f32(&request.memory, Some((nw, nb)), &buffer, length, w, dims.head_eps)
+                    .map_err(err)?;
+                submission.commit(CudaCommandWait::Completed).map_err(err)?;
+                request.bytes += buffer.byte_len() as u64;
+                request.normalized_memory[layer] = Some(buffer);
+            }
+        }
+        let side_rows = rows * heads;
+        let grow = state
+            .projected_attention
+            .as_ref()
+            .is_none_or(|scratch| scratch.rows < side_rows || scratch.length < length);
+        if grow {
+            let capacity = side_rows.next_power_of_two().max(64);
+            let query_capacity = rows.next_power_of_two().max(16);
+            state.projected_attention = Some(ProjectedAttention {
+                rows: capacity,
+                length,
+                query: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                side: state.backend.f32_buffer(capacity * w).map_err(err)?,
+                scores: state.backend.f32_buffer(capacity * length).map_err(err)?,
+                mixed: state.backend.f32_buffer(capacity * w).map_err(err)?,
+                context: state.backend.f32_buffer(query_capacity.max(capacity / heads) * w).map_err(err)?,
+                bias: state.backend.f32_buffer(w).map_err(err)?,
+            });
+        }
+        let scratch = state.projected_attention.as_mut().ok_or("projected attention scratch")?;
+        scratch.query.write_bytes_at_offset(0, f32_bytes(projected)).map_err(err)?;
+        scratch.bias.write_bytes_at_offset(0, f32_bytes(value_bias)).map_err(err)?;
+        let scratch = state.projected_attention.as_ref().ok_or("projected attention scratch")?;
+        let request = state.request.as_ref().ok_or("no prefill")?;
+        let memory = match evidence {
+            Some(layer) => request.normalized_memory[layer].as_ref().ok_or("normalized memory")?,
+            None => &request.memory,
+        };
+        let (wk, _, _) = state.head_matrices.get(&key).ok_or("W_k")?;
+        let (wv, _, _) = state.head_matrices.get(&value).ok_or("W_v")?;
+        let mut submission = state.backend.begin_submission().map_err(err)?;
+        submission
+            .clef_head_side(&scratch.query, wk, &scratch.side, rows, heads, w)
+            .map_err(err)?;
+        submission
+            .clef_linear(
+                ClefOperand::f32(&scratch.side, 0),
+                ClefOperand::f32(memory, 0),
+                ClefOperand::f32(&scratch.scores, 0),
+                side_rows,
+                length,
+                w,
+                false,
+                false,
+            )
+            .map_err(err)?;
+        submission
+            .clef_softmax_rows_f32(&scratch.scores, side_rows, length, scale)
+            .map_err(err)?;
+        // mixed^T [w, side_rows] = M^T [w, L] . P^T [L, side_rows]
+        submission
+            .clef_gemm_strided_batched(
+                false,
+                false,
+                w,
+                side_rows,
+                length,
+                ClefOperand::f32(memory, 0),
+                w,
+                0,
+                length * w,
+                ClefOperand::f32(&scratch.scores, 0),
+                length,
+                0,
+                side_rows * length,
+                ClefOperand::f32(&scratch.mixed, 0),
+                w,
+                0,
+                side_rows * w,
+                1,
+            )
+            .map_err(err)?;
+        submission
+            .clef_head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)
+            .map_err(err)?;
+        submission.commit(CudaCommandWait::Completed).map_err(err)?;
+        scratch.context.read_f32_at_offset(0, rows * w).map(Some).map_err(err)
+    }
+
     /// `X W^T` for `n` rows of `X` against a head matrix uploaded at load
     /// (named by the address of its host values), in f32. `None` when the
     /// matrix is not resident (the caller multiplies on the CPU).

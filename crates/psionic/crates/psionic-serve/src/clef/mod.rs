@@ -947,6 +947,22 @@ impl MemoryAttention for DeviceMemory<'_> {
         out
     }
 
+    fn attend_projected(
+        &mut self,
+        attention: &head::Attention,
+        heads: usize,
+        projected: &[f32],
+        n_query: usize,
+        view: MemoryView,
+        width: usize,
+    ) -> Result<Vec<f32>, String> {
+        let began = Instant::now();
+        let out = self.attend_projected_inner(attention, heads, projected, n_query, view, width);
+        self.attend.0 += 1;
+        self.attend.1 += began.elapsed().as_secs_f64();
+        out
+    }
+
     fn linear(
         &mut self,
         matrix: &head::Matrix,
@@ -963,6 +979,35 @@ impl MemoryAttention for DeviceMemory<'_> {
 }
 
 impl DeviceMemory<'_> {
+    fn attend_projected_inner(
+        &mut self,
+        attention: &head::Attention,
+        heads: usize,
+        projected: &[f32],
+        n_query: usize,
+        view: MemoryView,
+        width: usize,
+    ) -> Result<Vec<f32>, String> {
+        let evidence = match view {
+            MemoryView::Evidence(layer) => Some(layer),
+            MemoryView::Raw => None,
+        };
+        let scale = 1.0 / ((width / heads.max(1)) as f32).sqrt();
+        match self.trunk.attend_memory_projected(
+            evidence,
+            &attention.k.values,
+            &attention.v.values,
+            &attention.v_bias,
+            projected,
+            n_query,
+            heads,
+            scale,
+        )? {
+            Some(context) => Ok(context),
+            None => head::attend_projected_host(self, attention, heads, projected, n_query, view, width),
+        }
+    }
+
     fn linear_inner(
         &mut self,
         matrix: &head::Matrix,
