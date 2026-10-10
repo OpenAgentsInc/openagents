@@ -2310,7 +2310,9 @@ async fn keys_list(
     let admin = membership.role >= Role::Admin;
     let mut keys_out = Vec::new();
     for key in key_store.keys.values() {
-        if key.tenant != ws.tenant {
+        // The workspace's keys are its members' keys on its tenant, not
+        // every key on the tenant, which sign-up shares (#11186).
+        if !store.key_in_workspace(&ws.id, &key.tenant, &key.id) {
             continue;
         }
         let owner = store
@@ -2493,7 +2495,9 @@ pub(crate) fn key_context(
             "No API key has this ID.",
         )
     })?;
-    if key.tenant != ws.tenant {
+    // On its tenant and held by a member: the tenant alone is shared by
+    // every personal workspace made by sign-up (#11186).
+    if !store.key_in_workspace(&ws.id, &key.tenant, &key.id) {
         return Err(refused(
             StatusCode::FORBIDDEN,
             "tenant_mismatch",

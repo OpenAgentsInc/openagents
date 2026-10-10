@@ -8,7 +8,7 @@ it is, how long it is kept, and whether its table exists yet. Names follow the
 [glossary](../glossary.md); a term this page needed and the glossary lacked was
 added there in the same change.
 
-Only the first migration exists today: the `identity` and `workspace` tables
+Only the first two migrations exist today: the `identity` and `workspace` tables
 sign-in needs, plus the `audit` revision table they write. Everything else on
 this page is the design that each feature's migration follows when that
 feature needs it.
@@ -39,12 +39,17 @@ storage](../deployment/account-storage.md)).
    that owns it, except rows that exist before or outside any workspace
    (an account, its principals and sessions, which belong to an account),
    which carry `account_id` instead. Deleting or splitting a workspace is a
-   `WHERE workspace_id = $1` in every schema. Two migrated stores do not
-   yet: a bearer key belongs to the account holding the principal
-   `key:<id>`, and provider keys are keyed by registry tenant, which every
-   personal workspace shares today
-   ([#11186](https://github.com/OpenAgentsInc/openagents/issues/11186));
-   both get `workspace_id` in the migration that fixes that.
+   `WHERE workspace_id = $1` in every schema. A row is never owned by its
+   registry tenant alone: every personal workspace made by sign-up shares
+   one tenant (`signup`), so a tenant-keyed row is everyone's
+   ([#11186](https://github.com/OpenAgentsInc/openagents/issues/11186),
+   where provider keys were). One migrated store still has no
+   `workspace_id`: a bearer key is the row of its own id, owned by the
+   account holding the principal `key:<id>`, and every route that lists or
+   manages one checks that account's membership
+   (`Store::key_in_workspace`). `no_table_keys_a_persons_rows_by_the_shared_tenant`
+   (`crates/tenancy/src/db/tests.rs`) fails on any other table with a
+   `tenant` column and no owner column.
 2. **Big payloads live in buckets.** Chat message bodies, trace files,
    artifacts, plugin packages and attachments stay in Cloud Storage. Postgres
    keeps the pointer (`object_key`), the size and the `sha256`, so a read can
@@ -92,7 +97,7 @@ identity.accounts ─┬─< identity.principals            (key:…, nostr:…,
                    └─< workspace.memberships >── workspace.workspaces ── tenant (registry)
                                                     │
      workspace.workspaces ─┬─< workspace.invitations
-                           ├─< identity.bearer_keys, identity.provider_keys   (by tenant)
+                           ├─< identity.bearer_keys (by owner account), identity.provider_keys
                            ├─< workspace.computers ─< workspace.sync_choices
                            ├─< chat.threads ─< chat.messages ── bucket object
                            ├─< work.projects ─< work.repositories ─< work.branches
@@ -117,7 +122,8 @@ What a person is and how they prove it.
 | `credentials` | A sign-in secret's digest for an account that has one | `account_id` | Digest | With the account |
 | `onboarding_budgets` | The operator-funded anonymous lane's budgets | `id` | Account | 30 days after spent |
 | `bearer_keys` | An `oak_` bearer key: id, tenant, secret digest, status, name, key scope, lineage. **Later:** user-set limits per key (requests and spend per day), which the owner asked for and the user sets | `id` primary key; `digest` unique | Digest | Revoked keys kept, so a revoked key is told apart from an unknown one |
-| `provider_keys` | A workspace's own provider key (OpenRouter, Vercel AI Gateway, Anthropic, OpenAI, Google), sealed under the BYOK keyring | (`tenant`, `provider`) primary key today; (`workspace_id`, `provider`) after #11186 | Sealed | Until removed |
+| `provider_keys` | A workspace's own provider key (OpenRouter, Vercel AI Gateway, Anthropic, OpenAI, Google), sealed under the BYOK keyring with the workspace and provider as associated data | (`workspace_id`, `provider`) primary key (migration 2, #11186) | Sealed | Until removed |
+| `provider_keys_by_tenant` | A provider key saved by registry tenant before #11186, waiting to move: the gateway re-seals it into the tenant's only workspace, or the `workspace_id` an operator names (`tenant-db assign-provider-key`); never read for a call or a listing | (`tenant`, `provider`) primary key | Sealed | Until moved or removed |
 | `github_access` | An account's GitHub user grant (sealed token, scopes, login), GitHub App installations, credential-broker tickets, and chosen repositories | `account_id` primary key; `account_digest` unique | Sealed | Until disconnected |
 | `stores` | One row per migrated document store (`accounts`, `sessions`, `keys`): its schema tag, revision counter, sequence, digest and the parts of the document that have no table yet | `store` primary key | Account | Current only |
 
@@ -230,7 +236,7 @@ cannot happen.
 | `sessions.json` | `identity.account_sessions`, `identity.device_sign_ins`, `identity.recoveries`, `identity.credentials`, `identity.onboarding_budgets`; the access log in `identity.stores.rest` until `audit.events` lands |
 | `keys.json` | `identity.bearer_keys` |
 | `github-access/*.json` | `identity.github_access` |
-| `inference-provider-keys.json` | `identity.provider_keys` |
+| `inference-provider-keys.json` | `identity.provider_keys` (kept by workspace), or `identity.provider_keys_by_tenant` for keys the file kept by tenant before #11186 |
 
 Still on the share until their domain lands: the tenant registry, the quota
 ledger, receipts and attempts (money), the stored responses, the chat

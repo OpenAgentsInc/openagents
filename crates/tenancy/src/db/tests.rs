@@ -77,7 +77,8 @@ fn migrations_apply_once() {
         )
         .unwrap();
     let versions: Vec<i32> = applied.iter().map(|row| row.get(0)).collect();
-    assert_eq!(versions, vec![1]);
+    let embedded: Vec<i32> = super::MIGRATIONS.iter().map(|(v, _, _)| *v).collect();
+    assert_eq!(versions, embedded);
     // Two processes starting at once both come up.
     std::thread::scope(|scope| {
         for _ in 0..2 {
@@ -238,8 +239,11 @@ fn files_import_idempotently_and_verify() {
     .unwrap();
     std::fs::write(
         files.path().join("inference-provider-keys.json"),
-        serde_json::json!({"keys": {"acme": {"openrouter": {"sealed": "v1.x", "fingerprint": "f", "added_at": 1}}}})
-            .to_string(),
+        serde_json::json!({
+            "keys": {"acme": {"openrouter": {"sealed": "v1.x", "fingerprint": "f", "added_at": 1}}},
+            "workspaces": {"ws_a": {"vercel": {"sealed": "v1.y", "fingerprint": "g", "added_at": 2}}},
+        })
+        .to_string(),
     )
     .unwrap();
 
@@ -250,7 +254,7 @@ fn files_import_idempotently_and_verify() {
     assert_eq!(first.sessions, 1);
     assert_eq!(first.bearer_keys, 1);
     assert_eq!(first.github_access, 1);
-    assert_eq!(first.provider_keys, 1);
+    assert_eq!(first.provider_keys, 2);
     assert!(first.revisions >= 3);
     assert!(first.stores.iter().all(|(_, state)| state == "imported"));
     let again = import::import(&database, files.path(), false).unwrap();
@@ -278,9 +282,140 @@ fn files_import_idempotently_and_verify() {
     assert_eq!(reopened.store().unwrap().accounts.len(), 2);
     let auth = keys::authenticate(served.path(), registry.manifest(), &issued.token);
     assert!(auth.is_ok());
+    // A key the file kept by tenant waits for the gateway to move it to
+    // its workspace (#11186); a key kept by workspace is in place.
     let held: Value = database
-        .query("SELECT record FROM identity.provider_keys", &[])
+        .query("SELECT record FROM identity.provider_keys_by_tenant", &[])
         .unwrap()[0]
         .get(0);
     assert_eq!(held["fingerprint"], "f");
+    let held = super::records::provider_keys(&database, "ws_a").unwrap();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].1["fingerprint"], "g");
+}
+
+/// Rule 1 of docs/data/schema.md (#11186): a row that belongs to a person
+/// carries `workspace_id` or `account_id`, never only the registry tenant,
+/// which every personal workspace made by sign-up shares. A new table with
+/// a `tenant` column and neither owner column fails here unless it is
+/// named below with the reason the tenant is not its owner.
+#[test]
+fn no_table_keys_a_persons_rows_by_the_shared_tenant() {
+    let Some(database) = database() else { return };
+    let allowed = [
+        // The binding itself: which tenant a workspace's quota uses.
+        "workspace.workspaces",
+        // A bearer key is the row of its own id; its owner is the account
+        // holding the principal `key:<id>`, and every route checks that
+        // account's membership (`Store::key_in_workspace`).
+        "identity.bearer_keys",
+        // Provider keys from before this rule, never read for a call or a
+        // listing; the gateway moves each to its workspace.
+        "identity.provider_keys_by_tenant",
+    ];
+    let rows = database
+        .query(
+            "SELECT c.table_schema || '.' || c.table_name
+             FROM information_schema.columns c
+             WHERE c.column_name = 'tenant'
+               AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+               AND NOT EXISTS (
+                 SELECT 1 FROM information_schema.columns o
+                 WHERE o.table_schema = c.table_schema AND o.table_name = c.table_name
+                   AND o.column_name IN ('workspace_id', 'account_id'))
+             ORDER BY 1",
+            &[],
+        )
+        .unwrap();
+    let keyed: Vec<String> = rows.iter().map(|row| row.get(0)).collect();
+    let unexplained: Vec<&String> = keyed
+        .iter()
+        .filter(|table| !allowed.contains(&table.as_str()))
+        .collect();
+    assert!(
+        unexplained.is_empty(),
+        "tables keyed by tenant alone: {unexplained:?}"
+    );
+    // And the provider keys are kept by workspace.
+    let columns = database
+        .query(
+            "SELECT column_name FROM information_schema.columns
+             WHERE table_schema = 'identity' AND table_name = 'provider_keys'",
+            &[],
+        )
+        .unwrap();
+    let columns: Vec<String> = columns.iter().map(|row| row.get(0)).collect();
+    assert!(columns.contains(&"workspace_id".to_string()));
+    assert!(!columns.contains(&"tenant".to_string()));
+}
+
+#[test]
+fn a_tenant_kept_provider_key_is_named_and_moved_once() {
+    let Some(database) = database() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    attach(dir.path(), database.clone());
+    let accounts = Accounts::install(dir.path()).unwrap();
+    let ada = accounts.create_account("Ada", &[]).unwrap();
+    let ws = accounts
+        .create_workspace(&ada.id, "Ada", WorkspaceKind::Personal, "signup", None)
+        .unwrap();
+    let other = accounts
+        .create_workspace(
+            &ada.id,
+            "Elsewhere",
+            WorkspaceKind::Organization,
+            "acme",
+            None,
+        )
+        .unwrap();
+    let record = serde_json::json!({"sealed": "v1.x", "fingerprint": "f", "added_at": 1});
+    database
+        .execute(
+            "INSERT INTO identity.provider_keys_by_tenant (tenant, provider, record) VALUES ('signup', 'openrouter', $1)",
+            &[&record],
+        )
+        .unwrap();
+    let records = super::records::tenant_provider_keys(&database).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].workspace, None);
+    // Only a workspace on the key's tenant can be named.
+    assert!(
+        super::records::assign_tenant_provider_key(&database, "signup", "openrouter", &other.id)
+            .is_err()
+    );
+    assert!(
+        super::records::assign_tenant_provider_key(&database, "signup", "openrouter", "ws_none")
+            .is_err()
+    );
+    assert!(
+        super::records::assign_tenant_provider_key(&database, "signup", "openrouter", &ws.id)
+            .unwrap()
+    );
+    assert_eq!(
+        super::records::tenant_provider_keys(&database).unwrap()[0].workspace,
+        Some(ws.id.clone())
+    );
+    let resealed = serde_json::json!({"sealed": "v1.y", "fingerprint": "f", "added_at": 1});
+    assert!(
+        super::records::adopt_tenant_provider_key(
+            &database,
+            "signup",
+            "openrouter",
+            &ws.id,
+            &resealed
+        )
+        .unwrap()
+    );
+    assert!(
+        super::records::tenant_provider_keys(&database)
+            .unwrap()
+            .is_empty()
+    );
+    let held = super::records::provider_keys(&database, &ws.id).unwrap();
+    assert_eq!(held, vec![("openrouter".to_string(), resealed)]);
+    assert!(
+        super::records::provider_keys(&database, &other.id)
+            .unwrap()
+            .is_empty()
+    );
 }

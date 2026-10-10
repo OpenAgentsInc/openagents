@@ -313,23 +313,33 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
             )
         });
     }
+    // The workspace the key acts in owns its free count, balance, own
+    // provider keys and stored responses, never the tenant every
+    // personal workspace shares (#11186). A service key that reaches no
+    // single workspace keeps its tenant.
+    let scope = match crate::inference_public::key_scope(
+        state,
+        &authenticated.tenant,
+        &authenticated.key_id,
+        token,
+        crate::inference_public::named_workspace(headers),
+    ) {
+        Ok(scope) => scope,
+        Err(_) if service => authenticated.tenant.clone(),
+        Err(refusal) => return Err(refusal),
+    };
     let admission = (!service).then(|| {
         inference::run::Admission(Arc::new(crate::inference_public::PublicAdmission::new(
             state.clone(),
             crate::inference_public::Public {
                 tenant: authenticated.tenant.clone(),
                 key_id: authenticated.key_id.clone(),
-                token: token.to_owned(),
                 scopes: authenticated.scopes.clone(),
-                workspace: headers
-                    .get("x-workspace-id")
-                    .and_then(|value| value.to_str().ok())
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_owned),
+                scope: scope.clone(),
             },
         )))
     });
-    let own = crate::inference_byok::own(state, &authenticated.tenant);
+    let own = crate::inference_byok::own(state, &scope);
     Ok(Caller {
         request_id: request_id(),
         tenant: Some(authenticated.tenant),
@@ -351,6 +361,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         limits: inference::router::PriceLimit::default(),
         admission,
         own,
+        owner: Some(scope),
     })
 }
 

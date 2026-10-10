@@ -418,6 +418,22 @@ impl ServeState {
             .transpose()
             .map_err(Trouble::Money)?
             .map(Arc::new);
+        // Provider keys saved by tenant before #11186 move to their
+        // workspaces now; one that can't be placed is used by no one.
+        if let Some(keys) = &provider_keys
+            && config.accounts.is_some()
+        {
+            let store = tenancy::Accounts::open(&config.registry)
+                .and_then(|accounts| accounts.store())
+                .map_err(Trouble::Accounts)?;
+            match keys.adopt(&store) {
+                Ok((0, 0)) => {}
+                Ok((moved, left)) => eprintln!(
+                    "gateway: provider keys saved by tenant: {moved} moved to their workspaces, {left} left unused (tenant-db tenant-provider-keys)"
+                ),
+                Err(error) => return Err(Trouble::Money(error)),
+            }
+        }
         let sessions = match (&config.inference, &gateway) {
             (Some(inference), Some(gateway)) => Some(Arc::new(
                 crate::inference_state::sessions(inference, gateway.clone(), &config.registry)

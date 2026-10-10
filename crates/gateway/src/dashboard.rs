@@ -1058,7 +1058,8 @@ async fn keys_page(
     };
     let mut rows = String::new();
     for key in key_store.keys.values() {
-        if key.tenant != ws.tenant {
+        // Its members' keys, not every key on the shared tenant (#11186).
+        if !store.key_in_workspace(&ws.id, &key.tenant, &key.id) {
             continue;
         }
         let owner = store

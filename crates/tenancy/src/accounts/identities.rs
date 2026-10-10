@@ -209,7 +209,9 @@ impl Book {
     /// The GitHub identity linked to `account`, if any.
     #[must_use]
     pub fn github_of(&self, account: &str) -> Option<&GithubIdentity> {
-        self.github.values().find(|identity| identity.account == account)
+        self.github
+            .values()
+            .find(|identity| identity.account == account)
     }
 
     pub(super) fn validate(&self, store: &Store) -> Result<(), String> {
