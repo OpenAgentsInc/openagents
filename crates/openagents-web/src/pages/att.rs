@@ -441,7 +441,9 @@ fn gateway_check(records: &Records, workload: &str, at: u64) -> Value {
 
 /// The records, fetched or reused, and the gateway's check of them.
 async fn records(shared: &Shared, lane: Lane) -> Result<(Records, Value, u64, bool), String> {
-    let workload = lane.workload().ok_or("this lane has no attested records")?;
+    let workload = lane
+        .workload()
+        .ok_or("this option has no hardware proof to check")?;
     if let Ok(held) = shared.cache.lock()
         && let Some((at, records, check)) = held.get(&lane)
         && at.elapsed() < STATE_TTL
@@ -837,7 +839,7 @@ async fn send(Query(query): Query<LaneQuery>, headers: HeaderMap, body: Bytes) -
     if tagged != [endpoint_key.as_str()] {
         return refuse(
             StatusCode::BAD_REQUEST,
-            "The request is not addressed to the lane's machine.",
+            "The request is not addressed to this machine.",
         );
     }
     if let Err(why) = admit(&shared, &visitor(&headers)) {

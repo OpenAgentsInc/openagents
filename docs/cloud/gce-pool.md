@@ -140,6 +140,7 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
 | `OA_CODEX_AUTH` (preferred) | this computer's `~/.codex/auth.json` (`$CODEX_HOME`, or `OA_CODER_CODEX_AUTH`) | Codex on the owner's ChatGPT login: a copy with the **refresh token blanked**, so no run can rotate it (ChatGPT refresh tokens are single use: Codex's `refresh_token_reused`) and this computer stays signed in. The access token (10 days) must have 2 h left; Codex refreshes it on the Mac within 5 min of expiry. Coder then runs Codex `gpt-6.1-sol`, its first choice |
 | `OA_CODEX_API_KEY` (only without a ChatGPT login) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
+| `OPENAGENTS_APP_TOKEN`, `OPENAGENTS_ORIGIN` | this computer's openagents.com sign-in (`OPENAGENTS_APP_TOKEN`, else `coder login`), so each run shows on the account's agent list (`/settings/agents` and the phone) with Stop and Message (#11228) |
 
 `GH_TOKEN` needs the scopes `repo` and `project`, as for `--on boat`
 ([boat-chat-work.md](boat-chat-work.md#credentials)): without `project` the
