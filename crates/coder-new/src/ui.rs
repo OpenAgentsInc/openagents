@@ -1130,7 +1130,13 @@ fn composer_view(
             frame.buffer_mut(),
             0,
             Some((
-                &format!("{} image(s)", composer.images.len()),
+                &composer
+                    .images
+                    .iter()
+                    .enumerate()
+                    .map(|(index, image)| crate::attachments::chip_for(&image.source, index + 1))
+                    .collect::<Vec<_>>()
+                    .join("  "),
                 Style::default().fg(t::GRAY),
             )),
             None,

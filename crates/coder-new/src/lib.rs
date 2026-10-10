@@ -6,6 +6,7 @@ pub mod acp_discovery;
 pub mod agents;
 pub mod appearance;
 pub mod approval;
+pub mod attachments;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
@@ -90,6 +91,9 @@ pub struct App {
     pub draft: Draft,
     pub composer: composer_state::ComposerState,
     pub(crate) next_image_id: u64,
+    /// Where sent attachments are saved (#11173); `None` is
+    /// `~/.openagents/coder/attachments`.
+    pub attachment_dir: Option<std::path::PathBuf>,
     pub(crate) composer_history: composer_history::History,
     pub(crate) composer_width: u16,
     footer_focused: bool,
@@ -1007,16 +1011,19 @@ impl App {
             self.queue_prompt();
             return;
         }
-        if !self.composer.images.is_empty() {
-            self.live.notice = Some("This text-only provider cannot accept image attachments. Remove the images or keep editing; they have not been discarded.".into());
-            return;
-        }
         if self.submit_brainstorm_command() {
             return;
         }
         if !self.ensure_session() {
             return;
         }
+        let attached = match self.attach_to_prompt() {
+            Ok(count) => count,
+            Err(error) => {
+                self.live.notice = Some(error);
+                return;
+            }
+        };
         if let Some(index) = self.selected_agent {
             if self
                 .delegations
@@ -1041,6 +1048,9 @@ impl App {
         self.draft.cursor = 0;
         self.composer = Default::default();
         self.live.notice = None;
+        if attached > 0 && !(key.is_some() && models::accepts_images(&self.plugins.model)) {
+            self.live.notice = Some(attachments::TEXT_ONLY_NOTICE.into());
+        }
         self.live.partial.clear();
         self.live.partial_model = None;
         self.live.busy = true;
@@ -1460,8 +1470,16 @@ impl App {
                     self.plugins.paste(&text);
                 } else if !matches!(self.screen, Screen::Plugins | Screen::Appearance) {
                     self.composer_history.reset();
-                    if text.starts_with("data:image/") {
-                        self.attach_image(text, None);
+                    let cwd = self.cwd.clone().unwrap_or_else(|| {
+                        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    });
+                    if text.starts_with("data:image/") || text.starts_with("data:application/pdf") {
+                        match attachments::from_data_url(&text) {
+                            Ok(_) => self.attach_image(text, None),
+                            Err(error) => self.live.notice = Some(error),
+                        }
+                    } else if let Some(paths) = attachments::dropped_paths(&text, &cwd) {
+                        self.attach_paths(paths);
                     } else {
                         self.composer.pasted.push(text.clone());
                         self.draft.insert(&text);

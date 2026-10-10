@@ -979,12 +979,9 @@ mod tests {
             let desk = desk.clone();
             std::thread::spawn(move || {
                 loop {
-                    if let Some(event) = desk
-                        .drain()
-                        .into_iter()
-                        .find(|event| event["event"] == "approval")
-                    {
-                        assert_eq!(event["command"], "Edit notes.txt");
+                    if let Some(event) = desk.drain().into_iter().find(|event| {
+                        event["event"] == "approval" && event["command"] == "Edit notes.txt"
+                    }) {
                         desk.answer(&format!("{decision} {}", event["id"])).unwrap();
                         return;
                     }

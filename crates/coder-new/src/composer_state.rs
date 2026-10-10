@@ -28,6 +28,72 @@ impl crate::App {
         self.assign_image_ids();
     }
 
+    /// Attaches dropped or pasted files, or says why one cannot attach.
+    pub(crate) fn attach_paths(&mut self, paths: Vec<std::path::PathBuf>) {
+        for path in paths {
+            match crate::attachments::from_path(&path) {
+                Ok(_) => self.attach_image(path.display().to_string(), None),
+                Err(error) => {
+                    self.live.notice = Some(error);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Saves this prompt's attachments (pasted, dropped, and `@path` ones)
+    /// and adds one note line per attachment to the draft (#11173). Returns
+    /// how many were attached; on an error nothing changes.
+    pub(crate) fn attach_to_prompt(&mut self) -> Result<usize, String> {
+        use crate::attachments;
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let mut loaded = Vec::new();
+        for image in &self.composer.images {
+            loaded.push(if image.source.starts_with("data:") {
+                attachments::from_data_url(&image.source)?
+            } else {
+                attachments::from_path(std::path::Path::new(&image.source))?
+            });
+        }
+        for path in attachments::mentioned_paths(&self.draft.text, &cwd) {
+            if !self
+                .composer
+                .images
+                .iter()
+                .any(|image| std::path::Path::new(&image.source) == path)
+            {
+                loaded.push(attachments::from_path(&path)?);
+            }
+        }
+        if loaded.is_empty() {
+            return Ok(0);
+        }
+        if loaded.len() > attachments::MAX_ATTACHMENTS {
+            return Err(format!(
+                "A message can carry {} attachments at most.",
+                attachments::MAX_ATTACHMENTS
+            ));
+        }
+        let dir = self
+            .attachment_dir
+            .clone()
+            .or_else(attachments::default_dir)
+            .ok_or("Attachments need a home folder to be saved in.")?;
+        let mut notes = Vec::new();
+        for (index, attachment) in loaded.iter().enumerate() {
+            let path = attachment.save(&dir)?;
+            notes.push(attachments::note(attachment.label(), index + 1, &path));
+        }
+        if !self.draft.text.trim().is_empty() {
+            self.draft.text.push('\n');
+        }
+        self.draft.text.push_str(&notes.join("\n"));
+        self.composer.images.clear();
+        Ok(loaded.len())
+    }
+
     pub(crate) fn assign_image_ids(&mut self) {
         let mut used = self
             .composer
@@ -91,6 +157,60 @@ impl crate::App {
 mod tests {
     use super::*;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn a_dropped_screenshot_attaches_and_goes_out_as_a_saved_note_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().canonicalize().unwrap();
+        std::fs::write(cwd.join("shot.png"), b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").unwrap();
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.cwd = Some(cwd.clone());
+        app.attachment_dir = Some(cwd.join("store").join("attachments"));
+        // A terminal pastes a dropped file as its quoted path.
+        app.handle(Event::Paste(format!(
+            "'{}'",
+            cwd.join("shot.png").display()
+        )));
+        assert_eq!(app.composer.images.len(), 1);
+        assert!(app.draft.text.is_empty());
+        assert!(
+            crate::attachments::chip_for(&app.composer.images[0].source, 1)
+                .starts_with("Image #1 shot.png")
+        );
+        app.draft.insert("what's wrong here");
+        assert_eq!(app.attach_to_prompt().unwrap(), 1);
+        assert!(app.composer.images.is_empty());
+        assert!(
+            app.draft.text.starts_with("what's wrong here\n[Image #1: "),
+            "{}",
+            app.draft.text
+        );
+        assert!(crate::attachments::mentions(&app.draft.text));
+        assert!(crate::attachments::expand(&app.draft.text).is_some());
+        // An @path in the prompt attaches too.
+        app.draft = crate::Draft::default();
+        app.draft.insert("and this one? @shot.png");
+        assert_eq!(app.attach_to_prompt().unwrap(), 1);
+        // Over the size limit: refused, with the reason.
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+        big.resize(crate::attachments::MAX_IMAGE_BYTES + 1, 0);
+        std::fs::write(cwd.join("big.png"), big).unwrap();
+        app.handle(Event::Paste(cwd.join("big.png").display().to_string()));
+        assert!(app.composer.images.is_empty());
+        assert!(
+            app.live
+                .notice
+                .as_deref()
+                .unwrap_or_default()
+                .contains("limit is 5 MB")
+        );
+        // Ordinary text that mentions a file name stays text.
+        app.draft = crate::Draft::default();
+        app.handle(Event::Paste("see shot.png for details".into()));
+        assert!(app.composer.images.is_empty());
+        assert!(app.draft.text.ends_with("see shot.png for details"));
+    }
     #[test]
     fn bash_mode_routes_to_run_and_interrupt_restores_mode_and_paste() {
         let mut app = crate::App::default();
@@ -133,7 +253,10 @@ mod tests {
         let mut app = crate::App::default();
         app.set_mode(crate::Mode::Live);
         app.live.busy = true;
-        app.handle(Event::Paste("data:image/png;base64,AA".into()));
+        // A real PNG header: a paste that is not an image is refused.
+        app.handle(Event::Paste(
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==".into(),
+        ));
         app.handle(Event::Key(KeyEvent::new(
             KeyCode::Enter,
             KeyModifiers::NONE,

@@ -256,11 +256,28 @@ impl Provider {
         if !definitions.is_empty() {
             history.push(json!({"role":"system","content":execution.instructions()}));
         }
-        history.extend(
-            messages
-                .iter()
-                .map(|message| json!({"role":message.role,"content":message.content})),
-        );
+        // Attachments (#11173): a vision model gets each noted image or PDF
+        // itself; any other model reads the note lines and why.
+        let vision = crate::models::accepts_images(model);
+        if messages
+            .iter()
+            .any(|message| message.role == "user" && crate::attachments::mentions(&message.content))
+        {
+            history.push(json!({"role":"system","content": if vision {
+                crate::attachments::VISION_NOTE
+            } else {
+                crate::attachments::TEXT_ONLY_NOTE
+            }}));
+        }
+        history.extend(messages.iter().map(|message| {
+            match (message.role == "user" && vision)
+                .then(|| crate::attachments::expand(&message.content))
+                .flatten()
+            {
+                Some(parts) => json!({"role":"user","content":parts}),
+                None => json!({"role":message.role,"content":message.content}),
+            }
+        }));
         let started = Instant::now();
         let mut joined = String::new();
         let mut aggregate = Streamed::default();
@@ -300,7 +317,7 @@ impl Provider {
                     if definitions.is_empty() {
                         request.messages = history.iter().filter_map(|message| Some(Message {
                             role: message["role"].as_str()?.into(),
-                            content: message["content"].as_str()?.into(),
+                            content: message["content"].as_str().or_else(|| message["content"][0]["text"].as_str())?.into(),
                         })).collect();
                         self.chat.stream_with_model(&request, &mut sink, model_callback).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
                     } else {
@@ -2426,10 +2443,91 @@ mod tests {
         assert!(next.contains("The user's favorite color is teal."));
     }
 
+    /// Attachments (#11173): a vision model gets the saved screenshot as an
+    /// image part; a text-only model gets the note line and why.
+    #[test]
+    fn an_attached_screenshot_reaches_a_vision_model_and_a_note_reaches_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("attachments");
+        let image = crate::attachments::from_data_url(&format!(
+            "data:image/png;base64,{}",
+            base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"
+            )
+        ))
+        .unwrap();
+        let saved = image.save(&store).unwrap();
+        let prompt = format!(
+            "What's wrong here?\n{}",
+            crate::attachments::note("Image", 1, &saved)
+        );
+        let mut settings = jev_settings("http://127.0.0.1:9".into(), None);
+        settings.jev_enabled = false;
+        settings.shell = true;
+        settings.cwd = dir.path().to_owned();
+        let done = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"fixture/first","choices":[{"delta":{"content":"A red error banner."},"finish_reason":"stop"}]})
+        );
+        let (base, server) = sequence(vec![done.clone(), done]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        for model in ["anthropic/claude-fable-5.1", "openrouter/free"] {
+            runtime()
+                .block_on(provider.chat_with_plugins(
+                    model,
+                    &crate::models::GenerationOptions::default(),
+                    vec![Message::user(prompt.clone())],
+                    &settings,
+                    &mut |_| {},
+                    &mut |_| {},
+                    &mut |_| {},
+                    &Arc::new(AtomicBool::new(false)),
+                ))
+                .unwrap();
+        }
+        let requests = server.join().unwrap();
+        let last_user = |request: &Value| {
+            request["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|message| message["role"] == "user")
+                .unwrap()
+                .clone()
+        };
+        let vision = last_user(&requests[0]);
+        assert_eq!(vision["content"][0]["text"], prompt);
+        assert!(
+            vision["content"][1]["image_url"]["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert!(
+            requests[0]
+                .to_string()
+                .contains("the images and PDFs follow")
+        );
+        let text = last_user(&requests[1]);
+        assert_eq!(text["content"], prompt);
+        assert!(
+            requests[1]
+                .to_string()
+                .contains("This model cannot view images")
+        );
+        assert!(!requests[1].to_string().contains("image_url"));
+    }
+
     /// A golden chat (#11168): the model reads a file, edits it through the
     /// built-in Edit tool, and the transcript draws the change as a diff.
     #[test]
     fn a_golden_chat_edits_a_file_through_edit_and_shows_the_diff() {
+        // Edit asks when another test's approval gate is installed.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().canonicalize().unwrap();
         std::fs::create_dir(repo.join(".git")).unwrap();

@@ -17,6 +17,23 @@ pub const SHORTLIST: [&str; 7] = [
     "x-ai/grok-4.7",
 ];
 
+/// Whether `model` takes images in a user message (#11173): the shortlist's
+/// vision models and the model families that all accept images. The free
+/// router and other models get a plain note with the file's path instead.
+#[must_use]
+pub fn accepts_images(model: &str) -> bool {
+    const FAMILIES: [&str; 6] = [
+        "openai/gpt-6",
+        "openai/gpt-5",
+        "openai/gpt-4o",
+        "anthropic/claude-",
+        "google/gemini-",
+        "x-ai/grok-4",
+    ];
+    let model = model.trim();
+    FAMILIES.iter().any(|family| model.starts_with(family))
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenerationOptions {
