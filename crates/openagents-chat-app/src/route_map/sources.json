@@ -2060,6 +2060,23 @@
         "answer": true
       },
       {
+        "id": "openagents.coder-memory",
+        "title": "Coder's memory: instruction files and saved notes",
+        "path": "knowledge/openagents/openagents.coder-memory.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "memory",
+          "remember",
+          "forget",
+          "notes",
+          "agents-md",
+          "claude-md",
+          "terminal"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.coder-sync",
         "title": "Signing in to Coder and syncing its chats",
         "path": "knowledge/openagents/openagents.coder-sync.md",
