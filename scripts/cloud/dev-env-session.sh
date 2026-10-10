@@ -8,8 +8,9 @@
 # Every credential comes from Secret Manager (project openagentsgemini)
 # through the VM's own service account (the metadata server), at the moment
 # a session starts. They live in this shell's environment and in a mode-600
-# file on tmpfs (/dev/shm/oa-dev-env.$UID), which is gone at reboot, and they
-# are never printed.
+# file, ~/.openagents/dev-env.env, on this VM's own disk, and are never
+# printed. (Not /dev/shm: systemd-logind's RemoveIPC deletes a user's
+# /dev/shm files when their last ssh session ends.)
 #
 # | Variable                 | Secret                        |
 # | GH_TOKEN                 | coder-pool-git-token (repo, project scopes) |
@@ -23,7 +24,8 @@ set -euo pipefail
 
 project=${OA_PROJECT:-openagentsgemini}
 md=http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default
-file=/dev/shm/oa-dev-env.$(id -u)
+file=$HOME/.openagents/dev-env.env
+mkdir -p "$HOME/.openagents"
 
 token() {
   curl -fsS -H 'Metadata-Flavor: Google' "$md/token" | jq -r .access_token

@@ -289,6 +289,15 @@ if [[ "$warm" == "true" ]]; then
       partial="$partial $p"
       log warm-tests end "package=$p partial=true"
     fi
+    if [[ "$prune" == "true" ]]; then
+      # Drop this package's test executables and incremental caches now,
+      # not after the last package: the four packages' unpruned outputs no
+      # longer fit a 200 GB builder (1.8 GB free before coder-new on
+      # 2026-10-10, #11224). The final prune below removes the same kinds.
+      as_user find "$slot/debug/deps" -maxdepth 1 -type f -executable ! -name '*.so' -delete
+      as_user rm -rf "$slot/debug/incremental"
+      log warm-prune-step "package=$p free_gb=$(df -BG --output=avail "$slot" | tail -1 | tr -dc 0-9)"
+    fi
   done
   as_user install -d -m 0755 "$home/.local/bin"
   as_user install -m 0755 "$slot/debug/coder-cloud-runtime" "$home/.local/bin/coder-cloud-runtime"
