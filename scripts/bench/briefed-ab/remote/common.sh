@@ -12,7 +12,11 @@ dir=$HOME/ab/build$sfx
 export CARGO_TARGET_DIR=$HOME/ab/target$sfx CARGO_TERM_COLOR=never CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 ab_lock() {
   exec 9>"$HOME/ab/build$sfx.lock"
+  local t0
+  t0=$(date +%s.%N)
   flock 9
+  # Seconds spent waiting for the other trial's build, per trial slot.
+  [ -n "${AB_WAITLOG:-}" ] && awk -v a="$(date +%s.%N)" -v b="$t0" 'BEGIN { printf "%.1f\n", a - b }' >> "$AB_WAITLOG"
   [ -d "$dir" ] || git -C "$HOME/openagents" worktree add -q --detach "$dir" origin/main
   ab_guard
 }

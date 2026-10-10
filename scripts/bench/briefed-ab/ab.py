@@ -532,6 +532,7 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     out.mkdir(parents=True, exist_ok=True)
     lv = dict(levers)
     lv.update(ARMS.get(arm, {}))
+    run(SSH + [f"rm -f ~/ab/wait-slot{slot}.log"], check=False)
     if lv.get("interface"):
         extra = interface_text(task)
         if extra:
@@ -553,6 +554,8 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     finally:
         drop_worktree(task, root)
     (out / "change.patch").write_text(diff)
+    waits = run(SSH + [f"cat ~/ab/wait-slot{slot}.log 2>/dev/null"], check=False).stdout.split()
+    lock_wait = round(sum(float(w) for w in waits if w.replace(".", "", 1).isdigit()), 1)
     events = []
     if (out / "events.jsonl").exists():
         for line in (out / "events.jsonl").read_text().splitlines():
@@ -570,6 +573,7 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "issue": task["issue"], "arm": arm, "rep": rep, "slot": slot, "levers": lv,
         **{k: v for k, v in m.items() if k not in ("result",)},
         **usage_of(m.get("result")),
+        "lock_wait_secs": lock_wait,
         "files_changed": changed,
         "tool_log": tlog,
         "overlap_recall": round(len(hit) / max(1, len(fix_src)), 2),

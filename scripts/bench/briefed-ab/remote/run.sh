@@ -10,6 +10,7 @@
 set -u
 slot=$1 base=$2 rel=$3 limit=$4
 shift 5
+AB_WAITLOG=$HOME/ab/wait-slot$slot.log
 . "$(dirname "$0")/common.sh"
 ab_lock
 patch=$(mktemp)
