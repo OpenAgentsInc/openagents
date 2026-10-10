@@ -175,6 +175,11 @@ pub struct App {
     history: resume::History,
     pub(crate) active_options: models::GenerationOptions,
     pending_export_path: Option<std::path::PathBuf>,
+    /// Cmd+A (or Ctrl+Shift+A) selected the whole input: typing replaces
+    /// it, Backspace or Delete clears it, Cmd+C copies it, Cmd+X cuts it.
+    pub composer_selected: bool,
+    /// Input text waiting for the terminal clipboard (Cmd+C, Cmd+X).
+    pending_copy: Option<String>,
     export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,
     main_draft: Draft,
@@ -941,6 +946,72 @@ impl App {
         self.composer_history.reset();
     }
 
+    /// Copy the input text Cmd+C or Cmd+X took, through the terminal's
+    /// clipboard adapter (OSC 52).
+    pub fn copy_pending(&mut self, copy: impl FnOnce(&str) -> std::io::Result<()>) {
+        let Some(text) = self.pending_copy.take() else {
+            return;
+        };
+        if let Err(error) = copy(&text) {
+            self.notice = Some(format!("Cannot copy to clipboard: {error}."));
+        }
+    }
+
+    /// Select-all in the input and what follows it. Cmd+A needs a terminal
+    /// that reports Cmd keys (the kitty keyboard protocol); Ctrl+Shift+A is
+    /// the same where the terminal tells it from Ctrl+A. Ctrl+A stays line
+    /// start. Returns whether the key was used up here.
+    fn composer_selection_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        let command = key.modifiers == KeyModifiers::SUPER;
+        let letter =
+            |want: char| matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&want));
+        if letter('a') && (command || key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+        {
+            self.composer_selected = !self.draft.text.is_empty();
+            self.draft.cursor = self.draft.text.len();
+            return true;
+        }
+        if !self.composer_selected {
+            return false;
+        }
+        self.composer_selected = false;
+        if self.draft.text.is_empty() {
+            return false;
+        }
+        if command && letter('c') {
+            self.pending_copy = Some(self.draft.text.clone());
+            self.composer_selected = true;
+            return true;
+        }
+        let clear = |app: &mut Self| {
+            app.draft = Draft::default();
+            app.composer_history.reset();
+            app.slash_selected = 0;
+            app.slash_hidden = false;
+        };
+        if command && letter('x') {
+            self.pending_copy = Some(self.draft.text.clone());
+            clear(self);
+            return true;
+        }
+        match key.code {
+            KeyCode::Backspace | KeyCode::Delete => {
+                clear(self);
+                true
+            }
+            KeyCode::Char(_)
+                if !key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                ) =>
+            {
+                // The typed character replaces the selection below.
+                clear(self);
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// Copy a saved export path once, through the terminal's clipboard adapter.
     pub fn copy_export_path(&mut self, copy: impl FnOnce(&str) -> std::io::Result<()>) {
         let Some(path) = self.pending_export_path.take() else {
@@ -1610,6 +1681,9 @@ impl App {
                     } else if let Some(paths) = attachments::dropped_paths(&text, &cwd) {
                         self.attach_paths(paths);
                     } else {
+                        if std::mem::take(&mut self.composer_selected) {
+                            self.draft = Draft::default();
+                        }
                         self.composer.pasted.push(text.clone());
                         self.draft.insert(&text);
                     }
@@ -1845,6 +1919,9 @@ impl App {
                     self.composer_arrow(key.code == KeyCode::Up);
                     return true;
                 }
+                if self.composer_selection_key(key) {
+                    return true;
+                }
                 let hints = self.slash_hints();
                 if !hints.is_empty() {
                     match key.code {
@@ -2068,11 +2145,20 @@ impl Draft {
     fn edit(&mut self, key: crossterm::event::KeyEvent) {
         match key.code {
             KeyCode::Char(ch)
-                if !key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                if !key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                ) =>
             {
                 self.insert(&ch.to_string());
+            }
+            // Readline: Ctrl+A to the start of the line, Ctrl+E to its end.
+            KeyCode::Char('a') if key.modifiers == KeyModifiers::CONTROL => {
+                self.cursor = self.text[..self.cursor].rfind('\n').map_or(0, |at| at + 1);
+            }
+            KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
+                self.cursor += self.text[self.cursor..]
+                    .find('\n')
+                    .unwrap_or(self.text.len() - self.cursor);
             }
             KeyCode::Backspace => self.backspace(),
             KeyCode::Delete => self.delete(),
@@ -2207,5 +2293,116 @@ mod export_notice_tests {
         app.notice = Some("another command".into());
         app.expire_export_notice(deadline);
         assert_eq!(app.notice.as_deref(), Some("another command"));
+    }
+}
+
+#[cfg(test)]
+mod select_all_tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+
+    fn press(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        app.handle(Event::Key(KeyEvent::new(code, modifiers)));
+    }
+
+    fn typed(text: &str) -> App {
+        let mut app = App::default();
+        for ch in text.chars() {
+            if ch == '\n' {
+                press(&mut app, KeyCode::Enter, KeyModifiers::ALT);
+            } else {
+                press(&mut app, KeyCode::Char(ch), KeyModifiers::NONE);
+            }
+        }
+        assert_eq!(app.draft.text, text);
+        app
+    }
+
+    fn copied(app: &mut App) -> Option<String> {
+        let mut out = None;
+        app.copy_pending(|text| {
+            out = Some(text.to_owned());
+            Ok(())
+        });
+        out
+    }
+
+    #[test]
+    fn cmd_a_selects_the_input_and_typing_replaces_it() {
+        let mut app = typed("hello\nworld");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+        assert!(app.composer_selected);
+        assert_eq!(app.draft.text, "hello\nworld");
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+        assert!(!app.composer_selected);
+        assert_eq!(app.draft.text, "x");
+        assert_eq!(app.draft.cursor, 1);
+    }
+
+    #[test]
+    fn backspace_and_delete_clear_the_selection() {
+        for code in [KeyCode::Backspace, KeyCode::Delete] {
+            let mut app = typed("some words");
+            press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+            press(&mut app, code, KeyModifiers::NONE);
+            assert!(app.draft.text.is_empty());
+            assert!(!app.composer_selected);
+        }
+    }
+
+    #[test]
+    fn cmd_c_copies_and_keeps_the_selection_and_cmd_x_cuts() {
+        let mut app = typed("copy me");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::SUPER);
+        assert_eq!(copied(&mut app).as_deref(), Some("copy me"));
+        assert!(app.composer_selected);
+        assert_eq!(app.draft.text, "copy me");
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::SUPER);
+        assert_eq!(copied(&mut app).as_deref(), Some("copy me"));
+        assert!(app.draft.text.is_empty());
+        assert!(!app.composer_selected);
+        // Nothing selected: Cmd+C neither copies nor types a letter.
+        let mut app = typed("ab");
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::SUPER);
+        assert_eq!(copied(&mut app), None);
+        assert_eq!(app.draft.text, "ab");
+    }
+
+    #[test]
+    fn ctrl_shift_a_is_the_fallback_and_ctrl_a_stays_line_start() {
+        let mut app = typed("one\ntwo");
+        press(
+            &mut app,
+            KeyCode::Char('A'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert!(app.composer_selected);
+        let mut app = typed("one\ntwo");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert!(!app.composer_selected);
+        assert_eq!(app.draft.cursor, 4);
+        press(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        assert_eq!(app.draft.cursor, 7);
+        press(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        assert_eq!(app.draft.cursor, 3);
+    }
+
+    #[test]
+    fn moving_or_pasting_ends_or_replaces_the_selection() {
+        let mut app = typed("old");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+        press(&mut app, KeyCode::Left, KeyModifiers::NONE);
+        assert!(!app.composer_selected);
+        assert_eq!(app.draft.text, "old");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+        app.handle(Event::Paste("new".into()));
+        assert_eq!(app.draft.text, "new");
+        assert!(!app.composer_selected);
+        // An empty input has nothing to select.
+        let mut app = App::default();
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::SUPER);
+        assert!(!app.composer_selected);
     }
 }

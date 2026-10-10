@@ -317,6 +317,7 @@ fn run() -> io::Result<()> {
                     keep_running = app.handle(event::read()?);
                 }
                 app.copy_export_path(coder_terminal::clipboard::to_clipboard);
+                app.copy_pending(coder_terminal::clipboard::to_clipboard);
                 if !keep_running {
                     app.cancel_request();
                     app.persist_session(true);
@@ -631,6 +632,9 @@ Inside Coder, type / to see every command:
   /export [path]           Save this chat to a file.
   /plugins                 Turn plugins on and add keys (also Ctrl+P, or Cmd+P on macOS).
   Esc stops a reply. Ctrl+C quits.
+  Cmd+A selects everything in the input (Cmd+C copies, Cmd+X cuts); it needs a
+  terminal with the kitty keyboard protocol. Elsewhere, Ctrl+Shift+A. Ctrl+A and
+  Ctrl+E move to the start and end of the line.
 
 Coder keeps itself up to date: once a day it checks for a newer version,
 downloads and verifies it, and installs it when you quit. To only be told,
