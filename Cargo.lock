@@ -3361,6 +3361,7 @@ dependencies = [
  "coder-ui",
  "coder-vt",
  "futures-util",
+ "image",
  "jni 0.22.4",
  "libc",
  "ndk-sys",

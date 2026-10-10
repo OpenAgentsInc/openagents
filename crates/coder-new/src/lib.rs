@@ -2,8 +2,6 @@
 
 pub mod account;
 pub mod account_sync;
-// Screenshots and files asked for on openagents.com (#11185).
-mod web_asks;
 pub mod acp_discovery;
 pub mod agents;
 pub mod appearance;
@@ -63,6 +61,8 @@ pub mod trace_upload;
 pub mod trajectory;
 pub mod ui;
 pub mod update;
+// Screenshots and files asked for on openagents.com (#11185).
+mod web_asks;
 pub mod web_tools;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
