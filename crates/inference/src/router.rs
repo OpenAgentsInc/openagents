@@ -43,6 +43,7 @@ use crate::item::{ContentPart, Item, MessageContent, ToolOutput};
 use crate::meter::{Basis, ErrorClass, Ledger, Rate, RateCard, RateRow};
 use crate::openagents::{Payer, Privacy, Sort};
 use crate::request::{CreateResponse, Input, TextFormat};
+use crate::upstream::coder::is_own_capacity;
 
 /// At most this many attempts per request.
 pub const MAX_ATTEMPTS: usize = 3;
@@ -638,6 +639,16 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
             }
         }
     }
+    // Own coding capacity (#11080): under `pay: "mine"`, the code class
+    // also takes the caller's own linked computers and subscriptions, ahead
+    // of the table. They are offered only as the caller's own (`mine`).
+    if class == Some(TaskClass::Code) && payer == Payer::Mine {
+        for offering in context.offerings {
+            if offering.payer == Payer::Mine && is_own_capacity(&offering.model) {
+                considered.push((offering, 0));
+            }
+        }
+    }
     let base = considered
         .iter()
         .map(|(_, position)| position + 1)
@@ -735,11 +746,13 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
             .is_some_and(|scores| !scores.is_empty())
     });
     if let (Some(class), Some(floor), true) = (class, entry.and_then(|entry| entry.floor), scored) {
+        // The caller's own capacity is theirs to use: no floor applies.
         let (pass, fail): (Vec<_>, Vec<_>) = kept.into_iter().partition(|(candidate, _, _)| {
-            context
-                .scores
-                .get(class, &candidate.model)
-                .is_some_and(|score| score >= floor)
+            own_capacity(candidate)
+                || context
+                    .scores
+                    .get(class, &candidate.model)
+                    .is_some_and(|score| score >= floor)
         });
         dropped.extend(
             fail.into_iter()
@@ -752,6 +765,12 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
     let keep_table_order = class.is_some() && !scored;
     let sort = options.route.as_ref().and_then(|route| route.sort.clone());
     kept.sort_by(|(a, a_position, a_rank), (b, b_position, b_rank)| {
+        // Own capacity first, in the order offered (most free sessions
+        // first); the sort is stable.
+        let (a_own, b_own) = (own_capacity(a), own_capacity(b));
+        if a_own || b_own {
+            return b_own.cmp(&a_own);
+        }
         let (a_rank, b_rank) = (a_rank.as_ref(), b_rank.as_ref());
         let by_rank = match (&sort, a_rank, b_rank) {
             (Some(sort), Some(a_rank), Some(b_rank)) => a_rank.by(sort, b_rank, a, b, context),
@@ -815,6 +834,11 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
             })),
         dropped,
     })
+}
+
+/// Whether `candidate` is the caller's own coding capacity (#11080).
+fn own_capacity(candidate: &Candidate) -> bool {
+    candidate.payer == Payer::Mine && is_own_capacity(&candidate.model)
 }
 
 fn exhausted(offering: &Offering, context: &Context<'_>) -> bool {

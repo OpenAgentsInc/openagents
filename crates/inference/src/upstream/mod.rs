@@ -16,6 +16,7 @@
 //! | [`vercel::Vercel`] | Vercel AI Gateway Open Responses | Vercel credits |
 //! | [`psionic::LocalPsionic`] | `psionic-serve` `/v1/responses` on this machine | None (`local`) |
 //! | [`pylon::PylonUpstream`] | NIP-CJ jobs to a Pylon provider's `psionic-serve` | The provider, paid through the split ledger |
+//! | [`coder::OwnCoder`] | A coding run on the key owner's own linked computer ([`coder::Runs`]) | The owner's own subscription (`pay: "mine"` only), no charge |
 //!
 //! Every adapter streams from its upstream, whether or not the caller asked
 //! for a stream: the gateway collects a stream into one response for a
@@ -44,6 +45,7 @@ use crate::request::{CreateResponse, TextFormat, Tool, ToolChoice, ToolChoiceMod
 
 pub mod anthropic;
 pub mod chat;
+pub mod coder;
 pub mod emit;
 pub mod gate;
 pub mod gemini;
@@ -53,6 +55,7 @@ pub mod measure;
 pub mod openai;
 pub mod openrouter;
 pub mod pro;
+pub mod progress;
 pub mod psionic;
 pub mod pylon;
 pub mod responses;

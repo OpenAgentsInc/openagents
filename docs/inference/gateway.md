@@ -349,6 +349,34 @@ the upstream `pylon:<pylon>`.
   a Pylon provider, the provider's 200-sat share in the ledger, and the
   payout worker paying it.
 
+### Own coding capacity
+
+Built for #11080 in `crates/inference/src/upstream/coder.rs` (library
+and router; the gateway does not mount it yet).
+
+- Each subscription account on one of the key owner's linked computers
+  (`coder::Linked`: owner, computer, account, Codex or Claude Code, and
+  how many more sessions it can take now) is one upstream,
+  `coder:<computer>/<account>`, serving `coder/codex` or
+  `coder/claude-code`. `coder::own_upstreams` keeps only the owner's own
+  records with a free session, most free sessions first; the gateway puts
+  them in the caller's own adapters (`run::Caller::own`), so only that
+  caller's `pay: "mine"` requests reach them. Never pooled, never resold.
+- The router adds them to `openagents/code` under `pay: "mine"`, ahead of
+  the class table and outside its quality floor (the owner chose their own
+  capacity), in the order offered. A spent account answers `payment`
+  before any output, so it is benched and the next account takes the run.
+- A run streams progress as a reasoning summary, one line per step; the
+  first line names the computer and the account. The answer is the
+  message. Price zero; attempts are metered under `caller-key`.
+- The subscription's provider terms apply, which we have not verified as
+  zero retention, so a run needs `openagents.privacy: "standard"`, like a
+  direct own key.
+- Not yet: the gateway's `coder::Runs` (starting a run on the owner's
+  linked computer through their Coder link) and its source of linked
+  computers with free sessions. `tests/own_capacity.rs` runs the path
+  with a stub.
+
 ## 5. Routing
 
 A request names a model id or a task class. The router turns it into an
@@ -398,10 +426,11 @@ Added from episodes 242–246 (section 16), design until its issue lands:
   caller's keys is its own candidate and is benched like ours (a 401, 402,
   or exhausted quota), so a spent key falls over to the caller's next one
   before the first token, never to ours.
-- **Own coding capacity.** `openagents/code` under `pay: "mine"` will also
-  consider the key owner's own linked Coder and subscriptions, own capacity
+- **Own coding capacity.** `openagents/code` under `pay: "mine"` also
+  considers the key owner's own linked Coder and subscriptions, own capacity
   only, never pooled or resold
-  ([#11080](https://github.com/OpenAgentsInc/openagents/issues/11080)).
+  ([#11080](https://github.com/OpenAgentsInc/openagents/issues/11080);
+  section 4, "Own coding capacity").
 
 Starting class table, before measurement takes over:
 
@@ -930,7 +959,7 @@ Sources: [241](../transcripts/241.md), [242](../transcripts/242.md),
 | 243 | Free tier sized from a cost model, not a guess | Kept | Section 5 burn-down feeds decision 9 |
 | 243 | Head-to-head Gym and honest published numbers | Kept | Section 6 (Quality, Published comparisons) |
 | 243, 245 | Free tier paid for with data; selling traces | Dropped | Decision 12; section 9 keeps no text |
-| 244 | Coding requests run on the caller's own subscriptions through their own Pylon or Coder; own capacity only, no resale, semantic routing | Now in spec, build later | Sections 4 and 5, [#11080](https://github.com/OpenAgentsInc/openagents/issues/11080) |
+| 244 | Coding requests run on the caller's own subscriptions through their own Pylon or Coder; own capacity only, no resale, semantic routing | Library and router built; gateway mount next | Sections 4 and 5, [#11080](https://github.com/OpenAgentsInc/openagents/issues/11080) |
 | 244 | Pooling other people's subscription capacity | Dropped | Section 4: never pooled or resold |
 | 245 | "Your coding agent pays you": payouts from trace-derived plugins | Dropped for the gateway | No automatic royalties (roadmap); paid agent work is #11082 instead |
 | 246 | Fail over across a user's several accounts when one is spent | Kept | Section 5 (the caller's own keys fail over too) |
