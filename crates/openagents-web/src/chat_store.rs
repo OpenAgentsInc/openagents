@@ -570,6 +570,10 @@ pub(crate) struct Request {
     /// Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply: Option<openagents_chat::router::Meta>,
+    /// The files sent with the message (#11174, `crate::chat_files`); their
+    /// bytes sit beside the chat. Older records have none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<crate::chat_files::FileRef>,
 }
 
 /// The most follow-ups, offers, or plugin cards a retained answer keeps.
@@ -1071,7 +1075,14 @@ impl Store {
     pub(crate) async fn remove(&self, loaded: &Loaded) -> Result<bool, Error> {
         let chat = &loaded.conversation;
         if chat.terminal.is_none() {
-            return self.delete(&chat.owner, &chat.id, &loaded.generation).await;
+            let removed = self
+                .delete(&chat.owner, &chat.id, &loaded.generation)
+                .await?;
+            // The chat's files go with it (#11174).
+            if let Err(error) = crate::chat_files::purge(self, &chat.owner, &chat.id).await {
+                eprintln!("openagents-web: chat files delete: {error}");
+            }
+            return Ok(removed);
         }
         if chat.deleted() {
             return Ok(false);
@@ -1168,14 +1179,30 @@ impl Store {
     /// fenced by the generation it was judged on, so a chat that gets a new
     /// message during the sweep stays. Answer leases are left alone. Returns
     /// how many chats were removed.
+    ///
+    /// The same pass removes the files added to chats that are gone
+    /// (`crate::chat_files`, #11174): a chat's folder of files whose chat
+    /// no longer exists and whose newest file was added before the cutoff.
+    /// Files of a chat still kept stay with it.
     pub async fn expire_untouched(&self, cutoff_unix: u64) -> Result<usize, Error> {
-        match self.0.as_ref() {
+        let removed = match self.0.as_ref() {
             Adapter::Disk(root) => {
                 let root = root.clone();
                 blocking(move || expire_disk(&root, cutoff_unix)).await
             }
             Adapter::Gcs(gcs) => gcs.expire(cutoff_unix).await,
+        }?;
+        let files = match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let root = root.clone();
+                blocking(move || expire_files_disk(&root, cutoff_unix)).await
+            }
+            Adapter::Gcs(gcs) => gcs.expire_files(cutoff_unix).await,
+        };
+        if let Err(error) = files {
+            eprintln!("openagents-web: chat files expiry: {error}");
         }
+        Ok(removed)
     }
 
     /// An account's own object key beside its chats: `rest` under the
@@ -1276,6 +1303,141 @@ impl Store {
             }
         }
     }
+
+    /// The keys of the objects directly in `folder` (a key such as
+    /// [`Self::owner_key`] gives), sorted; none when there is no such
+    /// folder. At most [`MAX_FOLDER`].
+    pub(crate) async fn folder_keys(&self, folder: &str) -> Result<Vec<String>, Error> {
+        valid_key(folder)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let directory = root.join(folder);
+                let folder = folder.to_owned();
+                blocking(move || {
+                    let entries = match fs::read_dir(&directory) {
+                        Ok(entries) => entries,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(Vec::new());
+                        }
+                        Err(_) => return Err(Error::Unavailable("The folder could not be read.")),
+                    };
+                    let mut keys = Vec::new();
+                    for entry in entries.flatten() {
+                        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                            continue;
+                        };
+                        // Locks and staged writes are not objects.
+                        if name.starts_with('.')
+                            || name.ends_with(".lock")
+                            || !entry.file_type().is_ok_and(|kind| kind.is_file())
+                        {
+                            continue;
+                        }
+                        let key = format!("{folder}/{name}");
+                        if valid_key(&key).is_ok() {
+                            keys.push(key);
+                        }
+                        if keys.len() > MAX_FOLDER {
+                            return Err(Error::Unavailable("The folder exceeds its limit."));
+                        }
+                    }
+                    keys.sort();
+                    Ok(keys)
+                })
+                .await
+            }
+            Adapter::Gcs(gcs) => gcs.folder_keys(folder).await,
+        }
+    }
+
+    /// Remove `folder` and every object in it, with every older version a
+    /// bucket kept. Nothing there is not an error.
+    pub(crate) async fn remove_folder(&self, folder: &str) -> Result<(), Error> {
+        valid_key(folder)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let directory = root.join(folder);
+                blocking(move || match fs::remove_dir_all(&directory) {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(_) => Err(Error::Unavailable("The delete has an unknown outcome.")),
+                })
+                .await
+            }
+            Adapter::Gcs(gcs) => gcs.purge_prefix(&format!("{}/{folder}/", gcs.prefix)).await,
+        }
+    }
+}
+
+/// The most objects one folder lists ([`Store::folder_keys`]).
+pub(crate) const MAX_FOLDER: usize = 256;
+
+/// The folder of chat files under an owner's folder (`crate::chat_files`).
+pub(crate) const FILES_FOLDER: &str = "files";
+
+/// One pass over the disk store's chat files; see
+/// [`Store::expire_untouched`]. Returns how many folders were removed.
+fn expire_files_disk(root: &Path, cutoff_unix: u64) -> Result<usize, Error> {
+    let owners = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(_) => return Err(Error::Unavailable("The chat store could not be read.")),
+    };
+    let mut removed = 0;
+    for owner in owners.flatten() {
+        let folder = owner.file_name();
+        let Some(folder) = folder.to_str() else {
+            continue;
+        };
+        if folder.len() != 64 || !folder.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            continue;
+        }
+        let Ok(chats) = fs::read_dir(owner.path().join(FILES_FOLDER)) else {
+            continue;
+        };
+        for chat in chats.flatten() {
+            let name = chat.file_name();
+            let Some(id) = name.to_str() else {
+                continue;
+            };
+            if !valid_id(id) || owner.path().join(format!("{id}.json")).exists() {
+                continue;
+            }
+            let newest = fs::read_dir(chat.path())
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .filter_map(|entry| entry.metadata().ok()?.modified().ok())
+                        .filter_map(|at| at.duration_since(UNIX_EPOCH).ok())
+                        .map(|at| at.as_secs())
+                        .max()
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            if newest >= cutoff_unix {
+                continue;
+            }
+            if fs::remove_dir_all(chat.path()).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// Where a file object of a chat sits: `{prefix}{owner}/files/{chat}/{file}`
+/// gives the owner's folder name and the chat id.
+fn file_object<'a>(prefix: &str, name: &'a str) -> Option<(&'a str, &'a str)> {
+    let rest = name.strip_prefix(prefix)?;
+    let (owner, rest) = rest.split_once('/')?;
+    let rest = rest.strip_prefix(FILES_FOLDER)?.strip_prefix('/')?;
+    let (chat, file) = rest.split_once('/')?;
+    (owner.len() == 64
+        && owner.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && valid_id(chat)
+        && !file.is_empty()
+        && !file.contains('/'))
+    .then_some((owner, chat))
 }
 
 /// A key for [`Store::read_key`]: `/`-separated parts of letters, digits,
@@ -1734,6 +1896,148 @@ impl Gcs {
             page = listed.next;
         }
     }
+
+    /// One page after another of the objects named from `prefix`, with
+    /// each one's name, generation, and last write. With `versions`, every
+    /// stored version; with `delimiter`, only those directly under it.
+    async fn list_prefix(
+        &self,
+        prefix: &str,
+        versions: bool,
+        delimiter: bool,
+    ) -> Result<Vec<Listed>, Error> {
+        let mut page = String::new();
+        let mut all = Vec::new();
+        loop {
+            let mut query = vec![
+                ("prefix", prefix.to_owned()),
+                ("maxResults", "1000".to_owned()),
+                (
+                    "fields",
+                    "items(name,generation,updated),nextPageToken".to_owned(),
+                ),
+                ("pageToken", page.clone()),
+            ];
+            if versions {
+                query.push(("versions", "true".to_owned()));
+            }
+            if delimiter {
+                query.push(("delimiter", "/".to_owned()));
+            }
+            let response = self
+                .client
+                .get(format!("{STORAGE_API}/storage/v1/b/{}/o", self.bucket))
+                .query(&query)
+                .bearer_auth(self.bearer().await?)
+                .send()
+                .await
+                .map_err(|_| Error::Unavailable("The folder could not be read."))?;
+            check_status(&response)?;
+            #[derive(Deserialize)]
+            struct Page {
+                #[serde(default)]
+                items: Vec<Listed>,
+                #[serde(default, rename = "nextPageToken")]
+                next: String,
+            }
+            let listed: Page = serde_json::from_slice(&limited_body(response, 1024 * 1024).await?)
+                .map_err(|_| Error::Corrupt("The folder list is invalid."))?;
+            for object in &listed.items {
+                if object.generation.is_empty()
+                    || !object.generation.bytes().all(|byte| byte.is_ascii_digit())
+                {
+                    return Err(Error::Corrupt("The object generation is invalid."));
+                }
+            }
+            all.extend(listed.items);
+            if listed.next.is_empty() {
+                return Ok(all);
+            }
+            if listed.next == page {
+                return Err(Error::Corrupt("The folder list cursor did not advance."));
+            }
+            page = listed.next;
+        }
+    }
+
+    /// See [`Store::folder_keys`].
+    async fn folder_keys(&self, folder: &str) -> Result<Vec<String>, Error> {
+        let root = format!("{}/", self.prefix);
+        let listed = self
+            .list_prefix(&format!("{root}{folder}/"), false, true)
+            .await?;
+        let mut keys: Vec<String> = listed
+            .into_iter()
+            .filter_map(|object| object.name.strip_prefix(&root).map(str::to_owned))
+            .filter(|key| valid_key(key).is_ok())
+            .collect();
+        if keys.len() > MAX_FOLDER {
+            return Err(Error::Unavailable("The folder exceeds its limit."));
+        }
+        keys.sort();
+        Ok(keys)
+    }
+
+    /// Delete every version of every object named from `prefix`.
+    async fn purge_prefix(&self, prefix: &str) -> Result<(), Error> {
+        for object in self.list_prefix(prefix, true, false).await? {
+            let response = self
+                .client
+                .delete(self.object_url(&object.name)?)
+                .query(&[("generation", object.generation.as_str())])
+                .bearer_auth(self.bearer().await?)
+                .send()
+                .await
+                .map_err(|_| Error::Unavailable("The delete has an unknown outcome."))?;
+            if response.status() != StatusCode::NOT_FOUND {
+                check_status(&response)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// See [`Store::expire_untouched`]: one pass over the bucket; the
+    /// folders of files whose chat is gone and whose newest file was
+    /// written before `cutoff_unix` are removed. Returns how many.
+    async fn expire_files(&self, cutoff_unix: u64) -> Result<usize, Error> {
+        let prefix = format!("{}/", self.prefix);
+        let listed = self.list_prefix(&prefix, false, false).await?;
+        let chats: HashSet<&str> = listed
+            .iter()
+            .filter(|object| expirable_object(&prefix, &object.name))
+            .map(|object| object.name.as_str())
+            .collect();
+        // Per chat folder: the newest write among its files.
+        let mut folders: BTreeMap<(String, String), u64> = BTreeMap::new();
+        for object in &listed {
+            let Some((owner, chat)) = file_object(&prefix, &object.name) else {
+                continue;
+            };
+            let updated = rfc3339_unix(&object.updated).unwrap_or(u64::MAX);
+            let newest = folders.entry((owner.to_owned(), chat.to_owned())).or_insert(0);
+            *newest = (*newest).max(updated);
+        }
+        let mut removed = 0;
+        for ((owner, chat), newest) in folders {
+            if newest >= cutoff_unix || chats.contains(format!("{prefix}{owner}/{chat}.json").as_str())
+            {
+                continue;
+            }
+            self.purge_prefix(&format!("{prefix}{owner}/{FILES_FOLDER}/{chat}/"))
+                .await?;
+            removed += 1;
+        }
+        Ok(removed)
+    }
+}
+
+/// One object in a bucket listing ([`Gcs::list_prefix`]).
+#[derive(Deserialize)]
+struct Listed {
+    name: String,
+    generation: String,
+    #[serde(default)]
+    updated: String,
 }
 
 fn check_status(response: &Response) -> Result<(), Error> {
@@ -1962,6 +2266,9 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
         if let Some(selection) = &request.selection {
             selection.validate()?;
         }
+        if !crate::chat_files::valid_refs(&request.files) {
+            return Err(Error::Invalid("This chat could not be opened or saved."));
+        }
         if let Some(reply) = &request.reply
             && (reply.followups.len() > MAX_REPLY_CHIPS
                 || reply.offers.len() > MAX_REPLY_CHIPS
@@ -2004,6 +2311,7 @@ fn validate_retained_requests(previous: &Conversation, next: &Conversation) -> R
         if retained.is_none_or(|retained| {
             retained.digest != request.digest
                 || retained.selection != request.selection
+                || retained.files != request.files
                 || request
                     .cloud
                     .as_ref()
@@ -2558,6 +2866,7 @@ mod tests {
                 outcome: Outcome::Answered,
                 selection: None,
                 cloud: None,
+                files: Vec::new(),
                 reply: None,
             }],
             selection: None,

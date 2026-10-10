@@ -24,6 +24,7 @@ mod api_keys;
 pub mod ask;
 mod auth;
 pub mod backend;
+mod chat_files;
 mod chat_html;
 mod chat_owner;
 pub mod chat_store;
@@ -263,6 +264,7 @@ pub fn router(config: Config) -> Router {
         .merge(purchases::routes())
         .merge(components::routes())
         .merge(chat_html::routes())
+        .merge(chat_files::routes())
         .merge(composer::routes())
         .merge(composer_row::routes())
         .merge(demo::routes())

@@ -259,6 +259,7 @@ mod tests {
                 outcome: Outcome::Answered,
                 selection: None,
                 cloud: None,
+                files: Vec::new(),
                 reply,
             }],
             selection: None,

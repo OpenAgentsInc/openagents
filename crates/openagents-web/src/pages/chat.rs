@@ -81,6 +81,10 @@ struct Prompt {
     /// Where the message runs there (empty: answered here).
     #[serde(default)]
     target: Option<String>,
+    /// The files added in the composer, their ids joined by commas
+    /// ([`crate::chat_files`]). Empty for none.
+    #[serde(default)]
+    files: String,
 }
 
 impl Prompt {
@@ -260,7 +264,17 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Ok(v) => v,
         Err(r) => return r,
     };
-    let digest = request_digest(&text, selection.as_ref());
+    // A new chat's files were added under its id, the request's
+    // ([`crate::chat_files`]).
+    let files =
+        match crate::chat_files::take(&app.config.chat_store, &owner, &id, &prompt.files).await {
+            Ok(files) => files,
+            Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
+        };
+    let digest = request_digest(
+        &crate::chat_files::with_files(&text, &files),
+        selection.as_ref(),
+    );
     match app.config.chat_store.load(&owner, &id).await {
         Ok(Some(record))
             if record
@@ -296,11 +310,14 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
     let project = picked.project.as_ref().map(|project| project.id.clone());
     match &picked.target {
         crate::composer_row::Target::Chat => {}
+        crate::composer_row::Target::Coder(_) if !files.is_empty() => {
+            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
+        }
         crate::composer_row::Target::Coder(computer) => {
             return start_on_coder(&app, &owner, computer, &id, &text, project).await;
         }
         crate::composer_row::Target::Claude(_) => {
-            return start_claude(&app, &headers, &owner, &id, text, digest, &picked).await;
+            return start_claude(&app, &headers, &owner, &id, text, digest, &picked, files).await;
         }
     }
     let admitted_at = now();
@@ -367,6 +384,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             outcome: Outcome::Pending,
             selection: selection.clone(),
             cloud: cloud.clone(),
+            files,
             reply: None,
         }],
         selection,
@@ -462,7 +480,9 @@ async fn start_on_coder(
 
 /// A new chat whose first message starts Claude Code in the picked
 /// project's environment ([`work::begin`]); the run's answer joins the
-/// chat when it is done. On to its page.
+/// chat when it is done. On to its page. Text files sent with the message
+/// go in the run's prompt ([`crate::chat_files::for_run`]).
+#[allow(clippy::too_many_arguments)]
 async fn start_claude(
     app: &App,
     headers: &HeaderMap,
@@ -471,15 +491,22 @@ async fn start_claude(
     text: String,
     digest: String,
     picked: &crate::composer_row::Picked,
+    files: Vec<crate::chat_files::FileRef>,
 ) -> Response {
+    let attached =
+        match crate::chat_files::for_run(&app.config.chat_store, owner, id, &files).await {
+            Ok(attached) => attached,
+            Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
+        };
     let Some(env) = claude_environment(app, headers, owner, picked, true).await else {
         return refusal(
             StatusCode::CONFLICT,
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
+    let asked = format!("{text}{attached}");
     let (environment, task) =
-        match work::begin(app, headers, &env, picked.branch.as_deref(), &[], &text).await {
+        match work::begin(app, headers, &env, picked.branch.as_deref(), &[], &asked).await {
             Ok(found) => found,
             Err(message) => return refusal(StatusCode::CONFLICT, &message),
         };
@@ -500,6 +527,7 @@ async fn start_claude(
             outcome: Outcome::Answered,
             selection: None,
             cloud: None,
+            files,
             reply: None,
         }],
         selection: None,
@@ -984,13 +1012,24 @@ async fn follow(
         Err(r) => return r,
     };
     if loaded.conversation.terminal.is_some() {
+        if !prompt.files.trim().is_empty() {
+            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
+        }
         return reply_to_coder(&app, &headers, &owner, &id, &prompt.request_id, &text).await;
     }
     let selection = match selected(&app, &owner, &prompt) {
         Ok(v) => v,
         Err(r) => return r,
     };
-    let hash = request_digest(&text, selection.as_ref());
+    let files =
+        match crate::chat_files::take(&app.config.chat_store, &owner, &id, &prompt.files).await {
+            Ok(files) => files,
+            Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
+        };
+    let hash = request_digest(
+        &crate::chat_files::with_files(&text, &files),
+        selection.as_ref(),
+    );
     if let Some(request) = loaded
         .conversation
         .requests
@@ -1045,6 +1084,7 @@ async fn follow(
             hash,
             &picked,
             place,
+            files,
         )
         .await;
     }
@@ -1120,6 +1160,7 @@ async fn follow(
         outcome: Outcome::Pending,
         selection,
         cloud: cloud.clone(),
+        files,
         reply: None,
     });
     let loaded = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
@@ -1259,6 +1300,7 @@ pub(crate) async fn follow_from_app(
         outcome: Outcome::Pending,
         selection,
         cloud: None,
+        files: Vec::new(),
         reply: None,
     });
     match store.compare_and_swap(&loaded, &next).await {
@@ -1341,6 +1383,7 @@ async fn follow_claude(
         outcome: Outcome::Answered,
         selection: chat.selection.clone(),
         cloud: None,
+        files: Vec::new(),
         reply: None,
     });
     work::record(&mut next, environment, task.clone());
@@ -2178,9 +2221,12 @@ pub(crate) fn composer_with(
         .max_chars(MAX_CHARS)
         .placeholder("Ask OpenAgents anything")
         .autofocus(true)
-        // Disabled until the composer can attach files or tools: the "+"
-        // button only opened a panel restating the repository selector and
-        // saying uploads are not available.
+        // Images, PDFs, and text files: picked here, or pasted or dropped
+        // on the text box (#11174, [`crate::chat_files`]).
+        .leading(crate::chat_files::picker())
+        .attachments(crate::chat_files::tray())
+        // The "+" button stays off: it only opened a panel restating the
+        // repository selector.
         // .leading(
         //     ComposerAction::new(Icon::Plus, "Add context and tools")
         //         .hx(crate::composer::load("context")),

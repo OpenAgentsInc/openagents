@@ -167,7 +167,16 @@ pub(crate) async fn adopt_all(store: &Store, browser: &str, account: &str) -> us
                 return false;
             }
             match store.adopt(&loaded, account).await {
-                Ok(moved) => moved,
+                Ok(moved) => {
+                    // The chat's files move with it (#11174).
+                    if moved
+                        && let Err(error) =
+                            crate::chat_files::adopt(store, browser, account, &chat.id).await
+                    {
+                        eprintln!("openagents-web: chat files claim: {error}");
+                    }
+                    moved
+                }
                 Err(error) => {
                     eprintln!("openagents-web: chat claim: {error}");
                     false
@@ -267,6 +276,7 @@ mod tests {
                 },
                 selection: None,
                 cloud: None,
+                files: Vec::new(),
                 reply: None,
             }],
             selection: None,

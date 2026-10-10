@@ -84,6 +84,7 @@ impl Fixture {
                     outcome: Outcome::Answered,
                     selection: selection.clone(),
                     cloud: None,
+                    files: Vec::new(),
                     reply: None,
                 }],
                 selection,
@@ -531,6 +532,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         outcome: Outcome::Failed,
         selection: None,
         cloud: None,
+        files: Vec::new(),
         reply: None,
     });
     assert_eq!(row_status(&chat), Some(ChatStatus::Failed));
@@ -1323,6 +1325,7 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
             outcome: Outcome::Answered,
             selection: None,
             cloud: None,
+            files: Vec::new(),
             reply: Some(openagents_chat::router::Meta {
                 tier: Some("canned".into()),
                 route: Some("meta".into()),
@@ -1462,6 +1465,7 @@ fn a_streaming_reply_never_shows_half_written_markdown() {
             outcome: Outcome::Pending,
             selection: None,
             cloud: None,
+            files: Vec::new(),
             reply: None,
         }],
         selection: None,
@@ -1590,6 +1594,7 @@ impl Fixture {
             outcome: Outcome::Pending,
             selection: None,
             cloud: None,
+            files: Vec::new(),
             reply: None,
         });
         self.app
@@ -1699,6 +1704,7 @@ async fn a_second_new_chat_send_waits_for_the_first_to_save_it() {
                     outcome: Outcome::Answered,
                     selection: None,
                     cloud: None,
+                    files: Vec::new(),
                     reply: None,
                 }],
                 selection: None,

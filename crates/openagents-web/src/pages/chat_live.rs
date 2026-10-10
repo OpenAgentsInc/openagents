@@ -531,6 +531,7 @@ mod tests {
                 outcome: Outcome::Pending,
                 selection: None,
                 cloud: None,
+                files: Vec::new(),
                 reply: None,
             }],
             selection: None,
