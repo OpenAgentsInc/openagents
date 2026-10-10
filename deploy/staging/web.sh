@@ -37,7 +37,7 @@ if [ -n "${BOAT_API_KEY:-}" ] && [ -s "$stack/service.key" ]; then
     chmod 700 "$envs"
     cat "$stack/service.key" > "$p/model.key"
     printf '{"schema":"openagents.environment.studio.v1","state":"%s","machines":{"schema":"openagents.environment.owners.v1","provider":"boat","workdir":"/home/user/repo","credential_names":[],"tick_seconds":15},"owner":{"workspace":"openagents-web","principal":"web"},"model":"%s","size":"small","deadline_seconds":7200,"model_api":{"url":"http://127.0.0.1:8791/v1/responses","key_file":"%s/model.key"}}' \
-        "$envs" "${ENVIRONMENTS_MODEL:-openagents/code}" "$p" > "$p/environments.json"
+        "$envs" "${ENVIRONMENTS_MODEL:-google/gemini-3.8-flash}" "$p" > "$p/environments.json"
     set -- --environments "$p/environments.json"
 fi
 exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 "$@" \

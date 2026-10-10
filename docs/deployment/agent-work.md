@@ -46,7 +46,7 @@ them (they need root, long-lived machines, and image capture).
 | Need | Staging | Why |
 | --- | --- | --- |
 | Boat API key | Secret Manager `boat-api-key` as `BOAT_API_KEY` (runtime account `oa-vertex-inference` may read it) | Creates, drives, snapshots, and deletes the machines |
-| A model for the setup agent | The gateway sidecar's `openagents/code` on the house service key (`$STACK_STATE/service.key`, the `stack` volume mounted read-only), via `model_api` in the studio config | No person is there to keep a Codex login fresh, so the Codex login path is for the local address only |
+| A model for the setup agent | The gateway sidecar's `google/gemini-3.8-flash` on the house service key (`openagents/code` has no route for the house tenant on staging) (`$STACK_STATE/service.key`, the `stack` volume mounted read-only), via `model_api` in the studio config | No person is there to keep a Codex login fresh, so the Codex login path is for the local address only |
 | A Claude credential for each run | The person's own key, saved in Settings > Claude (sealed with the BYO keyring) | No server-wide Claude key on staging |
 | Durable records | `$WEB_STATE/environments` on the account-store NFS disk (`/state`) | Environments, their conversations, and run records outlive a revision |
 | An always-on instance | min = max = 1, CPU not throttled | Setups and runs are driven by threads in the web process |
@@ -85,5 +85,5 @@ alias forwards that route only on staging (`OPENAGENTS_WEB_API_OPERATOR_SIGNUP`)
 Not on production yet. The steps, after the owner tries staging, are on
 #11162: grant the production runtime account `boat-api-key`, add the
 `stack` read-only mount, `BOAT_API_KEY`, `STACK_STATE`, and
-`ENVIRONMENTS_MODEL` to the `web` container with the same launcher lines,
+`ENVIRONMENTS_MODEL` (a model production's gateway routes for the house key) to the `web` container with the same launcher lines,
 promote the staged image, and smoke the tag URL.

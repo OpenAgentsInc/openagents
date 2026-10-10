@@ -89,7 +89,7 @@ def main():
             # Environments: Boat machines, and the setup agent's model
             # through the gateway sidecar on the house key in /stack.
             plain("STACK_STATE", "/stack"),
-            plain("ENVIRONMENTS_MODEL", "openagents/code"),
+            plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
             secret("boat-api-key", "BOAT_API_KEY"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
