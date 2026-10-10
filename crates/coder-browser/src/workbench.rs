@@ -21,6 +21,10 @@ use terminal_core::{
     pty::{Attachment, Event, Program, Sessions, Transport},
 };
 const OUTPUT_MAX: usize = 256 * 1024;
+/// Keystrokes held while one request is in flight, sent together once its
+/// result arrives. Typing beyond this while the host does not answer is
+/// refused rather than buffered without bound.
+const QUEUED_INPUT_MAX: usize = 64 * 1024;
 struct IO {
     terminal: TerminalRef,
     attachment: String,
@@ -32,6 +36,8 @@ struct IO {
     resize: Option<wire::Size>,
     opened: bool,
     outbound: Option<TermRequest>,
+    /// Input typed while a request was in flight, in order.
+    queued: Vec<u8>,
     incoming: VecDeque<Event>,
     bytes: usize,
     clipboard: Option<String>,
@@ -60,6 +66,43 @@ impl IO {
         self.state = State::Unknown;
         true
     }
+    /// Whether this attachment types and a request is in flight, so input
+    /// waits in the queue instead of being sent.
+    fn waiting(&self) -> bool {
+        self.state == State::Unknown && self.typist && self.interactive
+    }
+    fn input_request(&self, bytes: Vec<u8>) -> TermRequest {
+        let mut input = wire::Input::new(coder_reach::new_id(), self.terminal.clone(), bytes);
+        if self.uses_typist {
+            input.requires = vec![coder_pty::ext::TYPIST.into()];
+            input.attachment = Some(self.attachment.clone());
+        }
+        TermRequest::Input(input)
+    }
+    /// Sends `bytes` after anything queued, or queues them while a request
+    /// is in flight. False when the input was refused.
+    fn type_bytes(&mut self, bytes: &[u8]) -> bool {
+        if self.waiting() {
+            if self.queued.len().saturating_add(bytes.len()) > QUEUED_INPUT_MAX {
+                return false;
+            }
+            self.queued.extend_from_slice(bytes);
+            return true;
+        }
+        let mut data = std::mem::take(&mut self.queued);
+        data.extend_from_slice(bytes);
+        let request = self.input_request(data);
+        self.send(request)
+    }
+    /// Sends the queued input once the previous request answered.
+    fn flush_queued(&mut self) {
+        if self.queued.is_empty() || self.state != State::Ready {
+            return;
+        }
+        let data = std::mem::take(&mut self.queued);
+        let request = self.input_request(data);
+        self.send(request);
+    }
 }
 #[derive(Clone)]
 struct Remote(Arc<Mutex<IO>>);
@@ -71,14 +114,7 @@ impl Attachment for Remote {
         true
     }
     fn input(&self, bytes: &[u8]) {
-        let mut io = self.0.lock().unwrap();
-        let mut input =
-            wire::Input::new(coder_reach::new_id(), io.terminal.clone(), bytes.to_vec());
-        if io.uses_typist {
-            input.requires = vec![coder_pty::ext::TYPIST.into()];
-            input.attachment = Some(io.attachment.clone());
-        }
-        io.send(TermRequest::Input(input));
+        self.0.lock().unwrap().type_bytes(bytes);
     }
     fn resize(&self, rows: u16, cols: u16) {
         let mut io = self.0.lock().unwrap();
@@ -99,6 +135,7 @@ impl Attachment for Remote {
         let mut io = self.0.lock().unwrap();
         // A browser pane detaches; closing the page never kills its host terminal.
         io.outbound = None;
+        io.queued.clear();
         io.state = State::Disconnected;
     }
     fn poll(&mut self) -> Option<Event> {
@@ -198,6 +235,7 @@ impl Workbench {
             resize: None,
             opened: false,
             outbound: None,
+            queued: Vec::new(),
             incoming: VecDeque::new(),
             bytes: 0,
             clipboard: None,
@@ -235,7 +273,14 @@ impl Workbench {
     pub fn state(&self) -> State {
         self.io.lock().unwrap().state
     }
+    /// Whether keys and text are accepted now: when ready, or while a
+    /// request is in flight, when they wait and go out with its result.
     pub fn can_type(&self) -> bool {
+        let io = self.io.lock().unwrap();
+        (io.state == State::Ready || io.state == State::Unknown) && io.typist && io.interactive
+    }
+    /// Whether a request other than input can be sent now.
+    fn ready(&self) -> bool {
         let io = self.io.lock().unwrap();
         io.state == State::Ready && io.typist && io.interactive
     }
@@ -286,6 +331,11 @@ impl Workbench {
             Some(Value::Session { record }) => self.session = Some(record.clone()),
             _ => {}
         }
+        if io.state == State::Ready && io.typist && io.interactive {
+            io.flush_queued();
+        } else {
+            io.queued.clear();
+        }
     }
     fn retired(&self) -> bool {
         matches!(
@@ -297,6 +347,7 @@ impl Workbench {
         {
             let mut io = self.io.lock().unwrap();
             io.outbound = None;
+            io.queued.clear();
             io.resize = None;
             io.clipboard = None;
         }
@@ -376,7 +427,7 @@ impl Workbench {
         }
     }
     pub fn resize(&mut self, rows: u16, cols: u16) {
-        if !self.can_type() {
+        if !self.ready() {
             return;
         }
         let Some(sessions) = self.core.sessions.as_ref().map(|s| Sessions(s.0.clone())) else {
@@ -734,7 +785,7 @@ mod tests {
         assert!(m.dispatch().is_none());
     }
     #[test]
-    fn composition_commits_unicode_once_and_unknown_dispatch_cannot_queue_more_input() {
+    fn composition_commits_unicode_once_and_in_flight_input_waits_for_the_result() {
         let mut m = model(Mode::Interact);
         m.composition(true);
         m.input("a");
@@ -749,6 +800,66 @@ mod tests {
         assert_eq!(m.state(), State::Unknown);
         m.disconnect();
         assert!(m.dispatch().is_none());
+    }
+    #[test]
+    fn keys_typed_while_a_request_is_in_flight_are_sent_in_order_after_its_result() {
+        let mut m = model(Mode::Interact);
+        m.input("ls");
+        let TermRequest::Input(first) = m.dispatch().unwrap() else {
+            panic!()
+        };
+        assert_eq!(first.data, b"ls");
+        assert_eq!(m.state(), State::Unknown);
+        assert!(m.can_type(), "typing continues during the round trip");
+        m.input(" -l");
+        m.input("a\r");
+        assert!(m.dispatch().is_none(), "one request in flight at a time");
+        m.result(&TerminalResult::from_outcome(
+            first.request.clone(),
+            Ok((wire::Status::Accepted, Value::Done)),
+        ));
+        let TermRequest::Input(second) = m.dispatch().unwrap() else {
+            panic!()
+        };
+        assert_eq!(second.data, b" -la\r");
+        assert_eq!(m.state(), State::Unknown);
+        m.result(&TerminalResult::from_outcome(
+            second.request.clone(),
+            Ok((wire::Status::Accepted, Value::Done)),
+        ));
+        assert!(m.dispatch().is_none(), "nothing left queued");
+        assert_eq!(m.state(), State::Ready);
+    }
+    #[test]
+    fn queued_input_is_dropped_when_the_typist_seat_is_lost_or_the_link_retires() {
+        let mut m = model(Mode::Interact);
+        m.input("a");
+        let request = m.dispatch().unwrap();
+        m.input("secret");
+        m.result(&TerminalResult::from_outcome(
+            request.request(),
+            Err(wire::Refusal::new(wire::Reason::NotTypist, "fixture")),
+        ));
+        assert!(m.dispatch().is_none());
+        assert!(m.io.lock().unwrap().queued.is_empty());
+
+        let mut m = model(Mode::Interact);
+        m.input("a");
+        m.dispatch().unwrap();
+        m.input("secret");
+        m.disconnect();
+        assert!(m.dispatch().is_none());
+        assert!(m.io.lock().unwrap().queued.is_empty());
+    }
+    #[test]
+    fn queued_input_is_bounded() {
+        let mut m = model(Mode::Interact);
+        m.input("a");
+        m.dispatch().unwrap();
+        let big = "x".repeat(QUEUED_INPUT_MAX);
+        m.input(&big);
+        m.input("overflow");
+        assert_eq!(m.io.lock().unwrap().queued.len(), QUEUED_INPUT_MAX);
     }
     #[test]
     fn host_snapshot_restores_full_screen_and_resource_identity() {
