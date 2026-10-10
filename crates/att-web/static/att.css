@@ -129,7 +129,8 @@ button.att-value { padding: 0; border: 0; background: none; text-align: left; cu
   transform: translate(-50%, -50%) rotate(45deg);
 }
 .att-bubble > summary { display: none; }
-.att-bubble-in { flex: 1; min-height: 0; overflow: auto; }
+.att-bubble { overflow: hidden; }
+.att-bubble-in { flex: 1; min-height: 0; max-height: min(36vh, 360px); overflow: auto; overflow-wrap: anywhere; }
 .att-bubble p { margin: 0; }
 .att-say { font: 13px/1.4 var(--font-sans); white-space: pre-wrap; }
 .att-bubble-title { font: 600 12px/1.4 var(--font-sans); }

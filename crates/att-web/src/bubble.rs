@@ -84,7 +84,8 @@ fn span(text: impl Into<String>, look: Look) -> Span {
     }
 }
 
-/// Bold strings up to this many characters are shown whole.
+/// Bold words (text with spaces) up to this many characters are shown
+/// whole; bold keys, ids and ciphertext are cut like any other value.
 const BOLD_WHOLE: usize = 240;
 
 /// A scalar as JSON, cut in the middle when it is long.
@@ -93,7 +94,7 @@ fn scalar(value: &Value, bold: bool) -> Span {
     let cut = match value {
         // Bold text is what the bubble is about: the decrypted question
         // stays whole; only long ciphertext is cut.
-        Value::String(s) if bold && s.chars().count() <= BOLD_WHOLE => None,
+        Value::String(s) if bold && s.contains(' ') && s.chars().count() <= BOLD_WHOLE => None,
         Value::String(s) => middle_cut(s, CUT_OVER).and_then(|_| middle_cut(s, CUT_TO)),
         _ => None,
     };
