@@ -16,6 +16,10 @@ The [Coder Cloud web specification](../cloud/coder-cloud.md) maps these offers,
 customer and team controls, private sales operations, and the Agora into the
 proposed openagents.com application over the existing Rust owners.
 
+[Self-improving codebases](../product/self-improving-codebases.md) specifies the
+product this sales plan grows into: the Coder pilot's single checked change,
+made repeatable and improving with every accepted pull request.
+
 ## Contents
 
 - [Summary](#summary)
