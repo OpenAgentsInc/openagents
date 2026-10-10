@@ -47,11 +47,11 @@ from pathlib import Path
 
 import briefing as briefing_mod
 from common import HERE, LEVERS, REPO, SSH, WORK, dump_json, is_test_file, load_json, run
-from prepare import TASKS, grade
+from prepare import TASKS, grade, interface_text
 
 SHIM = HERE / "shim"
 AGENT_BIN = Path(os.environ.get(
-    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent-2")))
+    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent-3")))
 CLAUDE = shutil.which("claude") or "claude"
 SPARSE = ["/*", "!/bench/terminal-bench/", "!/assets/"]
 BASE_DEPTH = 50
@@ -286,8 +286,9 @@ def how_to_work(builtins: list[str], custom: list[str], checks: bool, pkgs: list
     if "related" in custom:
         lines.append("- `related` tells you what else changes with a file or symbol (history, uses, tests).")
     if "verify" in custom:
-        lines.append("- Check your work with `verify` (pass `tests` with your new tests' names). It compiles, runs the "
-                     "tests and formats, and returns only what is wrong; fix that and call it again.")
+        lines.append("- Check your work with `verify`, passing `tests` with your new tests' names. It compiles, runs "
+                     "those tests and formats, and returns only what is wrong; fix that and call it again. "
+                     "`fast: true` only compiles. Call it once when you think you are done, not after every edit.")
     elif "Bash" in builtins:
         lines.append(f"- Check your work with Bash: `cargo check -p {p} --tests`, then `cargo test -p {p} <your test "
                      f"names>`, then `cargo fmt -p {p}`. Fix what fails and run again.")
@@ -517,10 +518,15 @@ def wait_for_login() -> None:
 
 def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
+    lv = dict(levers)
+    lv.update(ARMS.get(arm, {}))
+    if lv.get("interface"):
+        extra = interface_text(task)
+        if extra:
+            task = dict(task, body=(task["body"] or "") + extra)
+    (out / "issue.md").write_text(f"#{task['issue']} {task['title']}\n\n{task['body'] or ''}")
     root = make_worktree(task, WORK / "wt" / f"slot{slot}")
     try:
-        lv = dict(levers)
-        lv.update(ARMS.get(arm, {}))
         if arm == "A":
             m = run_arm_a(task, root, out, lv, slot)
         else:

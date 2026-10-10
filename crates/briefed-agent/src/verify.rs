@@ -43,6 +43,8 @@ pub struct Verify {
     pub log: Option<PathBuf>,
     /// The last test filter the agent gave, which `finish` reuses.
     pub last_filter: std::sync::Mutex<String>,
+    /// The last call's key (mode, filter, working copy) and verdict.
+    pub cache: std::sync::Mutex<Option<(String, Value)>>,
 }
 
 impl Verify {
@@ -85,6 +87,7 @@ impl Verify {
             cochange,
             log: block["log"].as_str().map(PathBuf::from),
             last_filter: std::sync::Mutex::new(String::new()),
+            cache: std::sync::Mutex::new(None),
         })
     }
 
@@ -94,13 +97,15 @@ impl Verify {
             "verify",
             "Run this issue's checks on your working copy: compile the touched crates and their \
              tests, run their tests (pass `tests`, space-separated test-name filters, to run \
-             fewer), then format them. Returns a short structured verdict: status, compile \
+             fewer), then format them; `fast` compiles only. An unchanged working copy returns \
+             the last result at once. Returns a short structured verdict: status, compile \
              errors {file,line,msg}, failing tests {name,file,line,assert}, fmt, files \
              implicated but untouched, and the issue's acceptance items with their check's result.",
             json!({
                 "type": "object",
                 "properties": {
-                    "tests": {"type": "string", "description": "test-name filter words (optional)"}
+                    "tests": {"type": "string", "description": "test-name filter words (optional)"},
+                    "fast": {"type": "boolean", "description": "compile only (cargo check), no tests or fmt"}
                 }
             }),
             move |args| {
@@ -110,7 +115,8 @@ impl Verify {
                     if let Ok(mut last) = verify.last_filter.lock() {
                         last.clone_from(&filter);
                     }
-                    let verdict = verify.run(&filter).await;
+                    let fast = args["fast"].as_bool().unwrap_or(false);
+                    let verdict = verify.run(&filter, fast).await;
                     Ok(
                         ToolResult::text(serde_json::to_string(&verdict).unwrap_or_default())
                             .with_structured_content(verdict),
@@ -185,8 +191,66 @@ impl Verify {
         None
     }
 
-    pub async fn run(&self, filter: &str) -> Value {
+    pub async fn run(&self, filter: &str, fast: bool) -> Value {
         let started = Instant::now();
+        let digest = self.changed_digest().await;
+        let key = format!("{fast}\u{0}{filter}\u{0}{digest}");
+        let hit = self.cache.lock().ok().and_then(|cache| {
+            cache
+                .as_ref()
+                .filter(|(last, _)| *last == key)
+                .map(|(_, v)| v.clone())
+        });
+        if let Some(mut verdict) = hit {
+            verdict["cached"] = json!(true);
+            verdict["note"] = json!("nothing changed since the last verify; same result");
+            return verdict;
+        }
+        let verdict = self.run_uncached(filter, fast, &digest, started).await;
+        let after = self.changed_digest().await;
+        if let Ok(mut cache) = self.cache.lock() {
+            *cache = Some((format!("{fast}\u{0}{filter}\u{0}{after}"), verdict.clone()));
+        }
+        verdict
+    }
+
+    /// The working copy's change, as text, for the cache and for fmt.
+    async fn changed_digest(&self) -> String {
+        let mut out = self.git(&["diff"]).await;
+        out.push_str(
+            &self
+                .git(&["status", "--porcelain", "--untracked-files=all"])
+                .await,
+        );
+        out
+    }
+
+    fn implicate_errors(
+        &self,
+        errors: &[Value],
+        changed: &BTreeSet<String>,
+        implicated: &mut BTreeMap<String, String>,
+    ) {
+        for error in errors {
+            let file = error["file"].as_str().unwrap_or("").to_owned();
+            if !file.is_empty() && !changed.contains(&file) {
+                implicated.entry(file).or_insert_with(|| {
+                    format!(
+                        "compile error here: {}",
+                        error["msg"].as_str().unwrap_or("")
+                    )
+                });
+            }
+        }
+    }
+
+    async fn run_uncached(
+        &self,
+        filter: &str,
+        fast: bool,
+        digest: &str,
+        started: Instant,
+    ) -> Value {
         let changed = self.changed().await;
         let mut packages: Vec<String> = Vec::new();
         for path in changed.iter().filter(|path| path.ends_with(".rs")) {
@@ -213,77 +277,82 @@ impl Verify {
             .flat_map(|package| ["-p".to_owned(), package.clone()])
             .collect();
 
-        // 1. Compile, tests included.
-        let mut argv: Vec<&str> = vec!["cargo", "check"];
-        argv.extend(selectors.iter().map(String::as_str));
-        argv.extend(["--tests", "--keep-going", "--message-format", "short"]);
-        let (_, text) = self.exec(&argv).await;
-        let (errors, preexisting) = self.compile_errors(&text);
-        verdict["preexisting_errors"] = json!(preexisting);
+        let words: Vec<&str> = filter
+            .split_whitespace()
+            .filter(|word| {
+                word.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+            })
+            .take(8)
+            .collect();
         let mut implicated: BTreeMap<String, String> = BTreeMap::new();
-        if !errors.is_empty() {
-            for error in &errors {
-                let file = error["file"].as_str().unwrap_or("").to_owned();
-                if !file.is_empty() && !changed.contains(&file) {
-                    implicated.entry(file).or_insert_with(|| {
-                        format!(
-                            "compile error here: {}",
-                            error["msg"].as_str().unwrap_or("")
-                        )
-                    });
-                }
+        if fast {
+            // Compile only (`cargo check`, tests included): the quick loop.
+            let mut argv: Vec<&str> = vec!["cargo", "check"];
+            argv.extend(selectors.iter().map(String::as_str));
+            argv.extend(["--tests", "--keep-going", "--message-format", "short"]);
+            let (_, text) = self.exec(&argv).await;
+            let (errors, preexisting) = self.compile_errors(&text);
+            verdict["preexisting_errors"] = json!(preexisting);
+            self.implicate_errors(&errors, &changed, &mut implicated);
+            verdict["status"] = json!(if errors.is_empty() {
+                "compiles"
+            } else {
+                "compile_error"
+            });
+            if !errors.is_empty() {
+                verdict["compile_errors"] = json!(errors.iter().take(20).collect::<Vec<_>>());
             }
-            verdict["status"] = json!("compile_error");
-            verdict["compile_errors"] = json!(errors.iter().take(12).collect::<Vec<_>>());
         } else {
-            // 2. Tests.
-            let words: Vec<&str> = filter
-                .split_whitespace()
-                .filter(|word| {
-                    word.chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
-                })
-                .take(8)
-                .collect();
-            let (passed, failed, failures, broken) = self.tests(&selectors, &words, &[]).await;
-            let (passed, failed, failures) = if broken {
-                // A target the base already fails to build: test the
-                // library and binaries alone.
-                let (p, f, fl, _) = self.tests(&selectors, &words, &["--lib", "--bins"]).await;
-                (p, f, fl)
+            // Tests and format in one build-host call: `cargo test` compiles
+            // (its errors are parsed the same way), then `cargo fmt` applies.
+            let (text, passed, failed, failures) = self.test_and_fmt(&selectors, &words, &[]).await;
+            let (mut errors, preexisting) = self.compile_errors(&text);
+            let (text, passed, failed, failures) =
+                if errors.is_empty() && preexisting > 0 && passed == 0 && failed == 0 {
+                    // A target the base already fails to build: test the
+                    // library and binaries alone.
+                    let again = self
+                        .test_and_fmt(&selectors, &words, &["--lib", "--bins"])
+                        .await;
+                    errors = self.compile_errors(&again.0).0;
+                    again
+                } else {
+                    (text, passed, failed, failures)
+                };
+            verdict["preexisting_errors"] = json!(preexisting);
+            if !errors.is_empty() {
+                self.implicate_errors(&errors, &changed, &mut implicated);
+                verdict["status"] = json!("compile_error");
+                verdict["compile_errors"] = json!(errors.iter().take(20).collect::<Vec<_>>());
             } else {
-                (passed, failed, failures)
-            };
-            for failure in &failures {
-                let file = failure["file"].as_str().unwrap_or("").to_owned();
-                if !file.is_empty() && !changed.contains(&file) {
-                    implicated.entry(file).or_insert_with(|| {
-                        format!(
-                            "failing test {} asserts here",
-                            failure["name"].as_str().unwrap_or("")
-                        )
-                    });
+                for failure in &failures {
+                    let file = failure["file"].as_str().unwrap_or("").to_owned();
+                    if !file.is_empty() && !changed.contains(&file) {
+                        implicated.entry(file).or_insert_with(|| {
+                            format!(
+                                "failing test {} asserts here",
+                                failure["name"].as_str().unwrap_or("")
+                            )
+                        });
+                    }
+                }
+                verdict["tests"] = json!({"passed": passed, "failed": failed});
+                if !failures.is_empty() || failed > 0 {
+                    verdict["status"] = json!("test_failure");
+                    verdict["failing_tests"] = json!(failures.iter().take(10).collect::<Vec<_>>());
+                } else {
+                    verdict["status"] = json!("pass");
+                    if passed == 0 {
+                        verdict["note"] = json!("no test matched the filter");
+                    }
                 }
             }
-            verdict["tests"] = json!({"passed": passed, "failed": failed});
-            if !failures.is_empty() || failed > 0 {
-                verdict["status"] = json!("test_failure");
-                verdict["failing_tests"] = json!(failures.iter().take(10).collect::<Vec<_>>());
-            } else if passed == 0 {
-                verdict["status"] = json!("pass");
-                verdict["note"] = json!("no test matched the filter");
-            } else {
-                verdict["status"] = json!("pass");
-            }
-            // 3. Format (applied, deterministic).
-            let mut fmt: Vec<&str> = vec!["cargo", "fmt"];
-            fmt.extend(selectors.iter().map(String::as_str));
-            let before = self.git(&["diff", "--stat"]).await;
-            let (ok, _) = self.exec(&fmt).await;
-            let after = self.git(&["diff", "--stat"]).await;
-            verdict["fmt"] = json!(if !ok {
+            let fmt_ok = text.contains("@@fmt ok");
+            let after = self.changed_digest().await;
+            verdict["fmt"] = json!(if !fmt_ok {
                 "cargo fmt failed"
-            } else if before == after {
+            } else if after == digest {
                 "already formatted"
             } else {
                 "formatted (files rewritten in place)"
@@ -371,24 +440,30 @@ impl Verify {
         (out, preexisting)
     }
 
-    /// Runs the tests; returns passed, failed, the failures, and whether
-    /// a target failed to build.
-    async fn tests(
+    /// Runs the tests, then `cargo fmt`, in one build-host call; returns
+    /// the output, passed, failed, and the failures.
+    async fn test_and_fmt(
         &self,
         selectors: &[String],
         words: &[&str],
         targets: &[&str],
-    ) -> (u64, u64, Vec<Value>, bool) {
-        let mut argv: Vec<&str> = vec!["cargo", "test"];
-        argv.extend(selectors.iter().map(String::as_str));
-        argv.extend(targets);
-        argv.push("--no-fail-fast");
+    ) -> (String, u64, u64, Vec<Value>) {
+        let mut test = vec!["cargo".to_owned(), "test".to_owned()];
+        test.extend(selectors.iter().cloned());
+        test.extend(targets.iter().map(|t| (*t).to_owned()));
+        test.extend(["--no-fail-fast", "--message-format", "short"].map(str::to_owned));
         if !words.is_empty() {
-            argv.push("--");
-            argv.extend(words);
+            test.push("--".to_owned());
+            test.extend(words.iter().map(|w| (*w).to_owned()));
         }
-        let (_, text) = self.exec(&argv).await;
-        let broken = text.contains("error: could not compile");
+        let mut fmt = vec!["cargo".to_owned(), "fmt".to_owned()];
+        fmt.extend(selectors.iter().cloned());
+        let script = format!(
+            "{}; rc=$?; {} && echo @@fmt ok; exit $rc",
+            test.join(" "),
+            fmt.join(" ")
+        );
+        let (_, text) = self.exec(&["sh", "-c", &script]).await;
         let (mut passed, mut failed) = (0, 0);
         let mut failures = Vec::new();
         let lines: Vec<&str> = text.lines().collect();
@@ -436,11 +511,6 @@ impl Verify {
                 }));
             }
         }
-        (
-            passed,
-            failed,
-            failures,
-            broken && passed == 0 && failed == 0,
-        )
+        (text, passed, failed, failures)
     }
 }

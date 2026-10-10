@@ -37,6 +37,7 @@ LEVERS: dict[str, object] = {
     "briefing_tokens": 14000,    # rough cap on the briefing text
     "history": 2,                # analogous past changes included
     "plan": "deterministic",     # deterministic | none
+    "interface": True,           # tell every arm the new items the fix's tests call
     # 2 Instructions
     "template": "v3",            # system prompt template (v3: tool-aware)
     # 3 Tools

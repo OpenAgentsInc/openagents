@@ -21,9 +21,10 @@ import json
 import os
 import re
 import sys
+import subprocess
 import tarfile
 
-from common import GH_REPO, HERE, SSH, dump_json, git, is_test_file, load_json, package_of, run, show
+from common import GH_REPO, HERE, REPO, SSH, dump_json, git, is_test_file, load_json, package_of, run, show
 
 TASKS = HERE / "tasks"
 
@@ -147,6 +148,58 @@ def prepare(issue: int, commit: str) -> dict:
     (out / "source.patch").write_text("".join(source_patch))
     dump_json(out / "task.json", task)
     return task
+
+
+def interface(task: dict) -> list[dict]:
+    """The new items the fix's own tests call: names the tests use that do
+    not exist at the parent but that the fix defines, with their
+    signatures. Telling every arm about them (as SWE-bench Pro does) keeps
+    the fix's tests a fair check of behavior, not of naming."""
+    out_dir = TASKS / str(task["issue"])
+    tests = (out_dir / "tests.patch").read_text()
+    source = (out_dir / "source.patch").read_text()
+    used = set()
+    for line in tests.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            used |= set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\b", line))
+    defs = []
+    current = None
+    lines = source.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("+++ b/"):
+            current = line[6:]
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        m = re.match(r"\+\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:const\s+)?(fn|struct|enum|const|static|type|trait)\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+        if m and m.group(2) in used:
+            sig = [line[1:].strip()]
+            j = i + 1
+            while not re.search(r"[{;]\s*$", sig[-1]) and j < len(lines) and lines[j].startswith("+") and j - i < 12:
+                sig.append(lines[j][1:].strip())
+                j += 1
+            text = " ".join(sig).rstrip("{").strip().replace("( ", "(").replace(", )", ")")
+            defs.append((m.group(2), text, current))
+    found = []
+    for name, sig, path in defs:
+        hits = subprocess.run(["git", "grep", "-q", "-w", "-e", name, task["parent"], "--", "crates/"],
+                              cwd=REPO)
+        if hits.returncode != 0:  # absent at the parent: new
+            found.append({"name": name, "signature": sig, "file": path})
+    seen, out = set(), []
+    for item in found:
+        if item["name"] not in seen:
+            seen.add(item["name"])
+            out.append(item)
+    return out
+
+
+def interface_text(task: dict) -> str:
+    items = interface(task)
+    if not items:
+        return ""
+    rows = "\n".join(f"{i['signature']}    // {i['file']}" for i in items)
+    return ("\n\nThe tests that will check this change call these new items, so define them with "
+            "these names and signatures:\n\n```rust\n" + rows + "\n```\n")
 
 
 def grade(task: dict, change: str, slot: int = 0, limit: int = 1500) -> dict:

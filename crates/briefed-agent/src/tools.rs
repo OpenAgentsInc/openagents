@@ -420,7 +420,7 @@ pub fn server(
                         .lock()
                         .map(|last| last.clone())
                         .unwrap_or_default();
-                    let verdict = verify.run(&filter).await;
+                    let verdict = verify.run(&filter, false).await;
                     if verdict["status"].as_str() == Some("pass") {
                         finished.store(true, Ordering::SeqCst);
                         if let Some(path) = summary_path {
