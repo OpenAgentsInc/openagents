@@ -120,10 +120,14 @@ CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
 **CoderOS-4080, the first decision pylon (2026-10-10).** Two user units,
 started with `systemd-run --user` like the text pylon's:
 
-- `pylon-clef`: `~/clef-m1/target/release/psionic-openai-server -m
-  ~/clef-m1/models/Clef-Flash-Q4_K_M.gguf --host 127.0.0.1 --port 18096
-  --decision-device cuda --decision-chunk 1024` (the M2 CUDA build, about
-  6.5 GB of the 4080; `~/work/pylon-decide/clef-cuda.sh` starts it);
+- `pylon-clef`: `~/work/pylon-decide/bin/psionic-openai-server-c1aa0a83ff
+  -m ~/clef-m1/models/Clef-Flash-Q4_K_M.gguf --host 127.0.0.1 --port 18096
+  --decision-device cuda --decision-chunk 2048` (the M2 round 2 build with
+  the staged delta scan, `c1aa0a83ff`, about 6.5 GB of the 4080).
+  `sh ~/work/pylon-decide/clef-cuda.sh` (re)starts it, and its log
+  (`~/clef-m1/logs/pylon-clef.log`) has one line per decision (tokens,
+  time waiting, time run). To roll back to the M2 build:
+  `CLEF_BIN=$HOME/clef-m1/target/release/psionic-openai-server CLEF_CHUNK=1024 sh ~/work/pylon-decide/clef-cuda.sh`;
 - `pylon-decide`: the static `pylon` at `~/work/pylon-decide/bin/pylon`,
   `serve --decide http://127.0.0.1:18096 --decisions-only --pylon
   coderos-4080-clef --slots 8 --allow <staging and production dispatch
