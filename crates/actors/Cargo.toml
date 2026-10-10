@@ -1,0 +1,23 @@
+[package]
+name = "actors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Transactional Rust actors with durable PostgreSQL inboxes, alarms, effects, and fenced work."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+getrandom = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
+axum = { version = "0.8", features = ["json", "query", "tokio", "http1"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

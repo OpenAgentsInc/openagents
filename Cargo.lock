@@ -156,6 +156,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "actors"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "futures-util",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tokio-postgres",
+ "tower 0.5.3",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
