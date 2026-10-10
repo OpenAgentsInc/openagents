@@ -4,6 +4,10 @@
 //! calling key, the limits its owner sets, key issue and revoke, and the
 //! workspace's own provider keys (bring your own key).
 //!
+//! The served document also describes every other PUBLIC route the
+//! deployment mounts (accounts, keys, workspaces, usage, balance), from
+//! the audience declaration in [`crate::audience`] (#11157).
+//!
 //! The document is held to the route table: [`inference_paths`] lists
 //! every path the inference modules mount, and the test in
 //! `tests/inference_openapi.rs` fails when a mounted path has no entry,
@@ -86,7 +90,11 @@ async fn openapi(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Js
         .as_ref()
         .map(crate::inference_x402::Toll::methods)
         .unwrap_or_default();
-    Json(document(&origin, &methods))
+    let mut document = document(&origin, &methods);
+    // Every other PUBLIC route this deployment mounts (#11157), from the
+    // one audience declaration in `crate::audience`.
+    crate::audience::extend_public(&mut document, &crate::serve::mounted_paths(&state));
+    Json(document)
 }
 
 fn error_response(description: &str) -> Value {
@@ -521,7 +529,8 @@ fn schemas() -> Value {
                         "type": {"type": "string", "examples": ["invalid_request", "unauthorized", "insufficient_balance", "payment_required", "limit_reached", "not_found", "too_many_requests", "server_error", "model_error", "upstream_failed", "no_route"]},
                         "code": {"type": ["string", "null"]},
                         "param": {"type": ["string", "null"]},
-                        "message": {"type": "string"}
+                        "message": {"type": "string"},
+                        "request_id": {"type": "string", "description": "The answer's `x-request-id`."}
                     }
                 }));
     map.insert("ErrorBody".into(), json!({"type": "object", "required": ["error"], "properties": {"error": {"$ref": "#/components/schemas/Error"}}}));

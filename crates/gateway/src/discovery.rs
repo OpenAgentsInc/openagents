@@ -180,6 +180,14 @@ const DOCS_API: &[(&str, &str)] = &[
 /// The route table the public surface mounts, as `(path, handler)`
 /// pairs. `serve::router` iterates this — what is mounted is what the
 /// catalog test enumerates, and a path absent here answers 404.
+/// Every path the discovery surface mounts. These are documents for
+/// agents and crawlers, not API routes, so they declare no audience in
+/// [`crate::audience`].
+#[must_use]
+pub fn paths() -> Vec<&'static str> {
+    routes().into_iter().map(|(path, _)| path).collect()
+}
+
 pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     let mut routes: Vec<(&'static str, MethodRouter<Arc<ServeState>>)> = DOCUMENTS
         .iter()

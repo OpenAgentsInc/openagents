@@ -624,10 +624,39 @@ async fn openapi_describes_exactly_the_mounted_inference_routes() {
             .iter()
             .map(|path| (*path).to_owned()),
     );
-    assert_eq!(documented, mounted);
+    // Every other PUBLIC route this deployment mounts is described too
+    // (#11157): accounts, keys, workspaces, usage.
     let all = serve::mounted_paths(&d.state);
+    mounted.extend(
+        gateway::audience::of(gateway::audience::Audience::Public)
+            .filter(|route| !route.ops.is_empty() && all.contains(&route.path))
+            .map(|route| route.path.to_owned()),
+    );
+    assert!(mounted.contains("/v1/workspaces/{workspace}/usage"));
+    assert!(mounted.contains("/v1/account"));
+    assert_eq!(documented, mounted);
     for path in &documented {
         assert!(all.contains(&path.as_str()), "{path} is not mounted");
+    }
+    // Nothing FIRST-PARTY or INTERNAL is in the public document.
+    for path in &all {
+        if let Some(audience) = gateway::audience::audience(path)
+            && audience != gateway::audience::Audience::Public
+        {
+            assert!(
+                !documented.contains(*path),
+                "{path} is {audience:?} but publicly documented"
+            );
+        }
+    }
+    // Every route this deployment mounts declares its audience (the
+    // discovery documents aside, which are not API).
+    let discovery = gateway::discovery::paths();
+    for path in &all {
+        assert!(
+            discovery.contains(path) || gateway::audience::audience(path).is_some(),
+            "{path} has no audience"
+        );
     }
 
     // Each documented method is routed; each other one is 405.
@@ -639,6 +668,18 @@ async fn openapi_describes_exactly_the_mounted_inference_routes() {
             .replace("{workspace}", "ws_0")
             .replace("{key}", "key_0")
             .replace("{provider}", "openrouter");
+        // Any other path parameter takes a placeholder id.
+        let concrete: String = concrete
+            .split('/')
+            .map(|segment| {
+                if segment.starts_with('{') && segment.ends_with('}') {
+                    "x_0"
+                } else {
+                    segment
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/");
         for method in METHODS {
             let status = client
                 .request(
