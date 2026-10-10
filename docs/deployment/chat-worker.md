@@ -1932,11 +1932,23 @@ model in two sentences." on Gemini, which the journal logs as `by
 google/gemini-3.8-flash at aiplatform.googleapis.com` in 1.1–2.3 s per turn
 at the worker (1.7–4.2 s end to end through the relay). The codebase index
 was still the OpenAI-built one, so its warm-up embedding kept failing on
-the 402 until the Vertex-built index shipped (below).
+the 402 until the Vertex-built index shipped: built on this Mac with
+`CODER_CODEBASE_EMBEDDINGS=vertex KB_VERTEX_RETRIES=8 codebase-kb build
+--commit e96777c265` (`vertex/text-embedding-005`, 44,137 chunks from 8,336
+files, 22.7 MB, about 25 minutes; two earlier attempts died on a batch over
+Vertex's 20,000-token request limit and on a 429, fixed in `156b301714` and
+`e96777c265`), installed as
+`/opt/coder-worker/releases/156b301714/codebase-kb.gz` with the OpenAI one
+kept beside it as `codebase-kb-openai.gz`, checked with `--check`, and put
+live with a restart. No `embeddings: … failed` line has appeared since. A
+codebase question ("where is the chat worker's FallbackDoor defined …")
+routed to `codebase.kb`, was grounded in `crates/coder/src/generate.rs` at
+`e96777c265`, and answered on Vertex in 4.1 s at the worker.
 
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/a32a919471
 /opt/coder-worker/chat && sudo cp -p
 /etc/coder-worker/coder-worker-chat.env.bak-156b301714
 /etc/coder-worker/coder-worker-chat.env && sudo systemctl restart
-coder-worker-chat`. To turn only the Vertex chat door off, add
+coder-worker-chat` (the old release carries its own OpenAI-built index).
+To turn only the Vertex chat door off, add
 `CODER_WORKER_VERTEX=off` to the environment file and restart.
