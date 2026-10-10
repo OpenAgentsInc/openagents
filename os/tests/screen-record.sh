@@ -357,7 +357,10 @@ apid=$(cat "$CODEROS_SCREEN_RECORD_PID.audio" 2>/dev/null || true)
 wait "$supervisor" 2>/dev/null || true
 
 if [ "$reattached" = 1 ]; then pass "a capture that dies mid-take is reattached into a new segment"; else fail "the capture was never reattached"; fi
-if [ "$(sed -n '2p' "$TEST_TARGETS")" = 91 ]; then pass "the reattach targets the node the microphone came back on"; else fail "the reattach targeted $(sed -n '2p' "$TEST_TARGETS") rather than 91"; fi
+# `pw-record` is handed the node's name, not its id, since 2026-10-01 (an id
+# there is read as an object serial); the name is the one that survives the
+# re-enumeration, and the report below carries the new id.
+if [ "$(sed -n '2p' "$TEST_TARGETS")" = "$blue" ]; then pass "the reattach targets the microphone by the name it came back under"; else fail "the reattach targeted $(sed -n '2p' "$TEST_TARGETS") rather than $blue"; fi
 if [ "$(wc -l < "$CODEROS_SCREEN_RECORD_META.audio.segments" | tr -d ' ')" = 2 ]; then pass "the ledger carries a line per segment"; else fail "the ledger does not carry two segments: $(cat "$CODEROS_SCREEN_RECORD_META.audio.segments")"; fi
 if [ "$(head -n 1 "$CODEROS_SCREEN_RECORD_META.audio.segments" | cut -f2)" = "0.000" ]; then pass "the first segment opens at the take's own zero"; else fail "the first segment does not open at zero"; fi
 if awk -F'\t' 'BEGIN { ok = 0 } NR == 2 && $2 > 0.3 { ok = 1 } END { exit !ok }' "$CODEROS_SCREEN_RECORD_META.audio.segments"; then pass "the second segment carries the offset it opened at"; else fail "the second segment has no offset"; fi
@@ -445,6 +448,12 @@ wait "$supervisor" 2>/dev/null || true
 
 if [ "$cut" = 1 ]; then pass "a capture that stops delivering is cut into a new segment"; else fail "a capture that stopped delivering was never cut"; fi
 if [ "$(wc -l < "$CODEROS_SCREEN_RECORD_META.audio.segments" | tr -d ' ')" = 2 ]; then pass "the cut is a line in the ledger"; else fail "the cut left no second segment: $(cat "$CODEROS_SCREEN_RECORD_META.audio.segments")"; fi
+# The watcher times the capture as it grows, which is what the clock
+# measurement at `stop` reads (#11151): a line per growth it saw, the wall
+# clock and the size, and nothing from before the first sample.
+clock_log="$scratch/stall.mp4.audio.wav.clock"
+if [ -f "$clock_log" ] && [ "$(wc -l < "$clock_log" | tr -d ' ')" -ge 3 ]; then pass "a running capture is timed against the wall as it grows"; else fail "the capture left no clock log: $(cat "$clock_log" 2>/dev/null)"; fi
+if [ -f "$clock_log" ] && awk -F'\t' 'BEGIN { ok = 1 } $2 <= 44 { ok = 0 } END { exit !ok }' "$clock_log"; then pass "the clock log starts at the first sample, not the header"; else fail "the clock log carries the header: $(head -n 2 "$clock_log" 2>/dev/null)"; fi
 if awk -F'\t' 'BEGIN { ok = 0 } NR == 2 && $2 > 0.4 { ok = 1 } END { exit !ok }' "$CODEROS_SCREEN_RECORD_META.audio.segments"; then pass "the segment after a cut opens where the sound came back"; else fail "the segment after a cut opens at $(awk -F'\t' 'NR == 2 { print $2 }' "$CODEROS_SCREEN_RECORD_META.audio.segments")"; fi
 
 rm -f "$CODEROS_SCREEN_RECORD_PID.audio" "$CODEROS_SCREEN_RECORD_PID.audio.stop"
@@ -504,7 +513,7 @@ apid=$(cat "$CODEROS_SCREEN_RECORD_PID.audio" 2>/dev/null || true)
 wait "$supervisor" 2>/dev/null || true
 
 if [ "$moved" = 1 ]; then pass "a node that went away ends the segment it was read from"; else fail "a capture on a node that went away was never ended"; fi
-if [ "$(sed -n '2p' "$TEST_TARGETS")" = 91 ]; then pass "the segment after a lost node opens on the node the microphone came back on"; else fail "the segment after a lost node opened on $(sed -n '2p' "$TEST_TARGETS")"; fi
+if [ "$(sed -n '2p' "$TEST_TARGETS")" = "$blue" ]; then pass "the segment after a lost node opens on the microphone by name"; else fail "the segment after a lost node opened on $(sed -n '2p' "$TEST_TARGETS")"; fi
 
 # shellcheck disable=SC2034  # watch_capture reads it; the tests below do not
 DEVICE_POLL="${CODEROS_RECORD_AUDIO_DEVICE_POLL:-2}"
@@ -567,6 +576,92 @@ if [ "$(trailing_outage)" = "3.000" ]; then pass "a last capture that delivered 
 rm -f "$CODEROS_SCREEN_RECORD_META.audio.segments" "$scratch/proof.wav" "$scratch/proof.001.wav"
 
 # ---------------------------------------------------------------------------
+# The microphone's clock against the wall (#11151).
+#
+# On 2026-10-09 the Blue delivered its samples 0.137% off the wall clock the
+# picture is held to, and a 281-second take ended with its sound 0.39s out of
+# step, the gap growing from the first second. The clock log is what the
+# watcher wrote while the capture ran; the ratio is what `stop` stretches the
+# piece by. The log here is a capture that delivered 0.137% fewer bytes than
+# 96,000 a second, seen ten times a second with the jitter a poll has.
+clock_case="$scratch/clock"
+mkdir -p "$clock_case"
+make_clock() {
+  awk -v rate="$2" -v secs="$3" 'BEGIN {
+    srand(11)
+    t0 = 1760000000000000
+    for (i = 0; i < secs * 10; i++) {
+      t = i / 10 + rand() * 0.08
+      printf "%d\t%d\n", t0 + t * 1000000, 44 + 4096 + int(96000 * rate * t / 2048) * 2048
+    }
+  }' > "$1"
+}
+make_clock "$clock_case/slow.clock" 0.99863 281
+ratio=$(audio_clock_ratio "$clock_case/slow.clock")
+if awk -v r="$ratio" 'BEGIN { exit !(r > 0.99853 && r < 0.99873) }'; then pass "a microphone 0.137% slow is measured to within 0.01%"; else fail "a microphone 0.137% slow measured '$ratio'"; fi
+make_clock "$clock_case/fast.clock" 1.0025 312
+ratio=$(audio_clock_ratio "$clock_case/fast.clock")
+if awk -v r="$ratio" 'BEGIN { exit !(r > 1.0024 && r < 1.0026) }'; then pass "a microphone 0.25% fast is measured"; else fail "a microphone 0.25% fast measured '$ratio'"; fi
+make_clock "$clock_case/true.clock" 1.0 200
+if [ -z "$(audio_clock_ratio "$clock_case/true.clock")" ]; then pass "a microphone on time is not stretched"; else fail "a microphone on time was given a ratio: $(audio_clock_ratio "$clock_case/true.clock")"; fi
+make_clock "$clock_case/short.clock" 0.99863 8
+if [ -z "$(audio_clock_ratio "$clock_case/short.clock")" ]; then pass "a capture too short to measure is not stretched"; else fail "a short capture was given a ratio"; fi
+make_clock "$clock_case/wrong.clock" 2.0 120
+if [ -z "$(audio_clock_ratio "$clock_case/wrong.clock")" ]; then pass "a rate far off nominal is a wrong format, not a clock, and is not stretched"; else fail "a doubled rate was taken for a clock"; fi
+if [ -z "$(audio_clock_ratio "$clock_case/absent.clock")" ]; then pass "a capture with no clock log is not stretched"; else fail "a missing clock log gave a ratio"; fi
+
+# The tag names the measured rate of every piece that was stretched, and
+# nothing when none was.
+printf '0.000\t281.385\t%s\t0.998630\n' "$scratch/one.wav" > "$clock_case/place"
+case "$(audio_clock_note "$clock_case/place")" in
+  *"-0.137%"*"stretched"*) pass "the tag names the microphone's clock and the stretch" ;;
+  *) fail "the clock note reads '$(audio_clock_note "$clock_case/place")'" ;;
+esac
+printf '0.000\t281.000\t%s\t\n' "$scratch/one.wav" > "$clock_case/place"
+if [ -z "$(audio_clock_note "$clock_case/place")" ]; then pass "a take with no stretch says nothing about the clock"; else fail "an unstretched take named a clock"; fi
+
+# ---------------------------------------------------------------------------
+# The check after the mux: the HUD meter against the sound (#11151).
+#
+# The meter draws a fixed latency after the sound (0.3s-0.47s on the owner's
+# takes), and that constant is not a defect. What is checked is whether the
+# lag changes across the take. These are the two series the check extracts,
+# made directly: a speech-like level, and a meter that follows it 12 frames
+# late, either steadily or sliding a further 30 frames over the take.
+make_series() {
+  awk -v drift="$2" -v sound="$1.sound" -v meter="$1.meter" 'BEGIN {
+    srand(5)
+    n = 30 * 200; level = 0; target = 0
+    for (i = 0; i < n; i++) {
+      if (rand() < 0.08) target = (rand() < 0.35) ? 0 : rand()
+      level = 0.6 * level + 0.4 * target
+      a[i] = level
+    }
+    for (i = 0; i < n; i++) {
+      d = 12 + int(drift * i / n)
+      j = i - d; v = (j >= 0) ? a[j] : 0
+      printf "%.6f\n", a[i] > sound
+      printf "%.3f\n", 20 + 180 * v + rand() * 3 > meter
+    }
+  }'
+}
+make_series "$clock_case/steady" 0
+IFS=$'\t' read -r verdict first final used total < <(meter_lag_trend "$clock_case/steady.meter" "$clock_case/steady.sound" 30)
+if [ "$verdict" = ok ]; then pass "a meter that trails the sound steadily passes the check"; else fail "a steady meter got '$verdict' ($first -> $final, $used of $total)"; fi
+if awk -v f="$first" 'BEGIN { exit !(f > 0.35 && f < 0.45) }'; then pass "the meter's own latency is measured, not judged"; else fail "the steady meter's lag measured '$first'"; fi
+make_series "$clock_case/drift" 30
+IFS=$'\t' read -r verdict first final used total < <(meter_lag_trend "$clock_case/drift.meter" "$clock_case/drift.sound" 30)
+if [ "$verdict" = drift ]; then pass "a meter whose lag grows a second over the take fails the check"; else fail "a drifting meter got '$verdict' ($first -> $final, $used of $total)"; fi
+if awk -v a="$first" -v b="$final" 'BEGIN { d = b - a; exit !(d > 0.8 && d < 1.2) }'; then pass "the drift is measured across the take"; else fail "the drift measured $first -> $final"; fi
+awk 'BEGIN { for (i = 0; i < 6000; i++) print 0 }' > "$clock_case/flat.sound"
+IFS=$'\t' read -r verdict first final used total < <(meter_lag_trend "$clock_case/steady.meter" "$clock_case/flat.sound" 30)
+if [ "$verdict" = unknown ]; then pass "a silent take is not judged"; else fail "a silent take got '$verdict'"; fi
+# Off, or with nowhere to look, the check does not run and says nothing.
+checked=0
+out=$(SYNC_CHECK=0 sync_check "$scratch/none.mp4" 30) || checked=$?
+if [ "$checked" = 2 ] && [ -z "$out" ]; then pass "a disabled check does not run"; else fail "a disabled check answered $checked and said '$out'"; fi
+
+# ---------------------------------------------------------------------------
 # The mux: what the file is when the take is put together.
 #
 # These need a real ffmpeg, because what is being checked is where the
@@ -617,6 +712,28 @@ else
     *coderos:*) pass "a whole take carries the tag it always did" ;;
     *) fail "a whole take carries no tag: $(comment "$mux/whole.mp4")" ;;
   esac
+
+  # A piece whose microphone ran slow is stretched to the wall before it is
+  # placed (#11151). The rate here is far past what a clock does, so the
+  # stretch is plain to hear: two seconds of tone at half rate fill four, and
+  # the tone is still sounding at three seconds where the unstretched piece
+  # would be silence.
+  make_video "$mux/clock.mp4"
+  make_tone "$mux/clock.mp4.audio.wav" 2
+  printf '0.000\t4.000000\t%s\t0.500000\n' "$mux/clock.mp4.audio.wav" > "$mux/place"
+  if mux_recording "$mux/clock.mp4" 6.0 "coderos: clock" "$mux/place" ""; then pass "a stretched piece muxes"; else fail "a stretched piece did not mux"; fi
+  if [ "$(frames "$mux/clock.mp4")" = 180 ]; then pass "a stretched piece keeps every frame"; else fail "a stretched piece lost frames: $(frames "$mux/clock.mp4")"; fi
+  if loud "$(window_db "$mux/clock.mp4" 2.3 1.4)"; then pass "a slow microphone's sound is stretched over the seconds it was said in"; else fail "the stretched sound is missing at 2.3s-3.7s: $(window_db "$mux/clock.mp4" 2.3 1.4) dB"; fi
+  if quiet "$(window_db "$mux/clock.mp4" 4.4 1.4)"; then pass "the stretch ends where the stretched piece does"; else fail "the stretched piece runs past its end: $(window_db "$mux/clock.mp4" 4.4 1.4) dB"; fi
+
+  # The placement carries the measured rate and the stretched length, from
+  # the clock log the watcher left beside the capture.
+  make_tone "$mux/measured.mp4.audio.wav" 2
+  make_clock "$mux/measured.mp4.audio.wav.clock" 0.99863 60
+  printf '0\t0.000\t%s\n' "$mux/measured.mp4.audio.wav" > "$CODEROS_SCREEN_RECORD_META.audio.segments"
+  audio_segments "$mux/measured.mp4" > "$mux/place"
+  if awk -F'\t' '{ exit !($4 > 0.9985 && $4 < 0.9988 && $2 > 2.002 && $2 < 2.004) }' "$mux/place"; then pass "a measured piece is placed at its stretched length with its rate"; else fail "the measured piece was placed as '$(cat "$mux/place")'"; fi
+  rm -f "$mux/measured.mp4.audio.wav" "$mux/measured.mp4.audio.wav.clock"
 
   # The take these tests are about: the microphone died at two seconds and came
   # back at four, and the sound after the hole has to stay where it was said.

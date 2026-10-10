@@ -130,6 +130,56 @@ AUDIO_HEADER_BYTES=44
 # the placement is exact rather than rounded to a millisecond.
 AUDIO_RATE=48000
 
+# What a second of capture weighs on disk at that rate: `pw-record` writes
+# signed 16-bit mono, two bytes a sample. The clock measurement below divides
+# the bytes a capture delivered by this to get its rate against the wall.
+AUDIO_BYTES_PER_SECOND=$((AUDIO_RATE * 2))
+
+# The microphone keeps its own clock, and it is not the picture's. On
+# 2026-10-09 the Blue on coderos-4080 delivered its samples 0.137% and then
+# 0.25% off the wall clock the picture is held to (#11151), so a 281-second
+# take reached the end with its sound 0.39s out of step, and the gap grew
+# steadily from the first second. The ends lining up within `DRIFT_LIMIT` hid
+# it, because the mux pads and trims the sound to the picture's length.
+#
+# So every capture is timed while it runs: the watcher writes the wall clock
+# and the file's size each time the file grows, and `stop` fits a line through
+# them. The slope is the rate the microphone really delivered, and a piece
+# whose rate is off is stretched (`atempo`) to the wall before it is placed,
+# anchored at its own offset, so the sound at the end of the take lines up
+# with the picture and not only the length. The constant part of what a
+# meter on screen lags the sound by is the meter's own latency, not an offset
+# in the file, and the placement leaves it alone (the owner's correction on
+# #11151).
+#
+# A piece is only stretched when the measurement can be trusted:
+# `CLOCK_MIN_SPAN` seconds of steady delivery at least, a rate within
+# `CLOCK_MAX_ERROR` of nominal (anything further off is a wrong format or a
+# broken measurement, not a clock), and off by more than `CLOCK_MIN_ERROR`,
+# which is 0.015s over a five-minute take and not worth resampling for.
+CLOCK_MIN_SPAN="${CODEROS_RECORD_CLOCK_MIN_SPAN:-20}"
+CLOCK_MAX_ERROR=0.01
+CLOCK_MIN_ERROR=0.00005
+
+# The check after the mux (#11151): the recording HUD draws the microphone's
+# level as it hears it, so the meter's newest column in the picture and the
+# sound in the file rise and fall together, a fixed latency apart. The check
+# correlates the two over `SYNC_WINDOW`-second windows, finds the lag in each,
+# and fits a line through the lags. The constant part is the meter's latency
+# and is reported, not judged; the change across the take is drift, and more
+# than `SYNC_FRAME_LIMIT` frames of it fails the take out loud. A window whose
+# best correlation is under `SYNC_MIN_R` is noise (a silent stretch, a face
+# moving behind the strip) and is left out; fewer than three good windows and
+# the check says it could not tell. `CODEROS_RECORD_SYNC_CHECK=0` turns it off,
+# and `CODEROS_RECORD_METER_CROP` (`w:h:x:y` in the video's pixels) names the
+# meter when the HUD cannot be asked where it is.
+SYNC_CHECK="${CODEROS_RECORD_SYNC_CHECK:-1}"
+SYNC_WINDOW=20
+SYNC_MAX_LAG=1.5
+SYNC_MIN_R=0.5
+SYNC_FRAME_LIMIT=2
+HUD_TITLE="recording-hud"
+
 # What the running recording is capturing and the node name it opened on.
 # `start` sets both; the supervisor reads them to find the same source again
 # after the node behind it died. They are empty in every other command.
@@ -441,7 +491,15 @@ watch_capture() {
         if [ "$size" -gt "$seen" ]; then
             seen=$size
             grew=$now
-            [ "$size" -gt "$AUDIO_HEADER_BYTES" ] && armed=1
+            if [ "$size" -gt "$AUDIO_HEADER_BYTES" ]; then
+                armed=1
+                # The capture's clock against the wall's: when the file
+                # grew, and to what. `stop` fits a line through these; the
+                # delay between a write and this look is the same on
+                # average at every point, so it moves the line and not its
+                # slope.
+                printf '%s\t%s\n' "$now" "$size" >> "${seg}.clock" 2>/dev/null || true
+            fi
         elif [ "$armed" -eq 1 ] && [ "$((now - grew))" -gt "$floor" ]; then
             end_capture "$pid"
             return 1
@@ -570,10 +628,16 @@ supervise_audio() {
 # scaling, so a hole is silence in its true place and the sound after a hole
 # stays where it was said. Concatenating would pull everything after a hole
 # earlier by the length of it, which is the same desync from the other end.
+#
+# A piece whose microphone kept its own time carries a fourth column, the
+# rate it really delivered against its nominal one, and is stretched by
+# exactly that (`atempo`) before it is placed, so its sound is spread over the
+# wall-clock seconds it was said in. The offset is not touched: each piece
+# stays anchored where it opened.
 mux_recording() {
     local output=$1 vdur=$2 note=$3 place=$4 shift_by=${5:-}
     local muxed="${output%.*}.muxed.${output##*.}"
-    local count graph="" inputs="" tail="" afilter k=0 off dur path samples
+    local count graph="" inputs="" tail="" afilter k=0 off dur path tempo samples stretch first_stretch=""
 
     count=$(awk 'END { print NR + 0 }' "$place" 2>/dev/null || echo 0)
     [ "$count" -gt 0 ] || return 1
@@ -586,12 +650,15 @@ mux_recording() {
 
     local -a ff
     ff=(ffmpeg -hide_banner -loglevel error -y -i "$output")
-    while IFS=$'\t' read -r off dur path; do
+    while IFS=$'\t' read -r off dur path tempo; do
         [ -n "$path" ] || continue
         [ -n "$shift_by" ] && ff+=(-itsoffset "$shift_by")
         ff+=(-i "$path")
+        stretch=""
+        [ -n "${tempo:-}" ] && stretch="atempo=${tempo},"
+        [ "$k" -eq 0 ] && first_stretch=$stretch
         samples=$(awk -v o="$off" -v r="$AUDIO_RATE" 'BEGIN { printf "%d", o * r + 0.5 }')
-        graph="${graph}[$((k + 1)):a]adelay=delays=${samples}S:all=1[s${k}];"
+        graph="${graph}[$((k + 1)):a]${stretch}adelay=delays=${samples}S:all=1[s${k}];"
         inputs="${inputs}[s${k}]"
         k=$((k + 1))
     done < "$place"
@@ -599,8 +666,9 @@ mux_recording() {
 
     if [ "$k" -eq 1 ]; then
         # One capture, opening with the take: the command a recording that
-        # never lost its microphone has always run, minus `-shortest`.
-        ff+=(-map 0:v:0 -map 1:a:0 -c:v copy -af "$afilter")
+        # never lost its microphone has always run, minus `-shortest`, and
+        # stretched to the wall when its clock was measured off.
+        ff+=(-map 0:v:0 -map 1:a:0 -c:v copy -af "${first_stretch}${afilter}")
     else
         graph="${graph}${inputs}amix=inputs=${k}:normalize=0:duration=longest,${afilter}[aout]"
         ff+=(-filter_complex "$graph" -map 0:v:0 -map "[aout]" -c:v copy)
@@ -635,31 +703,85 @@ tag_recording() {
 # supervisor wrote gives the order and the offsets; a piece that never
 # received a sample is a 44-byte WAV header, and it is dropped here so the
 # hole around it reads as one hole rather than as two.
+#
+# A piece whose clock was measured off carries the rate as a fourth column,
+# and its duration is the one it will have once stretched to the wall, which
+# is where it really ends on the take's clock. Every number downstream — the
+# holes, the end, the drift line — reads that one.
 audio_segments() {
-    local output=$1 index off path size dur
+    local output=$1 index off path
     if [ -f "${META_FILE}.audio.segments" ]; then
         while IFS=$'\t' read -r index off path; do
             [ -n "$path" ] || continue
             [ -f "$path" ] || continue
-            size=$(wc -c < "$path" 2>/dev/null || echo 0)
-            if [ "$size" -gt 4096 ]; then
-                dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$path" 2>/dev/null || echo 0)
-                printf '%s\t%s\t%s\n' "$off" "${dur:-0}" "$path"
-            else
-                rm -f "$path"
-            fi
+            audio_piece "$off" "$path"
         done < "${META_FILE}.audio.segments"
     elif [ -f "${output}.audio.wav" ]; then
         # A take whose supervisor never wrote a line: one capture, opening
         # with the recording.
-        size=$(wc -c < "${output}.audio.wav" 2>/dev/null || echo 0)
-        if [ "$size" -gt 4096 ]; then
-            dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "${output}.audio.wav" 2>/dev/null || echo 0)
-            printf '0.000\t%s\t%s\n' "${dur:-0}" "${output}.audio.wav"
-        else
-            rm -f "${output}.audio.wav"
-        fi
+        audio_piece 0.000 "${output}.audio.wav"
     fi
+}
+
+# One line of the placement for one capture, or nothing (and the capture
+# removed) when it holds no sound.
+audio_piece() {
+    local off=$1 path=$2 size dur tempo
+    size=$(wc -c < "$path" 2>/dev/null || echo 0)
+    if [ "$size" -le 4096 ]; then
+        rm -f "$path" "${path}.clock"
+        return 0
+    fi
+    dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$path" 2>/dev/null || echo 0)
+    tempo=$(audio_clock_ratio "${path}.clock")
+    if [ -n "$tempo" ]; then
+        dur=$(awk -v d="${dur:-0}" -v t="$tempo" 'BEGIN { printf "%.6f", d / t }')
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$off" "${dur:-0}" "$path" "$tempo"
+}
+
+# The rate a capture really delivered against its nominal one, as a ratio to
+# six places, or nothing when it should not be corrected.
+#
+# The clock log is `wall-microseconds<TAB>file-bytes` lines, one each time
+# the watcher saw the file grow. A least-squares line through them is the
+# bytes the microphone delivered per wall second; the header, the start-up
+# burst, and the delay between a write and the look that saw it all move the
+# line and not its slope. The ratio is that slope over the nominal bytes per
+# second: under 1 is a microphone that delivered fewer samples than its rate
+# says, whose sound plays ahead of the picture by more every second unless it
+# is stretched by exactly this.
+audio_clock_ratio() {
+    local clock=$1
+    [ -f "$clock" ] || return 0
+    awk -F'\t' -v nominal="$AUDIO_BYTES_PER_SECOND" -v span="$CLOCK_MIN_SPAN" \
+        -v maxe="$CLOCK_MAX_ERROR" -v mine="$CLOCK_MIN_ERROR" '
+        NF >= 2 {
+            if (n == 0) { t0 = $1; b0 = $2 }
+            t = ($1 - t0) / 1000000; b = $2 - b0
+            n++; st += t; sb += b; stt += t * t; stb += t * b
+            last = t
+        }
+        END {
+            if (n < 10 || last < span) exit
+            den = n * stt - st * st
+            if (den <= 0) exit
+            r = ((n * stb - st * sb) / den) / nominal
+            e = r - 1; if (e < 0) e = -e
+            if (e > maxe || e < mine) exit
+            printf "%.6f", r
+        }
+    ' "$clock" 2>/dev/null || true
+}
+
+# What the clocks did, for the comment tag and the terminal: the measured
+# rate of every piece that was stretched, as a signed percentage, or nothing
+# when no piece needed it.
+audio_clock_note() {
+    awk -F'\t' '
+        $4 != "" { out = out (out == "" ? "" : ", ") sprintf("%+.3f%%", ($4 - 1) * 100) }
+        END { if (out != "") printf "the microphone clock ran %s against the picture; the sound is stretched to it", out }
+    ' "$1" 2>/dev/null || true
 }
 
 # The windows the sound is missing from, as `121.4s-147.3s` joined by commas.
@@ -733,6 +855,160 @@ trailing_outage() {
 # the capture, which is the number the drift line has always carried.
 audio_end() {
     awk -F'\t' 'BEGIN { e = 0 } NF >= 3 { e = $1 + $2 } END { printf "%.6f", e }' "$1" 2>/dev/null || echo 0
+}
+
+# Where the HUD's meter is in the picture, as ffmpeg's `w:h:x:y`, or nothing
+# when that cannot be known.
+#
+# The strip is a terminal docked under the camera: the meter is every row but
+# the control row, and it scrolls right to left, so its newest level is the
+# rightmost column. The top row's right end carries the REC dot, so the crop
+# is the right end of the row above the control row — the middle third of a
+# three-row strip — a sliver as wide as a couple of cells. The desk reports
+# the window in the session's logical pixels, and the picture is in the
+# screen's own, so the crop is scaled by the picture's width over the
+# screen's. A take of a region (`--geometry`) is not the whole screen and is
+# not checked unless the crop is given.
+hud_meter_crop() {
+    local output=$1 hud sw vw vh
+    if [ -n "${CODEROS_RECORD_METER_CROP:-}" ]; then
+        printf '%s' "$CODEROS_RECORD_METER_CROP"
+        return 0
+    fi
+    [ -f "${META_FILE}.geometry" ] && return 0
+    command -v coder-desk > /dev/null 2>&1 || return 0
+    hud=$(coder-desk list 2>/dev/null \
+        | jq -c --arg t "$HUD_TITLE" 'map(select(.title == $t)) | .[0] // empty' 2>/dev/null || true)
+    [ -n "$hud" ] || return 0
+    sw=$(coder-desk screens 2>/dev/null | jq -r '.[0].size.width // empty' 2>/dev/null || true)
+    vw=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$output" 2>/dev/null || true)
+    vh=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$output" 2>/dev/null || true)
+    [ -n "$vw" ] && [ -n "$vh" ] || return 0
+    printf '%s' "$hud" | jq -r --arg sw "${sw:-}" --argjson vw "$vw" --argjson vh "$vh" '
+        (if ($sw | length) > 0 and ($sw | tonumber) > 0 then $vw / ($sw | tonumber) else 1 end) as $k
+        | (.at.x * $k) as $x | (.at.y * $k) as $y
+        | (.size.width * $k) as $w | (.size.height * $k) as $h
+        | ([($w * 0.015 | floor), 4] | max) as $cw
+        | ([($h / 3 | floor), 4] | max) as $ch
+        | ([($x + $w - $cw - 2 | floor), 0] | max) as $cx
+        | ([($y + $h / 3 | floor), 0] | max) as $cy
+        | if $cx + $cw > $vw or $cy + $ch > $vh then empty
+          else "\($cw):\($ch):\($cx):\($cy)" end
+    ' 2>/dev/null || true
+}
+
+# The meter's brightness in every frame of a recording, one number a line.
+meter_series() {
+    local output=$1 crop=$2
+    ffmpeg -hide_banner -nostats -loglevel error -i "$output" -an \
+        -vf "crop=${crop},signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG:file=-" \
+        -f null - 2>/dev/null \
+        | sed -n 's/^lavfi\.signalstats\.YAVG=//p'
+}
+
+# The sound's level over each frame's worth of samples, one linear number a
+# line, aligned with `meter_series` frame for frame.
+sound_series() {
+    local output=$1 fps=$2 n
+    n=$(awk -v r="$AUDIO_RATE" -v f="$fps" 'BEGIN { printf "%d", r / f + 0.5 }')
+    ffmpeg -hide_banner -nostats -loglevel error -i "$output" -vn \
+        -af "aresample=${AUDIO_RATE},asetnsamples=n=${n}:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-" \
+        -f null - 2>/dev/null \
+        | sed -n 's/^lavfi\.astats\.Overall\.RMS_level=//p' \
+        | awk '{ if ($1 == "-inf" || $1 + 0 < -120) print 0; else printf "%.8f\n", 10 ^ ($1 / 20) }'
+}
+
+# How far the meter trails the sound, at the start of the take and at the
+# end, from two series one number a line: the meter's brightness and the
+# sound's level, frame for frame.
+#
+# Prints `verdict<TAB>lag-at-start<TAB>lag-at-end<TAB>good-windows<TAB>windows`.
+# Each window's lag is the shift, within `SYNC_MAX_LAG` either way, at which
+# the two correlate best, refined between frames by a parabola through the
+# peak; the line through the good windows' lags gives the two ends. The
+# verdict is `ok` when they differ by `SYNC_FRAME_LIMIT` frames or less,
+# `drift` when they differ by more, and `unknown` when fewer than three
+# windows correlated well enough to say. A positive lag is a meter that draws
+# after the sound, which is what a meter does.
+meter_lag_trend() {
+    local meter=$1 sound=$2 fps=$3
+    awk -v fps="$fps" -v win="$SYNC_WINDOW" -v maxlag="$SYNC_MAX_LAG" \
+        -v rmin="$SYNC_MIN_R" -v limit="$SYNC_FRAME_LIMIT" '
+        function corr(s, d,    i, x, y, m, sx, sy, sxx, syy, sxy, vx, vy) {
+            m = 0; sx = 0; sy = 0; sxx = 0; syy = 0; sxy = 0
+            for (i = s; i < s + W; i++) {
+                x = a[i - d]; y = b[i]
+                sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; m++
+            }
+            vx = sxx - sx * sx / m; vy = syy - sy * sy / m
+            if (vx <= 1e-12 || vy <= 1e-12) return -1
+            return (sxy - sx * sy / m) / sqrt(vx * vy)
+        }
+        FNR == NR { b[nb++] = $1 + 0; next }
+        { a[na++] = $1 + 0 }
+        END {
+            n = (na < nb) ? na : nb
+            W = int(win * fps); L = int(maxlag * fps)
+            used = 0; total = 0
+            for (s = L; s + W + L <= n; s += W) {
+                total++
+                best = -2; bd = 0
+                for (d = -L; d <= L; d++) {
+                    r[d] = corr(s, d)
+                    if (r[d] > best) { best = r[d]; bd = d }
+                }
+                if (best < rmin) continue
+                frac = 0
+                if (bd > -L && bd < L) {
+                    den = r[bd - 1] - 2 * r[bd] + r[bd + 1]
+                    if (den < 0) frac = 0.5 * (r[bd - 1] - r[bd + 1]) / den
+                }
+                t[used] = (s + W / 2) / fps
+                g[used] = (bd + frac) / fps
+                used++
+            }
+            if (used < 3) { printf "unknown\t\t\t%d\t%d\n", used, total; exit }
+            st = 0; sg = 0; stt = 0; stg = 0
+            for (i = 0; i < used; i++) { st += t[i]; sg += g[i]; stt += t[i] * t[i]; stg += t[i] * g[i] }
+            den = used * stt - st * st
+            slope = (den > 0) ? (used * stg - st * sg) / den : 0
+            icpt = (sg - slope * st) / used
+            first = icpt; final = icpt + slope * (n / fps)
+            change = final - first; if (change < 0) change = -change
+            printf "%s\t%.3f\t%.3f\t%d\t%d\n", (change > limit / fps ? "drift" : "ok"), first, final, used, total
+        }
+    ' "$meter" "$sound" 2>/dev/null || printf 'unknown\t\t\t0\t0\n'
+}
+
+# Check a finished recording's sound against its picture, by the HUD meter.
+#
+# Prints the clause for the comment tag, and answers 0 when the meter's lag
+# held steady, 1 when it drifted past the limit, and 2 when the take could
+# not be checked (no HUD on screen, a region take, a silent take, or too few
+# windows that correlated).
+sync_check() {
+    local output=$1 fps=$2 crop dir verdict first final used total change
+    [ "$SYNC_CHECK" = 1 ] || return 2
+    crop=$(hud_meter_crop "$output")
+    [ -n "$crop" ] || return 2
+    dir=$(mktemp -d "${TMPDIR:-/tmp}/screen-record-sync.XXXXXX") || return 2
+    meter_series "$output" "$crop" > "$dir/meter" || true
+    sound_series "$output" "$fps" > "$dir/sound" || true
+    IFS=$'\t' read -r verdict first final used total < <(meter_lag_trend "$dir/meter" "$dir/sound" "$fps") || true
+    rm -rf "$dir"
+    case "${verdict:-unknown}" in
+        ok|drift)
+            change=$(awk -v a="$first" -v b="$final" 'BEGIN { printf "%+.3f", b - a }')
+            printf 'sync check: the HUD meter trails the sound %ss at the start and %ss at the end (%ss over the take, limit %s frames; %s of %s windows)' \
+                "$first" "$final" "$change" "$SYNC_FRAME_LIMIT" "$used" "$total"
+            [ "$verdict" = ok ] && return 0
+            return 1
+            ;;
+        *)
+            printf 'sync check: not enough of the HUD meter followed the sound to measure (%s of %s windows)' "${used:-0}" "${total:-0}"
+            return 2
+            ;;
+    esac
 }
 
 usage() {
@@ -840,7 +1116,9 @@ start_recording() {
     # ledger would place this recording's sound at another recording's offsets.
     rm -f "${PID_FILE}.audio" "${PID_FILE}.audio.stop" "${PID_FILE}.audio.supervisor" \
         "${META_FILE}.audio.segments" "${META_FILE}.audio.outage" "${META_FILE}.mic"
-    rm -f "${OUTPUT}".audio.wav "${OUTPUT}".audio.[0-9][0-9][0-9].wav
+    rm -f "${OUTPUT}".audio.wav "${OUTPUT}".audio.[0-9][0-9][0-9].wav \
+        "${OUTPUT}".audio.wav.clock "${OUTPUT}".audio.[0-9][0-9][0-9].wav.clock \
+        "${META_FILE}.geometry"
 
     # Presentation mode is asked for, never assumed. A screencast is not the
     # only reason to record, and a recording that rearranged the desktop by
@@ -906,6 +1184,9 @@ start_recording() {
             GEOMETRY=$(slurp)
         fi
         WF_ARGS+=("-g" "$GEOMETRY")
+        # A region is not the whole screen, so the HUD's place on the screen
+        # is not its place in the picture; the sync check reads this.
+        printf '%s\n' "$GEOMETRY" > "${META_FILE}.geometry"
     fi
 
     if [ -n "$DURATION" ]; then
@@ -1041,15 +1322,18 @@ stop_recording() {
             # its metadata, and a gap past the limit is said out loud here.
             # The windows the sound is missing from go in beside it, so an
             # editor is told where the holes are rather than finding them.
-            local AEND MISSING SHORT DRIFT NOTE
+            local AEND MISSING SHORT DRIFT NOTE CLOCK
             AEND=$(audio_end "$PLACE")
+            CLOCK=$(audio_clock_note "$PLACE")
             MISSING=$(audio_outages "$PLACE" "$VDUR" "$PROVEN")
             SHORT=$(audio_shortfall "$PLACE" "$VDUR" "$PROVEN")
             DRIFT=$(awk -v a="$AEND" -v v="$VDUR" 'BEGIN { printf "%+.3f", a - v }')
             NOTE="coderos: video ${VDUR}s, ${VFRAMES} frames at ${VFPS} fps constant; audio ${AEND}s; the audio ends ${DRIFT}s after the video"
             [ -n "$MISSING" ] && NOTE="${NOTE}; audio missing ${MISSING}"
             [ -n "$SHORT" ] && NOTE="${NOTE}; audio ${SHORT}s short, and the take does not say where"
+            [ -n "$CLOCK" ] && NOTE="${NOTE}; ${CLOCK}"
             echo "Video ${VDUR}s (${VFRAMES} frames at ${VFPS} fps), audio ${AEND}s, audio ends ${DRIFT}s after the video."
+            [ -n "$CLOCK" ] && echo "The ${CLOCK#the }."
             if [ "$PIECES" -gt 1 ]; then
                 echo "The microphone was reattached $((PIECES - 1)) time(s) during the take."
             fi
@@ -1068,7 +1352,21 @@ stop_recording() {
                 echo "The audio and the video end ${DRIFT}s apart; check the sync at the end of the take." >&2
             fi
             if mux_recording "$OUTPUT" "$VDUR" "$NOTE" "$PLACE" "$SHIFT"; then
-                cut -f3 "$PLACE" | while IFS= read -r _seg; do rm -f "$_seg"; done
+                cut -f3 "$PLACE" | while IFS= read -r _seg; do rm -f "$_seg" "${_seg}.clock"; done
+                # The finished file checked against itself: the HUD meter in
+                # the picture against the sound in the track. What it found
+                # goes into the tag beside everything else, and drift past
+                # the limit is said out loud, because a take that fails it
+                # needs fixing before anyone uses it.
+                local CHECK CHECKED=0
+                CHECK=$(sync_check "$OUTPUT" "$VFPS") || CHECKED=$?
+                if [ -n "$CHECK" ]; then
+                    tag_recording "$OUTPUT" "${NOTE}; ${CHECK}" || true
+                    echo "Sync ${CHECK#sync }."
+                fi
+                if [ "$CHECKED" -eq 1 ]; then
+                    echo "The sound drifts against the picture over this take; ${CHECK#sync check: }. Fix the sync before you use it." >&2
+                fi
             else
                 echo "Could not add the audio; it is beside the video at $(head -n 1 "$PLACE" | cut -f3)" >&2
             fi
@@ -1098,7 +1396,8 @@ stop_recording() {
         "${PID_FILE}.audio.supervisor" "$META_FILE" "${META_FILE}.sync" \
         "${META_FILE}.presentation" "${META_FILE}.mic" "${META_FILE}.fps" \
         "${META_FILE}.audio.segments" "${META_FILE}.audio.outage" \
-        "${META_FILE}.audio.t0" "${META_FILE}.audio.place"
+        "${META_FILE}.audio.t0" "${META_FILE}.audio.place" \
+        "${META_FILE}.geometry"
 }
 
 status_recording() {
