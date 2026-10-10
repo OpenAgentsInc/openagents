@@ -5744,6 +5744,12 @@
         },
         {
           "kind": "option",
+          "name": "account",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "last",
           "value": "|",
           "open": true,
