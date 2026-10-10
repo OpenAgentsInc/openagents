@@ -141,7 +141,15 @@ fn a_policy_file_is_read_and_its_absence_is_the_safe_default() {
     std::fs::write(dir.path().join(POLICY_FILE), r#"{"land": "sideways"}"#).unwrap();
     assert!(Policy::load(dir.path()).is_err());
     assert_eq!(Land::parse("pr").unwrap(), Land::PullRequest);
+    assert_eq!(Land::parse("queue").unwrap(), Land::Queue);
     assert!(Land::parse("force").is_err());
+    // The landing queue reads from the policy file and writes back the same.
+    std::fs::write(dir.path().join(POLICY_FILE), r#"{"land": "queue"}"#).unwrap();
+    let policy = Policy::load(dir.path()).unwrap();
+    assert_eq!(policy.land, Land::Queue);
+    let written = serde_json::to_value(&policy).unwrap();
+    assert_eq!(written["land"], "queue");
+    assert_eq!(serde_json::from_value::<Policy>(written).unwrap(), policy);
 }
 
 /// This repository's own policy lands on main after the checks: fmt, and
@@ -436,6 +444,7 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
             top: dir.path().into(),
             now: || 100,
             artifacts: None,
+            queue: None,
         };
         let record = local_record();
         let mut flow = flow("working");
@@ -518,6 +527,7 @@ fn a_failure_comment_links_the_runs_uploaded_artifacts() {
         top: dir.path().into(),
         now: || 100,
         artifacts: Some(bucket.clone()),
+        queue: None,
     };
     let mut flow = flow("working");
     flow.finished = false;
@@ -582,6 +592,7 @@ fn started_fixture(dir: &Path) -> Started {
             top: dir.into(),
             now: || 100,
             artifacts: None,
+            queue: None,
         },
     }
 }
@@ -1021,6 +1032,7 @@ fn stranded_run_comment(origin_ok: bool) -> (String, String, PathBuf, tempfile::
         top: worktree.clone(),
         now: || 100,
         artifacts: None,
+        queue: None,
     };
     let mut flow = flow("working");
     flow.finished = false;
@@ -1311,4 +1323,93 @@ fn fmt_drift_outside_the_change_is_left_to_the_base_branch() {
     let (kept, untouched) = fmt_drift_in_change(output, &[]);
     assert!(kept.is_empty());
     assert_eq!(untouched, 2);
+}
+
+/// `--land queue` pushes the green change to `land/<entry id>` and submits
+/// an entry with the issue and the pushed head; the integrator closes the
+/// issue, not the flow (#11242).
+#[test]
+fn a_queued_change_is_pushed_and_submitted_and_the_issue_stays_open() {
+    use super::super::land_queue;
+    let dir = tempfile::tempdir().unwrap();
+    let (origin, worktree) = committed_change(dir.path());
+    git(&worktree, &["config", "user.name", "Test"]);
+    git(&worktree, &["config", "user.email", "test@example.invalid"]);
+    std::fs::write(worktree.join("queued.txt"), "queued\n").unwrap();
+    git(&worktree, &["add", "queued.txt"]);
+    let queue_dir = dir.path().join("queue");
+    let tracker = Arc::new(Comments::default());
+    let record = local_record();
+    let work = Work {
+        store: dir.path().into(),
+        local: Arc::new(Local::new(dir.path().into())),
+        tracker: tracker.clone(),
+        checks: Arc::new(NoChecks),
+        policy: Policy {
+            land: Land::Queue,
+            ..Policy::default()
+        },
+        branch: "main".into(),
+        top: worktree.clone(),
+        now: || 100,
+        artifacts: None,
+        queue: Some(Arc::new(land_queue::Dir(queue_dir.clone()))),
+    };
+    let mut flow = flow("working");
+    flow.finished = false;
+    let issue = issue(&[]);
+    let mut run = Run {
+        work: &work,
+        flow: &mut flow,
+        record: &record,
+        issue: &issue,
+        repository: "acme/app",
+        worktree: &worktree,
+        turn: 1,
+        summaries: vec![],
+        checked: Checked::default(),
+        rounds: 0,
+        stranded: None,
+    };
+    // `Comments::close` panics, so reaching the end means the flow did not
+    // close the issue.
+    run.land_queue();
+    let head = git(&worktree, &["rev-parse", "HEAD"]);
+    let store = land_queue::Dir(queue_dir);
+    let entries = land_queue::Queue { store: &store }.entries().unwrap();
+    assert_eq!(entries.len(), 1);
+    let entry = &entries[0];
+    assert_eq!(entry.issue, Some(42));
+    assert!(entry.close);
+    assert_eq!(entry.head, head);
+    assert_eq!(entry.target, "main");
+    assert_eq!(entry.summary, issue.title);
+    assert_eq!(entry.state, land_queue::State::Queued);
+    assert_eq!(entry.branch, format!("land/{}", entry.id));
+    assert_eq!(
+        git(
+            &origin,
+            &["rev-parse", &format!("refs/heads/{}", entry.branch)]
+        ),
+        head,
+        "origin holds the queued head"
+    );
+    assert_eq!(
+        git(&origin, &["rev-parse", "refs/heads/main"]),
+        git(&worktree, &["rev-parse", "HEAD~2"]),
+        "main is the integrator's to move"
+    );
+    assert_eq!(flow.link.outcome, "queued");
+    assert_eq!(flow.link.commits, vec![head.clone()]);
+    assert!(!flow.link.closed);
+    assert!(flow.closing.contains(&entry.id) && flow.closing.contains(&entry.branch));
+    let comments = tracker.0.lock().unwrap();
+    let queued = comments.iter().find(|c| c.contains("queued this")).unwrap();
+    assert!(queued.contains(&entry.id) && queued.contains(&entry.branch));
+    assert!(
+        !comments.iter().any(|c| c.contains(RELEASE_MARK)),
+        "the claim holds"
+    );
+    let ended = flow.ending(result());
+    assert!(matches!(ended, CoderEvent::Result(_)), "{ended:?}");
 }

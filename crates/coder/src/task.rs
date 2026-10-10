@@ -1239,7 +1239,12 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     }
     let mut file = private_open(path, true, true)?;
     file.write_all(bytes)?;
-    file.sync_all()?;
+    // Tests cannot observe a power loss, and a flush per save of a large
+    // store (the sales qualification test saves over a thousand times)
+    // holds the crate's tests past their time limit.
+    if !cfg!(test) {
+        file.sync_all()?;
+    }
     Ok(())
 }
 
@@ -1793,7 +1798,11 @@ fn sync_directory_ancestry(path: &Path) -> Result<(), Error> {
 /// Flushes a directory's entries.
 #[cfg(unix)]
 pub(crate) fn sync_directory(path: &Path) -> Result<(), Error> {
-    File::open(path)?.sync_all()?;
+    let directory = File::open(path)?;
+    // As in `write_new`: tests check that the directory opens, not the flush.
+    if !cfg!(test) {
+        directory.sync_all()?;
+    }
     Ok(())
 }
 

@@ -282,7 +282,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     let good = |record: &Value| {
         matches!(
             record["outcome"].as_str(),
-            Some("landed" | "pull_request" | "skipped" | "closed")
+            Some("landed" | "pull_request" | "queued" | "skipped" | "closed")
         )
     };
     let landed = results
