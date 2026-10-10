@@ -5,9 +5,18 @@
 //! sealed with [`oa_seal`] (AES-256-GCM under a keyring read from
 //! `inference.byok.keyring`, a private file outside the registry, so a copy
 //! of the registry holds only ciphertext). Each sealed key is bound to its
-//! tenant and provider. A key is never logged, never answered back: the
+//! workspace and provider. A key is never logged, never answered back: the
 //! routes show the provider and [`model_access::fingerprint`] only, as the
 //! desktop's key store does.
+//!
+//! Keys are kept by workspace, never by registry tenant (#11186): every
+//! personal workspace made by sign-up shares one tenant, so a key kept by
+//! tenant was one key for everyone. A request's own keys are those of the
+//! workspace its API key acts in ([`crate::inference_public::key_scope`]).
+//! Keys saved by tenant before that are moved at start
+//! ([`Keys::adopt`]): into the tenant's only workspace, or into the
+//! workspace an operator named (`tenant-db assign-provider-key`); a key on a
+//! shared tenant that nobody named is never used.
 //!
 //! A request with `openagents.pay: "mine"` is offered only adapters on
 //! these keys ([`inference::run::Caller::own`]) and never falls back to
@@ -102,10 +111,15 @@ struct Kept {
     added_at: u64,
 }
 
-/// tenant -> provider word -> key.
+/// The file: workspace -> provider word -> key.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Saved {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    workspaces: BTreeMap<String, BTreeMap<String, Kept>>,
+    /// Keys saved by registry tenant before #11186: tenant -> provider
+    /// word -> key. Never read for a call or a listing; [`Keys::adopt`]
+    /// moves each into its workspace.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     keys: BTreeMap<String, BTreeMap<String, Kept>>,
 }
 
@@ -140,7 +154,17 @@ fn provider(word: &str) -> Option<Provider> {
     }
 }
 
-fn associated(tenant: &str, provider: Provider) -> Vec<u8> {
+/// What a key is sealed to: its workspace and provider.
+fn associated(workspace: &str, provider: Provider) -> Vec<u8> {
+    format!(
+        "openagents.inference.byok.v2\0workspace\0{workspace}\0{}",
+        provider.word()
+    )
+    .into_bytes()
+}
+
+/// What a key saved before #11186 was sealed to: its registry tenant.
+fn associated_by_tenant(tenant: &str, provider: Provider) -> Vec<u8> {
     format!(
         "openagents.inference.byok.v1\0{tenant}\0{}",
         provider.word()
@@ -214,16 +238,16 @@ impl Keys {
         std::fs::rename(&temporary, &self.path).map_err(|e| e.to_string())
     }
 
-    /// Seals and keeps `key` for `tenant`, replacing any key it held for
-    /// `provider`. Returns the fingerprint.
+    /// Seals and keeps `key` for `workspace`, replacing any key it held
+    /// for `provider`. Returns the fingerprint.
     ///
     /// # Errors
     ///
     /// Sealing or writing failed.
-    pub fn put(&self, tenant: &str, provider: Provider, key: &str) -> Result<String, String> {
+    pub fn put(&self, workspace: &str, provider: Provider, key: &str) -> Result<String, String> {
         let sealed = self
             .keyring
-            .seal(&associated(tenant, provider), key.as_bytes())
+            .seal(&associated(workspace, provider), key.as_bytes())
             .map_err(|error| error.to_string())?;
         let fingerprint = model_access::fingerprint(key);
         if let Some(database) = &self.database {
@@ -233,37 +257,42 @@ impl Keys {
                 added_at: now(),
             };
             let record = serde_json::to_value(&kept).map_err(|e| e.to_string())?;
-            tenancy::db::records::put_provider_key(database, tenant, provider.word(), &record)
+            tenancy::db::records::put_provider_key(database, workspace, provider.word(), &record)
                 .map_err(|e| e.to_string())?;
             return Ok(fingerprint);
         }
         let mut saved = self.saved.lock().map_err(|_| "The key store is busy.")?;
-        saved.keys.entry(tenant.to_owned()).or_default().insert(
-            provider.word().to_owned(),
-            Kept {
-                sealed,
-                fingerprint: fingerprint.clone(),
-                added_at: now(),
-            },
-        );
+        saved
+            .workspaces
+            .entry(workspace.to_owned())
+            .or_default()
+            .insert(
+                provider.word().to_owned(),
+                Kept {
+                    sealed,
+                    fingerprint: fingerprint.clone(),
+                    added_at: now(),
+                },
+            );
         self.save(&saved)?;
         Ok(fingerprint)
     }
 
-    /// Forgets `tenant`'s key for `provider`; false when there was none.
+    /// Forgets `workspace`'s key for `provider`; false when there was
+    /// none.
     ///
     /// # Errors
     ///
     /// Writing failed.
-    pub fn delete(&self, tenant: &str, provider: Provider) -> Result<bool, String> {
+    pub fn delete(&self, workspace: &str, provider: Provider) -> Result<bool, String> {
         if let Some(database) = &self.database {
-            return tenancy::db::records::delete_provider_key(database, tenant, provider.word())
+            return tenancy::db::records::delete_provider_key(database, workspace, provider.word())
                 .map_err(|e| e.to_string());
         }
         let mut saved = self.saved.lock().map_err(|_| "The key store is busy.")?;
         let removed = saved
-            .keys
-            .get_mut(tenant)
+            .workspaces
+            .get_mut(workspace)
             .and_then(|keys| keys.remove(provider.word()))
             .is_some();
         if removed {
@@ -272,10 +301,10 @@ impl Keys {
         Ok(removed)
     }
 
-    /// `tenant`'s kept keys, by provider word.
-    fn kept(&self, tenant: &str) -> BTreeMap<String, Kept> {
+    /// `workspace`'s kept keys, by provider word.
+    fn kept(&self, workspace: &str) -> BTreeMap<String, Kept> {
         if let Some(database) = &self.database {
-            return tenancy::db::records::provider_keys(database, tenant)
+            return tenancy::db::records::provider_keys(database, workspace)
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|(word, record)| Some((word, serde_json::from_value(record).ok()?)))
@@ -284,31 +313,32 @@ impl Keys {
         self.saved
             .lock()
             .ok()
-            .and_then(|saved| saved.keys.get(tenant).cloned())
+            .and_then(|saved| saved.workspaces.get(workspace).cloned())
             .unwrap_or_default()
     }
 
-    /// What `tenant` keeps: provider, fingerprint, when added.
+    /// What `workspace` keeps: provider, fingerprint, when added.
     #[must_use]
-    pub fn listed(&self, tenant: &str) -> Vec<(String, String, u64)> {
-        self.kept(tenant)
+    pub fn listed(&self, workspace: &str) -> Vec<(String, String, u64)> {
+        self.kept(workspace)
             .into_iter()
             .map(|(word, kept)| (word, kept.fingerprint, kept.added_at))
             .collect()
     }
 
-    /// Adapters on `tenant`'s own keys. A key that no longer opens is left
-    /// out (and its fingerprint stays listed, so the owner can replace it).
+    /// Adapters on `workspace`'s own keys. A key that no longer opens is
+    /// left out (and its fingerprint stays listed, so the owner can
+    /// replace it).
     #[must_use]
-    pub fn upstreams(&self, tenant: &str) -> Vec<Arc<dyn Upstream>> {
+    pub fn upstreams(&self, workspace: &str) -> Vec<Arc<dyn Upstream>> {
         let opened: Vec<(Provider, Zeroizing<Vec<u8>>)> = self
-            .kept(tenant)
+            .kept(workspace)
             .iter()
             .filter_map(|(word, kept)| {
                 let provider = provider(word)?;
                 let plain = self
                     .keyring
-                    .open(&associated(tenant, provider), &kept.sealed)
+                    .open(&associated(workspace, provider), &kept.sealed)
                     .ok()?;
                 Some((provider, plain))
             })
@@ -320,6 +350,123 @@ impl Keys {
                 Some(adapter(provider, secret))
             })
             .collect()
+    }
+}
+
+impl Keys {
+    /// Moves the keys saved by registry tenant before #11186 into their
+    /// workspaces: a key whose tenant holds exactly one workspace goes to
+    /// it, and a key on a tenant several workspaces share goes to the
+    /// workspace an operator named (`tenant-db assign-provider-key`),
+    /// when it is on that tenant. Each is opened under its tenant and
+    /// sealed again under its workspace. A key nobody named stays where
+    /// it is, used by no one, as does a key that no longer opens.
+    /// Returns (moved, left).
+    ///
+    /// # Errors
+    ///
+    /// The store cannot be read or written.
+    pub fn adopt(&self, accounts: &tenancy::accounts::Store) -> Result<(usize, usize), String> {
+        let home = |tenant: &str, named: Option<&str>| -> Option<String> {
+            if let Some(named) = named {
+                return accounts
+                    .workspaces
+                    .get(named)
+                    .filter(|ws| ws.tenant == tenant)
+                    .map(|ws| ws.id.clone());
+            }
+            let mut on_tenant = accounts
+                .workspaces
+                .values()
+                .filter(|ws| ws.tenant == tenant);
+            match (on_tenant.next(), on_tenant.next()) {
+                (Some(only), None) => Some(only.id.clone()),
+                _ => None,
+            }
+        };
+        let (mut moved, mut left) = (0, 0);
+        if let Some(database) = &self.database {
+            let rows =
+                tenancy::db::records::tenant_provider_keys(database).map_err(|e| e.to_string())?;
+            for row in rows {
+                let Some(workspace) = home(&row.tenant, row.workspace.as_deref()) else {
+                    left += 1;
+                    continue;
+                };
+                let Some(record) =
+                    self.resealed(&row.tenant, &row.provider, &workspace, row.record)
+                else {
+                    left += 1;
+                    continue;
+                };
+                tenancy::db::records::adopt_tenant_provider_key(
+                    database,
+                    &row.tenant,
+                    &row.provider,
+                    &workspace,
+                    &record,
+                )
+                .map_err(|e| e.to_string())?;
+                moved += 1;
+            }
+            return Ok((moved, left));
+        }
+        let mut saved = self.saved.lock().map_err(|_| "The key store is busy.")?;
+        let tenants = std::mem::take(&mut saved.keys);
+        for (tenant, providers) in tenants {
+            for (word, kept) in providers {
+                let target = home(&tenant, None).and_then(|workspace| {
+                    let record = serde_json::to_value(&kept).ok()?;
+                    let record = self.resealed(&tenant, &word, &workspace, record)?;
+                    Some((workspace, serde_json::from_value::<Kept>(record).ok()?))
+                });
+                match target {
+                    Some((workspace, resealed)) => {
+                        saved
+                            .workspaces
+                            .entry(workspace)
+                            .or_default()
+                            .entry(word)
+                            .or_insert(resealed);
+                        moved += 1;
+                    }
+                    None => {
+                        saved
+                            .keys
+                            .entry(tenant.clone())
+                            .or_default()
+                            .insert(word, kept);
+                        left += 1;
+                    }
+                }
+            }
+        }
+        if moved > 0 {
+            self.save(&saved)?;
+        }
+        Ok((moved, left))
+    }
+
+    /// A tenant-sealed key record sealed again for `workspace`, or `None`
+    /// when it no longer opens.
+    fn resealed(
+        &self,
+        tenant: &str,
+        word: &str,
+        workspace: &str,
+        record: serde_json::Value,
+    ) -> Option<serde_json::Value> {
+        let provider = provider(word)?;
+        let mut kept: Kept = serde_json::from_value(record).ok()?;
+        let plain = self
+            .keyring
+            .open(&associated_by_tenant(tenant, provider), &kept.sealed)
+            .ok()?;
+        kept.sealed = self
+            .keyring
+            .seal(&associated(workspace, provider), &plain)
+            .ok()?;
+        serde_json::to_value(&kept).ok()
     }
 }
 
@@ -343,22 +490,23 @@ fn adapter(provider: Provider, key: Secret) -> Arc<dyn Upstream> {
     Arc::new(ResponsesUpstream::new(config))
 }
 
-/// The caller's own adapters, when BYOK is set up and the tenant keeps any.
+/// The caller's own adapters: the keys of the workspace its API key acts
+/// in, when BYOK is set up and that workspace keeps any.
 #[must_use]
-pub fn own(state: &ServeState, tenant: &str) -> inference::run::OwnUpstreams {
+pub fn own(state: &ServeState, workspace: &str) -> inference::run::OwnUpstreams {
     inference::run::OwnUpstreams(
         state
             .provider_keys
             .as_ref()
-            .map(|keys| keys.upstreams(tenant))
+            .map(|keys| keys.upstreams(workspace))
             .unwrap_or_default(),
     )
 }
 
 // ----------------------------------------------------------------- routes
 
-/// The workspace's tenant, for a signed-in owner or admin of it.
-fn admin_tenant(
+/// The workspace, for a signed-in owner or admin of it.
+fn admin_workspace(
     state: &ServeState,
     headers: &HeaderMap,
     workspace: &str,
@@ -391,7 +539,7 @@ fn admin_tenant(
     store
         .workspaces
         .get(workspace)
-        .map(|ws| ws.tenant.clone())
+        .map(|ws| ws.id.clone())
         .ok_or_else(|| {
             refused(
                 StatusCode::NOT_FOUND,
@@ -434,8 +582,8 @@ async fn list(
     headers: HeaderMap,
     UrlPath(workspace): UrlPath<String>,
 ) -> Response {
-    let tenant = match admin_tenant(&state, &headers, &workspace) {
-        Ok(tenant) => tenant,
+    let workspace = match admin_workspace(&state, &headers, &workspace) {
+        Ok(workspace) => workspace,
         Err(response) => return response,
     };
     let keys = match keys(&state) {
@@ -443,7 +591,7 @@ async fn list(
         Err(response) => return response,
     };
     let listed: Vec<_> = keys
-        .listed(&tenant)
+        .listed(&workspace)
         .into_iter()
         .map(|(word, fingerprint, added_at)| {
             json!({"provider": word, "fingerprint": fingerprint, "added_at": added_at})
@@ -464,8 +612,8 @@ async fn store(
     UrlPath((workspace, word)): UrlPath<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
-    let tenant = match admin_tenant(&state, &headers, &workspace) {
-        Ok(tenant) => tenant,
+    let workspace = match admin_workspace(&state, &headers, &workspace) {
+        Ok(workspace) => workspace,
         Err(response) => return response,
     };
     let keys = match keys(&state) {
@@ -492,7 +640,7 @@ async fn store(
             format!("That doesn't look like a {} key.", provider.name()),
         );
     }
-    match keys.put(&tenant, provider, key) {
+    match keys.put(&workspace, provider, key) {
         Ok(fingerprint) => (
             StatusCode::OK,
             Json(json!({"provider": provider.word(), "fingerprint": fingerprint})),
@@ -511,8 +659,8 @@ async fn remove(
     headers: HeaderMap,
     UrlPath((workspace, word)): UrlPath<(String, String)>,
 ) -> Response {
-    let tenant = match admin_tenant(&state, &headers, &workspace) {
-        Ok(tenant) => tenant,
+    let workspace = match admin_workspace(&state, &headers, &workspace) {
+        Ok(workspace) => workspace,
         Err(response) => return response,
     };
     let keys = match keys(&state) {
@@ -522,7 +670,7 @@ async fn remove(
     let Some(provider) = provider(&word) else {
         return unknown_provider(&word);
     };
-    match keys.delete(&tenant, provider) {
+    match keys.delete(&workspace, provider) {
         Ok(true) => Json(json!({"provider": provider.word(), "deleted": true})).into_response(),
         Ok(false) => refused(
             StatusCode::NOT_FOUND,
@@ -542,7 +690,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn direct_provider_keys_are_sealed_and_bound_to_the_tenant() {
+    fn direct_provider_keys_are_sealed_and_bound_to_the_workspace() {
         let dir = tempfile::tempdir().unwrap();
         let (keyring, _) = Keyring::scratch("direct").unwrap();
         let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
@@ -571,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_are_sealed_per_tenant_and_never_kept_in_the_clear() {
+    fn keys_are_sealed_per_workspace_and_never_kept_in_the_clear() {
         let dir = tempfile::tempdir().unwrap();
         let (keyring, _) = Keyring::scratch("k1").unwrap();
         let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
@@ -587,11 +735,11 @@ mod tests {
             keys.upstreams("acme")[0].account().id,
             inference::run::CALLER_KEY
         );
-        // A record moved to another tenant does not open there.
+        // A record moved to another workspace does not open there.
         {
             let mut saved = keys.saved.lock().unwrap();
-            let moved = saved.keys.remove("acme").unwrap();
-            saved.keys.insert("other".into(), moved);
+            let moved = saved.workspaces.remove("acme").unwrap();
+            saved.workspaces.insert("other".into(), moved);
         }
         assert!(keys.upstreams("other").is_empty());
         assert_eq!(
@@ -601,8 +749,8 @@ mod tests {
         );
         {
             let mut saved = keys.saved.lock().unwrap();
-            let moved = saved.keys.remove("other").unwrap();
-            saved.keys.insert("acme".into(), moved);
+            let moved = saved.workspaces.remove("other").unwrap();
+            saved.workspaces.insert("acme".into(), moved);
         }
         assert!(keys.delete("acme", Provider::OpenRouter).unwrap());
         assert!(!keys.delete("acme", Provider::OpenRouter).unwrap());
@@ -644,5 +792,121 @@ mod tests {
         assert!(theirs.delete("acme", Provider::OpenRouter).unwrap());
         assert!(keys.listed("acme").is_empty());
         assert!(!keys.delete("acme", Provider::OpenRouter).unwrap());
+    }
+
+    /// Accounts with one workspace on the tenant `solo` and two on the
+    /// shared tenant `signup`: (store, solo's, Ada's, Bo's).
+    fn three_workspaces(dir: &Path) -> (tenancy::accounts::Store, String, String, String) {
+        let accounts = tenancy::Accounts::install(dir).unwrap();
+        let mut made = Vec::new();
+        for (label, tenant) in [("Solo", "solo"), ("Ada", "signup"), ("Bo", "signup")] {
+            let account = accounts.create_account(label, &[]).unwrap();
+            let ws = accounts
+                .create_workspace(
+                    &account.id,
+                    label,
+                    tenancy::WorkspaceKind::Personal,
+                    tenant,
+                    None,
+                )
+                .unwrap();
+            made.push(ws.id);
+        }
+        let store = accounts.store().unwrap();
+        let bo = made.pop().unwrap();
+        let ada = made.pop().unwrap();
+        let solo = made.pop().unwrap();
+        (store, solo, ada, bo)
+    }
+
+    /// A key as the store sealed it before #11186: by tenant.
+    fn sealed_by_tenant(keyring: &Keyring, tenant: &str, key: &str) -> Kept {
+        Kept {
+            sealed: keyring
+                .seal(
+                    &associated_by_tenant(tenant, Provider::OpenRouter),
+                    key.as_bytes(),
+                )
+                .unwrap(),
+            fingerprint: model_access::fingerprint(key),
+            added_at: 1,
+        }
+    }
+
+    /// #11186: keys saved by tenant move to the tenant's only workspace;
+    /// a key on the shared sign-up tenant goes to no one's workspace.
+    #[test]
+    fn tenant_kept_keys_move_to_their_only_workspace_and_never_to_a_shared_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, solo, ada, bo) = three_workspaces(dir.path());
+        let (keyring, document) = Keyring::scratch("k1").unwrap();
+        let mut legacy = Saved::default();
+        for (tenant, key) in [("solo", "sk-or-v1-solo"), ("signup", "sk-or-v1-someone")] {
+            legacy
+                .keys
+                .entry(tenant.into())
+                .or_default()
+                .insert("openrouter".into(), sealed_by_tenant(&keyring, tenant, key));
+        }
+        std::fs::write(dir.path().join(STORE), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
+        // Before the move, nobody's call uses either key.
+        for workspace in [&solo, &ada, &bo] {
+            assert!(keys.upstreams(workspace).is_empty());
+            assert!(keys.listed(workspace).is_empty());
+        }
+        assert_eq!(keys.adopt(&store).unwrap(), (1, 1));
+        assert_eq!(keys.upstreams(&solo).len(), 1);
+        assert!(keys.upstreams(&ada).is_empty());
+        assert!(keys.upstreams(&bo).is_empty());
+        // Kept across a restart, and moving again changes nothing.
+        let reopened =
+            Keys::with_keyring(dir.path(), Keyring::parse(document.as_bytes()).unwrap()).unwrap();
+        assert_eq!(reopened.upstreams(&solo).len(), 1);
+        assert_eq!(reopened.adopt(&store).unwrap(), (0, 1));
+        let file = std::fs::read_to_string(dir.path().join(STORE)).unwrap();
+        assert!(!file.contains("sk-or-v1"));
+    }
+
+    /// The same in the account database, with the shared tenant's key
+    /// named for Ada's workspace by an operator. Runs with
+    /// `TENANCY_TEST_DATABASE_URL` set; passes without it.
+    #[test]
+    fn a_named_tenant_key_moves_to_that_workspace_in_the_database() {
+        let Some(url) = std::env::var("TENANCY_TEST_DATABASE_URL")
+            .ok()
+            .filter(|u| !u.is_empty())
+        else {
+            eprintln!("skipped: TENANCY_TEST_DATABASE_URL is not set");
+            return;
+        };
+        let database = tenancy::db::Database::scratch(&url).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        tenancy::db::attach(dir.path(), database.clone());
+        let (store, solo, ada, bo) = three_workspaces(dir.path());
+        let (keyring, _) = Keyring::scratch("k1").unwrap();
+        for (tenant, key) in [("solo", "sk-or-v1-solo"), ("signup", "sk-or-v1-ada")] {
+            let record = serde_json::to_value(sealed_by_tenant(&keyring, tenant, key)).unwrap();
+            database
+                .execute(
+                    "INSERT INTO identity.provider_keys_by_tenant (tenant, provider, record) VALUES ($1, 'openrouter', $2)",
+                    &[&tenant, &record],
+                )
+                .unwrap();
+        }
+        let keys = Keys::with_keyring(dir.path(), keyring).unwrap();
+        assert_eq!(keys.adopt(&store).unwrap(), (1, 1));
+        assert!(keys.upstreams(&ada).is_empty());
+        tenancy::db::records::assign_tenant_provider_key(&database, "signup", "openrouter", &ada)
+            .unwrap();
+        assert_eq!(keys.adopt(&store).unwrap(), (1, 0));
+        assert_eq!(keys.upstreams(&solo).len(), 1);
+        assert_eq!(keys.upstreams(&ada).len(), 1);
+        assert!(keys.upstreams(&bo).is_empty());
+        assert!(
+            tenancy::db::records::tenant_provider_keys(&database)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

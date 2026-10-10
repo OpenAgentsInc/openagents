@@ -332,22 +332,24 @@ impl Book {
             .rolled(now_day)
     }
 
-    fn free_used(&self, tenant: &str, now_day: u64) -> u32 {
+    /// Free requests `scope` (a workspace, or a service tenant) took
+    /// today. Never counted by the tenant of a workspace (#11186).
+    fn free_used(&self, scope: &str, now_day: u64) -> u32 {
         self.saved
             .free
-            .get(tenant)
+            .get(scope)
             .filter(|count| count.day == now_day)
             .map_or(0, |count| count.used)
     }
 
-    /// Takes one free request for `tenant` today, if one is left.
-    fn take_free(&mut self, tenant: &str, per_day: u32, now_day: u64) -> bool {
-        let used = self.free_used(tenant, now_day);
+    /// Takes one free request for `scope` today, if one is left.
+    fn take_free(&mut self, scope: &str, per_day: u32, now_day: u64) -> bool {
+        let used = self.free_used(scope, now_day);
         if used >= per_day {
             return false;
         }
         self.saved.free.insert(
-            tenant.to_owned(),
+            scope.to_owned(),
             DayCount {
                 day: now_day,
                 used: used + 1,
@@ -356,8 +358,8 @@ impl Book {
         self.save().is_ok()
     }
 
-    fn give_back_free(&mut self, tenant: &str, now_day: u64) {
-        if let Some(count) = self.saved.free.get_mut(tenant)
+    fn give_back_free(&mut self, scope: &str, now_day: u64) {
+        if let Some(count) = self.saved.free.get_mut(scope)
             && count.day == now_day
         {
             count.used = count.used.saturating_sub(1);
@@ -528,10 +530,10 @@ impl inference::run::Admitted for Held {
 pub(crate) struct Public {
     pub tenant: String,
     pub key_id: String,
-    pub token: String,
     pub scopes: Option<keys::Scopes>,
-    /// The `X-Workspace-Id` header, when sent.
-    pub workspace: Option<String>,
+    /// The workspace the key acts in ([`key_scope`]): its free count, its
+    /// balance, its own provider keys and stored responses.
+    pub scope: String,
 }
 
 fn limit(param: &str, message: impl Into<String>) -> ApiError {
@@ -612,6 +614,8 @@ pub(crate) async fn check_key(
 pub(crate) struct Ticket {
     request_id: String,
     tenant: String,
+    /// Whose free count it took ([`Public::scope`]).
+    scope: String,
     key_id: String,
     kind: Kind,
 }
@@ -705,15 +709,23 @@ pub(crate) fn priced(
     })
 }
 
-/// The workspace a public key pays from: the `X-Workspace-Id` it named, or
-/// the one workspace on its tenant, checked for current membership when
-/// the account surface is configured.
-fn workspace_of(state: &ServeState, public: &Public) -> Result<String, ApiError> {
+/// Whose a key's per-person state is (#11186): its free count, its
+/// balance, its own provider keys, its stored responses. The workspace it
+/// acts in: the `X-Workspace-Id` it named (`named`), when the key's
+/// account is a current member there, or else
+/// [`tenancy::accounts::Store::key_workspace`]. The tenant only when no
+/// workspace is bound to it (an operator's service tenant) or the account
+/// surface isn't configured. Every personal workspace made by sign-up
+/// shares one tenant, so a person's state is never the tenant's.
+pub(crate) fn key_scope(
+    state: &ServeState,
+    tenant: &str,
+    key_id: &str,
+    token: &str,
+    named: Option<&str>,
+) -> Result<String, ApiError> {
     if state.config.accounts.is_none() {
-        return Ok(public
-            .workspace
-            .clone()
-            .unwrap_or_else(|| public.tenant.clone()));
+        return Ok(named.map_or_else(|| tenant.to_owned(), str::to_owned));
     }
     let unavailable = || {
         ApiError::new(
@@ -722,37 +734,39 @@ fn workspace_of(state: &ServeState, public: &Public) -> Result<String, ApiError>
         )
     };
     let accounts = tenancy::Accounts::open(&state.dir).map_err(|_| unavailable())?;
-    let workspace = match &public.workspace {
-        Some(named) => named.clone(),
-        None => {
-            let store = accounts.store().map_err(|_| unavailable())?;
-            let mut found = store
-                .workspaces
-                .iter()
-                .filter(|(_, ws)| ws.tenant == public.tenant)
-                .map(|(id, _)| id.clone());
-            match (found.next(), found.next()) {
-                (Some(one), None) => one,
-                (None, _) => return Ok(public.tenant.clone()),
-                (Some(_), Some(_)) => {
-                    return Err(ApiError::invalid_request(
-                        "X-Workspace-Id",
-                        "Your key reaches more than one workspace. Send an X-Workspace-Id header naming the one to pay from.",
-                    ));
-                }
-            }
-        }
-    };
-    let registry = Registry::open(&state.dir).map_err(|_| unavailable())?;
-    accounts
-        .authenticate_key(registry.manifest(), &workspace, &public.token)
-        .map_err(|_| {
-            ApiError::new(
-                ErrorType::Unauthorized,
-                "Your key doesn't belong to a current member of that workspace.",
-            )
-        })?;
-    Ok(workspace)
+    if let Some(named) = named {
+        let registry = Registry::open(&state.dir).map_err(|_| unavailable())?;
+        accounts
+            .authenticate_key(registry.manifest(), named, token)
+            .map_err(|_| {
+                ApiError::new(
+                    ErrorType::Unauthorized,
+                    "Your key doesn't belong to a current member of that workspace.",
+                )
+            })?;
+        return Ok(named.to_owned());
+    }
+    let store = accounts.store().map_err(|_| unavailable())?;
+    match store.key_workspace(tenant, key_id) {
+        tenancy::accounts::KeyWorkspace::Workspace(workspace) => Ok(workspace),
+        tenancy::accounts::KeyWorkspace::NoneOnTenant => Ok(tenant.to_owned()),
+        tenancy::accounts::KeyWorkspace::Ambiguous => Err(ApiError::invalid_request(
+            "X-Workspace-Id",
+            "Your key reaches more than one workspace. Send an X-Workspace-Id header naming the one to use.",
+        )),
+        tenancy::accounts::KeyWorkspace::Unheld => Err(ApiError::new(
+            ErrorType::Unauthorized,
+            "Your key doesn't belong to a current member of a workspace.",
+        )),
+    }
+}
+
+/// The `X-Workspace-Id` a request named, when it named one.
+pub(crate) fn named_workspace(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("x-workspace-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
 }
 
 /// Admits a planned public request: free when the free tier covers every
@@ -773,6 +787,7 @@ pub(crate) async fn admit(
     let ticket = |kind| Ticket {
         request_id: request_id.to_owned(),
         tenant: public.tenant.clone(),
+        scope: public.scope.clone(),
         key_id: public.key_id.clone(),
         kind,
     };
@@ -807,7 +822,7 @@ pub(crate) async fn admit(
             .all(|attempt| free.models.contains(&attempt.model))
     {
         let mut book = book.lock().await;
-        if book.take_free(&public.tenant, free.requests_per_day, day) {
+        if book.take_free(&public.scope, free.requests_per_day, day) {
             book.record_charge(
                 request_id,
                 Charge {
@@ -871,7 +886,7 @@ pub(crate) async fn admit(
     let Some(mut ledger) = state.money_lock().await else {
         return Err(no_balance());
     };
-    let workspace = workspace_of(state, public)?;
+    let workspace = public.scope.clone();
     if ledger.shared_mode(&workspace).is_some() {
         return Err(ApiError::new(
             ErrorType::LimitReached,
@@ -936,7 +951,7 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
     match &ticket.kind {
         Kind::Free => {
             if let Some(book) = &state.inference_book {
-                book.lock().await.give_back_free(&ticket.tenant, today());
+                book.lock().await.give_back_free(&ticket.scope, today());
             }
         }
         Kind::Mine => {}
@@ -1178,13 +1193,28 @@ async fn key_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> R
     let Some(book) = &state.inference_book else {
         return api_error(&book_trouble());
     };
+    let token = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    let scope = match key_scope(
+        &state,
+        &key.tenant,
+        &key.key_id,
+        token,
+        named_workspace(&headers),
+    ) {
+        Ok(scope) => scope,
+        Err(error) => return api_error(&error),
+    };
     let day = today();
     let (limits, spend, free_used) = {
         let book = book.lock().await;
         (
             book.limits(&key.key_id),
             book.spend(&key.key_id, day),
-            book.free_used(&key.tenant, day),
+            book.free_used(&scope, day),
         )
     };
     let free = state
@@ -1206,34 +1236,9 @@ async fn key_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> R
         .inference
         .as_ref()
         .is_some_and(|inference| inference.service_tenants.contains(&key.tenant));
-    let public = Public {
-        tenant: key.tenant.clone(),
-        key_id: key.key_id.clone(),
-        token: String::new(),
-        scopes: key.scopes.clone(),
-        workspace: headers
-            .get("x-workspace-id")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned),
-    };
     let balance = match state.money_lock().await {
         Some(ledger) => {
-            let workspace = public
-                .workspace
-                .clone()
-                .or_else(|| {
-                    tenancy::Accounts::open(&state.dir)
-                        .ok()
-                        .and_then(|accounts| accounts.store().ok())
-                        .and_then(|store| {
-                            store
-                                .workspaces
-                                .iter()
-                                .find(|(_, ws)| ws.tenant == key.tenant)
-                                .map(|(id, _)| id.clone())
-                        })
-                })
-                .unwrap_or_else(|| key.tenant.clone());
+            let workspace = scope;
             ledger.balance(&workspace).ok().map(|balance| {
                 json!({
                     "workspace": workspace,
@@ -1293,6 +1298,37 @@ async fn usage_view(
             .any(|attempt| attempt.tenant.as_deref() != Some(key.tenant.as_str()))
     {
         return missing();
+    }
+    // On a tenant many workspaces share, only a key of the caller's own
+    // workspace made it (#11186).
+    if state.config.accounts.is_some() {
+        let token = headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .unwrap_or_default();
+        let Ok(scope) = key_scope(
+            &state,
+            &key.tenant,
+            &key.key_id,
+            token,
+            named_workspace(&headers),
+        ) else {
+            return missing();
+        };
+        let ours = scope == key.tenant
+            || tenancy::Accounts::open(&state.dir)
+                .and_then(|accounts| accounts.store())
+                .is_ok_and(|store| {
+                    attempts.iter().all(|attempt| {
+                        attempt.key_id.as_deref().is_some_and(|made_by| {
+                            store.key_in_workspace(&scope, &key.tenant, made_by)
+                        })
+                    })
+                });
+        if !ours {
+            return missing();
+        }
     }
     let answered = attempts
         .iter()

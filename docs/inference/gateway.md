@@ -159,9 +159,10 @@ gateway as the whole context in `input`, with `store: false` and no
 - **`store: true` is opt-in per request.** The default is `false`: nothing
   is kept. A stored response is the response plus the context it answered,
   sealed with AES-256-GCM to its owner and id, under the gateway's state
-  directory (`inference/responses/<sha256(tenant)>/<id>.json`). It belongs
-  to the tenant whose key made it: another tenant's read, delete, or
-  `previous_response_id` gets "not found". It expires after
+  directory (`inference/responses/<sha256(owner)>/<id>.json`). It belongs
+  to the workspace the key that made it acts in (a service tenant's own
+  key: the tenant), never to a tenant many workspaces share (#11186):
+  anyone else's read, delete, or `previous_response_id` gets "not found". It expires after
   `inference.store.retention_days` (30 by default) and
   `DELETE /v1/responses/{id}` removes it at once. Without
   `inference.store` configured, `store: true` is `400`.
@@ -178,8 +179,9 @@ gateway as the whole context in `input`, with `store: false` and no
 - **Compaction.** `POST /v1/responses/compact` (`model` required) asks the
   model for a summary of the conversation and returns the user's messages
   plus one `compaction` item whose `encrypted_content` is the summary
-  sealed to the caller's tenant. Sent back as input, the item opens into a
-  developer message holding the summary; for another tenant, or another
+  sealed to the caller's workspace (as stored responses are). Sent back as
+  input, the item opens into a developer message holding the summary; for
+  another workspace, or another
   gateway's key, it is `400 invalid_compaction`. The summary pass is
   metered and priced like any request.
 - **WebSocket.** `GET /v1/responses` upgraded, with the same key in
@@ -726,8 +728,9 @@ P1 public API as built (#11065), local only until deployed:
   WebSocket) is checked against the key's limits, planned
   (`Gateway::prepare`), admitted, sent (`Gateway::send`), and settled.
 - Free tier: `inference.public.free_tier` (`requests_per_day`, `models`),
-  counted per workspace (tenant) per UTC day so minting keys does not add
-  free requests. A request is free only when every planned attempt is a
+  counted per workspace per UTC day so minting keys does not add free
+  requests, and never per tenant, which every personal workspace made by
+  sign-up shares (#11186). A request is free only when every planned attempt is a
   listed model; one that fails before its first token gives its count back.
 - Paying: one `tenancy::money` hold per distinct model the plan may try,
   priced at that model's rate card row plus margin (capacity `inference`,
@@ -738,8 +741,12 @@ P1 public API as built (#11065), local only until deployed:
   usage; the others are released, since attempts that fall back before
   their first token are never charged. No usage at the end, or a caller
   who leaves mid-stream, leaves the hold outstanding for reconciliation.
-  The workspace is `X-Workspace-Id` or the one workspace on the key's
-  tenant, checked for current membership. No account or too little
+  The workspace is the one the key acts in
+  (`inference_public::key_scope`, #11186): `X-Workspace-Id` when the key's
+  account is a current member there, otherwise the one workspace on the
+  key's tenant where that account is an active member, or its personal one
+  among several (several and none personal: `400` naming
+  `X-Workspace-Id`). A service tenant with no workspace keeps its tenant. No account or too little
   balance is `402 insufficient_balance`.
 - Limits only the key's owner sets (`GET`/`PUT
   /v1/workspaces/{ws}/keys/{key}/limits`, a signed-in member, never the
@@ -765,7 +772,8 @@ P1 public API as built (#11065), local only until deployed:
   `/docs/api/models` reads the same JSON through the site's API alias.
 - `GET /v1/usage/{request_id}` (the meter keeps 25 hours) and `GET
   /v1/key` (limits, spend today, this month, and in total, free requests
-  left, balance), to the key's own tenant only.
+  left, balance), to the key's own workspace only: a request made by
+  another workspace's key on the same tenant is "not found".
 - Web Settings, API keys (`/settings/api-keys`): make a key with a name
   and an optional monthly spending limit (shown once), and revoke keys.
 - `openagents-web --inference http://HOST:PORT` (or
@@ -819,16 +827,23 @@ P1 bring your own key as built (#11067):
 
 - `inference.byok.keyring` names an `oa-seal` keyring (a private file
   outside the registry). A workspace's own OpenRouter, Vercel AI Gateway, Anthropic, OpenAI,
-  and Google keys are sealed with it (AES-256-GCM, bound to the tenant and
-  provider) in `inference-provider-keys.json` beside the registry
+  and Google keys are sealed with it (AES-256-GCM, bound to the workspace
+  and provider) in `inference-provider-keys.json` beside the registry, or
+  `identity.provider_keys` (`workspace_id`, `provider`) in the account
+  database
   (`crates/gateway/src/inference_byok.rs`). Routes, for a signed-in owner
   or admin and never an API key: `GET /v1/workspaces/{ws}/provider-keys`,
   `PUT` (`{"key": "..."}`) and `DELETE
   /v1/workspaces/{ws}/provider-keys/{openrouter|vercel|anthropic|openai|google}`. Answers carry
   the provider and `model_access::fingerprint` only; the key is never
   logged or answered back.
-- Every caller's `run::Caller::own` holds adapters on its tenant's keys,
-  offered with payer `mine` only. `openagents.pay: "mine"` is routed to
+- Every caller's `run::Caller::own` holds adapters on the keys of the
+  workspace its API key acts in, offered with payer `mine` only. Until
+  #11186 they were kept by registry tenant, which every personal workspace
+  made by sign-up shares, so one person's key was everyone's; keys saved
+  that way move to their workspace when the gateway starts (the tenant's
+  only workspace, or the one an operator names with `tenant-db
+  assign-provider-key`) and are otherwise used by no one. `openagents.pay: "mine"` is routed to
   them alone and never falls back to ours; with no key it is `400` naming
   `openagents.pay`. The router keeps our OpenRouter and the caller's apart
   (same model and upstream name, different payer).

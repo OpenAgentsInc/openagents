@@ -328,6 +328,106 @@ impl Store {
         Ok(store)
     }
 
+    /// The account holding the bearer key `key_id` (its principal
+    /// `key:<id>`), when one does.
+    #[must_use]
+    pub fn key_owner(&self, key_id: &str) -> Option<&str> {
+        let principal = format!("key:{key_id}");
+        self.accounts
+            .values()
+            .find(|account| account.principals.iter().any(|p| *p == principal))
+            .map(|account| account.id.as_str())
+    }
+
+    /// Whether the bearer key `key_id` on `key_tenant` belongs to
+    /// `workspace` (#11186): it is on the workspace's tenant and the
+    /// account holding it is a member there (in any state, so an admin
+    /// can still revoke a departed member's key), or no account holds it
+    /// and the workspace is the only one on that tenant. Every personal
+    /// workspace made by sign-up shares one tenant, so the tenant alone
+    /// never decides.
+    #[must_use]
+    pub fn key_in_workspace(&self, workspace: &str, key_tenant: &str, key_id: &str) -> bool {
+        let Some(ws) = self.workspaces.get(workspace) else {
+            return false;
+        };
+        if ws.tenant != key_tenant {
+            return false;
+        }
+        match self.key_owner(key_id) {
+            Some(account) => ws.members.contains_key(account),
+            None => {
+                self.workspaces
+                    .values()
+                    .filter(|other| other.tenant == key_tenant)
+                    .count()
+                    == 1
+            }
+        }
+    }
+
+    /// The workspace a bearer key acts in when its caller names none
+    /// (#11186): the one workspace on the key's tenant where the account
+    /// holding it is an active member, or, among several, that account's
+    /// personal workspace.
+    #[must_use]
+    pub fn key_workspace(&self, key_tenant: &str, key_id: &str) -> KeyWorkspace {
+        let on_tenant: Vec<&Workspace> = self
+            .workspaces
+            .values()
+            .filter(|ws| ws.tenant == key_tenant)
+            .collect();
+        if on_tenant.is_empty() {
+            return KeyWorkspace::NoneOnTenant;
+        }
+        let Some(account) = self.key_owner(key_id) else {
+            return match on_tenant.as_slice() {
+                [only] => KeyWorkspace::Workspace(only.id.clone()),
+                _ => KeyWorkspace::Unheld,
+            };
+        };
+        let active: Vec<&Workspace> = on_tenant
+            .into_iter()
+            .filter(|ws| {
+                ws.members
+                    .get(account)
+                    .is_some_and(|m| m.status == MemberStatus::Active)
+            })
+            .collect();
+        match active.as_slice() {
+            [] => KeyWorkspace::Unheld,
+            [only] => KeyWorkspace::Workspace(only.id.clone()),
+            several => {
+                let personal: Vec<&&Workspace> = several
+                    .iter()
+                    .filter(|ws| ws.kind == WorkspaceKind::Personal)
+                    .collect();
+                match personal.as_slice() {
+                    [only] => KeyWorkspace::Workspace(only.id.clone()),
+                    _ => KeyWorkspace::Ambiguous,
+                }
+            }
+        }
+    }
+}
+
+/// Where a bearer key acts ([`Store::key_workspace`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyWorkspace {
+    /// This workspace.
+    Workspace(String),
+    /// No workspace is bound to the key's tenant (an operator's service
+    /// tenant): the tenant is the owner.
+    NoneOnTenant,
+    /// No account holds the key, or its account is no active member of a
+    /// workspace on the key's tenant, and the tenant has several.
+    Unheld,
+    /// The account is in several workspaces on the tenant and none is its
+    /// own: the caller names one (`X-Workspace-Id`).
+    Ambiguous,
+}
+
+impl Store {
     /// The checks a store must pass before anything reads it.
     ///
     /// This is the fail-closed boundary: a schema tag this crate does not
@@ -1898,6 +1998,75 @@ mod tests {
                 seats,
             )
             .unwrap()
+    }
+
+    /// #11186: on a tenant every personal workspace shares, a key acts in
+    /// its own account's workspace and belongs to no one else's.
+    #[test]
+    fn a_key_acts_in_its_own_workspace_never_the_tenants() {
+        const ADA: &str = "aaaaaaaaaaaaaaaa";
+        const BO: &str = "bbbbbbbbbbbbbbbb";
+        const CY: &str = "cccccccccccccccc";
+        let (_dir, accounts) = installed();
+        let ada = accounts
+            .create_account("Ada", &["key:aaaaaaaaaaaaaaaa".into()])
+            .unwrap();
+        let bo = accounts
+            .create_account("Bo", &["key:bbbbbbbbbbbbbbbb".into()])
+            .unwrap();
+        let personal = |who: &Account| {
+            accounts
+                .create_workspace(&who.id, &who.label, WorkspaceKind::Personal, "signup", None)
+                .unwrap()
+                .id
+        };
+        let (ada_ws, bo_ws) = (personal(&ada), personal(&bo));
+        let store = accounts.store().unwrap();
+        assert_eq!(
+            store.key_workspace("signup", ADA),
+            KeyWorkspace::Workspace(ada_ws.clone())
+        );
+        assert_eq!(
+            store.key_workspace("signup", BO),
+            KeyWorkspace::Workspace(bo_ws.clone())
+        );
+        assert!(store.key_in_workspace(&ada_ws, "signup", ADA));
+        assert!(!store.key_in_workspace(&ada_ws, "signup", BO));
+        assert!(!store.key_in_workspace(&ada_ws, "acme", ADA));
+        // A key nobody holds on a shared tenant reaches no workspace.
+        assert_eq!(
+            store.key_workspace("signup", "dddddddddddddddd"),
+            KeyWorkspace::Unheld
+        );
+        assert!(!store.key_in_workspace(&ada_ws, "signup", "dddddddddddddddd"));
+        // A tenant with no workspace (an operator's service tenant).
+        assert_eq!(
+            store.key_workspace("house", ADA),
+            KeyWorkspace::NoneOnTenant
+        );
+        // Ada also in a team on the tenant: her personal workspace still,
+        // and the team's when she has no personal one there.
+        let team = accounts
+            .create_workspace(&ada.id, "Team", WorkspaceKind::Organization, "signup", None)
+            .unwrap();
+        let store = accounts.store().unwrap();
+        assert_eq!(
+            store.key_workspace("signup", ADA),
+            KeyWorkspace::Workspace(ada_ws)
+        );
+        assert!(store.key_in_workspace(&team.id, "signup", ADA));
+        let cy = accounts
+            .create_account("Cy", &["key:cccccccccccccccc".into()])
+            .unwrap();
+        for name in ["One", "Two"] {
+            accounts
+                .create_workspace(&cy.id, name, WorkspaceKind::Organization, "signup", None)
+                .unwrap();
+        }
+        assert_eq!(
+            accounts.store().unwrap().key_workspace("signup", CY),
+            KeyWorkspace::Ambiguous
+        );
     }
 
     /// Two writers at once, many times: every account each made is kept,

@@ -214,22 +214,35 @@ fn github_records(dir: &Path) -> Result<Vec<(String, Value)>, Error> {
     Ok(records)
 }
 
-/// The provider keys in `dir`: (tenant, provider, kept record).
-fn provider_records(dir: &Path) -> Result<Vec<(String, String, Value)>, Error> {
+/// The provider keys in `dir`: (where, owner, provider, kept record).
+/// The file keeps them by workspace (`workspaces`), and, written before
+/// #11186, by registry tenant (`keys`).
+fn provider_records(dir: &Path) -> Result<Vec<(KeptBy, String, String, Value)>, Error> {
     let Some(saved) = read_json(&dir.join(PROVIDER_KEYS))? else {
         return Ok(Vec::new());
     };
     let mut records = Vec::new();
-    if let Some(tenants) = saved.get("keys").and_then(Value::as_object) {
-        for (tenant, providers) in tenants {
-            if let Some(providers) = providers.as_object() {
-                for (provider, kept) in providers {
-                    records.push((tenant.clone(), provider.clone(), kept.clone()));
+    for (field, by) in [("workspaces", KeptBy::Workspace), ("keys", KeptBy::Tenant)] {
+        if let Some(owners) = saved.get(field).and_then(Value::as_object) {
+            for (owner, providers) in owners {
+                if let Some(providers) = providers.as_object() {
+                    for (provider, kept) in providers {
+                        records.push((by, owner.clone(), provider.clone(), kept.clone()));
+                    }
                 }
             }
         }
     }
     Ok(records)
+}
+
+/// Whose a provider key in the file is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeptBy {
+    Workspace,
+    /// A registry tenant, from before #11186: the gateway moves it to its
+    /// workspace (`identity.provider_keys_by_tenant`).
+    Tenant,
 }
 
 /// Write one account's GitHub-access record.
@@ -247,23 +260,32 @@ pub fn put_github(database: &Database, account: &str, record: &Value) -> Result<
     Ok(())
 }
 
-/// Write one provider key.
+/// Write one provider key, kept by workspace or (from before #11186) by
+/// tenant.
 ///
 /// # Errors
 ///
 /// The write fails.
-pub fn put_provider_key(
+fn put_provider_key(
     database: &Database,
-    tenant: &str,
+    by: KeptBy,
+    owner: &str,
     provider: &str,
     record: &Value,
 ) -> Result<(), Error> {
-    database.execute(
-        "INSERT INTO identity.provider_keys (tenant, provider, record) VALUES ($1, $2, $3)
-         ON CONFLICT (tenant, provider) DO UPDATE SET record = EXCLUDED.record, updated_at = now()
-         WHERE identity.provider_keys.record IS DISTINCT FROM EXCLUDED.record",
-        &[&tenant, &provider, record],
-    )?;
+    let sql = match by {
+        KeptBy::Workspace => {
+            "INSERT INTO identity.provider_keys (workspace_id, provider, record) VALUES ($1, $2, $3)
+             ON CONFLICT (workspace_id, provider) DO UPDATE SET record = EXCLUDED.record, updated_at = now()
+             WHERE identity.provider_keys.record IS DISTINCT FROM EXCLUDED.record"
+        }
+        KeptBy::Tenant => {
+            "INSERT INTO identity.provider_keys_by_tenant (tenant, provider, record) VALUES ($1, $2, $3)
+             ON CONFLICT (tenant, provider) DO UPDATE SET record = EXCLUDED.record, updated_at = now()
+             WHERE identity.provider_keys_by_tenant.record IS DISTINCT FROM EXCLUDED.record"
+        }
+    };
+    database.execute(sql, &[&owner, &provider, record])?;
     Ok(())
 }
 
@@ -314,8 +336,8 @@ pub fn import(database: &Database, dir: &Path, force: bool) -> Result<Report, Er
         put_github(database, &account, &record)?;
         report.github_access += 1;
     }
-    for (tenant, provider, record) in provider_records(dir)? {
-        put_provider_key(database, &tenant, &provider, &record)?;
+    for (by, owner, provider, record) in provider_records(dir)? {
+        put_provider_key(database, by, &owner, &provider, &record)?;
         report.provider_keys += 1;
     }
     Ok(report)
@@ -382,16 +404,21 @@ pub fn verify(database: &Database, dir: &Path) -> Result<Report, Error> {
                 .push(format!("github-access: account {account} differs")),
         }
     }
-    for (tenant, provider, record) in provider_records(dir)? {
-        let rows = database.query(
-            "SELECT record FROM identity.provider_keys WHERE tenant = $1 AND provider = $2",
-            &[&tenant, &provider],
-        )?;
+    for (by, owner, provider, record) in provider_records(dir)? {
+        let sql = match by {
+            KeptBy::Workspace => {
+                "SELECT record FROM identity.provider_keys WHERE workspace_id = $1 AND provider = $2"
+            }
+            KeptBy::Tenant => {
+                "SELECT record FROM identity.provider_keys_by_tenant WHERE tenant = $1 AND provider = $2"
+            }
+        };
+        let rows = database.query(sql, &[&owner, &provider])?;
         match rows.first().map(|row| row.get::<_, Value>(0)) {
             Some(held) if held == record => report.provider_keys += 1,
             _ => report
                 .mismatches
-                .push(format!("provider key {tenant}/{provider} differs")),
+                .push(format!("provider key {owner}/{provider} differs")),
         }
     }
     Ok(report)

@@ -687,6 +687,7 @@ pub(crate) fn admit(
             limits: PriceLimit::default(),
             admission: Some(Admission(run.clone())),
             own: inference::run::OwnUpstreams::default(),
+            owner: None,
         },
         headers: receipt_headers,
         receipt_id,

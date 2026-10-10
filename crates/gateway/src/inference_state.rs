@@ -104,7 +104,9 @@ pub(crate) fn engine(state: &ServeState) -> Result<&Arc<Sessions>, ApiError> {
     Ok(sessions)
 }
 
-/// Who owns what the caller stores.
+/// Who owns what the caller stores: the workspace its key acts in
+/// ([`Caller::owner`]), or its tenant when it reaches none (#11186).
+/// Zero retention stays the tenant's setting.
 pub(crate) fn owner(state: &ServeState, caller: &Caller) -> Owner {
     let tenant = caller.tenant.clone().unwrap_or_default();
     let zero_retention = state
@@ -113,7 +115,7 @@ pub(crate) fn owner(state: &ServeState, caller: &Caller) -> Owner {
         .as_ref()
         .is_some_and(|config| config.zero_retention_tenants.contains(&tenant));
     Owner {
-        tenant,
+        tenant: caller.owner.clone().unwrap_or(tenant),
         zero_retention,
     }
 }

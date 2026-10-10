@@ -86,6 +86,11 @@ pub struct Caller {
     /// They are offered only to `pay: "mine"`, which is offered nothing
     /// else, so a caller's key never pays for us and ours never for them.
     pub own: OwnUpstreams,
+    /// Who owns what the caller stores, when the server knows better than
+    /// the tenant: the workspace its key acts in. A tenant can be shared
+    /// by many workspaces (every personal workspace made by sign-up), so
+    /// a person's stored responses are never kept by tenant (#11186).
+    pub owner: Option<String>,
 }
 
 /// The caller's own adapters ([`Caller::own`]).
@@ -582,15 +587,26 @@ impl Gateway {
                 ..Attempt::default()
             };
             let started = Instant::now();
-            let extra = if last == Some(index) { ceiling } else { deadline };
+            let extra = if last == Some(index) {
+                ceiling
+            } else {
+                deadline
+            };
             let waiting = move || {
                 observe(Progress::StillWorking {
                     attempt: number,
                     waited_ms: u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
                 });
             };
-            match first_token(&*upstream, request, &candidate.model, deadline, extra, &waiting)
-                .await
+            match first_token(
+                &*upstream,
+                request,
+                &candidate.model,
+                deadline,
+                extra,
+                &waiting,
+            )
+            .await
             {
                 Ok(open) => {
                     tried.push(ext::Attempt {

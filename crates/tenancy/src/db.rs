@@ -39,11 +39,18 @@ use tokio_postgres::{Client, NoTls, Row};
 
 /// The embedded migrations, in order. Each runs once, in its own
 /// transaction, recorded in `public.schema_migrations`.
-pub const MIGRATIONS: &[(i32, &str, &str)] = &[(
-    1,
-    "identity_workspace",
-    include_str!("../migrations/0001_identity_workspace.sql"),
-)];
+pub const MIGRATIONS: &[(i32, &str, &str)] = &[
+    (
+        1,
+        "identity_workspace",
+        include_str!("../migrations/0001_identity_workspace.sql"),
+    ),
+    (
+        2,
+        "provider_keys_by_workspace",
+        include_str!("../migrations/0002_provider_keys_by_workspace.sql"),
+    ),
+];
 
 /// The advisory lock key migrations run under.
 const MIGRATION_LOCK: i64 = 0x6f61_6d69_6772_0001;
