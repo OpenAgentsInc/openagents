@@ -310,6 +310,72 @@ pub fn check_gpu_cc(claims: &Value) -> Result<(usize, String), String> {
     Ok((gpus.len(), driver))
 }
 
+const METADATA: &str = "http://metadata.google.internal/computeMetadata/v1";
+
+async fn metadata(client: &reqwest::Client, path: &str) -> Result<String, String> {
+    let response = client
+        .get(format!("{METADATA}/{path}"))
+        .header("Metadata-Flavor", "Google")
+        .send()
+        .await
+        .map_err(|e| format!("the metadata server did not answer: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "the metadata server answered {}",
+            response.status()
+        ));
+    }
+    response.text().await.map_err(|e| e.to_string())
+}
+
+/// The last segment of a metadata path such as `projects/123/zones/z`.
+fn last_segment(value: &str) -> &str {
+    value.trim().rsplit('/').next().unwrap_or_default()
+}
+
+/// Stop this VM (`--idle-stop`): read the workload account's token, the
+/// project, zone and instance name from the metadata server and call
+/// Compute `instances.stop` on this instance. A stopped VM keeps its disk
+/// and bills only for it; the gateway starts it again on demand.
+///
+/// # Errors
+///
+/// When the metadata server or Compute refuses.
+pub async fn stop_self() -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let token: Value =
+        serde_json::from_str(&metadata(&client, "instance/service-accounts/default/token").await?)
+            .map_err(|e| e.to_string())?;
+    let token = token["access_token"]
+        .as_str()
+        .ok_or("the metadata server gave no access token")?
+        .to_string();
+    let project = metadata(&client, "project/project-id").await?;
+    let zone = metadata(&client, "instance/zone").await?;
+    let name = metadata(&client, "instance/name").await?;
+    let url = format!(
+        "https://compute.googleapis.com/compute/v1/projects/{}/zones/{}/instances/{}/stop",
+        project.trim(),
+        last_segment(&zone),
+        name.trim()
+    );
+    let response = client
+        .post(url)
+        .bearer_auth(token)
+        .header("Content-Length", "0")
+        .send()
+        .await
+        .map_err(|e| format!("Compute did not answer: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("Compute refused the stop: {}", response.status()));
+    }
+    Ok(())
+}
+
 /// A random 64-hex instance ID.
 #[must_use]
 pub fn instance_id() -> String {
@@ -338,6 +404,15 @@ mod tests {
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"exp":5}"#);
         assert_eq!(claims(&format!("a.{payload}.c")).unwrap()["exp"], 5);
         assert!(claims("nope").is_err());
+    }
+
+    #[test]
+    fn metadata_paths_end_in_the_name() {
+        assert_eq!(
+            last_segment("projects/157437760789/zones/us-central1-a\n"),
+            "us-central1-a"
+        );
+        assert_eq!(last_segment("oa-att-h100-1"), "oa-att-h100-1");
     }
 
     #[test]

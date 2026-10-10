@@ -50,12 +50,14 @@ Commands:
                             --weights PATH --psionic BIN [--operator HEX]
                             [--workload SLUG] [--teeserver SOCKET]
                             [--decision-device cpu|cuda] [--decision-chunk N]
-                            [--require-gpu-cc]
+                            [--require-gpu-cc] [--idle-stop SECS]
                             (OA_ATT_RELEASE and OA_ATT_PUBLISHER also work).
                             --require-gpu-cc refuses to start (and stops on
                             a refresh) unless Google's token says the GPU is
                             in confidential-computing mode (cc_mode ON, every
-                            GPU an H100).
+                            GPU an H100). --idle-stop stops this VM
+                            (Compute instances.stop on itself) once no
+                            decision has come for SECS.
       --pylon SLUG          The beacon's name (default: the host name).
       --label TEXT          Display label (default: the slug).
       --slots N             Concurrent jobs (default 2).
@@ -529,6 +531,7 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
             .map_err(|_| format!("--decision-chunk takes a number, not `{n}`"))?;
     }
     let require_gpu_cc = args.flag("--require-gpu-cc");
+    let idle_stop = args.number("--idle-stop", 0)?;
     let slug = args
         .value("--pylon")?
         .unwrap_or_else(|| if gpu { "att-h100" } else { "att-tdx" }.into());
@@ -703,6 +706,30 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
             }
         })
     };
+    let idler = (idle_stop > 0).then(|| {
+        let provider = Arc::clone(&provider);
+        tokio::spawn(async move {
+            let idle = Duration::from_secs(idle_stop);
+            let mut seen = provider.counters().await;
+            let mut since = std::time::Instant::now();
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                let now = provider.counters().await;
+                if now != seen {
+                    seen = now;
+                    since = std::time::Instant::now();
+                } else if since.elapsed() >= idle {
+                    eprintln!("pylon: idle, stopping");
+                    if let Err(why) = attested::stop_self().await {
+                        eprintln!("pylon: the idle stop failed: {why}");
+                    }
+                    // Try again after another idle period if the VM is
+                    // still up.
+                    since = std::time::Instant::now();
+                }
+            }
+        })
+    });
     let stop = async {
         let mut term =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
@@ -713,6 +740,9 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     };
     let result = provider.run(stop).await;
     refresher.abort();
+    if let Some(idler) = idler {
+        idler.abort();
+    }
     let _ = psionic_child.kill();
     result
 }

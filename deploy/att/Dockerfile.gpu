@@ -71,10 +71,13 @@ ENV OA_ATT_PUBLISHER=77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017e
     OPENAGENTS_PYLON_HOME=/tmp/pylon \
     LD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/cuda/lib64
 # --require-gpu-cc: refuse to start unless Google's token says the GPU is
-# an H100 in confidential-computing mode (NIP-ATT).
+# an H100 in confidential-computing mode (NIP-ATT). --idle-stop: after 15
+# minutes without a decision the workload stops its own VM (the workload
+# account may stop only this instance); the gateway starts it on demand.
 ENTRYPOINT ["/usr/local/bin/pylon", "serve", "--attested", \
     "--workload", "clef-decisions-gpu", \
     "--decision-device", "cuda", "--decision-chunk", "2048", "--require-gpu-cc", \
+    "--idle-stop", "900", \
     "--weights-url", "https://huggingface.co/ggml-org/Clef-Flash-GGUF/resolve/4a192915ef971886004b5b13294f2b4c7a7fc39d/Clef-Flash-Q4_K_M.gguf", \
     "--weights-sha256", "fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c", \
     "--weights", "/tmp/Clef-Flash-Q4_K_M.gguf", \
