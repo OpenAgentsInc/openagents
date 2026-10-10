@@ -1428,6 +1428,13 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     } else {
         None
     };
+    // The person's memory notes from their account (#11182), so the
+    // answer knows what Coder knows; none for a visitor not signed in.
+    let memory = if door.is_some() {
+        crate::account_memory::chat_notes(&app.config.chat_store, &owner).await
+    } else {
+        Vec::new()
+    };
     let mut job = match door {
         Some(door) => Some(
             door.ask(
@@ -1446,6 +1453,7 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                             ),
                             path: None,
                         }),
+                    memory,
                     ..Context::default()
                 },
                 reply.clone(),

@@ -459,6 +459,18 @@ fn settings_content(
                     div class="oa-settings-control" { (action_link("Manage", crate::api_keys::KEYS)) }
                 }
             }
+            section class="oa-settings-group" aria-labelledby="settings-memory" {
+                h2 #settings-memory { "Memory" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Your notes" }
+                        span class="oa-settings-hint" {
+                            "What Coder remembers about you, from computers with sync on. The chat uses them too."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::account_memory::PAGE)) }
+                }
+            }
             section class="oa-settings-group" aria-labelledby="settings-traces" {
                 h2 #settings-traces { "Traces" }
                 div class="oa-settings-row" {
