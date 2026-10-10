@@ -722,6 +722,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     ];
     if state.config.money.is_some() {
         routes.push(("/v1/balance", get(balance)));
+        routes.push(("/v1/workspaces/{workspace}/balance", get(workspace_balance)));
         if state
             .config
             .money
@@ -893,6 +894,45 @@ pub(crate) async fn models(
     if let Some(catalog) = catalog {
         body["object"] = catalog["object"].clone();
         body["data"] = catalog["data"].clone();
+    }
+    Ok(Json(body))
+}
+
+/// `GET /v1/workspaces/{workspace}/balance` (#11161): [`balance`] with the
+/// workspace in the path, the administration form (docs/api/design.md
+/// section 2.8). An `X-Workspace-Id` that names another workspace is a
+/// conflict; a key bound to another workspace reads nothing (`404`).
+async fn workspace_balance(
+    State(state): State<Arc<ServeState>>,
+    axum::extract::Path(workspace): axum::extract::Path<String>,
+    mut headers: HeaderMap,
+) -> Result<Json<Value>, Response> {
+    if headers.get_all("x-workspace-id").iter().count() > 1
+        || headers
+            .get("x-workspace-id")
+            .is_some_and(|named| named.as_bytes() != workspace.as_bytes())
+    {
+        return Err(gateway_error(
+            409,
+            "workspace_conflict",
+            "`X-Workspace-Id` names a different workspace than the path.",
+        ));
+    }
+    let Ok(named) = HeaderValue::from_str(&workspace) else {
+        return Err(gateway_error(
+            404,
+            "workspace_not_found",
+            "No such workspace here.",
+        ));
+    };
+    headers.insert("x-workspace-id", named);
+    let Json(body) = balance(State(state), headers).await?;
+    if body["workspace"].as_str() != Some(workspace.as_str()) {
+        return Err(gateway_error(
+            404,
+            "workspace_not_found",
+            "No such workspace here.",
+        ));
     }
     Ok(Json(body))
 }

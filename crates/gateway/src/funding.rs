@@ -658,10 +658,17 @@ pub(crate) fn routes() -> Vec<(
     &'static str,
     axum::routing::MethodRouter<std::sync::Arc<crate::serve::ServeState>>,
 )> {
-    vec![(
-        "/v1/workspaces/{workspace}/decision-funding/{door}",
-        axum::routing::post(handle).layer(axum::extract::DefaultBodyLimit::max(32 * 1024)),
-    )]
+    let route =
+        || axum::routing::post(handle).layer(axum::extract::DefaultBodyLimit::max(32 * 1024));
+    vec![
+        // A Lightning top-up (#11161): the product word for it.
+        ("/v1/workspaces/{workspace}/topups/{door}", route()),
+        // Its older name, until the two newest clients stop calling it.
+        (
+            "/v1/workspaces/{workspace}/decision-funding/{door}",
+            crate::envelope::deprecated(route(), "/decision-funding/", "/topups/"),
+        ),
+    ]
 }
 fn current(
     state: &crate::serve::ServeState,
