@@ -5130,6 +5130,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "futures-util",
+ "half",
  "hex",
  "hyper",
  "hyper-util",

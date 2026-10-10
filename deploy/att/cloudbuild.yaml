@@ -26,6 +26,7 @@ steps:
           .
         python3 -c 'import json; print("digest", json.load(open("/workspace/metadata.json"))["containerimage.digest"])' || cat /workspace/metadata.json
 options:
+  logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_32
   env:
     - SOURCE_DATE_EPOCH=0
