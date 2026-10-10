@@ -119,6 +119,10 @@ pub struct GatewayConfig {
     pub management_pubkey: Option<String>,
     pub relay_signer: Option<RelaySigner>,
     pub trust_proxy: bool,
+    /// Proxies in front of the relay that each append to `X-Forwarded-For`
+    /// (nginx, or Cloud Run's front end: 1; an external load balancer in
+    /// front of Cloud Run: 2). Used only with `trust_proxy`.
+    pub trusted_proxy_hops: usize,
     pub db_connections: usize,
     pub shutdown_grace: Duration,
     pub expiration_sweep: Duration,
@@ -147,6 +151,7 @@ impl GatewayConfig {
             management_pubkey: None,
             relay_signer: None,
             trust_proxy: false,
+            trusted_proxy_hops: 1,
             db_connections: 4,
             shutdown_grace: Duration::from_secs(10),
             expiration_sweep: Duration::from_secs(60),
@@ -195,6 +200,12 @@ impl GatewayConfig {
             .transpose()
             .map_err(|error| GatewayError::Config(error.to_string()))?;
         config.trust_proxy = parse_bool("NOSTR_RELAY_TRUST_PROXY", false)?;
+        config.trusted_proxy_hops = parse_or("NOSTR_RELAY_TRUSTED_HOPS", "1")?;
+        if config.trusted_proxy_hops == 0 {
+            return Err(GatewayError::Config(
+                "NOSTR_RELAY_TRUSTED_HOPS must be at least 1".to_owned(),
+            ));
+        }
         config.db_connections = parse_or("NOSTR_RELAY_DB_CONNECTIONS", "4")?;
         config.shutdown_grace =
             Duration::from_secs(parse_or("NOSTR_RELAY_SHUTDOWN_GRACE_SECONDS", "10")?);

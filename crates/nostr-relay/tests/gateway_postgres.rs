@@ -1000,6 +1000,17 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let closed = read_json(&mut subscriber);
     assert_eq!(closed[0], "CLOSED");
     assert!(closed[2].as_str().unwrap().starts_with("auth-required:"));
+    // NIP-77 sync reads history too, so it passes the same admission (NO-01).
+    send_json(&mut subscriber, json!(["NEG-OPEN", "neg", {}, "61"]));
+    let refused_sync = read_json(&mut subscriber);
+    assert_eq!(refused_sync[0], "NEG-ERR");
+    assert_eq!(refused_sync[1], "neg");
+    assert!(
+        refused_sync[2]
+            .as_str()
+            .unwrap()
+            .starts_with("auth-required:")
+    );
     authenticate(&mut subscriber, 20, &subscriber_challenge);
     send_json(&mut subscriber, json!(["UNSUPPORTED"]));
     assert_eq!(read_json(&mut subscriber)[0], "NOTICE");
@@ -1042,6 +1053,28 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
     assert_eq!(duplicate[2], true);
     assert!(duplicate[3].as_str().unwrap().starts_with("duplicate:"));
     assert_no_message(&mut subscriber);
+
+    // A truncated sync set would reconcile as complete; it is refused (NO-01).
+    let second = signed_event(21, now(), 1, Vec::new(), "second for sync");
+    send_json(&mut publisher, json!(["EVENT", second]));
+    assert_eq!(read_json(&mut publisher)[2], true);
+    assert_eq!(read_json(&mut subscriber)[2]["id"], second.id);
+    send_json(
+        &mut publisher,
+        json!(["NEG-OPEN", "partial", {"authors": [pubkey(21)], "kinds": [1], "limit": 1}, "61"]),
+    );
+    let partial = read_json(&mut publisher);
+    assert_eq!(partial[0], "NEG-ERR");
+    assert_eq!(partial[1], "partial");
+    assert_eq!(partial[2], "blocked: incomplete");
+    send_json(
+        &mut publisher,
+        json!(["NEG-OPEN", "whole", {"authors": [pubkey(21)], "kinds": [1]}, "61"]),
+    );
+    let whole = read_json(&mut publisher);
+    assert_eq!(whole[0], "NEG-MSG");
+    assert_eq!(whole[1], "whole");
+    send_json(&mut publisher, json!(["NEG-CLOSE", "whole"]));
 
     subscription_limit_contract(address_two);
     oversized_frame_contract(address_two);

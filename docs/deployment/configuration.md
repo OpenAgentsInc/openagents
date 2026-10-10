@@ -167,13 +167,18 @@ has no certificate configuration.
 | `NOSTR_RELAY_SEND_QUEUE_CAPACITY` | no | `256` | Maximum queued outbound messages per connection (8–65,536). Historical result batches and per-subscription EOSE buffers are each capped below half this value so their handoff remains bounded. A slow connection that fills the queue is closed. |
 
 When the relay runs behind a reverse proxy, the client IP is taken from the
-proxy connection's `X-Forwarded-For` / `X-Real-IP` header **only when**
+proxy connection's `X-Forwarded-For` header **only when**
 `NOSTR_RELAY_TRUST_PROXY=true` (default `false`). Never enable it when the
-binary is directly reachable.
+binary is directly reachable. The chain is read from the right: each trusted
+proxy appends the address it received the connection from, so the relay uses
+the entry `NOSTR_RELAY_TRUSTED_HOPS` places from the right end and ignores
+everything a client put to its left. `X-Real-IP` is used only when no
+`X-Forwarded-For` entry is usable.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `NOSTR_RELAY_TRUST_PROXY` | no | `false` | Trust forwarded-IP headers from the (single) upstream proxy. |
+| `NOSTR_RELAY_TRUSTED_HOPS` | no | `1` | Trusted proxies in front of the relay that each append to `X-Forwarded-For`. `1` for the shipped nginx config and for Cloud Run (its front end appends the client address); `2` for an external HTTPS load balancer in front of Cloud Run. |
 
 ### Operations
 

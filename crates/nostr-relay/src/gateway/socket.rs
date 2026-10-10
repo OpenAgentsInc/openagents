@@ -139,15 +139,31 @@ pub fn is_websocket_upgrade(head: &HttpHead) -> bool {
         })
 }
 
-pub fn effective_ip(head: &HttpHead, peer: IpAddr, trust_proxy: bool) -> IpAddr {
+/// The client address used for per-IP limits.
+///
+/// With `trust_proxy`, the address comes from the `X-Forwarded-For` chain,
+/// read from the right: each of the `trusted_hops` trusted proxies in front
+/// of the relay appends the address it received the connection from, so the
+/// entry `trusted_hops` places from the right end is the one the outermost
+/// trusted proxy saw. Anything left of it was supplied by the client and is
+/// never used. `X-Real-IP` is consulted only when no `X-Forwarded-For` entry
+/// can be used, and the socket peer is the last resort.
+pub fn effective_ip(
+    head: &HttpHead,
+    peer: IpAddr,
+    trust_proxy: bool,
+    trusted_hops: usize,
+) -> IpAddr {
     if !trust_proxy {
         return peer;
     }
     head.headers
         .get("x-forwarded-for")
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .and_then(|value| value.parse().ok())
+        .and_then(|value| {
+            let hops = value.split(',').map(str::trim).collect::<Vec<_>>();
+            let index = hops.len().saturating_sub(trusted_hops.max(1));
+            hops.get(index).and_then(|hop| hop.parse().ok())
+        })
         .or_else(|| {
             head.headers
                 .get("x-real-ip")
@@ -337,4 +353,80 @@ impl Write for SocketIo {
 
 fn invalid_http(reason: &str) -> GatewayError {
     GatewayError::Io(io::Error::new(io::ErrorKind::InvalidData, reason))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, net::IpAddr};
+
+    use super::{HttpHead, effective_ip};
+
+    fn head(headers: &[(&str, &str)]) -> HttpHead {
+        HttpHead {
+            method: "GET".to_owned(),
+            path: "/".to_owned(),
+            headers: headers
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect::<HashMap<_, _>>(),
+        }
+    }
+
+    fn ip(text: &str) -> IpAddr {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn forwarded_for_uses_the_hop_the_trusted_proxy_appended() {
+        let peer = ip("127.0.0.1");
+        let spoofed = head(&[("x-forwarded-for", "1.2.3.4, 10.0.0.9")]);
+        assert_eq!(effective_ip(&spoofed, peer, true, 1), ip("10.0.0.9"));
+        // Two trusted proxies: the outer one appended the client, the inner
+        // one appended the outer proxy.
+        let chained = head(&[("x-forwarded-for", "1.2.3.4, 203.0.113.7, 10.0.0.2")]);
+        assert_eq!(effective_ip(&chained, peer, true, 2), ip("203.0.113.7"));
+        // A chain shorter than the configured hops is all proxy-written.
+        let short = head(&[("x-forwarded-for", "203.0.113.7")]);
+        assert_eq!(effective_ip(&short, peer, true, 3), ip("203.0.113.7"));
+    }
+
+    #[test]
+    fn forwarded_headers_are_ignored_without_trust_proxy() {
+        let peer = ip("198.51.100.1");
+        let spoofed = head(&[("x-forwarded-for", "1.2.3.4"), ("x-real-ip", "5.6.7.8")]);
+        assert_eq!(effective_ip(&spoofed, peer, false, 1), peer);
+    }
+
+    #[test]
+    fn real_ip_is_a_fallback_and_cannot_override_forwarded_for() {
+        let peer = ip("127.0.0.1");
+        let both = head(&[
+            ("x-forwarded-for", "9.9.9.9, 10.0.0.9"),
+            ("x-real-ip", "5.6.7.8"),
+        ]);
+        assert_eq!(effective_ip(&both, peer, true, 1), ip("10.0.0.9"));
+        let real_only = head(&[("x-real-ip", "10.0.0.9")]);
+        assert_eq!(effective_ip(&real_only, peer, true, 1), ip("10.0.0.9"));
+        let garbage = head(&[("x-forwarded-for", "1.2.3.4, not-an-ip")]);
+        assert_eq!(effective_ip(&garbage, peer, true, 1), peer);
+    }
+
+    #[test]
+    fn spoofed_forwarded_for_flood_maps_to_one_key() {
+        let peer = ip("127.0.0.1");
+        let keys = (0..1_000u32)
+            .map(|n| {
+                let spoofed = format!(
+                    "{}.{}.{}.{}, 10.0.0.9",
+                    n >> 24,
+                    (n >> 16) & 255,
+                    (n >> 8) & 255,
+                    n & 255
+                );
+                effective_ip(&head(&[("x-forwarded-for", &spoofed)]), peer, true, 1)
+            })
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&ip("10.0.0.9")));
+    }
 }

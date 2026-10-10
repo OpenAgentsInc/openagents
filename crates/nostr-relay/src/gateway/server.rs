@@ -756,7 +756,12 @@ async fn handle_socket(
     state: Arc<ServerState>,
 ) -> Result<(), GatewayError> {
     let (request_bytes, head) = read_http_head(&mut stream).await?;
-    let ip = effective_ip(&head, peer.ip(), state.config.trust_proxy);
+    let ip = effective_ip(
+        &head,
+        peer.ip(),
+        state.config.trust_proxy,
+        state.config.trusted_proxy_hops,
+    );
     let Some(connection_permit) = state.rate.connect(ip) else {
         return Ok(());
     };
@@ -1011,6 +1016,10 @@ async fn handle_neg_open(
     message: Vec<u8>,
     pending: &mut VecDeque<String>,
 ) -> Result<(), GatewayError> {
+    if let Err(reason) = admit_read(context) {
+        pending.push_back(wire::neg_err(&subscription_id, reason));
+        return Ok(());
+    }
     if !context.negentropy.contains_key(&subscription_id)
         && context.negentropy.len() >= context.state.config.limits.max_subscriptions
     {
@@ -1050,6 +1059,12 @@ async fn handle_neg_open(
             &subscription_id,
             &format!("blocked: this query is too big: {SYNC_LIMIT}"),
         ));
+        return Ok(());
+    }
+    if !stored.complete {
+        // Reconciling a truncated set would tell the client it holds
+        // everything the relay has; refuse instead.
+        pending.push_back(wire::neg_err(&subscription_id, "blocked: incomplete"));
         return Ok(());
     }
     let mut items = Vec::with_capacity(stored.events.len());
@@ -1884,29 +1899,41 @@ async fn admit_event(
     Ok(())
 }
 
+/// Shared admission for every read that queries stored history (`REQ` and
+/// NIP-77 `NEG-OPEN`): the auth-required gate, then the per-IP `REQ` rate.
+/// The refusal is the machine-readable reason to send back.
+fn admit_read(context: &ConnectionContext) -> Result<(), &'static str> {
+    read_admission(
+        context.state.config.auth_required,
+        context.auth.as_ref(),
+        &context.state.rate,
+        context.ip,
+    )
+}
+
+fn read_admission(
+    auth_required: bool,
+    auth: Option<&AuthState>,
+    rate: &RateLimiter,
+    ip: std::net::IpAddr,
+) -> Result<(), &'static str> {
+    if auth_required && !auth.is_some_and(AuthState::is_authenticated) {
+        return Err("auth-required: authenticate before subscribing");
+    }
+    if !rate.req_from_ip(ip) {
+        return Err("rate-limited: REQ rate exceeded");
+    }
+    Ok(())
+}
+
 async fn handle_req(
     context: &mut ConnectionContext,
     subscription_id: String,
     filters: Vec<Filter>,
     pending: &mut VecDeque<String>,
 ) -> Result<(), GatewayError> {
-    if context.state.config.auth_required
-        && !context
-            .auth
-            .as_ref()
-            .is_some_and(AuthState::is_authenticated)
-    {
-        pending.push_back(closed_message(
-            &subscription_id,
-            "auth-required: authenticate before subscribing",
-        ));
-        return Ok(());
-    }
-    if !context.state.rate.req_from_ip(context.ip) {
-        pending.push_back(closed_message(
-            &subscription_id,
-            "rate-limited: REQ rate exceeded",
-        ));
+    if let Err(reason) = admit_read(context) {
+        pending.push_back(closed_message(&subscription_id, reason));
         return Ok(());
     }
     if subscription_id.is_empty() || subscription_id.chars().count() > 64 {
@@ -2509,8 +2536,9 @@ mod tests {
 
     use super::{
         DurableSequence, EventKeyRateRejection, MAX_NOTIFICATION_GAP, event_key_rate_rejection_for,
-        validate_and_clamp_filters,
+        read_admission, validate_and_clamp_filters,
     };
+    use crate::gateway::auth::AuthState;
     use crate::gateway::{GatewayLimits, rate::RateLimiter};
 
     fn frame(pubkey: &str, world: Option<&str>) -> Event {
@@ -2525,6 +2553,41 @@ mod tests {
             content: String::new(),
             sig: "0".repeat(128),
         }
+    }
+
+    #[test]
+    fn read_admission_refuses_anonymous_reads_on_an_auth_required_relay() {
+        let rate = RateLimiter::new(GatewayLimits::default());
+        let ip = "203.0.113.5".parse().unwrap();
+        let mut auth = AuthState::new("challenge".to_owned(), "ws://relay.test".to_owned());
+        assert_eq!(
+            read_admission(true, None, &rate, ip),
+            Err("auth-required: authenticate before subscribing")
+        );
+        assert_eq!(
+            read_admission(true, Some(&auth), &rate, ip),
+            Err("auth-required: authenticate before subscribing")
+        );
+        auth.accept_direct("a".repeat(64));
+        assert_eq!(read_admission(true, Some(&auth), &rate, ip), Ok(()));
+        assert_eq!(read_admission(false, None, &rate, ip), Ok(()));
+    }
+
+    #[test]
+    fn read_admission_spends_the_shared_req_budget() {
+        // REQ and NEG-OPEN both admit through `read_admission`, so one
+        // per-IP budget covers both and NEG-OPEN cannot bypass it.
+        let rate = RateLimiter::new(GatewayLimits {
+            req_per_minute_ip: 2,
+            ..GatewayLimits::default()
+        });
+        let ip = "203.0.113.6".parse().unwrap();
+        assert_eq!(read_admission(false, None, &rate, ip), Ok(()));
+        assert_eq!(read_admission(false, None, &rate, ip), Ok(()));
+        assert_eq!(
+            read_admission(false, None, &rate, ip),
+            Err("rate-limited: REQ rate exceeded")
+        );
     }
 
     #[test]
