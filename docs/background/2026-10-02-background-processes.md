@@ -646,7 +646,9 @@ design above, and why:
   computer slept runs once at the next look; `TaskEnded`, evaluated once
   per newly ended task for a rule that reads the outcome; `HostStart`; and
   `FsEvent { paths }`. Conditions: `FreeBelow`, `TaskOutcome`,
-  `NoTaskRunning`, `PathExists`, `TimeBetween`, and `Judgment` (a Jev Noul
+  `NoTaskRunning`, `PathExists`, `TimeBetween`, `Weekdays { days }` (the
+  local day of the week, 0 Sunday to 6 Saturday; Coder's `/schedule
+  weekdays 9am PROMPT` uses it, #11177), and `Judgment` (a Jev Noul
   read at the rule's percent, setting `background.judgment`, 0.8 by
   default, with the host's judge; without one it never holds). Each rule
   has its cooldown. Disk cleanup actions still run through the planner

@@ -25,6 +25,10 @@ pub enum Command {
     Sync,
     Memory,
     Agents,
+    Compact,
+    Loop,
+    Schedule,
+    Shells,
     Help,
 }
 
@@ -43,6 +47,10 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Sync,
         Command::Memory,
         Command::Agents,
+        Command::Compact,
+        Command::Loop,
+        Command::Schedule,
+        Command::Shells,
         Command::Help,
     ]
 } else {
@@ -58,6 +66,10 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Sync,
         Command::Memory,
         Command::Agents,
+        Command::Compact,
+        Command::Loop,
+        Command::Schedule,
+        Command::Shells,
         Command::Help,
     ]
 };
@@ -80,6 +92,10 @@ impl Command {
             Self::Sync => "sync",
             Self::Memory => "memory",
             Self::Agents => "agents",
+            Self::Compact => "compact",
+            Self::Loop => "loop",
+            Self::Schedule => "schedule",
+            Self::Shells => "shells",
             Self::Help => "help",
         }
     }
@@ -100,6 +116,10 @@ impl Command {
             Self::Sync => "Save chats to your account",
             Self::Memory => "Show what Coder remembers",
             Self::Agents => "Background agents: list, stop, message, resume",
+            Self::Compact => "Summarize the older chat to free context",
+            Self::Loop => "Repeat a prompt on an interval",
+            Self::Schedule => "Run a prompt on this computer on a schedule",
+            Self::Shells => "Background commands and monitors",
             Self::Help => "Show commands and keys",
         }
     }
@@ -131,7 +151,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Save this conversation to a file (ATIF format)\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/sync on|all|off|delete  Save chats to your account\n/memory [forget NAME]  Show or delete what Coder remembers\n/agents  Background agents: list, stop, message, resume\n/agent ENGINE TASK  Start a background agent in its own worktree\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Save this conversation to a file (ATIF format)\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/sync on|all|off|delete  Save chats to your account\n/memory [forget NAME]  Show or delete what Coder remembers\n/agents  Background agents: list, stop, message, resume\n/agent ENGINE TASK  Start a background agent in its own worktree\n/compact  Summarize the older chat so the model reads less\n/loop INTERVAL PROMPT  Repeat a prompt, for example /loop 5m check the deploy\n/loop [stop N|all]  List or stop loops\n/schedule WHEN PROMPT  Run a prompt on this computer, for example /schedule weekdays 09:00 triage new issues\n/schedule [remove ID]  List or remove scheduled prompts\n/shells [stop ID]  Background commands and monitors\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
     text.push_str("\n/brainstorm search <public query>  Search public profiles\n/brainstorm rank <hex-or-npub>  Look up a profile's influence score\nBrainstorm sends only what you type after the command to its website.");
     text
 }

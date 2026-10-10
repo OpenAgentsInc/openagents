@@ -109,6 +109,14 @@ impl Clock {
         }
     }
 
+    /// The local day of the week, 0 Sunday to 6 Saturday.
+    #[must_use]
+    pub fn weekday(self) -> u8 {
+        let local = i128::from(self.now) + i128::from(self.offset);
+        // 1970-01-01 was a Thursday.
+        u8::try_from((local.div_euclid(86_400) + 4).rem_euclid(7)).unwrap_or(0)
+    }
+
     /// Minutes past local midnight.
     #[must_use]
     pub fn minute(self) -> u32 {
@@ -302,6 +310,12 @@ pub fn holds(
                 };
                 if !inside {
                     return Err(format!("it is not between {from} and {to}"));
+                }
+            }
+            Condition::Weekdays { days } => {
+                let today = clock.weekday();
+                if !days.contains(&today) {
+                    return Err(format!("it is {}", crate::rule::day_name(today)));
                 }
             }
             Condition::Judgment {

@@ -28,6 +28,8 @@ mod fleet_app;
 pub mod jev_plugin;
 pub mod live;
 pub mod login_choice;
+mod long_session;
+mod loops;
 pub mod memory;
 mod memory_sync;
 pub mod model_catalog;
@@ -44,7 +46,9 @@ mod prompt_queue;
 pub mod provider;
 pub mod resume;
 pub mod risk_policy;
+mod schedule;
 pub mod sessions;
+mod shells;
 pub mod slash;
 pub mod snapshot;
 mod supervise;
@@ -131,6 +135,10 @@ pub struct App {
     pub fleet: fleet::Fleet,
     /// The `/agents` panel, while it is open.
     pub(crate) agents_panel: Option<fleet_app::Panel>,
+    /// Compaction, usage-limit pauses and dollars (#11179).
+    pub(crate) long_session: long_session::State,
+    /// Prompts repeated with `/loop` (#11177).
+    pub(crate) loops: loops::Loops,
     pub checking_key: bool,
     pub checking_jev: bool,
     pub(crate) brainstorm_job: Option<brainstorm::Job>,
@@ -313,6 +321,9 @@ impl App {
                 child.chat.busy = running;
                 if !running {
                     child.elapsed_seconds = self.elapsed_seconds.saturating_sub(child.started_at);
+                    if let Some(cost) = long_session::output_cost(&output) {
+                        child.chat.cost_usd = cost;
+                    }
                     child.chat.tokens = output
                         .get("tokens")
                         .and_then(serde_json::Value::as_u64)
@@ -431,6 +442,16 @@ impl App {
             .filter(|command| *command != slash::Command::Sync || self.account.is_some())
             // Background agents run in live mode only (#11163).
             .filter(|command| *command != slash::Command::Agents || self.mode == Mode::Live)
+            // Long sessions and background work are live only (#11179, #11177).
+            .filter(|command| {
+                !matches!(
+                    command,
+                    slash::Command::Compact
+                        | slash::Command::Loop
+                        | slash::Command::Schedule
+                        | slash::Command::Shells
+                ) || self.mode == Mode::Live
+            })
             // Offer only the sign-in step that applies (#11045).
             .filter(|command| *command != slash::Command::Login || self.account.is_none())
             .filter(|command| *command != slash::Command::Logout || self.account.is_some())
@@ -551,6 +572,10 @@ impl App {
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
+        // A summary request's result (#11179) never reaches the transcript.
+        let Some(update) = self.finish_compaction(update) else {
+            return;
+        };
         self.acknowledge_prompts();
         self.history.dirty |= self.live.busy;
         match update {
@@ -714,6 +739,9 @@ impl App {
                     Ok(reply) => {
                         self.live.tokens =
                             self.live.tokens.saturating_add(reply.usage.total_tokens);
+                        if let Some(cost) = reply.usage.cost.filter(|cost| cost.is_finite()) {
+                            self.live.cost_usd += cost;
+                        }
                         self.live.entries.push(live::Entry::Assistant {
                             elapsed_ms: self.live.reply_elapsed_ms(),
                             text: reply.text,
@@ -740,6 +768,8 @@ impl App {
                         }
                         self.live.partial_model = None;
                         self.live.notice = Some(error);
+                        // A usage limit pauses the chat until it resets.
+                        self.note_turn_error();
                     }
                 }
                 self.scroll_main_to_end();
@@ -782,6 +812,10 @@ impl App {
             slash::Command::Sync => self.sync_command(""),
             slash::Command::Memory => self.memory_command(""),
             slash::Command::Agents => self.open_agents_panel(),
+            slash::Command::Compact => self.compact_command(),
+            slash::Command::Loop => self.loop_command(""),
+            slash::Command::Schedule => self.schedule_command(""),
+            slash::Command::Shells => self.shells_command(),
         }
     }
 
@@ -1021,7 +1055,11 @@ impl App {
     }
 
     pub fn submit_live(&mut self) {
-        if self.live.busy || self.checking_key || self.checking_jev || self.brainstorm_job.is_some()
+        if self.live.busy
+            || self.checking_key
+            || self.checking_jev
+            || self.brainstorm_job.is_some()
+            || (self.selected_agent.is_none() && self.long_session.paused())
         {
             self.queue_prompt();
             return;
@@ -1888,6 +1926,9 @@ impl App {
                             .map(std::path::PathBuf::from)
                         {
                             self.export(Some(&path));
+                        } else if self.long_work_command() {
+                            // `/loop`, `/schedule` and `/shells` with
+                            // their arguments (#11177).
                         } else if let Some(command) = slash::parse(self.draft.text.trim()) {
                             self.command(command);
                         } else if slash::is_command_word(self.draft.text.trim()) {

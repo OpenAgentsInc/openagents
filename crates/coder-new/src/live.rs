@@ -22,6 +22,8 @@ pub struct Chat {
     pub busy: bool,
     pub notice: Option<String>,
     pub tokens: u64,
+    /// The provider-reported dollars this chat's replies cost (#11179).
+    pub cost_usd: f64,
     /// Standing instructions the model reads as system instructions every
     /// turn (`coder chat --instructions`). They are never an entry, so the
     /// transcript, a follower, and an export never show them.
@@ -126,10 +128,19 @@ impl Chat {
     pub fn messages(&self) -> Vec<Message> {
         let newest_brainstorm = self.entries.iter().rposition(|entry| matches!(entry,
             Entry::Tool { name, output, running: false, .. } if crate::brainstorm::is_tool(name) && (output.get("observation").is_some() || output.get("error").is_some())));
+        // A compacted chat (#11179): the model reads from the newest
+        // summary on; earlier entries stay on screen only.
+        let start = crate::long_session::context_start(&self.entries);
         self.entries
             .iter()
             .enumerate()
+            .skip(start)
             .filter_map(|(index, entry)| {
+                if let Entry::Tool { name, .. } = entry
+                    && crate::long_session::hidden_from_model(name)
+                {
+                    return None;
+                }
                 if let Entry::Tool {
                     name,
                     output,
@@ -137,6 +148,9 @@ impl Chat {
                     ..
                 } = entry
                 {
+                    if name == crate::long_session::COMPACT_TOOL {
+                        return crate::long_session::summary_message(output);
+                    }
                     if crate::brainstorm::is_tool(name) {
                         if newest_brainstorm != Some(index) {
                             return None;
@@ -221,6 +235,12 @@ pub enum Work {
     Microcoder {
         messages: Vec<Message>,
         execution: ExecutionSettings,
+    },
+    /// A summary of the older part of the chat (#11179), written by the
+    /// chat's model without tools; nothing streams into the transcript.
+    Summarize {
+        model: String,
+        messages: Vec<Message>,
     },
     Delegate {
         delegation: String,
@@ -366,6 +386,8 @@ impl Background {
         }
         app.poll_disclosure();
         app.poll_fleet();
+        app.poll_shells();
+        app.poll_long_session();
         app.process_prompt_queue();
     }
 
@@ -496,6 +518,8 @@ fn run_with_provider(
                             ..Streamed::default()
                         };
                         reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
+                        // The loop's dollars, for the status line (#11179).
+                        reply.usage.cost = result["outcome"]["usd"].as_f64();
                         if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
                             return Err(format!("The coding loop stopped: {}.", result["outcome"]));
                         }
@@ -516,6 +540,13 @@ fn run_with_provider(
                     };
                     match kind {
                         Work::Check => Update::Checked { id, result: provider.check().await },
+                        Work::Summarize { model, messages } => Update::Finished {
+                            id,
+                            result: provider.stream_with_options_and_model(
+                                &model, &crate::models::GenerationOptions::default(), messages,
+                                &mut |_: &str| {}, &mut |_: &str| {},
+                            ).await,
+                        },
                         Work::Chat { model, options, messages, execution } => Update::Finished {
                             id,
                             result: provider.chat_with_plugins(

@@ -793,6 +793,28 @@ fn conditions_hold_or_say_why_not() {
         )
         .is_ok()
     );
+    // Weekdays only (#11177): TEN_AM's day, then the day after.
+    let today = clock(TEN_AM).weekday();
+    let weekdays = notify_rule(vec![Condition::Weekdays { days: vec![today] }]);
+    assert!(weekdays.validate().is_ok());
+    assert!(engine::holds(&env, &weekdays, &Event::default(), clock(TEN_AM), None).is_ok());
+    assert!(
+        engine::holds(
+            &env,
+            &weekdays,
+            &Event::default(),
+            clock(TEN_AM + 86_400),
+            None
+        )
+        .is_err()
+    );
+    assert!(
+        notify_rule(vec![Condition::Weekdays { days: vec![7] }])
+            .validate()
+            .is_err()
+    );
+    // 1970-01-01 was a Thursday.
+    assert_eq!(clock(0).weekday(), 4);
     let exists = notify_rule(vec![Condition::PathExists {
         path: "~/work".into(),
     }]);

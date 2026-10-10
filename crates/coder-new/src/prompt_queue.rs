@@ -160,6 +160,8 @@ impl App {
             || self.checking_key
             || self.checking_jev
             || self.brainstorm_job.is_some()
+            // A usage limit holds the queue until it resets (#11179).
+            || self.long_session.paused()
             || self.screen != Screen::Conversation
             || self.resume_picker.is_some()
             || self.model_picker.is_some()

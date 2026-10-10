@@ -71,6 +71,9 @@ struct CliArguments {
 #[serde(deny_unknown_fields)]
 struct RunArguments {
     command: String,
+    /// Start it in the background (#11177).
+    #[serde(default)]
+    background: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -164,7 +167,13 @@ impl ExecutionSettings {
         }
         let mut definitions = Vec::new();
         if self.shell {
-            definitions.push(bundled_runtime::run_tool_definition());
+            let mut run = bundled_runtime::run_tool_definition();
+            // Background commands and monitors (#11177).
+            if crate::shells::available(self) {
+                crate::shells::extend_run(&mut run);
+            }
+            definitions.push(run);
+            definitions.extend(crate::shells::tool_definitions(self));
             definitions.extend(crate::file_tools::definitions());
             definitions.extend(crate::web_tools::definitions());
         }
@@ -232,6 +241,9 @@ impl ExecutionSettings {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
             guidance.push_str(crate::web_tools::INSTRUCTIONS);
             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
+        }
+        if crate::shells::available(self) {
+            guidance.push_str(crate::shells::INSTRUCTIONS);
         }
         if self.registered(ToolBinding::Microcoder) {
             guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
@@ -371,9 +383,15 @@ impl ExecutionSettings {
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The web request was canceled.".into()),
                 }
             }
+            name if crate::shells::is_tool(name) && crate::shells::available(self) => {
+                crate::shells::execute(self, name, arguments)
+            }
             "Run" if self.shell => {
                 let args: RunArguments = serde_json::from_value(arguments)
                     .map_err(|_| "Run requires a command and no other fields.")?;
+                if args.background == Some(true) {
+                    return crate::shells::start_shell(self, &args.command);
+                }
                 let keys: Vec<ApiKey> = self
                     .redaction_keys
                     .iter()

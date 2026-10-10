@@ -374,6 +374,14 @@ pub fn valid_name(name: &str) -> bool {
 }
 
 impl<E> Registry<E> {
+    /// A number that is the same for every clone of this list and
+    /// differs between lists, so work started for one chat (a background
+    /// shell, #11177) reports back to the chat that owns this list.
+    #[must_use]
+    pub fn key(&self) -> usize {
+        Arc::as_ptr(&self.inner).cast::<()>() as usize
+    }
+
     fn lock(&self) -> MutexGuard<'_, Inner<E>> {
         self.inner
             .lock()

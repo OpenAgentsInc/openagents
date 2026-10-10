@@ -1175,6 +1175,13 @@ pub fn describe(rule: &Rule) -> Vec<String> {
             Condition::NoTaskRunning => "no Coder run is going".into(),
             Condition::PathExists { path } => format!("{path} exists"),
             Condition::TimeBetween { from, to } => format!("it is between {from} and {to}"),
+            Condition::Weekdays { days } => format!(
+                "it is {}",
+                days.iter()
+                    .map(|day| crate::rule::day_name(*day))
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            ),
             Condition::Judgment {
                 question,
                 setting,

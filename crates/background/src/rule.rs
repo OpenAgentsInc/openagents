@@ -196,6 +196,9 @@ pub enum Condition {
     /// The local time is within `[from, to)`, `HH:MM`; `to` before `from`
     /// wraps past midnight.
     TimeBetween { from: String, to: String },
+    /// The local day of the week is one of `days`, 0 Sunday to 6 Saturday
+    /// (a prompt scheduled for weekdays, #11177).
+    Weekdays { days: Vec<u8> },
     /// A bounded Jev judgment: the Noul `question` over the observation,
     /// read against the named setting (`background.judgment` by default)
     /// at `threshold` percent. The only place a model appears in
@@ -205,6 +208,20 @@ pub enum Condition {
         setting: String,
         threshold: u8,
     },
+}
+
+/// A day of the week's name, 0 Sunday to 6 Saturday.
+#[must_use]
+pub fn day_name(day: u8) -> &'static str {
+    match day {
+        0 => "Sunday",
+        1 => "Monday",
+        2 => "Tuesday",
+        3 => "Wednesday",
+        4 => "Thursday",
+        5 => "Friday",
+        _ => "Saturday",
+    }
 }
 
 /// Parse `HH:MM` into minutes past midnight.
@@ -835,6 +852,11 @@ impl Rule {
                 }
                 Condition::TaskOutcome { outcomes } if outcomes.is_empty() => {
                     return Err("a task outcome condition names at least one outcome".into());
+                }
+                Condition::Weekdays { days }
+                    if days.is_empty() || days.len() > 7 || days.iter().any(|day| *day > 6) =>
+                {
+                    return Err("a day-of-week condition names 1 to 7 days, 0 (Sunday) to 6".into());
                 }
                 _ => {}
             }

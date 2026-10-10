@@ -363,7 +363,16 @@ impl Provider {
                         execution,
                         self.key.expose(),
                     );
+                    // A usage limit's wait shows as "Paused until" (#11179).
+                    let paused = crate::long_session::pause_event(&error, recovery.wait);
+                    let shown = paused.is_some();
+                    if let Some(event) = paused {
+                        event_callback(event);
+                    }
                     wait_for_recovery(recovery.wait, cancel).await?;
+                    if shown {
+                        event_callback(crate::long_session::resume_event());
+                    }
                     continue;
                 }
             };
@@ -1000,6 +1009,11 @@ fn check_error(error: reqwest::Error) -> String {
 
 fn stream_error(error: openrouter::Error) -> String {
     match error {
+        openrouter::Error::Api {
+            status: 429,
+            retry_after,
+            ..
+        } => crate::long_session::rate_limited(retry_after),
         openrouter::Error::Api { status, .. } => status_error(status),
         openrouter::Error::Timeout => {
             "The OpenRouter request timed out. It was not retried.".into()
@@ -1042,9 +1056,7 @@ fn status_error(status: u16) -> String {
         Some(StatusCode::PAYMENT_REQUIRED) => {
             "OpenRouter's credit or request budget is exhausted (HTTP 402).".into()
         }
-        Some(StatusCode::TOO_MANY_REQUESTS) => {
-            "OpenRouter is rate limited (HTTP 429). Try again later.".into()
-        }
+        Some(StatusCode::TOO_MANY_REQUESTS) => crate::long_session::rate_limited(None),
         Some(StatusCode::FORBIDDEN) => "OpenRouter denied this request (HTTP 403).".into(),
         Some(StatusCode::NOT_FOUND) => {
             "The OpenRouter model or endpoint is unavailable (HTTP 404).".into()
@@ -1997,7 +2009,12 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("canceled"));
         assert!(started.elapsed() < Duration::from_secs(2));
-        assert_eq!(events.len(), 2);
+        // The tool's two rows, then the usage-limit pause (#11179).
+        assert_eq!(events.len(), 3);
+        assert!(matches!(
+            &events[2],
+            RuntimeEvent::Tool { name, running: true, .. } if name == crate::long_session::LIMIT_TOOL
+        ));
         assert_eq!(server.join().unwrap().len(), 2);
     }
 

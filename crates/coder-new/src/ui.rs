@@ -246,7 +246,16 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 }
                 (
                     agent.name.as_str(),
-                    std::borrow::Cow::Borrowed(agent.task.as_str()),
+                    // A finished delegation's dollars (#11179).
+                    if agent.chat.cost_usd > 0.0 {
+                        std::borrow::Cow::Owned(format!(
+                            "{} · {}",
+                            agent_fleet::dollars(agent.chat.cost_usd),
+                            agent.task
+                        ))
+                    } else {
+                        std::borrow::Cow::Borrowed(agent.task.as_str())
+                    },
                     if agent.chat.tokens == 0 {
                         "—".into()
                     } else {
@@ -468,10 +477,14 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|name| name.to_str())
         .unwrap_or("openagents");
     let branch = app.branch.as_deref().unwrap_or("main");
-    let suffix = match &app.account {
-        Some(name) => format!(" / {branch} · {name}"),
-        None => format!(" / {branch}"),
-    };
+    let mut suffix = format!(" / {branch}");
+    // A usage-limit pause and the session's dollars (#11179).
+    if let Some(status) = crate::long_session::status(app) {
+        suffix.push_str(&format!(" · {status}"));
+    }
+    if let Some(name) = &app.account {
+        suffix.push_str(&format!(" · {name}"));
+    }
     let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
     // A newer Coder (#11128) takes the row's end when the whole line fits.
     if let Some(update) = &app.update_line {
@@ -750,6 +763,14 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             output,
             running,
         } => {
+            // A compaction summary or a usage-limit pause (#11179).
+            if let Some(rows) =
+                crate::long_session::entry_lines(name, input, output, *running, width, phase)
+            {
+                lines.extend(rows);
+                lines.push(Line::default());
+                return lines;
+            }
             if name == "Run" {
                 lines.extend(run_lines(input, output, *running, width, phase));
                 lines.push(Line::default());

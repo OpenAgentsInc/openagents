@@ -524,7 +524,7 @@ async fn wait_job(
     Ok(stopped)
 }
 
-fn scrub_credentials(command: &mut std::process::Command) {
+pub(crate) fn scrub_credentials(command: &mut std::process::Command) {
     for (name, _) in std::env::vars_os() {
         let text = name.to_string_lossy();
         if text.ends_with("_API_KEY") || text.ends_with("_TOKEN") || text.ends_with("_SECRET") {
