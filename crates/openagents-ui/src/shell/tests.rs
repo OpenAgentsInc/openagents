@@ -767,6 +767,16 @@ fn project_groups_sit_between_pinned_and_chats_and_fold_after_five() {
     assert!(at("storefront") < at("docs"));
     assert!(at("docs") < at(">Chats<"));
     assert!(at(">Chats<") < at("Loose 0"));
+    // "Projects" and "Chats" fold from heading buttons with aria-expanded.
+    assert!(
+        html.contains(r#"data-oa-section="projects""#)
+            && html.contains(r#"data-oa-section="chats""#)
+    );
+    assert_eq!(
+        html.matches(r#"aria-expanded="true" data-oa-section-toggle>"#)
+            .count(),
+        2
+    );
     // Five rows, then the rest behind Show more.
     assert!(at("Store 4") < at("Show more"));
     assert!(at("Show more") < at("Store 5"));
@@ -779,7 +789,18 @@ fn project_groups_sit_between_pinned_and_chats_and_fold_after_five() {
             r#"<details class="oa-chat-project" data-oa-project="prj_fedcba9876543210">"#
         )
     );
-    assert!(html.contains(r#"href="/?project=prj_0123456789abcdef">New chat</a>"#));
+    // No separate "New chat" text link under the name: a pencil icon
+    // button and the "…" card start one, both labeled.
+    assert!(!html.contains(r#"class="oa-chat-list-link" href="/?project="#));
+    assert!(html.contains(
+        r#"<a class="oa-row-menu-trigger" href="/?project=prj_0123456789abcdef" aria-label="New chat in storefront">"#
+    ));
+    assert!(html.contains(r#"aria-label="Options for storefront""#));
+    assert!(html.contains(r#"<a href="/?project=prj_0123456789abcdef">New chat</a>"#));
+    assert!(html.contains("7 chats") && html.contains("class=\"oa-chat-project-icon\""));
+    // The chats sit after the heading, the actions inside it.
+    let summary_end = at("</summary>");
+    assert!(at("oa-chat-project-actions") < summary_end && summary_end < at("Store 0"));
     assert!(html.contains(r#"href="/projects">Reconnect GitHub</a>"#));
     // A group with no chats leaves the list empty of rows.
     assert!(

@@ -102,7 +102,11 @@ impl Draw<'_> {
             }
             Node::Command { unix, windows } => match windows {
                 Some(windows) => Tabs::new(&self.name(), "Install command")
-                    .tab_for("unix", UNIX_LABEL, CodeBlock::new(unix).language("bash").wrap(true))
+                    .tab_for(
+                        "unix",
+                        UNIX_LABEL,
+                        CodeBlock::new(unix).language("bash").wrap(true),
+                    )
                     .tab_for(
                         "windows",
                         WINDOWS_LABEL,

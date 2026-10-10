@@ -518,14 +518,14 @@ impl Render for ChatList {
                             }
                         }
                         @if !self.projects.is_empty() {
-                            div class="oa-chat-list-group oa-chat-projects" {
-                                h2 class="oa-sidebar-section-title" { "Projects" }
+                            div class="oa-chat-list-group oa-chat-projects" data-oa-section="projects" {
+                                (section_toggle("Projects"))
                                 @for group in &self.projects { (group) }
                             }
                         }
                         @if !self.items.is_empty() {
-                            div class="oa-chat-list-group" {
-                                h2 class="oa-sidebar-section-title" { (self.title) }
+                            div class="oa-chat-list-group" data-oa-section="chats" {
+                                (section_toggle(&self.title))
                                 ul class="oa-nav-list" role="list" {
                                     @for item in &self.items { (item) }
                                 }
@@ -550,9 +550,33 @@ impl Render for ChatList {
     }
 }
 
-/// One project's chats in the left panel: a collapsible group headed by the
-/// project's name, with a "New chat" link, the first five rows, and the
-/// rest behind "Show more".
+/// A collapsible section's heading in the chat list ("Projects", "Chats"):
+/// a button with `aria-expanded` and a chevron. `shell.js` folds the
+/// section (`data-collapsed` on its `[data-oa-section]` group) and
+/// remembers it in this browser; without the script the chevron is hidden
+/// and the heading reads as plain text.
+fn section_toggle(label: &str) -> Markup {
+    html! {
+        h2 class="oa-sidebar-section-title" {
+            button type="button" class="oa-section-toggle" aria-expanded="true" data-oa-section-toggle {
+                (label)
+                span class="oa-section-chevron" aria-hidden="true" {
+                    (Icon::ChevronDown.size(IconSize::Xs))
+                }
+            }
+        }
+    }
+}
+
+/// One project's chats in the left panel: a collapsible group headed by a
+/// folder icon and the project's name, its chats indented beneath (the
+/// first five, the rest behind "Show more").
+///
+/// On hover or keyboard focus (always on touch screens) two icon buttons
+/// show at the right of the heading: "…", a card with the project's name,
+/// chat count, repository and branch, "New chat" and "Edit project"; and a
+/// pencil that starts a chat in the project. Hovering the name shows the
+/// same card's facts as a tooltip.
 ///
 /// The group is a `<details>` element marked `data-oa-project` with the
 /// project's id, so it opens and closes without JavaScript; `shell.js`
@@ -564,11 +588,14 @@ impl Render for ChatList {
 /// use maud::Render;
 /// use openagents_ui::shell::{ChatGroup, NavItem};
 /// let html = ChatGroup::new("prj_1", "storefront", "/?project=prj_1")
+///     .repository("acme/storefront", "main")
+///     .edit("/projects")
 ///     .items((0..7).map(|i| NavItem::new(format!("Chat {i}"), format!("/chat/{i}"))))
 ///     .render()
 ///     .into_string();
 /// assert!(html.contains(r#"data-oa-project="prj_1""#));
 /// assert!(html.contains("Show more"));
+/// assert!(html.contains("7 chats"));
 /// ```
 #[derive(Clone, Debug)]
 pub struct ChatGroup {
@@ -578,6 +605,8 @@ pub struct ChatGroup {
     open: bool,
     more_open: bool,
     note: Option<(String, String)>,
+    repository: Option<(String, String)>,
+    edit: Option<String>,
     items: Vec<NavItem>,
 }
 
@@ -600,6 +629,8 @@ impl ChatGroup {
             open: true,
             more_open: false,
             note: None,
+            repository: None,
+            edit: None,
             items: Vec::new(),
         }
     }
@@ -626,25 +657,95 @@ impl ChatGroup {
         self
     }
 
+    /// The project's repository (`owner/name`) and branch, for its card.
+    #[must_use]
+    pub fn repository(mut self, repository: impl Into<String>, branch: impl Into<String>) -> Self {
+        self.repository = Some((repository.into(), branch.into()));
+        self
+    }
+
+    /// Where "Edit project" in the card goes.
+    #[must_use]
+    pub fn edit(mut self, href: impl Into<String>) -> Self {
+        self.edit = Some(href.into());
+        self
+    }
+
     /// The group's rows, newest first.
     #[must_use]
     pub fn items(mut self, items: impl IntoIterator<Item = NavItem>) -> Self {
         self.items.extend(items);
         self
     }
+
+    /// The card's facts: name, chat count, repository and branch.
+    fn facts(&self) -> Markup {
+        let count = match self.items.len() {
+            1 => "1 chat".to_owned(),
+            n => format!("{n} chats"),
+        };
+        html! {
+            span class="oa-chat-project-card-name" { (self.name) }
+            span class="oa-chat-project-card-meta" { (count) }
+            @if let Some((repository, branch)) = &self.repository {
+                span class="oa-chat-project-card-meta" {
+                    (repository)
+                    @if !branch.is_empty() { " · " (branch) }
+                }
+            }
+        }
+    }
 }
 
 impl Render for ChatGroup {
     fn render(&self) -> Markup {
+        use crate::overlays::{Align, Popover, Tooltip};
         let (first, rest) = self.items.split_at(self.items.len().min(GROUP_ROWS));
+        let base = format!("project-{}", self.id);
+        let new_label = format!("New chat in {}", self.name);
+        let options = format!("Options for {}", self.name);
+        let card = html! {
+            div class="oa-chat-project-card" {
+                (self.facts())
+                div class="oa-chat-project-card-links" {
+                    a href=(self.new_chat) { "New chat" }
+                    @if let Some(edit) = &self.edit {
+                        a href=(edit) { "Edit project" }
+                    }
+                }
+            }
+        };
+        let menu = Popover::new(
+            format!("{base}-card"),
+            Icon::DotsHorizontal.size(IconSize::Sm),
+            card,
+        )
+        .label(self.name.clone())
+        .align(Align::Start)
+        .trigger_class("oa-row-menu-trigger")
+        .trigger_label(options.clone());
+        let new_chat = html! {
+            a class="oa-row-menu-trigger" href=(self.new_chat) aria-label=(new_label) {
+                (Icon::ComposeEditSquare.size(IconSize::Sm))
+            }
+        };
+        let name = html! { span class="oa-chat-project-name" { (self.name) } };
+        let facts = html! { span class="oa-chat-project-card" { (self.facts()) } };
         html! {
             details class="oa-chat-project" data-oa-project=(self.id) open[self.open] {
                 summary class="oa-chat-project-summary" {
-                    span class="oa-chat-project-name" { (self.name) }
+                    span class="oa-chat-project-icon" aria-hidden="true" {
+                        (Icon::Folder.size(IconSize::Md))
+                        (Icon::FolderOpen.size(IconSize::Md))
+                    }
+                    (Tooltip::new(format!("{base}-facts"), name, facts).align(Align::Start).delay_ms(400))
+                    span class="oa-chat-project-actions" {
+                        (Tooltip::new(format!("{base}-options-tip"), menu, options).compact(true))
+                        (Tooltip::new(format!("{base}-new-tip"), new_chat, new_label.clone()).compact(true))
+                    }
                 }
-                div class="oa-chat-project-links" {
-                    a class="oa-chat-list-link" href=(self.new_chat) { "New chat" }
-                    @if let Some((text, href)) = &self.note {
+                @if let Some((text, href)) = &self.note {
+                    div class="oa-chat-project-links" {
                         a class="oa-chat-list-link oa-chat-project-note" href=(href) { (text) }
                     }
                 }

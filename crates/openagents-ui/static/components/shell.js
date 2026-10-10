@@ -377,6 +377,49 @@
       "; Path=/; Max-Age=31536000; SameSite=Lax";
   }, true);
 
+  // "Projects" and "Chats" fold from their headings; the folded ones are
+  // remembered in this browser (localStorage, when it is allowed) and put
+  // back after every HTMX swap of the list.
+  var SECTIONS = "oa_sidebar_sections";
+  function foldedSections() {
+    try {
+      return JSON.parse(window.localStorage.getItem(SECTIONS) || "[]") || [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function setSection(group, folded) {
+    var button = group.querySelector("[data-oa-section-toggle]");
+    if (folded) group.setAttribute("data-collapsed", "");
+    else group.removeAttribute("data-collapsed");
+    if (button) button.setAttribute("aria-expanded", folded ? "false" : "true");
+  }
+  function applySections() {
+    var folded = foldedSections();
+    document.querySelectorAll("[data-oa-section]").forEach(function (group) {
+      setSection(group, folded.indexOf(group.getAttribute("data-oa-section")) >= 0);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", applySections);
+  } else {
+    applySections();
+  }
+  document.addEventListener("htmx:load", applySections);
+  document.addEventListener("click", function (event) {
+    var button = event.target && event.target.closest && event.target.closest("[data-oa-section-toggle]");
+    var group = button && button.closest("[data-oa-section]");
+    if (!group) return;
+    var key = group.getAttribute("data-oa-section");
+    var folded = foldedSections().filter(function (each) { return each !== key; });
+    var fold = button.getAttribute("aria-expanded") !== "false";
+    if (fold) folded.push(key);
+    setSection(group, fold);
+    try {
+      window.localStorage.setItem(SECTIONS, JSON.stringify(folded));
+    } catch (e) { /* storage blocked: the fold lasts for this page */ }
+  });
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     if (!target || !target.closest) return;

@@ -682,11 +682,9 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
         return show_terminal(&app, &headers, chat, &terminal.computer, notice).await;
     }
     let row = crate::composer_row::for_chat(&app, &headers, chat, false).await;
-    let github = crate::github_tools::entry(&app, chat).await;
     let dock = html! {
         (ticket(&app, chat, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
-        (github)
     };
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;

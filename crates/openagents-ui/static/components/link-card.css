@@ -1,6 +1,7 @@
 /* Link cards (content/link_card.rs): rectangular "learn about" cards where
    the whole card is one link. Two small cards a row at phone width, two
-   roomier ones at tablet width, three where the column allows; the frame is a size container so
+   roomier ones at tablet width, three where the column allows, and never
+   a lone card on the last row; the frame is a size container so
    the grid follows the space it is given. Colors come from the semantic
    tokens, which resolve through light-dark(), so the cards follow Coder
    Light and Coder Noir. */
@@ -28,6 +29,28 @@
 @container (min-width: 42rem) {
   .oa-link-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* A count that is not a multiple of three never leaves a lone card:
+     on six tracks the extra one or two rows hold two wider cards each
+     (4 is 2x2, 5 is 3+2, 2 is one row of two). */
+  .oa-link-cards:not(:has(> :nth-child(3n):last-child)) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .oa-link-cards:not(:has(> :nth-child(3n):last-child)) > * {
+    grid-column: span 2;
+  }
+  .oa-link-cards:has(> :nth-child(3n + 1):last-child) > :nth-last-child(-n + 4),
+  .oa-link-cards:has(> :nth-child(3n + 2):last-child) > :nth-last-child(-n + 2) {
+    grid-column: span 3;
+  }
+  .oa-link-cards > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+@container (max-width: 41.999rem) {
+  /* Two across: an odd last card takes the whole row. */
+  .oa-link-cards > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 

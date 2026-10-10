@@ -132,7 +132,10 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
                         .action(RowAction::post("Archive", "/ui").icon(Icon::Archive)),
                 )])
                 .project(
-                    ChatGroup::new("prj_0000000000000001", "storefront", "/ui").items([
+                    ChatGroup::new(pane.id("prj_0000000000000001"), "storefront", "/ui")
+                        .repository("acme/storefront", "main")
+                        .edit("/ui")
+                        .items([
                         NavItem::new("Fix the login redirect", "/ui#colors")
                             .detail("fix-login")
                             .trailing(ChatStatus::Working),

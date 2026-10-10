@@ -139,6 +139,8 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 project.name.clone(),
                 format!("/?project={}", project.id),
             )
+            .repository(project.repository.clone(), project.default_branch.clone())
+            .edit(crate::projects::PAGE)
             .open(at.is_some() || !q.is_empty() || !sidebar.closed.contains(&project.id))
             .more_open(at.is_some_and(|at| at >= GROUP_ROWS))
             .items(chats.iter().map(|chat| row(chat, csrf, view, true)));

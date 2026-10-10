@@ -802,26 +802,6 @@ fn done_page(headers: &HeaderMap, ready: &Ready, done: &run::Done) -> Response {
     )
 }
 
-/// The way into GitHub tools under a chat's composer, for a signed-in
-/// person with GitHub connected.
-pub(crate) async fn entry(app: &App, chat: &Conversation) -> Markup {
-    let connected = crate::projects::sidebar(app).await.is_some_and(|sidebar| {
-        matches!(
-            sidebar.status.access,
-            Access::Connected { .. } | Access::Installed { .. }
-        )
-    });
-    if !connected || chat.terminal.is_some() {
-        return html! {};
-    }
-    html! {
-        p.oa-composer-feedback {
-            a href=(format!("/chat/{}/github", chat.id)) { "GitHub tools" }
-            ": open, comment on and close issues, move them on a board, and open pull requests."
-        }
-    }
-}
-
 /// The change a reply's proposed command makes: `None` when the command
 /// isn't a GitHub one, else the action (with `repository`, the chat's
 /// project's, when the command names none) or why there is none.

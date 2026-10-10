@@ -6,8 +6,8 @@ use maud::{Markup, html};
 use super::{Pane, caption, row, specimen, stack};
 use crate::actions::{
     Alert, AlertActionsPlacement, Avatar, AvatarGroup, AvatarSize, AvatarStack, Badge, BadgeSize,
-    Button, ButtonLink, ButtonVariant, CircularProgress, Color, ControlSize, CopyButton,
-    EmptyMessage, EmptyMessageFill, EmptyMessageIconSize, Image, Busy, LoadingDots, LoadingIndicator,
+    Busy, Button, ButtonLink, ButtonVariant, CircularProgress, Color, ControlSize, CopyButton,
+    EmptyMessage, EmptyMessageFill, EmptyMessageIconSize, Image, LoadingDots, LoadingIndicator,
     ShimmerTag, ShimmerText, TextLink, Variant,
 };
 use crate::icons::Icon;

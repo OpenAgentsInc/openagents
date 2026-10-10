@@ -8,7 +8,8 @@
 //! sections. The header row shows the page's name as its breadcrumb unless
 //! the page gives one (a chat's title) or is the home page. The bottom of
 //! the left panel holds the account ([`crate::account`]): the signed-in
-//! account's menu, or Docs and a sign-in link.
+//! account's menu, or a sign-in link. Docs, Roadmap and Promises are in the
+//! home page's footer links.
 
 use axum::http::header;
 use axum::http::{HeaderMap, StatusCode};
@@ -272,9 +273,6 @@ impl UiPage {
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
-        let docs = NavItem::new("Docs", DOCS)
-            .icon(Icon::Book.size(IconSize::Md))
-            .current(current == Some(DOCS));
         // A page whose policy allows no form gets no sign-out form.
         let forms = self.toggle;
         let account = self.account.unwrap_or_else(crate::account::current);
@@ -288,14 +286,6 @@ impl UiPage {
                 .fallback_action(theme::TOGGLE_PATH)
                 .return_to(self.return_to.clone())
         });
-        // Roadmap and Promises sit with Docs at the bottom of the panel for
-        // everyone (a signed-in person's Docs is in the account menu).
-        let roadmap = NavItem::new("Roadmap", ROADMAP)
-            .icon(Icon::MapsDirections.size(IconSize::Md))
-            .current(current == Some(ROADMAP));
-        let promises = NavItem::new("Promises", PROMISES)
-            .icon(Icon::NotebookCheck.size(IconSize::Md))
-            .current(current == Some(PROMISES));
         let sidebar = match account {
             Account::SignedIn {
                 name,
@@ -311,10 +301,7 @@ impl UiPage {
                             .icon(Icon::BarChart),
                     );
                 }
-                let mut menu = menu
-                    .item(MenuItem::separator())
-                    // Download lives in the header's pill only, not twice.
-                    .item(MenuItem::link("Docs", DOCS).icon(Icon::Book));
+                // Download lives in the header's pill only, not twice.
                 if picture {
                     menu = menu.picture(crate::account::AVATAR);
                 }
@@ -327,7 +314,7 @@ impl UiPage {
                             .form("oa-sign-out"),
                     );
                 }
-                sidebar.bottom(roadmap).bottom(promises).footer(html! {
+                sidebar.footer(html! {
                     (menu)
                     @if let Some(csrf) = sign_out {
                         form id="oa-sign-out" method="post" action=(SIGN_OUT) hidden {
@@ -337,11 +324,8 @@ impl UiPage {
                 })
             }
             Account::SignedOut => sidebar
-                .bottom(docs)
-                .bottom(roadmap)
-                .bottom(promises)
                 .bottom(NavItem::new("Log in", &log_in).icon(Icon::EnterLogin.size(IconSize::Md))),
-            Account::Unknown => sidebar.bottom(docs).bottom(roadmap).bottom(promises),
+            Account::Unknown => sidebar,
         };
         // At phone width the panel is a drawer and the header keeps one
         // action, so Download and the legal links move into the drawer.
@@ -446,10 +430,14 @@ pub fn legal_links() -> Markup {
     }
 }
 
-/// Terms, Privacy, the project's links, and the copyright: under the home
-/// composer on wider screens, at the foot of the drawer at phone width.
+/// Docs, Roadmap, Promises, Terms, Privacy, the project's links, and the
+/// copyright: under the home composer on wider screens, at the foot of the
+/// drawer at phone width.
 fn legal() -> LegalLinks {
     LegalLinks::new()
+        .link("Docs", DOCS)
+        .link("Roadmap", ROADMAP)
+        .link("Promises", PROMISES)
         .link("Terms", "/terms")
         .link("Privacy", "/privacy")
         .link("GitHub", GITHUB)
@@ -583,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn download_is_a_pill_beside_the_toggle_and_docs_sits_at_the_sidebar_bottom() {
+    fn download_is_a_pill_beside_the_toggle_and_docs_is_a_footer_link() {
         let html = UiPage::new("Download OpenAgents")
             .section("/download")
             .scriptless()
@@ -599,11 +587,22 @@ mod tests {
         assert!(fine_print < html.find("href=\"/terms\"").unwrap());
         assert!(!html.contains("oa-home-legal"));
         assert!(!html.contains("<footer") && !html.contains("oa-legal\""));
-        // Docs lives in the left panel's footer.
+        // Docs, Roadmap and Promises are footer links, not panel rows: on
+        // this page they sit only in the drawer's phone-width fine print.
         let aside_end = html.find("</aside>").unwrap();
         let sidebar_footer = html.find("class=\"oa-sidebar-footer\"").unwrap();
-        let docs = html.find("href=\"/docs\"").unwrap();
-        assert!(sidebar_footer < docs && docs < aside_end);
+        for href in [DOCS, ROADMAP, PROMISES] {
+            assert!(
+                !html.contains(&format!("class=\"oa-nav-item\" href=\"{href}\"")),
+                "{href}"
+            );
+            assert_eq!(
+                html.matches(&format!("href=\"{href}\"")).count(),
+                1,
+                "{href}"
+            );
+            assert!(fine_print < html.find(&format!("href=\"{href}\"")).unwrap());
+        }
         // The page's name is the header row's breadcrumb.
         assert!(html.contains(
             "<span class=\"oa-breadcrumb-current\" aria-current=\"page\" title=\"Download OpenAgents\">"
@@ -642,6 +641,11 @@ mod tests {
     fn legal_links_list_terms_privacy_and_the_project() {
         let html = legal_links().into_string();
         assert!(html.starts_with("<div class=\"oa-home-legal\">"));
+        let docs = html.find("href=\"/docs\">Docs</a>").unwrap();
+        let roadmap = html.find("href=\"/roadmap\">Roadmap</a>").unwrap();
+        let promises = html.find("href=\"/promises\">Promises</a>").unwrap();
+        assert!(docs < roadmap && roadmap < promises);
+        assert!(promises < html.find("href=\"/terms\"").unwrap());
         assert_eq!(html.matches("href=\"/terms\"").count(), 1);
         assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
         assert!(html.contains(
@@ -659,8 +663,9 @@ mod tests {
                 .render(&HeaderMap::new())
                 .into_string()
         };
-        // Signed in: an account menu above the button with settings,
-        // docs and a sign-out form; Download is the header pill only.
+        // Signed in: an account menu above the button with settings and a
+        // sign-out form; Download is the header pill only, and Docs is a
+        // footer link.
         let html = page(Account::SignedIn {
             name: "Ada <Lovelace>".into(),
             sign_out: Some("token".into()),
@@ -676,9 +681,18 @@ mod tests {
         // Download is the header pill, not a second menu entry.
         let aside_end = html.find("</aside>").unwrap();
         assert!(!html[account..aside_end].contains(&format!("href=\"{DOWNLOAD}\"")));
-        for href in [SETTINGS, DOCS] {
+        assert!(html[account..].contains(&format!("href=\"{SETTINGS}\"")));
+        // (They are footer links: at phone width in the drawer's fine print,
+        // after the account.)
+        let fine_print = html.find("oa-sidebar-fine-print").unwrap();
+        assert!(account < fine_print && fine_print < aside_end);
+        for href in [DOCS, ROADMAP, PROMISES] {
             assert!(
-                html[account..].contains(&format!("href=\"{href}\"")),
+                !html[account..fine_print].contains(&format!("href=\"{href}\"")),
+                "{href}"
+            );
+            assert!(
+                !html.contains(&format!("class=\"oa-nav-item\" href=\"{href}\"")),
                 "{href}"
             );
         }
@@ -700,19 +714,21 @@ mod tests {
             .render(&HeaderMap::new())
             .into_string();
         assert!(!strict.contains("<form") && !strict.contains(">Sign out<"));
-        // Signed out: Docs and a sign-in link.
+        // Signed out: a sign-in link.
         let html = page(Account::SignedOut);
         assert!(html.contains("href=\"/login\"") && html.contains(">Log in</span>"));
         // ...and Log in and Sign up beside Download in the header.
         let header = &html[html.find("Download").unwrap()..];
         assert!(header.contains(">Log in<") && header.contains("href=\"/signup\""));
-        assert!(html.contains("href=\"/docs\"") && !html.contains("oa-account"));
-        // No sign-in on this server: Docs only.
+        assert!(
+            !html.contains("class=\"oa-nav-item\" href=\"/docs\"") && !html.contains("oa-account")
+        );
+        // No sign-in on this server: no account row at all.
         let html = page(Account::Unknown);
         assert!(
             !html.contains("/login")
                 && !html.contains("/signup")
-                && html.contains("href=\"/docs\"")
+                && !html.contains("class=\"oa-nav-item\" href=\"/docs\"")
         );
     }
 

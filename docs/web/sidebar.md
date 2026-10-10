@@ -5,7 +5,8 @@ answers and Claude Code runs; 5 is built for Claude Code runs.
 
 The web app's left panel today has **New chat** (⌃N), the recent chats list
 (`openagents_ui::shell::ChatList`, filled by `pages::chat::chat_list`),
-Docs, and the account menu. This doc is the plan for turning it into the one
+and the account menu. Docs, Roadmap and Promises are links in the home
+page's footer (2026-10-10), not sidebar rows. This doc is the plan for turning it into the one
 place where chatting and coding live together: a chat can be connected to a
 GitHub repository, run work on an environment or a computer, and the sidebar
 shows what each chat is doing without opening it.
@@ -24,13 +25,18 @@ Top to bottom:
    Hidden when empty.
 3. **Projects** (phase 2): one collapsible group per project. A project is
    a connected GitHub repository (later: several repositories, or none).
-   Each group lists its chats, newest activity first, five at a time with
-   **Show more**. The group heading shows the project name and, when any of
+   Each group lists its chats indented beneath it, newest activity first,
+   five at a time with **Show more**. The group heading is a folder icon
+   and the project name (Codex style, 2026-10-10); on hover or keyboard
+   focus (always on touch) it shows "…", a card with the name, chat count,
+   repository and branch, **New chat** and **Edit project** (the Projects
+   page), and a pencil that starts a chat in the project. Hovering the
+   name shows the same facts. The heading shows the project name and, when any of
    its chats is running or needs the person, one status dot (the most urgent
    of its chats). Groups remember their open or closed state per browser.
 4. **Chats**: every chat with no project, newest first. Before projects
    exist this is the only list, as today.
-5. Docs and the account menu at the bottom, unchanged.
+5. The account menu (or Log in) at the bottom.
 
 Archived chats leave the sidebar; an **Archived chats** link under the list
 (shown only when there are some) opens `/chat/archived`, which lists them

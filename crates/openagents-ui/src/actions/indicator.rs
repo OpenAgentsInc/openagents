@@ -106,13 +106,16 @@ impl_attrs!(LoadingDots);
 
 impl Render for LoadingDots {
     fn render(&self) -> Markup {
-        status(Tag::new("span", "oa-loading-dots", &self.attrs), &self.label)
-            .extra(&self.attrs)
-            .close(html! {
-                span class="oa-loading-dots-dot" {}
-                span class="oa-loading-dots-dot" {}
-                span class="oa-loading-dots-dot" {}
-            })
+        status(
+            Tag::new("span", "oa-loading-dots", &self.attrs),
+            &self.label,
+        )
+        .extra(&self.attrs)
+        .close(html! {
+            span class="oa-loading-dots-dot" {}
+            span class="oa-loading-dots-dot" {}
+            span class="oa-loading-dots-dot" {}
+        })
     }
 }
 
