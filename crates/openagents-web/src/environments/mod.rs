@@ -524,6 +524,7 @@ async fn events(
         return StatusCode::NOT_FOUND.into_response();
     }
     let ready = claude_offer(&app, &studio, &headers).await;
+    let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (studio, id, after.after, 0u16),
         move |(studio, id, mut cursor, ticks)| async move {
@@ -548,7 +549,7 @@ async fn events(
         },
     );
     protect(
-        Sse::new(stream)
+        Sse::new(shutdown.until(stream))
             .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
             .into_response(),
     )
@@ -707,6 +708,7 @@ async fn run_events(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
+    let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (studio, id, run, String::new(), 0u16),
         |(studio, id, run, mut last, ticks)| async move {
@@ -733,7 +735,7 @@ async fn run_events(
         },
     );
     protect(
-        Sse::new(stream)
+        Sse::new(shutdown.until(stream))
             .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
             .into_response(),
     )

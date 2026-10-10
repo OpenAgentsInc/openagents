@@ -1952,6 +1952,7 @@ async fn events(
         return refusal(StatusCode::CONFLICT, "This chat is out of date. Reload it.");
     }
     let links = work::links(&app, &headers).await;
+    let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (app, owner, id, cursor, 0u16),
         move |(app, owner, id, mut cursor, mut ticks)| async move {
@@ -1985,7 +1986,7 @@ async fn events(
         },
     );
     crate::chat_html::protect(
-        Sse::new(stream)
+        Sse::new(shutdown.until(stream))
             .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
             .into_response(),
     )

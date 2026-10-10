@@ -1742,6 +1742,45 @@ async fn a_connected_backend_fills_the_pages_and_escapes_what_it_returns() {
 }
 
 // ---------------------------------------------------------------------
+// Local privilege comes from the socket peer, not the Host header (X-SEC-02).
+
+async fn get_from_peer(router: Router, uri: &str, peer: &str) -> StatusCode {
+    let peer: std::net::SocketAddr = peer.parse().unwrap();
+    let mut request = Request::builder()
+        .uri(uri)
+        .header(header::HOST, LOCAL)
+        .header(LOCAL_HEADER, "1")
+        .body(Body::empty())
+        .unwrap();
+    request
+        .extensions_mut()
+        .insert(axum::extract::ConnectInfo(peer));
+    router.oneshot(request).await.unwrap().status()
+}
+
+#[tokio::test]
+async fn local_host_header_from_a_remote_peer_is_not_local() {
+    let root = tempfile::tempdir().unwrap();
+    let store = root.path().join("store");
+    let mut public = config(store.clone());
+    public.public_hosts = vec!["openagents.com".into()];
+    for uri in ["/app", "/environments"] {
+        assert_eq!(
+            get_from_peer(router(public.clone()), uri, "203.0.113.7:5555").await,
+            StatusCode::FORBIDDEN,
+            "{uri} from a remote peer with a local Host"
+        );
+    }
+    for peer in ["127.0.0.1:5555", "[::1]:5555", "[::ffff:127.0.0.1]:5555"] {
+        assert_eq!(
+            get_from_peer(router(public.clone()), "/app", peer).await,
+            StatusCode::OK,
+            "/app from {peer}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------
 // The local task browser.
 
 #[tokio::test]

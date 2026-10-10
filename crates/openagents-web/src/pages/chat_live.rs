@@ -150,6 +150,7 @@ async fn events(
     let now_unix = now();
     let cursor = reconnect.or(resume.after).unwrap_or(now_unix).min(now_unix);
     let working = parse_working(&resume.working);
+    let shutdown = app.config.shutdown.clone();
     let mut watch = Watch::new(app, owner, cursor, working);
     watch.current = Some(resume.current).filter(|id| valid_id(id));
     watch.hx = resume.hx == "1";
@@ -163,7 +164,7 @@ async fn events(
         Some((Ok::<_, Infallible>(event), watch))
     });
     crate::chat_html::protect(
-        Sse::new(stream)
+        Sse::new(shutdown.until(stream))
             .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
             .into_response(),
     )

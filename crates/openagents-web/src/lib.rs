@@ -52,6 +52,7 @@ mod promises;
 mod purchases;
 pub mod sales_remote;
 mod settings;
+pub mod shutdown;
 mod suggestions;
 mod tasks;
 mod terminal_connect;
@@ -172,6 +173,9 @@ pub struct Config {
     /// admins (`OPENAGENTS_WEB_AGENT_ACCOUNTS`, [`agent_work`]): staging's
     /// smoke test account, which has no GitHub identity to invite.
     pub agent_accounts: Vec<String>,
+    /// Starts when the server is asked to stop; open event streams end on
+    /// it so a rollout can drain ([`shutdown`]).
+    pub shutdown: shutdown::Shutdown,
 }
 
 impl Config {
@@ -207,6 +211,7 @@ impl Config {
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
             agent_accounts: Vec::new(),
+            shutdown: shutdown::Shutdown::default(),
         }
     }
 }
@@ -339,6 +344,23 @@ impl Hosts {
     }
 }
 
+/// Whether the request's socket peer is this computer (X-SEC-02). The
+/// `Host` header is the client's to choose, so local privilege also needs
+/// the connection itself to come from a loopback address. A request with
+/// no peer (no `ConnectInfo`) is not local: the binary always serves with
+/// `into_make_service_with_connect_info`. Unit tests drive the router
+/// in-process, with no socket, and are treated as on this computer unless
+/// they attach a peer.
+fn loopback_peer(request: &Request) -> bool {
+    match request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
+        Some(axum::extract::ConnectInfo(peer)) => peer.ip().to_canonical().is_loopback(),
+        None => cfg!(test),
+    }
+}
+
 /// Answers only the configured hosts, keeps the task browser local, sends
 /// what the site doesn't own to the upstream, and sets the security headers
 /// every response of its own carries.
@@ -349,7 +371,7 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default()
         .to_owned();
-    let local = hosts.local(&host);
+    let local = hosts.local(&host) && loopback_peer(&request);
     let path = request.uri().path();
     // The task browser reads this computer's own task store, so it stays
     // on the local address.

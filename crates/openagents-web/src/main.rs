@@ -239,34 +239,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
     // First-party, cookieless counts (#11153): written every minute to
-    // OPENAGENTS_WEB_ANALYTICS_BUCKET (or _DIR), and once more when Cloud
-    // Run stops the instance.
+    // OPENAGENTS_WEB_ANALYTICS_BUCKET (or _DIR), and once more when the
+    // server stops.
     let analytics = std::sync::Arc::new(openagents_web::analytics::Analytics::from_env()?);
     if analytics.has_store() {
         analytics.spawn();
-        let last = analytics.clone();
-        tokio::spawn(async move {
-            #[cfg(unix)]
-            if let Ok(mut term) =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            {
-                term.recv().await;
-                let _ = last.flush().await;
-                std::process::exit(0);
-            }
-        });
         println!("Analytics counts are kept");
     }
-    config.analytics = analytics;
+    config.analytics = analytics.clone();
+    let shutdown = config.shutdown.clone();
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let bound = listener.local_addr()?;
     config.port = bound.port();
     println!("OpenAgents web is listening on http://{bound} (development backend)");
     let router = openagents_web::router(config);
-    axum::serve(
+    // SIGTERM (a Cloud Run rollout or scale-in) or ctrl-c: stop accepting,
+    // end open event streams, let requests in flight finish within the
+    // drain, then keep the last counts (WEB-01).
+    let drained = openagents_web::shutdown::serve(
         listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
+        router,
+        shutdown,
+        openagents_web::shutdown::signal(),
+        openagents_web::shutdown::DRAIN,
     )
     .await?;
+    if !drained {
+        eprintln!("Stopping with requests still open after the drain");
+    }
+    if let Err(error) = analytics.flush().await {
+        eprintln!("The last analytics counts were not kept: {error}");
+    }
     Ok(())
 }
