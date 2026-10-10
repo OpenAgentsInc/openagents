@@ -165,6 +165,10 @@ pub enum Action {
         rule: String,
         resume: bool,
     },
+    /// Delete a scheduled prompt (#11177) from this computer.
+    BackgroundDelete {
+        rule: String,
+    },
 }
 
 impl Action {
@@ -185,7 +189,8 @@ impl Action {
             | Action::ProviderConnect
             | Action::ProviderRemove { .. }
             | Action::ProvidersMine { .. }
-            | Action::Background { .. } => None,
+            | Action::Background { .. }
+            | Action::BackgroundDelete { .. } => None,
         }
     }
 }
@@ -833,6 +838,19 @@ fn background(settings: &Settings, now: u64) -> Vec<Node<Intent>> {
                 },
             ));
         }
+        // A scheduled prompt can also be deleted; other rules only pause.
+        if rule.scheduled.is_some() {
+            head.push(chip(button(
+                &format!("{key}-delete"),
+                "Delete",
+                Action::BackgroundDelete {
+                    rule: rule.id.clone(),
+                },
+                None,
+                false,
+                true,
+            )));
+        }
         rows.push(stack(&key, Axis::Horizontal, Space::Md, head));
         rows.push(text(
             &format!("{key}-line"),
@@ -1112,6 +1130,7 @@ mod tests {
                 status: Status::On,
                 last: Some("Freed 4 GB: 2 old build folders.".into()),
                 when: Some(1000 - 120),
+                scheduled: None,
             },
             Rule {
                 id: "usage".into(),
@@ -1119,6 +1138,7 @@ mod tests {
                 status: Status::Off,
                 last: None,
                 when: None,
+                scheduled: None,
             },
             Rule {
                 id: "bad".into(),
@@ -1126,6 +1146,15 @@ mod tests {
                 status: Status::Broken,
                 last: Some("does not read".into()),
                 when: None,
+                scheduled: None,
+            },
+            Rule {
+                id: "prompt-triage".into(),
+                name: "Scheduled prompt: triage the new issues".into(),
+                status: Status::On,
+                last: None,
+                when: None,
+                scheduled: Some("Weekdays at 09:00".into()),
             },
         ];
         let rendered = view(&settings, true, None, &model, 1000);
@@ -1155,6 +1184,16 @@ mod tests {
             }
         );
         assert!(find(&rendered, "settings-background-bad-toggle").is_none());
+        // Only a scheduled prompt has Delete (#11177).
+        assert_eq!(
+            intent("settings-background-prompt-triage-delete"),
+            Intent::Settings {
+                action: Action::BackgroundDelete {
+                    rule: "prompt-triage".into(),
+                }
+            }
+        );
+        assert!(find(&rendered, "settings-background-disk-delete").is_none());
         let words = crate::screens::words(&rendered).join(" ");
         assert!(
             words.contains("On · Freed 4 GB: 2 old build folders. · 2 min ago"),

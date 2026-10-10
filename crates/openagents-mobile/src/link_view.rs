@@ -1,7 +1,8 @@
 //! The account surface's screens (`crate::account_link`): sign in and
 //! where this phone's chats live, the account's chats, one chat, what runs
-//! on the computers, and a message to one agent. Rust Native views the
-//! hosts draw as they draw the Computers screens.
+//! on the computers, a message to one agent, memory, and scheduled
+//! prompts. Rust Native views the hosts draw as they draw the Computers
+//! screens.
 
 use crate::account_link::{Agents, Item, Open, Screen, SignIn, State, Thread, place};
 use openagents_chat::basic_coder::Turn;
@@ -57,6 +58,8 @@ fn draw(state: &State, composer: u64, messages: usize, text: usize) -> Node<Inte
         Screen::Message => message(state, composer),
         Screen::Memory => memory(state),
         Screen::Note => note(state, composer),
+        Screen::Schedules => schedules(state),
+        Screen::NewSchedule => new_schedule(state, composer),
     }
 }
 
@@ -104,6 +107,14 @@ fn account(state: &State) -> Node<Intent> {
                 Some(Glyph::Person),
                 Intent::Show {
                     screen: Screen::Memory,
+                },
+            ));
+            children.push(button(
+                "link-open-schedules",
+                "Scheduled prompts",
+                Some(Glyph::History),
+                Intent::Show {
+                    screen: Screen::Schedules,
                 },
             ));
             children.push(button(
@@ -738,6 +749,241 @@ fn note(state: &State, composer: u64) -> Node<Intent> {
             },
         ));
     }
+    page(children)
+}
+
+/// The scheduled prompts on the account (#11177): when each runs, on which
+/// computer, where it goes, with Pause or Resume and Delete.
+fn schedules(state: &State) -> Node<Intent> {
+    let mut children = vec![header(
+        "link-schedules-header",
+        "Scheduled prompts",
+        Intent::Back,
+    )];
+    children.push(status(
+        "link-schedules-what",
+        "Prompts that run on your computers on a schedule, even while Coder is closed there.",
+        quiet(),
+    ));
+    children.extend(notice(state));
+    if !state.schedules_read {
+        children.push(working(
+            "link-schedules-loading",
+            "Loading your scheduled prompts…",
+        ));
+        return page(children);
+    }
+    if state.schedule_computers.is_empty() {
+        children.push(status(
+            "link-schedules-no-computer",
+            "No computer runs Coder with sync on yet. Type /sync on in Coder on a computer to schedule prompts there.",
+            quiet(),
+        ));
+    } else {
+        children.push(button(
+            "link-schedules-new",
+            "Add",
+            Some(Glyph::Add),
+            Intent::NewSchedule,
+        ));
+    }
+    if state.schedules.is_empty() {
+        children.push(status(
+            "link-schedules-empty",
+            "No scheduled prompts yet.",
+            quiet(),
+        ));
+        return page(children);
+    }
+    for schedule in &state.schedules {
+        let key = format!("link-scheduled-{}", slug(&schedule.id));
+        let mut lines = vec![text(
+            &format!("{key}-prompt"),
+            &cut(&schedule.prompt, 280),
+            TextRole::Body,
+            ink(),
+            false,
+        )];
+        let mut when = schedule.when();
+        if schedule.paused {
+            when.push_str(" · Paused");
+        }
+        lines.push(status(
+            &format!("{key}-when"),
+            &when,
+            if schedule.paused { warn() } else { quiet() },
+        ));
+        lines.push(status(
+            &format!("{key}-where"),
+            &format!("Runs on {} · {}", schedule.computer, schedule.goes()),
+            quiet(),
+        ));
+        lines.push(button(
+            &format!("{key}-pause"),
+            if schedule.paused { "Resume" } else { "Pause" },
+            Some(if schedule.paused {
+                Glyph::Restore
+            } else {
+                Glyph::Stop
+            }),
+            Intent::PauseSchedule {
+                id: schedule.id.clone(),
+                paused: !schedule.paused,
+            },
+        ));
+        lines.push(button(
+            &format!("{key}-delete"),
+            "Delete",
+            Some(Glyph::Archive),
+            Intent::DeleteSchedule {
+                id: schedule.id.clone(),
+            },
+        ));
+        children.push(card(&key, lines));
+    }
+    page(children)
+}
+
+/// A new scheduled prompt: the computer, how often, where it goes, and a
+/// composer for the prompt itself.
+fn new_schedule(state: &State, composer: u64) -> Node<Intent> {
+    use crate::account_link::Repeat;
+    let mut children = vec![header(
+        "link-new-schedule-header",
+        "New scheduled prompt",
+        Intent::Back,
+    )];
+    let Some(draft) = &state.draft else {
+        return page(children);
+    };
+    children.extend(notice(state));
+    // The computer.
+    let mut lines = vec![text(
+        "link-new-schedule-computer-title",
+        "Runs on",
+        TextRole::Body,
+        ink(),
+        true,
+    )];
+    for (index, name) in state.schedule_computers.iter().enumerate() {
+        lines.push(choice(
+            &format!("link-new-schedule-computer-{index}"),
+            name,
+            Glyph::Computer,
+            draft.computer == *name,
+            Intent::ScheduleComputer { name: name.clone() },
+        ));
+    }
+    children.push(card("link-new-schedule-computer", lines));
+    // How often.
+    let repeats = [
+        ("daily", "Every day", Repeat::Daily),
+        ("weekdays", "Weekdays", Repeat::Weekdays),
+        ("weekends", "Weekends", Repeat::Weekends),
+        ("hour", "Every hour", Repeat::Hours(1)),
+        ("2h", "Every 2 hours", Repeat::Hours(2)),
+        ("6h", "Every 6 hours", Repeat::Hours(6)),
+    ];
+    let mut lines = vec![text(
+        "link-new-schedule-when-title",
+        "When",
+        TextRole::Body,
+        ink(),
+        true,
+    )];
+    for (key, label, repeat) in repeats {
+        lines.push(choice(
+            &format!("link-new-schedule-repeat-{key}"),
+            label,
+            Glyph::History,
+            draft.repeat == repeat,
+            Intent::ScheduleRepeat { repeat },
+        ));
+    }
+    if !matches!(draft.repeat, Repeat::Hours(_)) {
+        lines.push(status(
+            "link-new-schedule-time",
+            &format!("At {} on the computer's clock", draft.time()),
+            ink(),
+        ));
+        lines.push(button(
+            "link-new-schedule-earlier",
+            "Earlier",
+            Some(Glyph::ArrowDown),
+            Intent::ScheduleTime { minutes: -30 },
+        ));
+        lines.push(button(
+            "link-new-schedule-later",
+            "Later",
+            Some(Glyph::ArrowUp),
+            Intent::ScheduleTime { minutes: 30 },
+        ));
+    }
+    children.push(card("link-new-schedule-when", lines));
+    // Where it goes.
+    let mut lines = vec![
+        text(
+            "link-new-schedule-where-title",
+            "Where",
+            TextRole::Body,
+            ink(),
+            true,
+        ),
+        choice(
+            "link-new-schedule-where-new",
+            "Start a new Coder run",
+            Glyph::Compose,
+            draft.chat.is_none(),
+            Intent::ScheduleChat { session: None },
+        ),
+    ];
+    for (index, chat) in state
+        .schedule_chats
+        .iter()
+        .filter(|chat| chat.computer == draft.computer)
+        .take(8)
+        .enumerate()
+    {
+        let title = if chat.title.trim().is_empty() {
+            "Untitled chat"
+        } else {
+            chat.title.as_str()
+        };
+        lines.push(choice(
+            &format!("link-new-schedule-where-{index}"),
+            &format!("Post in {}", cut(title, 80)),
+            Glyph::History,
+            draft.chat.as_deref() == Some(chat.session.as_str()),
+            Intent::ScheduleChat {
+                session: Some(chat.session.clone()),
+            },
+        ));
+    }
+    children.push(card("link-new-schedule-where", lines));
+    let (days, time, every_secs) = draft.when();
+    children.push(status(
+        "link-new-schedule-how",
+        &format!(
+            "{}. Write the prompt below, then send to add it.",
+            crate::account_link::when_words(&days, time.as_deref(), every_secs)
+        ),
+        quiet(),
+    ));
+    children.push(Node {
+        key: "link-new-schedule-composer".into(),
+        style: Style::default(),
+        element: Element::Composer {
+            token: format!("link-schedule-{composer}"),
+            placeholder: "What to do each time".into(),
+            max_bytes: crate::account_link::MAX_SCHEDULE_PROMPT,
+            enabled: !state.schedules_busy && !draft.computer.is_empty(),
+            busy: state.schedules_busy,
+            stop: None,
+            choices: vec![],
+            draft: None,
+            focus: true,
+        },
+    });
     page(children)
 }
 

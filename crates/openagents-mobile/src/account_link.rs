@@ -48,6 +48,18 @@
 //! (`PUT /coder/memory/{id}`) or delete it (`DELETE /coder/memory/{id}`),
 //! and a new note is `PUT /coder/memory/new`.
 //!
+//! **Scheduled prompts** (#11177). `GET /v1/schedules` reads the
+//! person's scheduled prompts (each runs on one of their computers, as a
+//! background rule there), the computers that run Coder, and those
+//! computers' chats. The Scheduled prompts screen lists them with Pause or
+//! Resume (`POST /v1/schedules/{id}/pause`) and Delete
+//! (`DELETE /v1/schedules/{id}`); Add makes one
+//! (`PUT /v1/schedules/new`): the prompt, the computer, when (every
+//! day, weekdays, or weekends at a time, or every few hours), and where it
+//! goes (a new Coder run, or one of that computer's chats). The computer
+//! picks the change up at its next sync and runs it, even while Coder is
+//! closed there.
+//!
 //! Everything polls with backoff: faster while a screen that needs it
 //! shows, slower in the background, never while signed out.
 
@@ -129,6 +141,158 @@ pub fn kind_label(kind: Option<&str>) -> &'static str {
 }
 /// The most photos one reply carries (the website's own bound).
 pub const MAX_PHOTOS: usize = 4;
+
+/// How often the scheduled prompts are read while their screen isn't up.
+const SCHEDULES_EVERY: u64 = 300;
+/// The longest scheduled prompt, as the website keeps it.
+pub const MAX_SCHEDULE_PROMPT: usize = 4000;
+/// Monday to Friday, 0 being Sunday.
+pub const WEEKDAYS: [u8; 5] = [1, 2, 3, 4, 5];
+/// Saturday and Sunday.
+pub const WEEKENDS: [u8; 2] = [0, 6];
+
+/// One scheduled prompt on the account, as `GET /v1/schedules` lists it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct Schedule {
+    pub id: String,
+    #[serde(default)]
+    pub computer: String,
+    #[serde(default)]
+    pub prompt: String,
+    /// 0 Sunday to 6 Saturday; empty is every day. Only with `time`.
+    #[serde(default)]
+    pub days: Vec<u8>,
+    /// `HH:MM`, 24-hour, on the computer's clock.
+    #[serde(default)]
+    pub time: Option<String>,
+    #[serde(default)]
+    pub every_secs: Option<u64>,
+    /// The Coder chat it posts in; a new Coder run when unset.
+    #[serde(default)]
+    pub chat: Option<String>,
+    #[serde(default)]
+    pub chat_title: Option<String>,
+    #[serde(default)]
+    pub paused: bool,
+    #[serde(default)]
+    pub updated: u64,
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+impl Schedule {
+    /// When it runs, in a few words.
+    #[must_use]
+    pub fn when(&self) -> String {
+        when_words(&self.days, self.time.as_deref(), self.every_secs)
+    }
+
+    /// Where its answer goes.
+    #[must_use]
+    pub fn goes(&self) -> String {
+        match (&self.chat, &self.chat_title) {
+            (Some(_), Some(title)) if !title.trim().is_empty() => format!("Posts in {title}"),
+            (Some(_), _) => "Posts in a chat".into(),
+            (None, _) => "Starts a new Coder run".into(),
+        }
+    }
+}
+
+/// "Every day at 09:00", "Weekdays at 09:00", "Every 2 hours".
+#[must_use]
+pub fn when_words(days: &[u8], time: Option<&str>, every_secs: Option<u64>) -> String {
+    if let Some(time) = time {
+        let mut sorted = days.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        return if sorted.is_empty() || sorted.len() == 7 {
+            format!("Every day at {time}")
+        } else if sorted == WEEKDAYS {
+            format!("Weekdays at {time}")
+        } else if sorted == WEEKENDS {
+            format!("Weekends at {time}")
+        } else {
+            const NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            let names: Vec<&str> = sorted
+                .iter()
+                .filter_map(|day| NAMES.get(usize::from(*day)).copied())
+                .collect();
+            format!("{} at {time}", names.join(", "))
+        };
+    }
+    match every_secs.unwrap_or(0) {
+        0 => "Not scheduled".into(),
+        3600 => "Every hour".into(),
+        secs if secs % 3600 == 0 => format!("Every {} hours", secs / 3600),
+        60 => "Every minute".into(),
+        secs if secs % 60 == 0 => format!("Every {} minutes", secs / 60),
+        secs => format!("Every {secs} seconds"),
+    }
+}
+
+/// One of a computer's chats a scheduled prompt can post in.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct ScheduleChat {
+    pub session: String,
+    #[serde(default)]
+    pub computer: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+/// How often a new scheduled prompt repeats.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Repeat {
+    #[default]
+    Daily,
+    Weekdays,
+    Weekends,
+    /// Every this many hours.
+    Hours(u64),
+}
+
+/// The new scheduled prompt being made: everything but its words, which
+/// the composer sends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScheduleDraft {
+    pub computer: String,
+    pub repeat: Repeat,
+    /// The time of day, in minutes after midnight.
+    pub minutes: u32,
+    /// The chat it posts in; a new Coder run when unset.
+    pub chat: Option<String>,
+}
+
+impl Default for ScheduleDraft {
+    fn default() -> Self {
+        Self {
+            computer: String::new(),
+            repeat: Repeat::Daily,
+            minutes: 9 * 60,
+            chat: None,
+        }
+    }
+}
+
+impl ScheduleDraft {
+    /// `HH:MM`.
+    #[must_use]
+    pub fn time(&self) -> String {
+        format!("{:02}:{:02}", self.minutes / 60, self.minutes % 60)
+    }
+
+    /// The days, time, and interval the website keeps.
+    #[must_use]
+    pub fn when(&self) -> (Vec<u8>, Option<String>, Option<u64>) {
+        match self.repeat {
+            Repeat::Daily => (vec![], Some(self.time()), None),
+            Repeat::Weekdays => (WEEKDAYS.to_vec(), Some(self.time()), None),
+            Repeat::Weekends => (WEEKENDS.to_vec(), Some(self.time()), None),
+            Repeat::Hours(hours) => (vec![], None, Some(hours.max(1) * 3600)),
+        }
+    }
+}
 
 /// The signed-in account. The token never appears in `Debug`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -446,6 +610,10 @@ pub enum Screen {
     Memory,
     /// One memory note, to change or delete, or a new one.
     Note,
+    /// The scheduled prompts on the account (#11177).
+    Schedules,
+    /// A new scheduled prompt.
+    NewSchedule,
 }
 
 /// An open chat.
@@ -597,6 +765,35 @@ pub enum Intent {
     DeleteNote {
         id: String,
     },
+    /// Make a new scheduled prompt.
+    NewSchedule,
+    /// Pause or resume a scheduled prompt.
+    PauseSchedule {
+        id: String,
+        paused: bool,
+    },
+    /// Delete a scheduled prompt.
+    DeleteSchedule {
+        id: String,
+    },
+    /// The computer a new scheduled prompt runs on.
+    ScheduleComputer {
+        name: String,
+    },
+    /// How often a new scheduled prompt runs.
+    ScheduleRepeat {
+        repeat: Repeat,
+    },
+    /// Move a new scheduled prompt's time by `minutes` (earlier when
+    /// negative).
+    ScheduleTime {
+        minutes: i32,
+    },
+    /// Where a new scheduled prompt goes: one of the computer's chats, or
+    /// a new Coder run when unset.
+    ScheduleChat {
+        session: Option<String>,
+    },
     Retry,
     /// Add a photo to the open chat's reply: the host opens its picker.
     AddPhoto,
@@ -660,6 +857,20 @@ pub struct State {
     pub editing: Option<String>,
     /// A note's change or delete is on its way.
     pub memory_busy: bool,
+    /// The account's scheduled prompts, newest first (#11177).
+    pub schedules: Vec<Schedule>,
+    /// The computers a scheduled prompt can run on, most recent first.
+    pub schedule_computers: Vec<String>,
+    /// The chats a scheduled prompt can post in.
+    pub schedule_chats: Vec<ScheduleChat>,
+    /// The scheduled prompts were read at least once.
+    pub schedules_read: bool,
+    /// When they were last read, in Unix seconds.
+    pub schedules_at: u64,
+    /// A scheduled prompt's change is on its way.
+    pub schedules_busy: bool,
+    /// The new scheduled prompt the NewSchedule screen makes.
+    pub draft: Option<ScheduleDraft>,
 }
 
 impl State {
@@ -904,9 +1115,11 @@ impl Link {
                     Screen::Message => Screen::Running,
                     Screen::Chat => Screen::Chats,
                     Screen::Note => Screen::Memory,
+                    Screen::NewSchedule => Screen::Schedules,
                     _ => Screen::Account,
                 };
                 state.editing = None;
+                state.draft = None;
                 if state.screen != Screen::Chat {
                     state.open = None;
                 }
@@ -941,6 +1154,70 @@ impl Link {
                 state.changed();
             }
             Intent::DeleteNote { id } => self.delete_note(id),
+            Intent::NewSchedule => {
+                let mut state = self.lock();
+                let computer = state
+                    .schedule_computers
+                    .first()
+                    .cloned()
+                    .unwrap_or_default();
+                state.draft = Some(ScheduleDraft {
+                    computer,
+                    ..ScheduleDraft::default()
+                });
+                state.screen = Screen::NewSchedule;
+                state.notice = None;
+                state.changed();
+            }
+            Intent::PauseSchedule { id, paused } => self.pause_schedule(id, paused),
+            Intent::DeleteSchedule { id } => self.delete_schedule(id),
+            Intent::ScheduleComputer { name } => {
+                let mut state = self.lock();
+                if !state.schedule_computers.contains(&name) {
+                    return None;
+                }
+                if let Some(draft) = &mut state.draft
+                    && draft.computer != name
+                {
+                    draft.computer = name;
+                    // A chat belongs to one computer.
+                    draft.chat = None;
+                }
+                state.changed();
+            }
+            Intent::ScheduleRepeat { repeat } => {
+                let mut state = self.lock();
+                if let Some(draft) = &mut state.draft {
+                    draft.repeat = match repeat {
+                        Repeat::Hours(hours) => Repeat::Hours(hours.clamp(1, 24)),
+                        other => other,
+                    };
+                }
+                state.changed();
+            }
+            Intent::ScheduleTime { minutes } => {
+                let mut state = self.lock();
+                if let Some(draft) = &mut state.draft {
+                    let day = 24 * 60;
+                    let moved = (i64::from(draft.minutes) + i64::from(minutes)).rem_euclid(day);
+                    draft.minutes = u32::try_from(moved).unwrap_or(0);
+                }
+                state.changed();
+            }
+            Intent::ScheduleChat { session } => {
+                let mut state = self.lock();
+                let computer = state.draft.as_ref().map(|d| d.computer.clone());
+                let known = session.as_ref().is_none_or(|session| {
+                    state
+                        .schedule_chats
+                        .iter()
+                        .any(|c| &c.session == session && Some(&c.computer) == computer.as_ref())
+                });
+                if known && let Some(draft) = &mut state.draft {
+                    draft.chat = session;
+                }
+                state.changed();
+            }
             Intent::Message { computer, item } => {
                 let mut state = self.lock();
                 let title = state
@@ -987,6 +1264,10 @@ impl Link {
         }
         if token.starts_with("link-note-") {
             self.save_note(text.to_owned());
+            return;
+        }
+        if token.starts_with("link-schedule-") {
+            self.save_schedule(text.to_owned());
             return;
         }
         if text.len() > MAX_REPLY_BYTES {
@@ -1100,6 +1381,11 @@ impl Link {
             state.agents_read = false;
             state.memory.clear();
             state.memory_read = false;
+            state.schedules.clear();
+            state.schedule_computers.clear();
+            state.schedule_chats.clear();
+            state.schedules_read = false;
+            state.draft = None;
             state.editing = None;
             state.open = None;
             state.seen.clear();
@@ -1558,6 +1844,202 @@ impl Link {
         });
     }
 
+    /// Make the new scheduled prompt: the composer's words, and what the
+    /// NewSchedule screen picked.
+    fn save_schedule(&mut self, text: String) {
+        let refuse = |link: &Self, notice: &str| {
+            let mut state = link.lock();
+            state.notice = Some(notice.to_owned());
+            state.changed();
+        };
+        if text.len() > MAX_SCHEDULE_PROMPT {
+            return refuse(&*self, "That prompt is longer than 4,000 characters.");
+        }
+        if secret_screen::credential_in(&text).is_some() {
+            return refuse(
+                &*self,
+                "This looks like it holds a password or key, so it wasn't saved.",
+            );
+        }
+        let (origin, token, body) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            let Some(draft) = state.draft.clone() else {
+                return;
+            };
+            if state.schedules_busy {
+                return;
+            }
+            if draft.computer.is_empty() {
+                state.notice = Some("Pick the computer it runs on.".into());
+                state.changed();
+                return;
+            }
+            let (days, time, every_secs) = draft.when();
+            let mut body = json!({
+                "computer": draft.computer,
+                "prompt": text,
+                "days": days,
+                "paused": false,
+            });
+            if let Some(time) = time {
+                body["time"] = json!(time);
+            }
+            if let Some(every) = every_secs {
+                body["every_secs"] = json!(every);
+            }
+            if let Some(chat) = &draft.chat {
+                body["chat"] = json!(chat);
+            }
+            state.schedules_busy = true;
+            state.notice = Some("Saving…".into());
+            state.changed();
+            (state.origin.clone(), session.token, body)
+        };
+        self.composer += 1;
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "PUT",
+                    format!("{origin}/v1/schedules/new"),
+                    Some(token),
+                    Some(body),
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.schedules_busy = false;
+                match &reply {
+                    Ok(reply) if reply.status == 200 => {
+                        if let Ok(schedule) =
+                            serde_json::from_value::<Schedule>(reply.body["schedule"].clone())
+                        {
+                            state.schedules.retain(|have| have.id != schedule.id);
+                            state.schedules.insert(0, schedule);
+                        }
+                        state.draft = None;
+                        state.screen = Screen::Schedules;
+                        state.notice =
+                            Some("Saved. The computer picks it up at its next sync.".into());
+                    }
+                    Ok(reply) => {
+                        state.notice =
+                            Some(reply.message("That scheduled prompt wasn't saved. Try again."));
+                    }
+                    Err(error) => state.notice = Some(error.clone()),
+                }
+                state.changed();
+            }
+            wake();
+        });
+    }
+
+    /// Pause or resume a scheduled prompt.
+    fn pause_schedule(&mut self, id: String, paused: bool) {
+        let (origin, token) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            if state.schedules_busy || !state.schedules.iter().any(|s| s.id == id) {
+                return;
+            }
+            state.schedules_busy = true;
+            state.notice = Some(if paused { "Pausing…" } else { "Resuming…" }.into());
+            state.changed();
+            (state.origin.clone(), session.token)
+        };
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "POST",
+                    format!("{origin}/v1/schedules/{}/pause", encode(&id)),
+                    Some(token),
+                    Some(json!({ "paused": paused })),
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.schedules_busy = false;
+                match &reply {
+                    Ok(reply) if reply.status == 200 => {
+                        let updated =
+                            serde_json::from_value::<Schedule>(reply.body["schedule"].clone()).ok();
+                        if let Some(have) = state.schedules.iter_mut().find(|s| s.id == id) {
+                            match updated {
+                                Some(schedule) => *have = schedule,
+                                None => have.paused = paused,
+                            }
+                        }
+                        state.notice = Some(if paused { "Paused." } else { "Resumed." }.into());
+                    }
+                    Ok(reply) => {
+                        state.notice = Some(reply.message("That didn't go through. Try again."));
+                    }
+                    Err(error) => state.notice = Some(error.clone()),
+                }
+                state.changed();
+            }
+            wake();
+        });
+    }
+
+    /// Delete a scheduled prompt everywhere.
+    fn delete_schedule(&mut self, id: String) {
+        let (origin, token) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            if state.schedules_busy {
+                return;
+            }
+            state.schedules_busy = true;
+            state.notice = Some("Deleting…".into());
+            state.changed();
+            (state.origin.clone(), session.token)
+        };
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "DELETE",
+                    format!("{origin}/v1/schedules/{}", encode(&id)),
+                    Some(token),
+                    None,
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.schedules_busy = false;
+                match &reply {
+                    Ok(reply) if reply.status == 200 => {
+                        state.schedules.retain(|s| s.id != id);
+                        state.notice =
+                            Some("Deleted. The computer stops running it at its next sync.".into());
+                    }
+                    Ok(reply) => {
+                        state.notice =
+                            Some(reply.message("That scheduled prompt wasn't deleted. Try again."));
+                    }
+                    Err(error) => state.notice = Some(error.clone()),
+                }
+                state.changed();
+            }
+            wake();
+        });
+    }
+
     /// Phone chats changed since they last uploaded: queue them. `chats`
     /// gives each chat's id, title, updated stamp, and messages.
     pub fn queue_uploads(&self, chats: Vec<(String, String, u64, Vec<Message>)>) {
@@ -1929,7 +2411,7 @@ impl Poller {
     /// One pass: the choice, the chat list, the open chat, the agents, and
     /// the uploads.
     async fn pass(&self) {
-        let (origin, token, name, read_choice, open, uploads, read_memory) = {
+        let (origin, token, name, read_choice, open, uploads, read_memory, read_schedules) = {
             let state = lock(&self.state);
             let Some(session) = state.session.clone().filter(|s| s.live(unix_now())) else {
                 return;
@@ -1955,6 +2437,10 @@ impl Poller {
                 !state.memory_read
                     || (state.shown && state.screen == Screen::Memory)
                     || unix_now().saturating_sub(state.memory_at) >= MEMORY_EVERY,
+                !state.schedules_read
+                    || (state.shown
+                        && matches!(state.screen, Screen::Schedules | Screen::NewSchedule))
+                    || unix_now().saturating_sub(state.schedules_at) >= SCHEDULES_EVERY,
             )
         };
         let before = lock(&self.state).revision;
@@ -2166,6 +2652,46 @@ impl Poller {
                 }
             }
         }
+        if read_schedules {
+            // An older website keeps no scheduled prompts: that is no
+            // failure.
+            match self
+                .http
+                .call(
+                    "GET",
+                    format!("{origin}/v1/schedules"),
+                    Some(token.clone()),
+                    None,
+                )
+                .await
+            {
+                Ok(reply) if reply.status == 200 => {
+                    let (schedules, computers, chats) = read_schedule_list(&reply.body);
+                    let mut state = lock(&self.state);
+                    state.schedules_at = unix_now();
+                    if state.schedules != schedules
+                        || state.schedule_computers != computers
+                        || state.schedule_chats != chats
+                        || !state.schedules_read
+                    {
+                        state.schedules = schedules;
+                        state.schedule_computers = computers;
+                        state.schedule_chats = chats;
+                        state.schedules_read = true;
+                        state.changed();
+                    }
+                }
+                Ok(reply) if reply.status == 401 => signed_out = true,
+                _ => {
+                    let mut state = lock(&self.state);
+                    state.schedules_at = unix_now();
+                    if !state.schedules_read {
+                        state.schedules_read = true;
+                        state.changed();
+                    }
+                }
+            }
+        }
         for (id, (title, messages, updated)) in uploads {
             let body = json!({
                 "computer": name,
@@ -2216,6 +2742,11 @@ impl Poller {
             state.agents.clear();
             state.memory.clear();
             state.memory_read = false;
+            state.schedules.clear();
+            state.schedule_computers.clear();
+            state.schedule_chats.clear();
+            state.schedules_read = false;
+            state.draft = None;
             state.editing = None;
             state.open = None;
             state.screen = Screen::Account;
@@ -2360,6 +2891,37 @@ fn qr_modules(page: &str) -> Option<crate::app::QrModules> {
         size: rows.len(),
         rows,
     })
+}
+
+/// `GET /v1/schedules`'s answer: the live scheduled prompts newest
+/// first, the computers, and the chats (at most 100).
+fn read_schedule_list(body: &Value) -> (Vec<Schedule>, Vec<String>, Vec<ScheduleChat>) {
+    let mut schedules: Vec<Schedule> = body["schedules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| serde_json::from_value::<Schedule>(s.clone()).ok())
+        .filter(|s| !s.deleted && !s.id.is_empty())
+        .collect();
+    schedules.sort_by(|a, b| b.updated.cmp(&a.updated));
+    let computers: Vec<String> = body["computers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_owned)
+        .take(32)
+        .collect();
+    let chats: Vec<ScheduleChat> = body["chats"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| serde_json::from_value::<ScheduleChat>(c.clone()).ok())
+        .filter(|c| !c.session.is_empty())
+        .take(100)
+        .collect();
+    (schedules, computers, chats)
 }
 
 /// A path segment, percent-encoded.

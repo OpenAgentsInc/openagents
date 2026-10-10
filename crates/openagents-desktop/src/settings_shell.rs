@@ -528,6 +528,24 @@ impl DesktopApp {
                 #[cfg(not(unix))]
                 let _ = (rule, resume);
             }
+            Action::BackgroundDelete { rule } => {
+                #[cfg(unix)]
+                if let Some(state) = &mut self.navigation
+                    && state.settings.file.is_some()
+                    && let Some(layout) = openagents_desktop::background_pane::here()
+                {
+                    state.settings.notice = Some(
+                        match openagents_desktop::background_pane::delete(&layout, &rule) {
+                            Ok(()) => "Deleted the scheduled prompt from this computer.".into(),
+                            Err(why) => format!("Couldn't delete {rule}: {why}"),
+                        },
+                    );
+                    state.settings.background =
+                        openagents_desktop::background_pane::rows(&layout, super::unix_now());
+                }
+                #[cfg(not(unix))]
+                let _ = rule;
+            }
             Action::Restore { chat } => {
                 if let Some(request) = self.chat.as_mut().and_then(|panel| panel.restore(&chat)) {
                     if let Some(state) = &mut self.navigation {

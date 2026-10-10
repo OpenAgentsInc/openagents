@@ -689,11 +689,19 @@ fn every_screen_validates() {
     state.choice_read = true;
     state.threads_read = true;
     state.agents_read = true;
+    state.schedules_read = true;
+    state.schedule_computers = vec!["Studio".into()];
+    state.draft = Some(crate::account_link::ScheduleDraft {
+        computer: "Studio".into(),
+        ..Default::default()
+    });
     for screen in [
         Screen::Account,
         Screen::Chats,
         Screen::Running,
         Screen::Message,
+        Screen::Schedules,
+        Screen::NewSchedule,
     ] {
         state.screen = screen.clone();
         let root = crate::link_view::root(&state, 0);
@@ -810,6 +818,260 @@ fn memory_notes_list_edit_delete_and_go_with_chat_turns() {
     f.link.tap(Intent::DeleteNote { id: "mem-2".into() });
     until(|| !f.site.calls("DELETE /coder/memory/mem-2").is_empty());
     until(|| f.link.lock().memory.iter().all(|note| note.id != "mem-2"));
+}
+
+/// Scheduled prompts (#11177): the screen lists them in plain words, Add
+/// makes one for a computer (at a time, or every few hours, as a new run
+/// or posting in one of that computer's chats), and Pause and Delete go
+/// to the website.
+#[test]
+fn scheduled_prompts_list_add_pause_and_delete() {
+    use crate::account_link::Repeat;
+    let mut f = fixture();
+    let triage = |paused: bool| {
+        json!({"id": "prompt-triage", "computer": "Studio", "prompt": "triage the new issues",
+               "days": [1, 2, 3, 4, 5], "time": "09:00", "paused": paused, "updated": 20})
+    };
+    let listing = |schedules: Vec<Value>| {
+        json!({"schedules": schedules, "computers": ["Studio", "Laptop"],
+               "chats": [{"session": "s-1", "computer": "Studio", "title": "Release work"},
+                         {"session": "s-2", "computer": "Laptop", "title": "Notes"}]})
+    };
+    f.site.answer(
+        "GET /v1/schedules",
+        200,
+        listing(vec![
+            triage(false),
+            json!({"id": "prompt-gone", "computer": "Studio", "updated": 30, "deleted": true}),
+        ]),
+    );
+    signed(&mut f);
+    until(|| f.link.lock().schedules_read);
+    assert_eq!(f.link.lock().schedules.len(), 1, "deletions are not shown");
+    f.link.act(Action::Show {
+        screen: Screen::Schedules,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for word in [
+        "Scheduled prompts",
+        "triage the new issues",
+        "Weekdays at 09:00",
+        "Runs on Studio · Starts a new Coder run",
+        "Pause",
+        "Delete",
+        "Add",
+    ] {
+        assert!(words.iter().any(|w| w == word), "{word}: {words:?}");
+    }
+    for word in &words {
+        assert!(oa_copy::violations(word, &[]).is_empty(), "{word}");
+    }
+
+    // Add one: weekdays at 08:30, posting in a Studio chat.
+    let made = json!({"id": "prompt-standup", "computer": "Studio",
+        "prompt": "summarize yesterday", "days": [1, 2, 3, 4, 5], "time": "08:30",
+        "chat": "s-1", "chat_title": "Release work", "paused": false, "updated": 40});
+    f.site.answer(
+        "PUT /v1/schedules/new",
+        200,
+        json!({"schedule": made.clone()}),
+    );
+    f.site.answer(
+        "GET /v1/schedules",
+        200,
+        listing(vec![made.clone(), triage(false)]),
+    );
+    f.link.tap(Intent::NewSchedule);
+    assert_eq!(f.link.lock().screen, Screen::NewSchedule);
+    assert_eq!(f.link.lock().draft.as_ref().unwrap().computer, "Studio");
+    f.link.tap(Intent::ScheduleRepeat {
+        repeat: Repeat::Weekdays,
+    });
+    f.link.tap(Intent::ScheduleTime { minutes: -30 });
+    // A chat on another computer isn't offered, and isn't taken.
+    f.link.tap(Intent::ScheduleChat {
+        session: Some("s-2".into()),
+    });
+    assert_eq!(f.link.lock().draft.as_ref().unwrap().chat, None);
+    f.link.tap(Intent::ScheduleChat {
+        session: Some("s-1".into()),
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for word in [
+        "Studio",
+        "Laptop",
+        "Post in Release work",
+        "Earlier",
+        "Later",
+    ] {
+        assert!(words.iter().any(|w| w == word), "{word}: {words:?}");
+    }
+    assert!(!words.iter().any(|w| w == "Post in Notes"), "{words:?}");
+    for word in &words {
+        assert!(oa_copy::violations(word, &[]).is_empty(), "{word}");
+    }
+    let token = format!("link-schedule-{}", f.link.composer);
+    f.link.input(&token, "summarize yesterday");
+    until(|| !f.site.calls("PUT /v1/schedules/new").is_empty());
+    let sent = f.site.calls("PUT /v1/schedules/new")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(sent["computer"], "Studio");
+    assert_eq!(sent["prompt"], "summarize yesterday");
+    assert_eq!(sent["days"], json!([1, 2, 3, 4, 5]));
+    assert_eq!(sent["time"], "08:30");
+    assert_eq!(sent["chat"], "s-1");
+    assert_eq!(sent["paused"], false);
+    assert!(sent.get("every_secs").is_none());
+    until(|| f.link.lock().screen == Screen::Schedules);
+    until(|| {
+        f.link
+            .lock()
+            .schedules
+            .iter()
+            .any(|s| s.id == "prompt-standup")
+    });
+
+    // Every 2 hours, as a new run on the laptop.
+    f.link.tap(Intent::NewSchedule);
+    f.link.tap(Intent::ScheduleComputer {
+        name: "Laptop".into(),
+    });
+    f.link.tap(Intent::ScheduleRepeat {
+        repeat: Repeat::Hours(2),
+    });
+    let token = format!("link-schedule-{}", f.link.composer);
+    f.link.input(&token, "check the deploy");
+    until(|| f.site.calls("PUT /v1/schedules/new").len() == 2);
+    let sent = f.site.calls("PUT /v1/schedules/new")[1]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(sent["computer"], "Laptop");
+    assert_eq!(sent["every_secs"], 7200);
+    assert!(sent.get("time").is_none() && sent.get("chat").is_none());
+    until(|| f.link.lock().screen == Screen::Schedules);
+    // A credential never leaves the phone.
+    f.link.tap(Intent::NewSchedule);
+    let token = format!("link-schedule-{}", f.link.composer);
+    let key = format!("sk-ant-{}", "a1".repeat(20));
+    f.link.input(&token, &format!("deploy with {key}"));
+    assert_eq!(f.site.calls("PUT /v1/schedules/new").len(), 2);
+    f.link.tap(Intent::Back);
+    assert_eq!(f.link.lock().screen, Screen::Schedules);
+
+    // Pause.
+    f.site.answer(
+        "POST /v1/schedules/prompt-triage/pause",
+        200,
+        json!({"schedule": triage(true)}),
+    );
+    f.site.answer(
+        "GET /v1/schedules",
+        200,
+        listing(vec![made.clone(), triage(true)]),
+    );
+    f.link.tap(Intent::PauseSchedule {
+        id: "prompt-triage".into(),
+        paused: true,
+    });
+    until(|| {
+        !f.site
+            .calls("POST /v1/schedules/prompt-triage/pause")
+            .is_empty()
+    });
+    let sent = f.site.calls("POST /v1/schedules/prompt-triage/pause")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(sent, json!({"paused": true}));
+    until(|| {
+        f.link
+            .lock()
+            .schedules
+            .iter()
+            .any(|s| s.id == "prompt-triage" && s.paused)
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    assert!(
+        words.iter().any(|w| w == "Weekdays at 09:00 · Paused")
+            && words.iter().any(|w| w == "Resume"),
+        "{words:?}"
+    );
+
+    // Delete.
+    f.site.answer(
+        "DELETE /v1/schedules/prompt-triage",
+        200,
+        json!({"deleted": true}),
+    );
+    f.site.answer("GET /v1/schedules", 200, listing(vec![made]));
+    f.link.tap(Intent::DeleteSchedule {
+        id: "prompt-triage".into(),
+    });
+    until(|| {
+        !f.site
+            .calls("DELETE /v1/schedules/prompt-triage")
+            .is_empty()
+    });
+    until(|| {
+        f.link
+            .lock()
+            .schedules
+            .iter()
+            .all(|s| s.id != "prompt-triage")
+    });
+}
+
+#[test]
+fn schedule_times_read_as_plain_words() {
+    use crate::account_link::when_words;
+    assert_eq!(when_words(&[], Some("09:00"), None), "Every day at 09:00");
+    assert_eq!(
+        when_words(&[5, 4, 3, 2, 1], Some("09:00"), None),
+        "Weekdays at 09:00"
+    );
+    assert_eq!(
+        when_words(&[6, 0], Some("10:30"), None),
+        "Weekends at 10:30"
+    );
+    assert_eq!(
+        when_words(&[1, 3], Some("07:00"), None),
+        "Mon, Wed at 07:00"
+    );
+    assert_eq!(when_words(&[], None, Some(3600)), "Every hour");
+    assert_eq!(when_words(&[], None, Some(7200)), "Every 2 hours");
+    assert_eq!(when_words(&[], None, Some(1800)), "Every 30 minutes");
+}
+
+/// An older website keeps no scheduled prompts: the screen says there are
+/// none, and nothing else fails.
+#[test]
+fn an_older_website_has_no_scheduled_prompts() {
+    let mut f = fixture();
+    signed(&mut f);
+    until(|| f.link.lock().schedules_read);
+    let state = f.link.lock();
+    assert!(state.schedules.is_empty() && state.schedule_computers.is_empty());
+    drop(state);
+    f.link.act(Action::Show {
+        screen: Screen::Schedules,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    // No computer to run one on: no Add button, and it says how.
+    assert!(!words.iter().any(|w| w == "Add"), "{words:?}");
+    assert!(words.iter().any(|w| w.contains("/sync on")), "{words:?}");
 }
 
 /// A reply to a web chat carries photos (#11174): each uploads first, and
