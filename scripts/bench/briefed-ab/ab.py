@@ -787,6 +787,40 @@ def judge(args) -> None:
 
 # ------------------------------------------------------------------- report
 
+def usage_from_events(path: Path) -> dict:
+    """Token totals from an event log, one usage per API response (by
+    message id): for trials stopped before the CLI reported a cost."""
+    seen, tot = set(), {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
+    if not path.exists():
+        return tot
+    for line in path.read_text().splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = ev.get("message") or {}
+        u, mid = msg.get("usage"), msg.get("id")
+        if ev.get("type") != "assistant" or not u or not mid or mid in seen:
+            continue
+        seen.add(mid)
+        tot["input"] += u.get("input_tokens") or 0
+        tot["cache_write"] += u.get("cache_creation_input_tokens") or 0
+        tot["cache_read"] += u.get("cache_read_input_tokens") or 0
+        tot["output"] += u.get("output_tokens") or 0
+    return tot
+
+
+# Approximate dollars per million tokens; on trials with a reported cost
+# the estimate lands within about 20% of it. Used only for trials stopped
+# before the CLI reported a cost (marked cost_estimated).
+RATES = {"input": 5.0, "cache_write": 6.25, "cache_read": 0.5, "output": 25.0}
+
+
+def estimate_cost(d: Path) -> float:
+    u = usage_from_events(d / "events.jsonl")
+    return round(sum(u[k] * RATES[k] for k in u) / 1e6, 4)
+
+
 def rows_of(tags: list[str]) -> list[dict]:
     rows = []
     for tag in tags:
@@ -796,6 +830,9 @@ def rows_of(tags: list[str]) -> list[dict]:
             r = load_json(d / "result.json")
             j = load_json(d / "judge.json") if (d / "judge.json").exists() else {}
             r["tag"] = tag
+            if r.get("cost_usd") is None:
+                r["cost_usd"] = estimate_cost(d)
+                r["cost_estimated"] = True
             r["judge_score"] = j.get("score")
             r["judge_accept"] = j.get("accept")
             r["accepted"] = bool(r["tests_pass"] and j.get("accept"))
