@@ -62,7 +62,7 @@ The intended use in a briefing:
 3. Add `Cargo.lock` whenever a `Cargo.toml` is in the top 50.
 
 The index lives in `~/.cache/openagents/filefind/<repo>/`. It is about
-1 GB for this repository with 1,700 replayed revisions, and it holds no
+1.9 GB for this repository with 1,700 replayed revisions, and it holds no
 file contents:
 
 | File | Holds |
@@ -344,4 +344,4 @@ for #11177. Those need the plan stage, or the agent's own exploration.
    files sit in one client.
 3. **Feed late files back.** Record every file the agent adds after the
    briefing as training data. Retrain with `train` every few hundred fixes.
-   The model is `scripts/filefind/model.json`, about 300 KB.
+   The model is `scripts/filefind/model.json`, about 250 KB.
