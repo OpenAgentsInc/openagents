@@ -1642,7 +1642,7 @@ impl Controller {
         let decision::Step::Done(text) = step else {
             return Vec::new();
         };
-        // **Always allow for this seat** sends the rule the host offered;
+        // **Always allow** sends the rule the host offered;
         // the host records and applies it.
         let always = self
             .flows
@@ -2193,7 +2193,8 @@ mod tests {
             "cargo test",
             "checks the flag",
             "In `/work/repo`",
-            "Always allow for this seat",
+            "\"Always allow\" covers:",
+            "2. Always allow",
             RULE,
         ] {
             assert!(text.contains(shown), "{shown}: {text}");
@@ -2210,7 +2211,7 @@ mod tests {
         let mut panel = Panel::new("decisions");
         let mut controller = Controller::new(PanelKind::Decisions);
         controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
-        // The options come first: Allow once, Always allow for this seat,
+        // The options come first: Allow once, Always allow,
         // and Deny.
         assert_eq!(
             controller.intent(Intent::Action(1), &mut panel, Some(&view), None),
