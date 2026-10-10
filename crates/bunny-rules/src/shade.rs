@@ -17,6 +17,28 @@ pub fn shade_for_wins(wins: u32) -> u32 {
     wins.min(MAX_SHADE)
 }
 
+/// The ladder's named shades, from the spec's table.
+pub const NAMES: [(u32, &str); 8] = [
+    (0, "Snow"),
+    (3, "Cream"),
+    (6, "Peach"),
+    (9, "Apricot"),
+    (12, "Melon"),
+    (15, "Tangerine"),
+    (18, "Carrot"),
+    (20, "Neon"),
+];
+
+/// The name of a shade: the last named one at or below it.
+#[must_use]
+pub fn name(shade: u32) -> &'static str {
+    NAMES
+        .iter()
+        .rev()
+        .find(|(at, _)| *at <= shade)
+        .map_or("Snow", |(_, name)| name)
+}
+
 /// The fur colour for a win count.
 #[must_use]
 pub fn fur(wins: u32) -> u32 {
@@ -33,6 +55,10 @@ mod tests {
         assert_eq!(fur(20), 0xFE6B04);
         assert_eq!(fur(500), 0xFE6B04);
         assert_eq!(shade_for_wins(7), 7);
+        assert_eq!(name(0), "Snow");
+        assert_eq!(name(4), "Cream");
+        assert_eq!(name(19), "Carrot");
+        assert_eq!(name(20), "Neon");
         // Each step is no lighter in green and blue than the one before.
         for pair in SHADES.windows(2) {
             assert!((pair[1] & 0xFF) <= (pair[0] & 0xFF));

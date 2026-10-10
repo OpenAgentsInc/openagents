@@ -22,6 +22,57 @@ pub const LEAVE: &str = "Leave the garden";
 pub const NEXT: &str = "Next garden";
 pub const GARDENS: &str = "All gardens";
 pub const TURN_BACK: &str = "Turn back";
+pub const MEADOW: &str = "Back to the meadow";
+pub const MEADOW_KEYS: &str = "Hop around the meadow and walk into a rabbit hole to play.";
+pub const MEADOW_DRAG: &str = "Drag to hop around the meadow, and walk into a rabbit hole to play.";
+pub const BURROW: &str = "The Burrow";
+pub const BOARD: &str = "Carrot Board";
+pub const ARCH: &str = "Leave the meadow?";
+pub const ARCH_PROMPT: &str = "The way out";
+pub const HOME: &str = "Back to OpenAgents";
+pub const CLOSE: &str = "Close";
+pub const NEXT_SHADE: &str = "One more win turns your bunny a shade more orange.";
+pub const LAST_SHADE: &str = "Your bunny is as orange as it gets.";
+
+/// The player's win count.
+#[must_use]
+pub fn wins_line(wins: u32) -> String {
+    format!("Wins: {wins}")
+}
+
+/// The bunny's shade.
+#[must_use]
+pub fn shade_line(name: &str, shade: u32) -> String {
+    format!("Colour: {name} ({shade} of 20)")
+}
+
+/// The Gentle mode switch.
+#[must_use]
+pub fn gentle(on: bool) -> String {
+    format!("Gentle mode: {}", if on { "on" } else { "off" })
+}
+
+/// The high contrast switch.
+#[must_use]
+pub fn contrast(on: bool) -> String {
+    format!("High contrast: {}", if on { "on" } else { "off" })
+}
+
+/// A garden's best run on the Carrot Board.
+#[must_use]
+pub fn best_line(n: usize, name: &str, seconds: u32, score: u32) -> String {
+    format!(
+        "{n}. {name}: {}:{:02}, {score} points",
+        seconds / 60,
+        seconds % 60
+    )
+}
+
+/// A garden not cleared yet.
+#[must_use]
+pub fn not_cleared(n: usize, name: &str) -> String {
+    format!("{n}. {name}: not cleared yet")
+}
 
 /// A button that opens garden `n`.
 #[must_use]
@@ -82,6 +133,23 @@ mod tests {
             GARDENS.to_owned(),
             TURN_BACK.to_owned(),
             time_line(83),
+            MEADOW.to_owned(),
+            MEADOW_KEYS.to_owned(),
+            MEADOW_DRAG.to_owned(),
+            BURROW.to_owned(),
+            BOARD.to_owned(),
+            ARCH.to_owned(),
+            ARCH_PROMPT.to_owned(),
+            HOME.to_owned(),
+            CLOSE.to_owned(),
+            NEXT_SHADE.to_owned(),
+            LAST_SHADE.to_owned(),
+            wins_line(3),
+            shade_line("Cream", 3),
+            gentle(true),
+            contrast(false),
+            best_line(1, "Kitchen Bed", 83, 16_365),
+            not_cleared(2, "Herb Corner"),
             score_line(1200),
         ];
         all.extend(bunny_rules::TIER_NAMES.iter().map(|n| (*n).to_owned()));

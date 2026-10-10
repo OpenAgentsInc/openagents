@@ -26,6 +26,12 @@ pub enum Action {
     Leave,
     /// The phone's turn-back button.
     TurnBack,
+    /// Back to the meadow.
+    Meadow,
+    ToggleGentle,
+    ToggleContrast,
+    /// Leave the game for the site's home page.
+    Home,
     Close,
 }
 
@@ -114,6 +120,10 @@ pub struct Hud {
     card_hint: HtmlElement,
     card_buttons: HtmlElement,
     shown_card: Option<Card>,
+    meadow: HtmlElement,
+    meadow_swatch: HtmlElement,
+    meadow_wins: HtmlElement,
+    prompt: HtmlElement,
     actions: Rc<RefCell<Vec<Action>>>,
     touch: bool,
 }
@@ -455,6 +465,48 @@ impl Hud {
         ] {
             let _ = card.append_child(child);
         }
+        // The meadow's corner: the bunny's shade and wins; and a prompt at
+        // the foot naming what is near.
+        let meadow = element(document, "div");
+        css(&meadow, &PANEL);
+        css(
+            &meadow,
+            &[
+                ("top", "calc(12px + env(safe-area-inset-top))"),
+                ("left", "calc(12px + env(safe-area-inset-left))"),
+                ("display", "flex"),
+                ("align-items", "center"),
+                ("gap", "8px"),
+                ("font-weight", "650"),
+            ],
+        );
+        let meadow_swatch = element(document, "div");
+        css(
+            &meadow_swatch,
+            &[
+                ("width", "24px"),
+                ("height", "24px"),
+                ("border-radius", "50%"),
+                ("border", "2px solid #1e1e1e"),
+            ],
+        );
+        let meadow_wins = element(document, "span");
+        let _ = meadow.append_child(&meadow_swatch);
+        let _ = meadow.append_child(&meadow_wins);
+        let prompt = element(document, "div");
+        css(&prompt, &PANEL);
+        css(
+            &prompt,
+            &[
+                ("bottom", "calc(24px + env(safe-area-inset-bottom))"),
+                ("left", "50%"),
+                ("transform", "translateX(-50%)"),
+                ("font-weight", "650"),
+                ("white-space", "nowrap"),
+            ],
+        );
+        let _ = root.append_child(&meadow);
+        let _ = root.append_child(&prompt);
         let _ = root.append_child(&game);
         let _ = root.append_child(&card);
         let _ = parent.append_child(&root);
@@ -480,6 +532,10 @@ impl Hud {
             card_hint,
             card_buttons,
             shown_card: Some(Card::default()),
+            meadow,
+            meadow_swatch,
+            meadow_wins,
+            prompt,
             actions,
             touch,
         };
@@ -490,6 +546,23 @@ impl Hud {
     /// The actions buttons queued since the last call.
     pub fn take_actions(&self) -> Vec<Action> {
         self.actions.borrow_mut().drain(..).collect()
+    }
+
+    /// Shows the meadow's corner and prompt, or hides them.
+    pub fn meadow(&self, visible: bool, fur: u32, wins: &str, prompt: Option<&str>) {
+        show(&self.meadow, visible);
+        show(&self.prompt, visible && prompt.is_some());
+        if visible {
+            css(&self.meadow_swatch, &[("background", &hex(fur))]);
+            if self.meadow_wins.text_content().as_deref() != Some(wins) {
+                self.meadow_wins.set_text_content(Some(wins));
+            }
+            if let Some(text) = prompt
+                && self.prompt.text_content().as_deref() != Some(text)
+            {
+                self.prompt.set_text_content(Some(text));
+            }
+        }
     }
 
     /// Shows the in-garden HUD or hides it.

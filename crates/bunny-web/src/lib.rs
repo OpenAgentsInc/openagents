@@ -20,6 +20,7 @@
 pub mod copy;
 pub mod kit;
 pub mod look;
+pub mod meadow;
 pub mod mesh;
 pub mod scene;
 pub mod zone;

@@ -129,6 +129,32 @@ pub fn ground(garden: &Garden) -> Mesh {
     mesh
 }
 
+/// The meadow's ground: paper, with a worn path from the mound to the
+/// holes, the pond and the board.
+#[must_use]
+pub fn meadow_ground() -> Mesh {
+    let mut mesh = Mesh::new();
+    mesh.block(at(-120.0, -0.2, -120.0), at(120.0, 0.0, 120.0), PAPER, 0.0);
+    for (x0, z0, x1, z1) in [
+        (6.0, -0.9, 23.0, 0.9),
+        (-0.9, -14.0, 0.9, -6.0),
+        (-0.9, 6.0, 0.9, 25.0),
+        (-29.0, -0.9, -6.0, 0.9),
+    ] {
+        mesh.add(
+            Shape::Square,
+            part(
+                Vec3::new(x1 - x0, 1.0, z1 - z0),
+                Quat::IDENTITY,
+                at((x0 + x1) / 2.0, 0.004, (z0 + z1) / 2.0),
+            ),
+            MARK,
+            0.0,
+        );
+    }
+    mesh
+}
+
 /// The hedges between and around the corridors.
 ///
 /// The hedges fill each grid cell between junctions, the gap between two

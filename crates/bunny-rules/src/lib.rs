@@ -17,6 +17,7 @@ pub mod game;
 pub mod garden;
 pub mod kinds;
 pub mod level;
+pub mod progress;
 pub mod receipt;
 pub mod shade;
 

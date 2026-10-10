@@ -618,22 +618,29 @@ pub fn piece(kind: Piece) -> Mesh {
             }
         }
         Piece::Hole => {
-            mesh.add(
-                Shape::Frustum {
-                    sides: 14,
-                    bottom: 0.5,
-                    top: 0.42,
-                },
-                upright(at(2.6, 0.25, 2.6), at(0.0, 0.12, 0.0)),
-                RAMP[2],
-                0.0,
-            );
+            // A dark opening in a ring of turned-up earth.
             mesh.add(
                 Shape::Disc { sides: 14 },
-                upright(at(1.9, 1.0, 1.9), at(0.0, 0.255, 0.0)),
+                upright(at(1.9, 1.0, 1.9), at(0.0, 0.01, 0.0)),
                 RAMP[7],
                 0.0,
             );
+            for i in 0..10 {
+                let a = i as f32 / 10.0 * std::f32::consts::TAU;
+                mesh.add(
+                    Shape::Sphere {
+                        rings: 3,
+                        segments: 6,
+                    },
+                    part(
+                        at(0.7, 0.32, 0.45),
+                        Quat::from_rotation_y(-a),
+                        at(a.sin() * 1.15, 0.05, a.cos() * 1.15),
+                    ),
+                    RAMP[2],
+                    1.0,
+                );
+            }
         }
         Piece::Signpost => {
             pole(
@@ -769,6 +776,23 @@ pub fn piece(kind: Piece) -> Mesh {
             );
         }
     }
+    mesh
+}
+
+/// A stone of the carrot ladder, white so a tint colours it.
+#[must_use]
+pub fn ladder_stone() -> Mesh {
+    let mut mesh = Mesh::new();
+    mesh.add(
+        Shape::Frustum {
+            sides: 7,
+            bottom: 0.5,
+            top: 0.42,
+        },
+        upright(at(1.1, 0.35, 1.1), at(0.0, 0.17, 0.0)),
+        0xFFFFFF,
+        1.0,
+    );
     mesh
 }
 

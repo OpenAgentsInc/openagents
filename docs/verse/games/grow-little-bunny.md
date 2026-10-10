@@ -1028,8 +1028,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done, 67898d1470 |
 | B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, 3551012941; the rest is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206) |
 | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done, 581a122fb4 |
-| B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Done (see below) |
-| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
+| B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Done, 595979a089 |
+| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Done in part (see below) |
 
 ### B1: the rules
 
@@ -1207,9 +1207,67 @@ Deviations, and why:
   camera can sit close behind a Giant at the end of a run.
 - **No sounds yet.** The spec's audio is unbuilt.
 
+### B6: Warren Meadow
+
+- **The meadow** (`crates/bunny-web/src/meadow.rs`, drawn in `app.rs`):
+  Play on the title card opens Warren Meadow. The bunny hops around free
+  (arrows or WASD to hop and turn; on phones, drag), bumping into the
+  mound, the pond, trees and the meadow's edge. The Warren Mound is in the
+  middle with the Burrow's door; the Color Pond is to the north, ringed by
+  21 ladder stones lit in each shade up to the bunny's, the current one
+  raised; five rabbit holes to the east, each with a signpost counting its
+  garden; the Carrot Board to the south; the exit arch to the west. A
+  prompt at the foot names what is near. Walking into a hole plays that
+  garden; leaving it, or Back to the meadow from the results, comes out
+  beside the hole facing the mound.
+- **The Burrow**: wins, the bunny's colour by name and step (Snow, Cream,
+  Peach, ... Neon, from the ladder table), and switches for Gentle mode and
+  high contrast. **The Carrot Board**: each garden's best time and score.
+  **The arch**: back to the OpenAgents home page.
+- **The save** (`crates/bunny-rules/src/progress.rs`): `bunny.progress.v1`
+  in the browser's storage: wins, best time and score per garden, and the
+  settings; the shade is derived from the win count. A win from any garden
+  steps the ladder; a catch or leaving counts nothing. Merging two saves
+  keeps the higher win count and each garden's best. Tests: the ladder's 21
+  colours match the table, the save round-trips (and reads the first
+  `{"wins":N}` saves), and a conflict keeps the higher count.
+
+Checked in the browser: Play opens the meadow; turning and hopping; the
+Burrow's card from its door (desktop and phone); a garden cleared by the
+capture build and Back to the meadow, which comes out of hole 1 with Wins: 1
+and the second ladder stone lit.
+
+Deviations, and why:
+
+- **No presence or `look` yet.** Other bunnies in their colours need NIP-MV
+  presence from the browser and the additive `look` field in avatar state;
+  the browser build has no relay connection today (the page's policy allows
+  only its own origin). Two clients seeing each other's shades is open.
+- **One hole per garden, not per set.** Only set 1 (gardens 1 to 5) exists,
+  so each of its gardens has its own hole; the Wild Hole waits for B8.
+- **No race course or start gate**: those are B9. The Carrot Board shows
+  this player's bests, not shared boards.
+- **No arches on the plaza or the Grid.** The game is entered at
+  `/games/grow-little-bunny`; arches belong to the `verse` host
+  ([#11206](https://github.com/OpenAgentsInc/openagents/issues/11206)).
+- **Meadow scaled down** to about 85 m across from 160 m, so a walk to any
+  spot takes seconds.
+- **No emotes** (thump, binky, ear flop, wave) yet.
+
 ### What's next
 
-B6: Warren Meadow, the hub.
+- B7 (phone and browser): the browser build is playable on phones now
+  (swipes, the turn-back and pause buttons, a portrait camera); device runs
+  on a real phone are still to do.
+- B8: gardens 6 to 20 and the Wild Hole generator, with the validator and
+  bot playtests already in place (`playtest_every_garden`).
+- B9: races, ghosts and the Carrot Board with verified receipts
+  (`bunny.run-receipt.v1` and `verse.game-replay.v1` already verify by
+  replay).
+- Presence with `look` in the meadow; sounds; emotes.
+- [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206): the
+  pack format in its own crate, and the `verse` host registering community
+  games through `CommunityGame`.
 
 ## Engine gaps
 

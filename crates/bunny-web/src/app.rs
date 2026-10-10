@@ -19,8 +19,10 @@ use web_sys::{
 use crate::hud::{Action, Card, Hud, css, element, show};
 use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
+use crate::meadow::{self, Spot, Walker};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::{copy, scene};
+use bunny_rules::progress::Progress;
 
 const VERTEX: &str = r"#version 300 es
 layout(location = 0) in vec3 a_position;
@@ -296,6 +298,9 @@ struct Meshes {
     obstacles: Vec<(ObstacleKind, GpuMesh)>,
     powers: Vec<(PowerKind, GpuMesh)>,
     pieces: Vec<(Piece, GpuMesh)>,
+    meadow: GpuMesh,
+    /// A ladder stone, gray so a tint colours it.
+    stone: GpuMesh,
 }
 
 impl Meshes {
@@ -332,6 +337,8 @@ struct Particle {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Title,
+    /// Hopping around Warren Meadow; `panel` may show a spot's card.
+    Meadow,
     Playing,
     Paused,
     Over,
@@ -354,7 +361,14 @@ struct App {
     /// Runs started, for each run's seed.
     runs: u64,
     phase: Phase,
-    wins: u32,
+    progress: Progress,
+    walker: Walker,
+    /// The meadow spot whose card is open.
+    panel: Option<Spot>,
+    /// Keys held for walking in the meadow: forward, back, left, right.
+    held: [bool; 4],
+    /// A drag on a touch screen, as a stick: start and current point.
+    drag: Option<((f32, f32), (f32, f32))>,
     queue: Vec<Input>,
     last: f64,
     carry: f64,
@@ -392,33 +406,25 @@ fn point(units: (i32, i32)) -> Vec2 {
     Vec2::new(scene::metres(units.0), scene::metres(units.1))
 }
 
-fn load_wins(window: &Window) -> u32 {
-    let Ok(Some(storage)) = window.local_storage() else {
-        return 0;
-    };
-    let Ok(Some(saved)) = storage.get_item(SAVE_KEY) else {
-        return 0;
-    };
-    let digits: String = saved
-        .split("\"wins\"")
-        .nth(1)
-        .unwrap_or("")
-        .chars()
-        .skip_while(|c| !c.is_ascii_digit())
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().unwrap_or(0)
+fn load_progress(window: &Window) -> Progress {
+    window
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|storage| storage.get_item(SAVE_KEY).ok().flatten())
+        .map(|text| Progress::decode(&text))
+        .unwrap_or_default()
 }
 
-fn save_wins(window: &Window, wins: u32) {
+fn save_progress(window: &Window, progress: &Progress) {
     if let Ok(Some(storage)) = window.local_storage() {
-        let _ = storage.set_item(SAVE_KEY, &format!("{{\"wins\":{wins}}}"));
+        let _ = storage.set_item(SAVE_KEY, &progress.encode());
     }
 }
 
 impl App {
     fn fur(&self) -> u32 {
-        shade::fur(self.wins)
+        shade::fur(self.progress.wins)
     }
 
     fn rebuild_bunny(&mut self) {
@@ -439,7 +445,7 @@ impl App {
         }
         self.runs += 1;
         let seed = (js_sys::Math::random() * 1e15) as u64 ^ self.runs;
-        self.game = Game::with_seed(level::garden(garden), seed, false);
+        self.game = Game::with_seed(level::garden(garden), seed, self.progress.gentle);
         if self.options.quiet {
             self.game.farmer_on = false;
         }
@@ -477,11 +483,140 @@ impl App {
             }
             Action::Leave => {
                 self.game.step(&[Input::Leave]);
-                self.phase = Phase::Title;
+                self.enter_meadow();
             }
             Action::TurnBack => self.press(Input::Back),
-            Action::Close => self.phase = Phase::Title,
+            Action::Meadow => {
+                if self.phase == Phase::Title {
+                    self.walker = Walker::default();
+                    self.phase = Phase::Meadow;
+                    let _ = self.canvas.focus();
+                } else {
+                    self.enter_meadow();
+                }
+            }
+            Action::Close => {
+                if let Some(spot) = self.panel.take() {
+                    self.walker.out_of(spot, level::COUNT);
+                }
+                self.phase = Phase::Meadow;
+            }
+            Action::ToggleGentle => {
+                self.progress.gentle = !self.progress.gentle;
+                save_progress(&self.window, &self.progress);
+            }
+            Action::ToggleContrast => {
+                self.progress.high_contrast = !self.progress.high_contrast;
+                save_progress(&self.window, &self.progress);
+            }
+            Action::Home => {
+                let _ = self.window.location().set_href("/");
+            }
             _ => {}
+        }
+    }
+
+    /// Back to the meadow, out of the hole of the garden just played.
+    fn enter_meadow(&mut self) {
+        self.phase = Phase::Meadow;
+        self.panel = None;
+        self.held = [false; 4];
+        self.walker.out_of(Spot::Hole(self.garden), level::COUNT);
+        self.last = 0.0;
+        let _ = self.canvas.focus();
+    }
+
+    fn high_contrast(&self) -> bool {
+        self.options.high_contrast || self.progress.high_contrast
+    }
+
+    /// Walks the meadow for `dt` seconds and enters what the bunny walks
+    /// into.
+    fn walk(&mut self, dt: f32) {
+        if self.panel.is_some() {
+            return;
+        }
+        let [up, down, left, right] = self.held;
+        let mut forward = f32::from(u8::from(up)) - f32::from(u8::from(down));
+        let mut turn = f32::from(u8::from(right)) - f32::from(u8::from(left));
+        if let Some((from, to)) = self.drag {
+            let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+            if dx.abs().max(dy.abs()) > 12.0 {
+                forward = (-dy / 60.0).clamp(-1.0, 1.0);
+                turn = (dx / 60.0).clamp(-1.0, 1.0);
+            }
+        }
+        self.walker.step(dt, forward, turn);
+        if self.walker.moving {
+            self.hop += dt * 10.0;
+        }
+        match self.walker.at(level::COUNT) {
+            Some(Spot::Hole(n)) => self.play(n),
+            Some(spot) => {
+                self.panel = Some(spot);
+                self.held = [false; 4];
+                self.drag = None;
+            }
+            None => {}
+        }
+    }
+
+    /// The card for a meadow spot.
+    fn panel_card(&self, spot: Spot) -> Card {
+        let close = (copy::CLOSE.to_owned(), Action::Close, false);
+        match spot {
+            Spot::Burrow | Spot::Hole(_) => {
+                let p = &self.progress;
+                let mut lines = vec![
+                    copy::wins_line(p.wins),
+                    copy::shade_line(shade::name(p.shade()), p.shade()),
+                ];
+                lines.push(if p.to_next_shade().is_some() {
+                    copy::NEXT_SHADE.to_owned()
+                } else {
+                    copy::LAST_SHADE.to_owned()
+                });
+                Card {
+                    title: copy::BURROW.to_owned(),
+                    swatch: Some(self.fur()),
+                    lines,
+                    hint: None,
+                    buttons: vec![
+                        (copy::gentle(p.gentle), Action::ToggleGentle, false),
+                        (
+                            copy::contrast(p.high_contrast),
+                            Action::ToggleContrast,
+                            false,
+                        ),
+                        (copy::CLOSE.to_owned(), Action::Close, true),
+                    ],
+                }
+            }
+            Spot::Board => {
+                let lines = (1..=level::COUNT)
+                    .map(|n| {
+                        let name = level::garden(n).name;
+                        match self.progress.best(n as u8) {
+                            Some(best) => copy::best_line(n, &name, best.ticks / HZ, best.score),
+                            None => copy::not_cleared(n, &name),
+                        }
+                    })
+                    .collect();
+                Card {
+                    title: copy::BOARD.to_owned(),
+                    swatch: None,
+                    lines,
+                    hint: None,
+                    buttons: vec![(copy::CLOSE.to_owned(), Action::Close, true)],
+                }
+            }
+            Spot::Arch => Card {
+                title: copy::ARCH.to_owned(),
+                swatch: None,
+                lines: Vec::new(),
+                hint: None,
+                buttons: vec![(copy::HOME.to_owned(), Action::Home, false), close],
+            },
         }
     }
 
@@ -500,15 +635,15 @@ impl App {
         };
         match self.phase {
             Phase::Playing => None,
+            Phase::Meadow => self.panel.map(|spot| self.panel_card(spot)),
             Phase::Title => {
-                let mut buttons = vec![(copy::PLAY.to_owned(), Action::Play(self.garden), true)];
-                buttons.extend(garden_buttons());
+                let _ = garden_buttons;
                 Some(Card {
                     title: copy::TITLE.to_owned(),
-                    swatch: (self.wins > 0).then(|| self.fur()),
-                    lines: vec![copy::GOAL.to_owned()],
+                    swatch: (self.progress.wins > 0).then(|| self.fur()),
+                    lines: vec![copy::GOAL.to_owned(), self.meadow_hint().to_owned()],
                     hint: Some(self.hint().to_owned()),
-                    buttons,
+                    buttons: vec![(copy::PLAY.to_owned(), Action::Meadow, true)],
                 })
             }
             Phase::Paused => Some(Card {
@@ -529,7 +664,7 @@ impl App {
                 let won = self.game.status == Status::Won;
                 let mut lines = Vec::new();
                 if won {
-                    lines.push(copy::won_line(self.wins));
+                    lines.push(copy::won_line(self.progress.wins));
                     let seconds = self.game.clear_tick.unwrap_or(self.game.tick) / HZ;
                     lines.push(copy::time_line(seconds));
                 } else {
@@ -543,7 +678,7 @@ impl App {
                 } else {
                     buttons.push((copy::PLAY_AGAIN.to_owned(), Action::Restart, true));
                 }
-                buttons.push((copy::GARDENS.to_owned(), Action::Close, false));
+                buttons.push((copy::MEADOW.to_owned(), Action::Meadow, false));
                 Some(Card {
                     title: (if won { copy::WON } else { copy::CAUGHT }).to_owned(),
                     swatch: won.then(|| self.fur()),
@@ -552,6 +687,14 @@ impl App {
                     buttons,
                 })
             }
+        }
+    }
+
+    fn meadow_hint(&self) -> &'static str {
+        if self.coarse {
+            copy::MEADOW_DRAG
+        } else {
+            copy::MEADOW_KEYS
         }
     }
 
@@ -581,6 +724,9 @@ impl App {
         for action in self.hud.take_actions() {
             self.act(action);
         }
+        if self.phase == Phase::Meadow {
+            self.walk(dtf);
+        }
         if self.phase == Phase::Playing {
             self.carry += dt;
             let mut steps = 0;
@@ -603,6 +749,21 @@ impl App {
         self.render(alpha, dtf);
         let playing = matches!(self.phase, Phase::Playing | Phase::Paused);
         self.hud.show_game(playing && !self.options.kit);
+        let prompt = (self.phase == Phase::Meadow && self.panel.is_none())
+            .then(|| self.walker.near(level::COUNT, 5.0))
+            .flatten()
+            .map(|spot| match spot {
+                Spot::Hole(n) => copy::garden_button(n, &level::garden(n).name),
+                Spot::Burrow => copy::BURROW.to_owned(),
+                Spot::Board => copy::BOARD.to_owned(),
+                Spot::Arch => copy::ARCH_PROMPT.to_owned(),
+            });
+        self.hud.meadow(
+            self.phase == Phase::Meadow && !self.options.kit,
+            self.fur(),
+            &copy::wins_line(self.progress.wins),
+            prompt.as_deref(),
+        );
         self.hud.show_run_buttons(self.phase == Phase::Playing);
         if playing {
             let elements = crate::zone::BunnyGame::hud_of(&self.game);
@@ -705,9 +866,11 @@ impl App {
     fn finish(&mut self) {
         self.phase = Phase::Over;
         self.over_at = self.time;
+        let ticks = self.game.clear_tick.unwrap_or(self.game.tick);
+        self.progress
+            .record(self.garden as u8, self.game.status, ticks, self.game.score);
         if self.game.status == Status::Won {
-            self.wins += 1;
-            save_wins(&self.window, self.wins);
+            save_progress(&self.window, &self.progress);
             self.rebuild_bunny();
             let fur = self.fur();
             let at = point(self.game.bunny_point());
@@ -832,6 +995,10 @@ impl App {
             let view_projection = kit_camera(aspect);
             self.gpu.camera(&view_projection, vw, vh);
             self.draw_kit();
+        } else if matches!(self.phase, Phase::Meadow | Phase::Title) {
+            let view_projection = self.meadow_camera(aspect);
+            self.gpu.camera(&view_projection, vw, vh);
+            self.draw_meadow();
         } else {
             self.draw_world(alpha, bunny, farmer);
         }
@@ -842,7 +1009,7 @@ impl App {
                 NEAR,
                 FAR,
                 self.tier,
-                self.options.high_contrast,
+                self.high_contrast(),
                 rgb(scene::INK),
                 rgb(scene::FAR_INK),
             );
@@ -1035,6 +1202,166 @@ impl App {
                 None,
             );
         }
+    }
+
+    fn meadow_camera(&self, aspect: f32) -> Mat4 {
+        let w = &self.walker;
+        let forward = Vec3::new(w.yaw.sin(), 0.0, w.yaw.cos());
+        let at = Vec3::new(w.x, 0.0, w.z);
+        let (back, up) = if aspect < 1.0 { (6.5, 4.2) } else { (5.5, 2.8) };
+        let eye = at - forward * back + Vec3::Y * up;
+        let look = at + forward * 3.0 + Vec3::Y * 0.6;
+        let fov = if aspect < 1.0 { 75.0_f32 } else { 60.0 };
+        Mat4::perspective_rh_gl(fov.to_radians(), aspect, NEAR, FAR)
+            * Mat4::look_at_rh(eye, look, Vec3::Y)
+    }
+
+    /// Warren Meadow.
+    fn draw_meadow(&self) {
+        let gpu = &self.gpu;
+        let m = &self.meshes;
+        let ink = rgb(scene::INK);
+        let line = Some((ink, LINE));
+        let piece = |kind: Piece| pick(&m.pieces, kind);
+        gpu.look.set(Look::Ground);
+        gpu.draw(&m.meadow, &Mat4::IDENTITY, WHITE, None);
+        gpu.draw(
+            piece(Piece::Pond),
+            &scene::place(
+                Vec3::new(meadow::POND_AT.0, 0.0, meadow::POND_AT.1),
+                0.0,
+                1.0,
+            ),
+            WHITE,
+            None,
+        );
+        gpu.look.set(Look::Gray);
+        gpu.draw(piece(Piece::Mound), &Mat4::IDENTITY, WHITE, line);
+        for (spot, (x, z), _) in meadow::spots(level::COUNT) {
+            let at = Vec3::new(x, 0.0, z);
+            match spot {
+                Spot::Hole(n) => {
+                    gpu.draw(piece(Piece::Hole), &scene::place(at, 0.0, 1.0), WHITE, line);
+                    let sign = at + Vec3::new(1.4, 0.0, -1.2);
+                    gpu.draw(
+                        piece(Piece::Signpost),
+                        &scene::place(sign, -1.2, 1.0),
+                        WHITE,
+                        line,
+                    );
+                    // Dots on the sign count the garden.
+                    gpu.look.set(Look::Chroma);
+                    for i in 0..n {
+                        let dot = sign
+                            + Vec3::new(0.0, 1.55 + 0.0 * i as f32, 0.0)
+                            + Vec3::new((-1.2_f32).sin(), 0.0, (-1.2_f32).cos()) * 0.07
+                            + Vec3::new((-1.2_f32).cos(), 0.0, -(-1.2_f32).sin())
+                                * ((i as f32 - (n as f32 - 1.0) / 2.0) * 0.24);
+                        gpu.draw(
+                            &m.crumb,
+                            &(Mat4::from_translation(dot) * Mat4::from_scale(Vec3::splat(0.16))),
+                            rgb(scene::CARROT),
+                            None,
+                        );
+                    }
+                    gpu.look.set(Look::Gray);
+                }
+                Spot::Burrow => {}
+                Spot::Board => gpu.draw(
+                    piece(Piece::Board),
+                    &scene::place(at, std::f32::consts::PI, 1.0),
+                    WHITE,
+                    line,
+                ),
+                Spot::Arch => gpu.draw(
+                    piece(Piece::Arch),
+                    &scene::place(at, std::f32::consts::FRAC_PI_2, 1.0),
+                    WHITE,
+                    line,
+                ),
+            }
+        }
+        for (i, (x, z)) in meadow::TREES.iter().enumerate() {
+            gpu.draw(
+                piece(Piece::Tree),
+                &scene::place(Vec3::new(*x, 0.0, *z), i as f32, 1.0),
+                WHITE,
+                line,
+            );
+            let f = Vec3::new(x + 2.2, 0.0, z + 1.0);
+            gpu.draw(
+                piece(Piece::Flowers),
+                &scene::place(f, i as f32, 1.0),
+                WHITE,
+                line,
+            );
+        }
+        gpu.draw(
+            piece(Piece::Log),
+            &scene::place(Vec3::new(-10.0, 0.0, 30.0), 0.4, 1.0),
+            WHITE,
+            line,
+        );
+        // The ladder: 21 stones around the pond, lit up to the bunny's
+        // shade, the current one raised.
+        let shade_now = self.progress.shade() as usize;
+        for i in 0..meadow::STONES {
+            let (x, z) = meadow::stone(i);
+            let lit = i <= shade_now;
+            let raise = if i == shade_now {
+                0.25 + 0.06 * (self.time * 3.0).sin()
+            } else {
+                0.0
+            };
+            let model = scene::place(Vec3::new(x, raise, z), i as f32, 1.0);
+            if lit {
+                gpu.look.set(Look::Chroma);
+                gpu.draw(&m.stone, &model, rgb(shade::SHADES[i]), Some((ink, LINE)));
+                gpu.look.set(Look::Gray);
+            } else {
+                gpu.draw(&m.stone, &model, [0.62, 0.62, 0.6], line);
+            }
+        }
+        // The bunny, at Bunny size.
+        let w = &self.walker;
+        let size = scene::metres(TIER_HEIGHT[1]) * DRAWN * 1.4;
+        let hop = if w.moving {
+            self.hop.sin().abs() * 0.3 * size
+        } else {
+            0.0
+        };
+        gpu.look.set(Look::Ground);
+        gpu.draw(
+            &m.shadow,
+            &scene::place(Vec3::new(w.x, 0.0, w.z), 0.0, size * 1.3),
+            WHITE,
+            None,
+        );
+        gpu.look.set(Look::Chroma);
+        let fur = rgb(self.fur());
+        let outline = Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE));
+        let body = Mat4::from_translation(Vec3::new(w.x, hop, w.z))
+            * Mat4::from_rotation_y(w.yaw)
+            * Mat4::from_scale(Vec3::splat(size));
+        gpu.draw(&m.bunny[1], &body, WHITE, outline);
+        for side in [-1.0_f32, 1.0] {
+            let ear = body
+                * Mat4::from_translation(Vec3::new(0.1 * side, 0.84, 0.3))
+                * Mat4::from_quat(
+                    Quat::from_rotation_z(-0.22 * side) * Quat::from_rotation_x(-0.15),
+                );
+            gpu.draw(&m.ear, &ear, WHITE, outline);
+        }
+        for p in &self.particles {
+            let scale = p.size * (p.life / p.span).max(0.2);
+            gpu.draw(
+                &m.crumb,
+                &(Mat4::from_translation(p.at) * Mat4::from_scale(Vec3::splat(scale))),
+                p.colour,
+                None,
+            );
+        }
+        gpu.look.set(Look::Gray);
     }
 
     /// The kit sheet (`#kit`): every model in rows, for review.
@@ -1284,6 +1611,17 @@ impl App {
     }
 }
 
+/// Which meadow walking key a key is: forward, back, left, right.
+fn held_index(key: &str) -> Option<usize> {
+    match verse_game::GameInput::from_key(key)? {
+        verse_game::GameInput::Up => Some(0),
+        verse_game::GameInput::Down => Some(1),
+        verse_game::GameInput::Left => Some(2),
+        verse_game::GameInput::Right => Some(3),
+        _ => None,
+    }
+}
+
 /// A key's game input, through the community-game input channel.
 fn input_for(key: &str) -> Option<Input> {
     verse_game::GameInput::from_key(key).and_then(crate::zone::input)
@@ -1382,8 +1720,8 @@ pub fn start() {
         }
     };
     let garden = level::garden(1);
-    let wins = load_wins(&window);
-    let fur = shade::fur(wins);
+    let progress = load_progress(&window);
+    let fur = shade::fur(progress.wins);
     let obstacle = |kind| gpu.upload(&scene::obstacle(kind));
     let meshes = Meshes {
         ground: gpu.upload(&scene::ground(&garden)),
@@ -1415,6 +1753,8 @@ pub fn start() {
             .iter()
             .map(|kind| (*kind, gpu.upload(&kit::piece(*kind))))
             .collect(),
+        meadow: gpu.upload(&scene::meadow_ground()),
+        stone: gpu.upload(&kit::ladder_stone()),
     };
     let touch = window
         .match_media("(pointer: coarse)")
@@ -1445,7 +1785,11 @@ pub fn start() {
         runs: 0,
         coarse: touch,
         phase: Phase::Title,
-        wins,
+        progress,
+        walker: Walker::default(),
+        panel: None,
+        held: [false; 4],
+        drag: None,
         queue: Vec::new(),
         last: 0.0,
         carry: 0.0,
@@ -1489,6 +1833,13 @@ pub fn start() {
                 }
                 return;
             }
+            if app.phase == Phase::Meadow && app.panel.is_none() {
+                if let Some(index) = held_index(&key) {
+                    event.prevent_default();
+                    app.held[index] = true;
+                }
+                return;
+            }
             let pause = matches!(key.as_str(), "Escape" | "p" | "P");
             if pause && app.phase == Phase::Playing {
                 app.act(Action::Pause);
@@ -1501,19 +1852,37 @@ pub fn start() {
     }
     {
         let app = app.clone();
+        listen::<KeyboardEvent>(window.as_ref(), "keyup", move |event| {
+            if let Some(index) = held_index(&event.key()) {
+                app.borrow_mut().held[index] = false;
+            }
+        });
+    }
+    {
+        let app = app.clone();
         listen::<PointerEvent>(canvas.as_ref(), "pointerdown", move |event| {
             let mut app = app.borrow_mut();
-            app.touch = Some((
-                event.client_x() as f32,
-                event.client_y() as f32,
-                event.time_stamp(),
-            ));
+            let at = (event.client_x() as f32, event.client_y() as f32);
+            app.touch = Some((at.0, at.1, event.time_stamp()));
+            if app.phase == Phase::Meadow {
+                app.drag = Some((at, at));
+            }
+        });
+    }
+    {
+        let app = app.clone();
+        listen::<PointerEvent>(canvas.as_ref(), "pointermove", move |event| {
+            let mut app = app.borrow_mut();
+            if let Some((from, _)) = app.drag {
+                app.drag = Some((from, (event.client_x() as f32, event.client_y() as f32)));
+            }
         });
     }
     {
         let app = app.clone();
         listen::<PointerEvent>(canvas.as_ref(), "pointerup", move |event| {
             let mut app = app.borrow_mut();
+            app.drag = None;
             let Some((x, y, at)) = app.touch.take() else {
                 return;
             };
@@ -1527,7 +1896,9 @@ pub fn start() {
     {
         let app = app.clone();
         listen::<PointerEvent>(canvas.as_ref(), "pointercancel", move |_| {
-            app.borrow_mut().touch = None;
+            let mut app = app.borrow_mut();
+            app.touch = None;
+            app.drag = None;
         });
     }
     let next: FrameLoop = Rc::new(RefCell::new(None));

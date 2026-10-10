@@ -5,8 +5,9 @@
 // Opens URL (for example http://127.0.0.1:4391/games/grow-little-bunny, or
 // with a fragment such as #garden=3) once at 1440x900 and once as a phone
 // (390x844, touch, device scale 3), presses each key in --keys after load
-// (Enter starts a run; "click:SELECTOR-TEXT" clicks the first button with
-// that text), waits --wait seconds (default 3), and writes
+// (Enter presses the focused button; "click:TEXT" clicks the first button
+// with that text; "hold:KEY:SECONDS" holds a key; "sleep:SECONDS" waits),
+// waits --wait seconds (default 3), and writes
 // OUTDIR/NAME-desktop.png and OUTDIR/NAME-phone.png. Console errors are
 // printed. Uses Chrome's DevTools protocol over Node's own WebSocket, so it
 // needs Chrome and Node 22 or newer, nothing else.
@@ -99,6 +100,16 @@ async function press(page, key) {
     await page.send("Runtime.evaluate", {
       expression: `(() => { const b = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)}); if (b) b.click(); return !!b; })()`,
     });
+    return;
+  }
+  if (key.startsWith("hold:")) {
+    // hold:KEY:SECONDS keeps a key down, for walking in the meadow.
+    const [, name, seconds] = key.split(":");
+    const code = KEY_CODES[name] ?? name.toUpperCase().charCodeAt(0);
+    const params = { key: name, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, code: name };
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...params });
+    await sleep(Number(seconds) * 1000);
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...params });
     return;
   }
   if (key.startsWith("sleep:")) {
