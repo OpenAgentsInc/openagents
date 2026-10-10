@@ -2,8 +2,14 @@
 
 **Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
 
-**Status:** Draft deployment profile for discussion. No protocol change; no new
-event kind. Not implemented.
+**Status:** Deployment profile. No protocol change; no new event kind.
+Topology 4A is built (#11149): `crates/x402/src/merchant.rs` (pinned
+`MerchantReceiver`, `MerchantSink`, the `BuyerAttestation` verifier, tested
+against all 12 vectors in `fixtures/buyer-attestation-v1.json`), and Pylon
+providers can be paid at their own receiver behind the inference gateway
+(`settlement.mode = "merchant"`, see `docs/inference/gateway.md` §4). The
+platform fee (§7) waits for the NIP-X402 review; 4B waits for a custody
+review; 4C is not built.
 **Defines:** How a third-party merchant runs its *own* X402 receiver and
 facilitator so that agents settle **directly to the merchant**, with no central
 party holding funds.
@@ -226,6 +232,44 @@ identity in the binding.
   fee-as-extra-requirement; defer Lightning-native atomic splits) are in the
   companion proposal §6. This profile deliberately scopes to **single-payee
   settlement to the merchant** as the compliant, custody-free base case.
+
+### 7.1 Platform-fee failure order (for the NIP-X402 review)
+
+The fee leg is not built. It ships only after the NIP-X402 spec review
+accepts a both-required second requirement (`PaymentRequired.accepts` entries
+are alternatives today). The order below is what that review is asked to
+accept; each step names what happens when it fails. Two invoices on two
+nodes cannot settle atomically, so the order is chosen to make every failure
+either harmless or a reconciliation record, never a silent refund or a free
+execution.
+
+1. **Attestation** (when the route requires one). Refuse before either
+   invoice is issued. Nothing is owed.
+2. **Challenge.** Issue the merchant invoice on the merchant's `payTo` and
+   the fee invoice on the fee node, both binding the same request digest.
+   If either cannot be issued, answer with neither: no partial challenge.
+3. **Paid retry: verify both proofs before consuming either.** Each
+   preimage hashes to its invoice, each invoice is signed by its own
+   receiver, amounts are exact, the fee amount equals the published fee
+   schedule for the price, and both description hashes equal the
+   reconstructed request digest. Any failure refuses with nothing consumed,
+   so the buyer can retry with the right proofs.
+4. **Consume the fee proof** in the fee node's own replay store. A replayed
+   fee proof refuses as `duplicate_settlement`; the merchant proof is not
+   touched.
+5. **Consume the merchant proof** in the merchant's replay store. If this
+   fails after step 4 (`duplicate_settlement`, store unavailable), the call
+   does **not** execute and the fee is **not** auto-refunded: a
+   reconciliation record names both payment hashes, and the fee stays
+   recorded for handling.
+6. **Record the sale** in the merchant's sink. A sink failure releases the
+   merchant key (as the front does today) and refuses with `503`; the fee
+   stays consumed and the same reconciliation record is written.
+7. **Execute.** Only after both proofs are consumed and the sale is
+   recorded.
+
+Until the review accepts this, OpenAgents earns on merchant sales only
+through liquidity (4C), never by folding a fee into the merchant's invoice.
 
 ---
 

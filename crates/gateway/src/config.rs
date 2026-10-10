@@ -257,14 +257,21 @@ pub struct Inference {
     #[serde(default)]
     pub byok: Option<crate::inference_byok::Config>,
     /// Pylon providers registered as upstreams (`pylon:<pylon>`), each
-    /// with its models, its own price, and its stated data policy. They
-    /// are mounted only with `earnings.ledger` and `sats_rate`, so their
-    /// earnings can be recorded and paid.
+    /// with its models, its own price, and its stated data policy. A
+    /// provider paid through the split ledger (the default) is mounted
+    /// only with `earnings.ledger` and `sats_rate`, so its earnings can be
+    /// recorded and paid; one paid at its own receiver
+    /// (`settlement.mode = "merchant"`) is mounted only with
+    /// `pylon_payer`, the wallet that buys its jobs.
     #[serde(default)]
     pub pylons: Vec<inference::upstream::pylon::Registration>,
     /// The relay Pylon jobs go over; the OpenAgents relay by default.
     #[serde(default)]
     pub pylon_relay: Option<String>,
+    /// The wallet that pays merchant-settled Pylon providers directly
+    /// (#11149). Absent, those providers are not mounted.
+    #[serde(default)]
+    pub pylon_payer: Option<PylonPayer>,
     /// Pay per request with x402 over Lightning (#11078): a request with
     /// no key gets a `402` priced from the rate card and runs once it
     /// carries the payment. Needs `sats_rate`. Absent, a request with no
@@ -321,6 +328,30 @@ pub struct InferenceMpp {
 
 fn x402_timeout() -> u32 {
     300
+}
+
+/// The resident wallet that buys jobs from merchant-settled Pylon
+/// providers, paying each provider's own invoice. On `bitcoin` every
+/// payment also needs the owner's standing grant (`grant.json` in
+/// `<registry>/inference/pylon`, written by hand) and stays under its
+/// ceilings.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PylonPayer {
+    /// The resident wallet's home (`openagents wallet serve`), owned by
+    /// this user and closed to others.
+    pub wallet_home: PathBuf,
+    /// The wallet's node id: payments go out only from this node.
+    pub payer_node: String,
+    /// `bitcoin` or `testnet`.
+    pub network: String,
+    /// The most routing fee one payment may cost, msat.
+    #[serde(default = "pylon_max_fee")]
+    pub max_fee_msat: u64,
+}
+
+fn pylon_max_fee() -> u64 {
+    10_000
 }
 
 /// The public inference API's terms. We impose no usage limits; the free

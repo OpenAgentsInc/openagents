@@ -16,6 +16,14 @@
 //!   whose earning cannot be recorded is not served (the attempt fails
 //!   before its first token and the router falls back), so no provider
 //!   work is used unpaid.
+//! - **Merchant-settled providers** (#11149). A provider that runs its
+//!   own receiver registers with [`Settlement::Merchant`]: its node key
+//!   (`pay_to`) and the most one job may cost. The gateway buys each job
+//!   from the provider before sending it, paying the provider's own
+//!   invoice under NIP-X402's native binding, and refuses any invoice not
+//!   payable to that pinned key. The sats land at the provider's node, so
+//!   nothing is recorded in the split ledger and no payout follows. An
+//!   answer that comes back without that direct payment is not served.
 //! - **Privacy.** A provider whose stated policy is no training and no
 //!   retention is eligible under `strict`; any other provider, including
 //!   one that stated nothing, serves `standard` requests only.
@@ -112,6 +120,30 @@ pub struct Registration {
     pub models: Vec<Offered>,
     #[serde(default)]
     pub policy: DataPolicy,
+    /// How the provider is paid: through the split ledger (the default),
+    /// or directly at its own receiver.
+    #[serde(default)]
+    pub settlement: Settlement,
+}
+
+/// How a provider is paid for the jobs it answers.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum Settlement {
+    /// Its share is recorded in the split ledger and paid out later.
+    #[default]
+    Ledger,
+    /// Each job is bought from the provider before it is sent, paid to
+    /// the provider's own node: nothing is held for it and nothing is paid
+    /// out later (topology 4A of
+    /// `docs/payments/proposal/2026-10-09-x402-merchant-receiver-profile.md`).
+    Merchant {
+        /// The provider's node key, 33 bytes compressed, lowercase hex:
+        /// the only `payTo` the gateway pays for this provider.
+        pay_to: String,
+        /// The most one job may cost, msat.
+        max_msat: u64,
+    },
 }
 
 impl Registration {
@@ -152,6 +184,25 @@ impl Registration {
         if self.models.is_empty() {
             return Err(format!("pylon {} offers no model", self.pylon));
         }
+        if let Settlement::Merchant { pay_to, max_msat } = &self.settlement {
+            let node_key = pay_to.len() == 66
+                && (pay_to.starts_with("02") || pay_to.starts_with("03"))
+                && pay_to
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            if !node_key {
+                return Err(format!(
+                    "pylon {}: pay_to must be the provider's node key, 66 lowercase hex",
+                    self.pylon
+                ));
+            }
+            if *max_msat == 0 {
+                return Err(format!(
+                    "pylon {}: max_msat must be more than zero",
+                    self.pylon
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -186,6 +237,9 @@ pub struct Done {
     pub request: String,
     /// The NIP-PYLON receipt's event id, when one was published.
     pub receipt: Option<String>,
+    /// What the gateway paid the provider directly for this job, msat:
+    /// set for a merchant-settled provider, `None` otherwise.
+    pub paid_msat: Option<u64>,
 }
 
 /// Sends jobs to providers.
@@ -415,6 +469,24 @@ impl Upstream for PylonUpstream {
                 output: done.output_tokens,
                 ..Tokens::default()
             };
+            if let Settlement::Merchant { max_msat, .. } = &self.registration.settlement {
+                // Paid at the provider's own node before the job was sent:
+                // nothing goes in the split ledger. An answer without that
+                // payment is not served.
+                if !done
+                    .paid_msat
+                    .is_some_and(|paid| paid > 0 && paid <= *max_msat)
+                {
+                    let error = AttemptError::new(
+                        ErrorClass::Upstream,
+                        "the provider answered without being paid at its own receiver",
+                    );
+                    meter.fail(&error);
+                    return Err(error);
+                }
+                meter.status(200);
+                return Ok(answer(request, &row.id, done, meter));
+            }
             let priced = row.price.rate_row(&self.name, &row.id).price(&tokens);
             let earning = Earning {
                 party: self.registration.party(),
@@ -436,22 +508,27 @@ impl Upstream for PylonUpstream {
                 return Err(error);
             }
             meter.status(200);
-            let whole = Whole {
-                model: row.id.clone(),
-                text: done.text,
-                reasoning: None,
-                calls: Vec::new(),
-                usage: Usage::new(done.input_tokens, 0, done.output_tokens, 0),
-                status: ResponseStatus::Completed,
-            };
-            let events: EventStream = Box::pin(futures_util::stream::iter(
-                events(request, &whole).into_iter().map(Ok),
-            ));
-            Ok(Sent {
-                events: meter.wrap(events),
-                meter,
-            })
+            Ok(answer(request, &row.id, done, meter))
         })
+    }
+}
+
+/// A finished job as Open Responses events.
+fn answer(request: &CreateResponse, model: &str, done: Done, meter: AttemptMeter) -> Sent {
+    let whole = Whole {
+        model: model.to_owned(),
+        text: done.text,
+        reasoning: None,
+        calls: Vec::new(),
+        usage: Usage::new(done.input_tokens, 0, done.output_tokens, 0),
+        status: ResponseStatus::Completed,
+    };
+    let events: EventStream = Box::pin(futures_util::stream::iter(
+        events(request, &whole).into_iter().map(Ok),
+    ));
+    Sent {
+        events: meter.wrap(events),
+        meter,
     }
 }
 
@@ -532,13 +609,55 @@ mod tests {
                 output_micros: 100_000,
             }],
             policy: DataPolicy::default(),
+            settlement: Settlement::Ledger,
         };
         assert!(registration.check().is_ok());
         assert_eq!(registration.upstream(), "pylon:box-1");
         assert_eq!(registration.party(), "a".repeat(64));
         registration.owner = Some("owner-key".into());
         assert_eq!(registration.party(), "owner-key");
+        registration.settlement = Settlement::Merchant {
+            pay_to: format!("02{}", "ab".repeat(32)),
+            max_msat: 50_000,
+        };
+        assert!(registration.check().is_ok());
+        registration.settlement = Settlement::Merchant {
+            pay_to: "ab".repeat(32),
+            max_msat: 50_000,
+        };
+        assert!(registration.check().is_err());
+        registration.settlement = Settlement::Merchant {
+            pay_to: format!("03{}", "ab".repeat(32)),
+            max_msat: 0,
+        };
+        assert!(registration.check().is_err());
+        registration.settlement = Settlement::Ledger;
         registration.pylon = "../x".into();
         assert!(registration.check().is_err());
+    }
+
+    #[test]
+    fn settlement_defaults_to_the_ledger_and_reads_merchant_mode() {
+        let base = json!({
+            "provider": "a".repeat(64),
+            "pylon": "box-1",
+            "models": [],
+        });
+        let ledger: Registration = serde_json::from_value(base.clone()).unwrap();
+        assert_eq!(ledger.settlement, Settlement::Ledger);
+        let mut merchant = base;
+        merchant["settlement"] = json!({
+            "mode": "merchant",
+            "pay_to": format!("02{}", "ab".repeat(32)),
+            "max_msat": 50_000,
+        });
+        let merchant: Registration = serde_json::from_value(merchant).unwrap();
+        assert_eq!(
+            merchant.settlement,
+            Settlement::Merchant {
+                pay_to: format!("02{}", "ab".repeat(32)),
+                max_msat: 50_000,
+            }
+        );
     }
 }

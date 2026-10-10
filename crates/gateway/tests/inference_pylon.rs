@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use axum::http::StatusCode;
 use inference::rates::SatsRate;
 use inference::upstream::pylon::{
-    DataPolicy, Done, Job, Jobs, Offered, PylonUpstream, Registration,
+    DataPolicy, Done, Job, Jobs, Offered, PylonUpstream, Registration, Settlement,
 };
 use inference::upstream::{AttemptError, BoxFuture, Upstream};
 use pay_ledger::payout::{Invoice, Lookup, Outcome, Policy, Rails, Step, tick};
@@ -48,6 +48,7 @@ impl Jobs for StubJobs {
                 output_tokens: 50_000,
                 request: format!("{:064x}", jobs.len()),
                 receipt: Some(format!("{:064x}", 1000 + jobs.len())),
+                paid_msat: None,
             })
         })
     }
@@ -101,6 +102,7 @@ fn registration() -> Registration {
         }],
         // Stated nothing about retention: standard requests only.
         policy: DataPolicy::default(),
+        settlement: Settlement::Ledger,
     }
 }
 

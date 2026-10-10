@@ -334,20 +334,38 @@ the upstream `pylon:<pylon>`.
   provider's price as its share (`Earned`, role `provider`, paid to the
   pylon's owner when one is named), and the margin left to OpenAgents. It
   is converted to millisats at `inference.sats_rate`. The existing payout
-  worker (`pay-ledger`'s `payout::tick` over its rails) pays it out; the
-  gateway never sends money itself. An answer whose earning cannot be
-  recorded is not served (the router falls back), so no provider work is
-  used unpaid; an answer that arrives after the router gave up on it is
-  not used and earns nothing.
+  worker (`pay-ledger`'s `payout::tick` over its rails) pays it out; on
+  this path the gateway never sends money itself. An answer whose earning
+  cannot be recorded is not served (the router falls back), so no
+  provider work is used unpaid; an answer that arrives after the router
+  gave up on it is not used and earns nothing.
+- A provider that runs its own receiver (#11149, topology 4A of the
+  [merchant-hosted receiver profile](../payments/proposal/2026-10-09-x402-merchant-receiver-profile.md))
+  registers with `settlement = {mode = "merchant", pay_to = "<its node
+  key>", max_msat = <most one job may cost>}`. The gateway buys each job
+  before sending it, under NIP-X402's native binding, paying the
+  provider's own invoice from `inference.pylon_payer` (the resident
+  wallet: `wallet_home`, `payer_node`, `network`, `max_fee_msat`; on
+  `bitcoin` also the owner's standing grant, `grant.json` in
+  `<registry>/inference/pylon`). It pays no invoice that is not on the
+  registered `pay_to` for exactly the offered amount. The sats land at
+  the provider's node: nothing goes in the split ledger and no payout
+  follows. An answer that comes back without that payment, or for more
+  than `max_msat`, is not served.
 - Privacy: a provider whose stated policy is no training and no retention
   is eligible under `strict`; any other, including one that stated
   nothing, serves `standard` only, like every other row.
 - Without `earnings.ledger` and `inference.sats_rate` there is no way to
-  pay a provider, so no Pylon upstream is mounted.
+  pay a ledger-paid provider, and without `inference.pylon_payer` no way
+  to pay a merchant-settled one; a provider that can't be paid is not
+  mounted.
 - `crates/gateway/tests/inference_pylon.rs` runs the whole path with a
   stub provider and fake payout rails: a `standard` API request served by
   a Pylon provider, the provider's 200-sat share in the ledger, and the
-  payout worker paying it.
+  payout worker paying it. `crates/gateway/tests/inference_pylon_merchant.rs`
+  runs the merchant path: served with nothing in the ledger, refused
+  without the direct payment, and a payer that pays only the registered
+  node.
 
 ## 5. Routing
 

@@ -2,8 +2,13 @@
 
 **Decision (owner, 2026-10-09):** adopted as the merchant-settlement profile for third-party sellers, coexisting with the custodial receiver for our own sales. OpenAgents supports every agent payment protocol; see [Agent payments: pay any way](../agent-payments.md).
 
-**Status:** Design sketch for discussion. Not implemented. Rust below is
-illustrative, not compiled.
+**Status:** Design sketch. Partly built (#11149): `crates/x402/src/merchant.rs`
+has `MerchantReceiver` (the scope wrapper), `MerchantSink`, `SaleObserver`,
+`BuyerAttestation` with `AttestationVerifier`, and `AttestationError`
+extended to the fixture's nine codes; the verifier takes the parsed profile
+and grant (`Presented`) rather than raw header strings. `FeePolicy`,
+`DelegatedReceiver`, `MerchantServer`, and the HTTP attestation header are not
+built. Rust below is illustrative, not compiled.
 **Purpose:** Show how a third-party merchant runs its own X402 receiver + facilitator
 so agents settle **directly to the merchant**, by (a) *reusing* the existing
 `crates/x402` surface and (b) adding a small, clearly-marked set of new pieces.
