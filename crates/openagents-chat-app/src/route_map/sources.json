@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@00c75b33206a",
+  "bank": "chat-answers-v1@c2e5baa50550",
   "routes": [
     {
       "id": "meta",
@@ -966,6 +966,20 @@
       "sources": [
         "docs/cli/README.md",
         "docs/cli/chat.md"
+      ]
+    },
+    {
+      "id": "cli.offer.website",
+      "version": 1,
+      "routes": [
+        "cli"
+      ],
+      "chip": null,
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "docs/web/github-tools.md"
       ]
     },
     {

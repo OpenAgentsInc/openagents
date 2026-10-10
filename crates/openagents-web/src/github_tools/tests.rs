@@ -40,7 +40,7 @@ fn a_sealed_card_opens_only_for_its_person_and_chat_and_runs_once() {
     assert!(open(&app, "owner-a", "chat-2", &sealed).is_none());
 
     // Another server's key, or a changed action, doesn't open.
-    assert!(open(&app(), "owner-a", "chat-1", &sealed).is_none());
+    assert!(open(&self::app(), "owner-a", "chat-1", &sealed).is_none());
     let (payload, tag) = sealed.split_once('.').unwrap();
     let mut changed: Value =
         serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
