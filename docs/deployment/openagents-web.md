@@ -932,3 +932,30 @@ waits for traffic (`GATEWAY_HOLD=serving`). openagents.com smoke
 first 10 minutes the homepage answered 200 on 20 of 20 checks, and the
 revision logged no errors after the shift.
 Rollback: `scripts/deploy/web.sh rollback coder-web-26cdd2ff30-20261009225545`.
+
+### 2026-10-10 01:45 UTC: provider keys and inference state by workspace (#11186)
+
+`coder-gw-4cc00fcfdf-014127` serves 100% of openagents.com: the same web
+and coder-serve images, and the gateway from stack image
+`openagents-stack@sha256:2ac3ea72…` (built from `023a3fb39b`, the commit
+pushed as `4cc00fcfdf`), rendered with `deploy/production/render.py`
+(the Cloud SQL list keeps `coder-pg`). Saved provider keys, free counts,
+the `/v1/key` balance, usage and stored responses belong to the workspace
+an API key acts in, never the shared sign-up tenant; the account
+database's migration 2 keeps `identity.provider_keys` by `workspace_id`.
+Staging first (only the `gateway` image swapped into the live spec,
+`openagents-web-1-staging-023a3fb39b-gw003237`): its one provider key,
+saved by tenant `signup`, was named for `ws_c0a01c95b0c46965` (the
+workspace whose `PUT` last saved it, 22:04 UTC, from the request log) with
+`tenant-db assign-provider-key` and moved there at start; smoke 77
+passed, 0 failed, 1 skipped; `--only durable --restart` 10 passed.
+Production had no provider keys to move. The no-traffic candidate failed
+only its gateway checks (the gateway waits for traffic); after 1% for the
+gateway to take the store and then 100%, openagents.com smoke
+(`--production`) 55 passed, 1 failed (`environments`, failing the same way
+on the revision before), 2 skipped. In the first 10 minutes the homepage
+and `/api/v1/models` answered 200 on 20 of 20 checks, and the revision
+logged no errors after the shift.
+Rollback: `scripts/deploy/web.sh rollback coder-web-d43ac84129-20261009233236`
+(its gateway reads `identity.provider_keys` by tenant, which migration 2
+renamed, so BYOK answers errors there until rolled forward).
