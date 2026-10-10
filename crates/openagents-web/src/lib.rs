@@ -36,6 +36,7 @@ mod demo;
 mod device;
 mod docs_mcp;
 mod environments;
+mod github_tools;
 mod layout;
 mod markdown;
 mod oauth;
@@ -279,6 +280,7 @@ pub fn router(config: Config) -> Router {
         .merge(settings::routes())
         .merge(account_export::routes())
         .merge(projects::routes())
+        .merge(github_tools::routes())
         .merge(promises::routes())
         .merge(pilot::routes())
         .merge(ask::routes())

@@ -175,11 +175,9 @@ pub(crate) fn begin(
                 if private { "private" } else { "public" }
             ),
             oa_auth::Purpose::Install => crate::projects::INSTALL.to_string(),
-            oa_auth::Purpose::Board => format!(
-                "{}?return_to={}",
-                crate::github_tools::GRANT,
-                encode(&back)
-            ),
+            oa_auth::Purpose::Board => {
+                format!("{}?return_to={}", crate::github_tools::GRANT, encode(&back))
+            }
         };
         return protect(Redirect::to(&format!("{}{path}", service.origin())).into_response());
     }

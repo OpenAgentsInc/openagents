@@ -143,7 +143,9 @@ static RAN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 
 /// Mark card `id` as running; `false` when it already ran.
 fn claim(id: &str) -> bool {
-    let mut ran = RAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut ran = RAN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let ran = ran.get_or_insert_with(HashMap::new);
     let cutoff = now().saturating_sub(CARD_SECONDS * 2);
     ran.retain(|_, at| *at >= cutoff);
@@ -156,7 +158,9 @@ fn claim(id: &str) -> bool {
 
 /// Let card `id` run again (nothing changed: it waited for more access).
 fn unclaim(id: &str) {
-    let mut ran = RAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut ran = RAN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(ran) = ran.as_mut() {
         ran.remove(id);
     }
@@ -279,9 +283,9 @@ async fn confirm_again(
             let value = seal(&app, &ready.owner, &id, sealed.action.clone());
             card_page(&app, &headers, &ready, &sealed.action, &value)
         }
-        None => crate::chat_html::protect(
-            Redirect::to(&format!("/chat/{id}/github")).into_response(),
-        ),
+        None => {
+            crate::chat_html::protect(Redirect::to(&format!("/chat/{id}/github")).into_response())
+        }
     }
 }
 
