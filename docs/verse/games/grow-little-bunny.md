@@ -1029,7 +1029,7 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, 3551012941; the rest is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206) |
 | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done, 581a122fb4 |
 | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Done, 595979a089 |
-| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Done in part (see below) |
+| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Done in part, 311e9a8c44; presence is [#11207](https://github.com/OpenAgentsInc/openagents/issues/11207) |
 
 ### B1: the rules
 
