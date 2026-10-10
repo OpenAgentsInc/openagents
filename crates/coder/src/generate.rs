@@ -113,6 +113,93 @@ pub fn inference_door_from_env() -> Result<Option<ResponsesDoor>, String> {
     Ok(Some(ResponsesDoor::new(url, model, key).through_gateway()))
 }
 
+/// The switch for the chat worker's Vertex AI door: Gemini on Google's own
+/// Vertex AI, billed to the prepaid Google credit on the project
+/// `VERTEX_PROJECT` names (default `openagentsgemini`). `on` puts it first
+/// in the chain, `off` leaves it out; unset, it is on whenever
+/// `VERTEX_PROJECT` is set.
+///
+/// The credential is the one `inference::upstream::google::TokenSource`
+/// finds: `VERTEX_ACCESS_TOKEN`, `VERTEX_TOKEN_FILE`,
+/// `GOOGLE_APPLICATION_CREDENTIALS`, or the GCE metadata server when
+/// `GCE_METADATA_HOST` is set (the worker VM: its service account's token,
+/// cached until a minute before it expires).
+pub const VERTEX_VAR: &str = "CODER_WORKER_VERTEX";
+
+/// Vertex AI's global host, where Gemini 3 models are served.
+pub const VERTEX_DOOR_URL: &str = "https://aiplatform.googleapis.com";
+
+/// The lane the Vertex door runs: the same Gemini Flash the OpenRouter
+/// primary runs, so a failover changes the provider and never the model.
+pub const VERTEX_LANE: Lane = Lane::Gemini;
+
+/// The thinking level the Vertex door asks for when the door's options
+/// name no reasoning effort: the OpenRouter primary's [`PRIMARY_EFFORT`].
+pub const VERTEX_THINKING: &str = "low";
+
+/// How a door reaches Gemini on Vertex AI: the native
+/// `streamGenerateContent?alt=sse` route under a Google OAuth token.
+#[derive(Clone)]
+struct VertexWire {
+    project: String,
+    location: String,
+    /// The model id Vertex knows (`gemini-3.8-flash`).
+    upstream: String,
+    token: inference::upstream::google::TokenSource,
+}
+
+impl VertexWire {
+    /// The route under `base` (the door's URL).
+    fn route(&self, base: &str, verb: &str) -> String {
+        format!(
+            "{base}/v1/projects/{}/locations/{}/publishers/google/models/{}{verb}",
+            self.project, self.location, self.upstream
+        )
+    }
+}
+
+/// The Vertex AI door from the environment ([`VERTEX_VAR`]), or `None`
+/// when it is off.
+///
+/// # Errors
+///
+/// A sentence when the switch names neither `on` nor `off`, or is on with
+/// no Google credential to reach Vertex with.
+pub fn vertex_door_from_env() -> Result<Option<ResponsesDoor>, String> {
+    let var = |name: &str| {
+        env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    let on = match var(VERTEX_VAR).as_deref() {
+        None => var("VERTEX_PROJECT").is_some(),
+        Some("on") => true,
+        Some("off") => false,
+        Some(other) => return Err(format!("{VERTEX_VAR} is `on` or `off`, not `{other}`")),
+    };
+    if !on {
+        return Ok(None);
+    }
+    let token = inference::upstream::google::TokenSource::from_env();
+    if !token.present() {
+        return Err(format!(
+            "{VERTEX_VAR} is on with no Google credential: on GCE set \
+             GCE_METADATA_HOST=metadata.google.internal, else GOOGLE_APPLICATION_CREDENTIALS or \
+             VERTEX_TOKEN_FILE; or set {VERTEX_VAR}=off"
+        ));
+    }
+    let project = var("VERTEX_PROJECT")
+        .unwrap_or_else(|| inference::upstream::vertex::DEFAULT_PROJECT.to_string());
+    let location = var("VERTEX_LOCATION")
+        .unwrap_or_else(|| inference::upstream::vertex::DEFAULT_LOCATION.to_string());
+    let mut door = ResponsesDoor::vertex(&project, &location, token);
+    if let Some(base) = var("VERTEX_BASE_URL") {
+        door.url = base.trim_end_matches('/').to_string();
+    }
+    Ok(Some(door))
+}
+
 /// The variable choosing what every door asks of its model provider about
 /// keeping and training on the conversation: `strict` (unset), `no-training`,
 /// or `off`. See [`ProviderPrivacy`] (#11040).
@@ -940,6 +1027,10 @@ pub struct ResponsesDoor {
     /// level goes in the request's `openagents` object, and each answer
     /// names the model and upstream the gateway chose.
     gateway: bool,
+    /// Set when the door is Gemini on Vertex AI ([`ResponsesDoor::vertex`]):
+    /// the request and the stream are Vertex's native ones, and the bearer
+    /// is a Google OAuth token rather than `key`.
+    vertex: Option<std::sync::Arc<VertexWire>>,
 }
 
 impl ResponsesDoor {
@@ -954,7 +1045,41 @@ impl ResponsesDoor {
             options: None,
             privacy: ProviderPrivacy::from_env(),
             gateway: false,
+            vertex: None,
         }
+    }
+
+    /// [`VERTEX_LANE`] on Vertex AI in `project` at `location` (`global`
+    /// for Gemini 3), with tokens from `token`. The door's model is the
+    /// lane's public id, so answers, traces, and the failover line name the
+    /// same model the OpenRouter door would.
+    #[must_use]
+    pub fn vertex(
+        project: &str,
+        location: &str,
+        token: inference::upstream::google::TokenSource,
+    ) -> Self {
+        let url = if location == "global" {
+            VERTEX_DOOR_URL.to_string()
+        } else {
+            format!("https://{location}-aiplatform.googleapis.com")
+        };
+        let model = VERTEX_LANE.model();
+        let upstream = model.rsplit('/').next().unwrap_or(model).to_string();
+        let mut door = Self::new(url, model, "");
+        door.vertex = Some(std::sync::Arc::new(VertexWire {
+            project: project.to_string(),
+            location: location.to_string(),
+            upstream,
+            token,
+        }));
+        door
+    }
+
+    /// Whether the door is Gemini on Vertex AI.
+    #[must_use]
+    pub fn is_vertex(&self) -> bool {
+        self.vertex.is_some()
     }
 
     /// The same door as the OpenAgents inference gateway
@@ -1023,6 +1148,24 @@ impl ResponsesDoor {
     /// One unbilled `GET /v1/models`; the answer is read and dropped, and
     /// a failure is only a cold connection, so it is not reported.
     pub async fn warm(&self) {
+        if let Some(vertex) = &self.vertex {
+            // The model's description: unbilled, and it keeps the token
+            // and the connection fresh.
+            let Ok(token) = vertex.token.token().await else {
+                return;
+            };
+            if let Ok(response) = self
+                .http
+                .get(vertex.route(&self.url, ""))
+                .bearer_auth(token.expose())
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await
+            {
+                let _ = response.bytes().await;
+            }
+            return;
+        }
         if let Ok(response) = self
             .http
             .get(format!("{}/v1/models", self.url))
@@ -1101,6 +1244,65 @@ impl ResponsesDoor {
         }
         body
     }
+
+    /// The `streamGenerateContent` body for a Vertex door: the instructions
+    /// as `systemInstruction`, the conversation as `user` and `model`
+    /// contents (consecutive turns of one role merged, empty ones left
+    /// out), no tools, and thinking at the level the door's options ask for
+    /// ([`VERTEX_THINKING`] when they ask for none), with thought summaries
+    /// on so a thinking model shows it is working. Vertex keeps no prompt
+    /// and trains on none (`inference::upstream::vertex`), so no privacy
+    /// field is sent.
+    fn vertex_body(&self, instructions: &str, input: &[Message]) -> Value {
+        let mut contents: Vec<Value> = Vec::new();
+        for message in input.iter().filter(|m| !m.text.trim().is_empty()) {
+            let role = match message.role {
+                Role::User => "user",
+                Role::Assistant => "model",
+            };
+            let part = json!({ "text": message.text });
+            match contents.last_mut() {
+                Some(last) if last["role"] == role => {
+                    if let Some(parts) = last["parts"].as_array_mut() {
+                        parts.push(part);
+                    }
+                }
+                _ => contents.push(json!({ "role": role, "parts": [part] })),
+            }
+        }
+        let options = self.options.clone().unwrap_or_default();
+        let level = match options
+            .get("reasoning")
+            .and_then(|reasoning| reasoning["effort"].as_str())
+        {
+            Some("none" | "minimal") => "minimal",
+            Some("medium") => "medium",
+            Some("high" | "xhigh") => "high",
+            _ => VERTEX_THINKING,
+        };
+        let mut generation = serde_json::Map::new();
+        generation.insert(
+            "thinkingConfig".to_string(),
+            json!({ "thinkingLevel": level, "includeThoughts": true }),
+        );
+        for (theirs, ours) in [
+            ("max_output_tokens", "maxOutputTokens"),
+            ("temperature", "temperature"),
+            ("top_p", "topP"),
+        ] {
+            if let Some(value) = options.get(theirs).filter(|v| !v.is_null()) {
+                generation.insert(ours.to_string(), value.clone());
+            }
+        }
+        let mut body = json!({
+            "contents": contents,
+            "generationConfig": Value::Object(generation),
+        });
+        if !instructions.trim().is_empty() {
+            body["systemInstruction"] = json!({ "parts": [{ "text": instructions }] });
+        }
+        body
+    }
 }
 
 /// The Server-Sent Events reader: bytes in, answer text and usage out.
@@ -1135,6 +1337,9 @@ struct Reader {
     /// The model and upstream the inference gateway's `openagents:route`
     /// event named, when the door is the gateway.
     route: Option<(String, String)>,
+    /// Whether the stream is Vertex AI's native `streamGenerateContent`
+    /// rather than Open Responses events ([`Reader::vertex_event`]).
+    vertex: bool,
 }
 
 impl Reader {
@@ -1217,6 +1422,13 @@ impl Reader {
         if data.is_empty() || data == "[DONE]" {
             return Ok(false);
         }
+        if self.vertex {
+            let event = serde_json::from_str::<Value>(&data)
+                .map_err(|_| GenerateError::Stream("a stream event was not JSON".to_string()))?;
+            self.events += 1;
+            self.vertex_event(&event, sink)?;
+            return Ok(true);
+        }
         if self.completed {
             return Err(GenerateError::Stream(
                 "the stream went on after response.completed".to_string(),
@@ -1269,6 +1481,65 @@ impl Reader {
             _ => {}
         }
         Ok(true)
+    }
+
+    /// Reads one Vertex AI `streamGenerateContent` chunk: answer text (not
+    /// thought summaries) goes to `sink`, `usageMetadata` is the usage, and
+    /// a `finishReason` ends the answer. `STOP` completes it; a cut-off,
+    /// a filter, or a malformed call is a failure, as Open Responses'
+    /// `response.incomplete` is.
+    fn vertex_event(
+        &mut self,
+        event: &Value,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(), GenerateError> {
+        let chunk = event
+            .as_array()
+            .and_then(|list| list.first())
+            .unwrap_or(event);
+        if let Some(error) = chunk.get("error") {
+            let message = error["message"].as_str().unwrap_or("Vertex AI failed");
+            return Err(GenerateError::Stream(clip(message, 400)));
+        }
+        if let Some(usage) = chunk.get("usageMetadata").filter(|u| u.is_object()) {
+            let count = |key: &str| usage[key].as_u64().unwrap_or(0);
+            self.usage = Some(Usage {
+                input_tokens: count("promptTokenCount") + count("toolUsePromptTokenCount"),
+                output_tokens: count("candidatesTokenCount") + count("thoughtsTokenCount"),
+            });
+        }
+        if let Some(reason) = chunk["promptFeedback"]["blockReason"].as_str() {
+            return Err(GenerateError::Stream(format!(
+                "the model endpoint ended its answer early: blocked ({reason})"
+            )));
+        }
+        let Some(candidate) = chunk["candidates"].as_array().and_then(|list| list.first()) else {
+            return Ok(());
+        };
+        for part in candidate["content"]["parts"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            if part["thought"].as_bool() == Some(true) {
+                continue;
+            }
+            if let Some(text) = part["text"].as_str().filter(|text| !text.is_empty()) {
+                self.text.push_str(text);
+                sink(text);
+            }
+        }
+        match candidate["finishReason"].as_str() {
+            None => Ok(()),
+            Some("STOP" | "FINISH_REASON_UNSPECIFIED") => {
+                self.completed = true;
+                Ok(())
+            }
+            Some(reason) => Err(GenerateError::Stream(format!(
+                "the model endpoint ended its answer early: {}",
+                reason.to_ascii_lowercase()
+            ))),
+        }
     }
 
     /// What the end of the stream means: an answer, or a stream that
@@ -1333,14 +1604,31 @@ impl ResponsesDoor {
         routed: Option<&mut Option<(String, String)>>,
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
         let ends = Instant::now() + self.patience.whole;
-        let sent = self
-            .http
-            .post(format!("{}/v1/responses", self.url))
-            .bearer_auth(&self.key)
-            // The inference gateway sends `openagents:route` only on request.
-            .header("x-openagents-events", "route,cost")
-            .json(&self.body(instructions, input))
-            .send();
+        let request = match &self.vertex {
+            Some(vertex) => {
+                // A token the door cannot get is the door's failure before
+                // its first words: the chain hands the turn on.
+                let token = vertex.token.token().await.map_err(|why| {
+                    (
+                        String::new(),
+                        GenerateError::Config(format!("no Vertex AI token: {why}")),
+                    )
+                })?;
+                self.http
+                    .post(vertex.route(&self.url, ":streamGenerateContent?alt=sse"))
+                    .bearer_auth(token.expose())
+                    .header("accept", "text/event-stream")
+                    .json(&self.vertex_body(instructions, input))
+            }
+            None => self
+                .http
+                .post(format!("{}/v1/responses", self.url))
+                .bearer_auth(&self.key)
+                // The inference gateway sends `openagents:route` only on request.
+                .header("x-openagents-events", "route,cost")
+                .json(&self.body(instructions, input)),
+        };
+        let sent = request.send();
         let response = match tokio::time::timeout(self.patience.first_word, sent).await {
             Ok(Ok(response)) => response,
             Ok(Err(error)) => return Err((String::new(), GenerateError::Transport(error))),
@@ -1362,6 +1650,12 @@ impl ResponsesDoor {
         };
         let status = response.status();
         if !status.is_success() {
+            if status.as_u16() == 401
+                && let Some(vertex) = &self.vertex
+            {
+                // A rejected token is fetched again on the next turn.
+                vertex.token.forget().await;
+            }
             let body = response.text().await.unwrap_or_default();
             return Err((
                 String::new(),
@@ -1369,7 +1663,10 @@ impl ResponsesDoor {
             ));
         }
 
-        let mut reader = Reader::default();
+        let mut reader = Reader {
+            vertex: self.vertex.is_some(),
+            ..Reader::default()
+        };
         let mut stream = response.bytes_stream();
         // The quiet clock runs from the last event rather than from the
         // last byte, so a door that dribbles bytes without completing an
@@ -2196,6 +2493,22 @@ impl Door {
             Door::Fallback(door) => Door::Fallback(Box::new(door.with_backups(backups))),
             other => other,
         }
+    }
+
+    /// The same door with `first` in front of it ([`FallbackDoor`]): a live
+    /// door or a chain becomes `first`'s fallbacks, in their order; a door
+    /// that picks its own model (a relay, an executor, a delegate) or the
+    /// stub is replaced by `first` alone, which is what a configured first
+    /// door means.
+    #[must_use]
+    pub fn behind(self, first: ResponsesDoor) -> Self {
+        let mut doors = vec![first];
+        match self {
+            Door::Live(door) => doors.push(door),
+            Door::Fallback(chain) => doors.extend(chain.doors().cloned()),
+            _ => {}
+        }
+        FallbackDoor::chain(doors).unwrap_or_else(|| unreachable!("one door at least"))
     }
 
     /// Warm the door's connection: a live door opens its pooled HTTPS

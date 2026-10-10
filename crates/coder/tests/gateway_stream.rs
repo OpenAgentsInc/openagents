@@ -906,3 +906,140 @@ async fn live_a_retired_primary_falls_back_to_gemini() {
         assert!(text.contains("Paris"), "{text}");
     }
 }
+
+/// Vertex AI's recorded `streamGenerateContent` answer from
+/// `gemini-3.8-flash` (`CODER_WORKER_VERTEX`, 2026-10-10).
+const VERTEX: &str = include_str!("../fixtures/gateway/vertex-gemini-3.8-flash.sse");
+
+/// A Vertex door onto `server`, with a fixed token.
+fn vertex_door(server: &Server) -> ResponsesDoor {
+    let token = inference::upstream::google::TokenSource::fixed(
+        inference::upstream::secret::Secret::new("a-token").expect("a token"),
+    );
+    let mut door = ResponsesDoor::vertex("openagentsgemini", "global", token).waiting(short());
+    door.url = server.url.clone();
+    door
+}
+
+/// The Vertex door reads Vertex AI's native stream: the answer text in
+/// order, the usage from the last chunk, and the lane's public model id.
+#[tokio::test]
+async fn the_vertex_door_reads_vertex_s_own_stream() {
+    let server = Server::start(Stub::Whole(VERTEX)).await;
+    let door = vertex_door(&server);
+    assert!(door.is_vertex());
+    assert_eq!(door.model, Lane::Gemini.model());
+    let mut seen = String::new();
+    let (text, usage) = door
+        .generate(
+            "you are terse",
+            &turn(),
+            &mut |delta| seen.push_str(delta),
+            &mut |_| {},
+        )
+        .await
+        .expect("an answer");
+    assert_eq!(text, "One\nTwo\nThree\nFour\nFive");
+    assert_eq!(seen, text);
+    let usage = usage.expect("usage");
+    assert_eq!((usage.input_tokens, usage.output_tokens), (15, 9));
+}
+
+/// A stream that carries thought summaries shows only the answer, and one
+/// cut off at its token limit is a failure, not an answer.
+#[tokio::test]
+async fn the_vertex_door_hides_thoughts_and_refuses_a_cut_off_answer() {
+    const THINKING: &str = concat!(
+        "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Planning\",\"thought\":true}]}}]}\n\n",
+        "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Paris.\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":7}}\n\n",
+    );
+    let server = Server::start(Stub::Whole(THINKING)).await;
+    let (text, usage) = vertex_door(&server)
+        .generate("", &turn(), &mut |_| {}, &mut |_| {})
+        .await
+        .expect("an answer");
+    assert_eq!(text, "Paris.");
+    assert_eq!(usage.expect("usage").output_tokens, 9);
+
+    const CUT: &str = "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Par\"}]},\"finishReason\":\"MAX_TOKENS\"}]}\n\n";
+    let server = Server::start(Stub::Whole(CUT)).await;
+    let failed = vertex_door(&server)
+        .generate("", &turn(), &mut |_| {}, &mut |_| {})
+        .await
+        .expect_err("a cut-off answer");
+    assert!(failed.to_string().contains("max_tokens"), "{failed}");
+}
+
+/// The Vertex door in front of the OpenRouter door: an answer from Vertex
+/// names Gemini and asks nobody else; a Vertex refusal (403) hands the turn
+/// to the next door, which answers, and the switch names the first model
+/// provider and why, so the chat's "another provider answered" line shows.
+#[tokio::test]
+async fn the_vertex_door_goes_first_and_hands_a_refused_turn_on() {
+    use coder::generate::{Door, Missed, Provider};
+    let vertex = Server::start(Stub::Whole(VERTEX)).await;
+    let openrouter = Server::start(Stub::Whole(GEMINI)).await;
+    let Door::Fallback(door) =
+        Door::Live(openrouter.door(Lane::Gemini.model())).behind(vertex_door(&vertex))
+    else {
+        panic!("a chain of two");
+    };
+    let door = door.first_word(Duration::from_millis(300), Duration::from_millis(900));
+    let (_, outcome, named) = ask_ordered(&door).await;
+    outcome.expect("Vertex answers");
+    assert_eq!(named.as_deref(), Some(Lane::Gemini.model()));
+    assert!(door.answering().is_vertex());
+    assert_eq!(openrouter.asked(), 0);
+
+    let refused = Server::start(Stub::Status(403)).await;
+    let openrouter = Server::start(Stub::Whole(GEMINI)).await;
+    let Door::Fallback(door) =
+        Door::Live(openrouter.door(Lane::Gemini.model())).behind(vertex_door(&refused))
+    else {
+        panic!("a chain of two");
+    };
+    let door = door.first_word(Duration::from_millis(300), Duration::from_millis(900));
+    let switched = switches(&door).await;
+    assert_eq!(switched.len(), 1, "{switched:?}");
+    assert_eq!(switched[0].provider, Provider::Other);
+    assert_eq!(switched[0].why, Missed::Refused);
+    assert_eq!(switched[0].model, Lane::Gemini.model());
+    assert_eq!(switched[0].answered.as_deref(), Some(Lane::Gemini.model()));
+    assert!(!door.answering().is_vertex());
+    assert_eq!((refused.asked(), openrouter.asked()), (1, 1));
+}
+
+/// One real turn on Vertex AI through the door the worker builds
+/// (`vertex_door_from_env`): run with `VERTEX_PROJECT` and a Google
+/// credential (`GOOGLE_APPLICATION_CREDENTIALS`, or `GCE_METADATA_HOST` on
+/// GCE) and `--ignored`. Prints the time to the first words and the whole.
+#[tokio::test]
+#[ignore = "calls Vertex AI with a real Google credential"]
+async fn live_vertex_door_answers() {
+    let door = coder::generate::vertex_door_from_env()
+        .expect("the switch reads")
+        .expect("the Vertex door is on");
+    door.warm().await;
+    let started = Instant::now();
+    let mut first = None;
+    let (text, usage) = door
+        .generate(
+            "You are terse.",
+            &[Message {
+                role: Role::User,
+                text: "What is the capital of France? One word.".to_string(),
+            }],
+            &mut |_| {
+                first.get_or_insert_with(|| started.elapsed());
+            },
+            &mut |_| {},
+        )
+        .await
+        .expect("Vertex answers");
+    eprintln!(
+        "vertex: first words {:?}, whole {:?}, {usage:?}: {text}",
+        first,
+        started.elapsed()
+    );
+    assert!(text.contains("Paris"), "{text}");
+}

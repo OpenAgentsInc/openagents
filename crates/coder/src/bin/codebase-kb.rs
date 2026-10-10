@@ -197,7 +197,11 @@ fn judge() -> Result<jev::Client, String> {
 
 async fn ask_command(args: &[String]) -> Result<(), String> {
     let question = positional(args).ok_or(USAGE)?;
-    let kb = Codebase::open(&index_path(args)?, codebase::embedder()?)?;
+    let kb = {
+        let index = Index::read(&index_path(args)?)?;
+        let embedder = codebase::embedder_for(&index.model)?;
+        Codebase::new(index, embedder)?
+    };
     let composer = Composer::from_env()?;
     let answered = kb.answer(&judge()?, &composer, &question).await?;
     print_answered(&answered);
@@ -291,7 +295,11 @@ async fn eval_command(args: &[String]) -> Result<(), String> {
         &std::fs::read_to_string(&fixture_path).map_err(|e| format!("{fixture_path}: {e}"))?,
     )
     .map_err(|e| format!("{fixture_path}: {e}"))?;
-    let kb = Codebase::open(&index_path(args)?, codebase::embedder()?)?;
+    let kb = {
+        let index = Index::read(&index_path(args)?)?;
+        let embedder = codebase::embedder_for(&index.model)?;
+        Codebase::new(index, embedder)?
+    };
     let composer = Composer::from_env()?;
     let judge = judge()?;
     eprintln!(

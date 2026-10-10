@@ -13,6 +13,7 @@ codex-transport = { path = "../codex-transport" }
 # The codebase index file is gzip-compressed.
 flate2 = "1"
 openrouter = { path = "../openrouter" }
+inference = { path = "../inference" }
 # Who pays for an embedding (BYOK, #10176).
 model-access = { path = "../model-access" }
 serde = { version = "1", features = ["derive"] }

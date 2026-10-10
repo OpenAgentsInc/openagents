@@ -425,7 +425,7 @@ impl Embedder {
     pub fn with_vertex(client: vertex::Vertex) -> Self {
         Embedder {
             provider: EmbeddingProvider::Vertex,
-            model: vertex::CACHE_MODEL.to_string(),
+            model: client.cache_model().to_string(),
             transport: Transport::Vertex(client),
             backups: Vec::new(),
         }

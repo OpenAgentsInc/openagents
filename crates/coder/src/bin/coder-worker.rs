@@ -625,11 +625,20 @@ async fn serve(options: &Options) -> Result<(), String> {
             // asks OpenRouter's primary first, and one it does not start
             // answering goes to the door above. Unset, the primary is Space
             // Bunny Alpha whenever OpenRouter's key is here.
-            ordered(
+            let door = ordered(
                 door,
                 env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
                 env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
-            )?
+            )?;
+            // Gemini on Vertex AI goes in front of all of them
+            // (`CODER_WORKER_VERTEX`, 2026-10-10): the same model on
+            // Google's own API, billed to the prepaid Google credit, so an
+            // empty OpenRouter or Vercel account costs no turn; they stay
+            // behind it as its fallbacks.
+            match coder::generate::vertex_door_from_env()? {
+                Some(vertex) => door.behind(vertex),
+                None => door,
+            }
         }
     };
     // The backups go behind that (`CODER_WORKER_BACKUPS`): a turn every
@@ -2531,9 +2540,10 @@ impl Job {
                 let by = result["model"].as_str().unwrap_or("?").to_string();
                 publish(RESULT_KIND, result)?;
                 eprintln!(
-                    "job {label} answered in {} ms, {} chars, by {by}",
+                    "job {label} answered in {} ms, {} chars, by {by} at {}",
                     started.elapsed().as_millis(),
-                    text.len()
+                    text.len(),
+                    answering_door(&self.door, &by)
                 );
             }
             // The door said no with a code: the code travels as it is, so
@@ -4037,8 +4047,15 @@ fn answering_door(door: &Door, model: &str) -> String {
             .to_string()
     };
     match door {
-        Door::Fallback(ordered) if model == ordered.primary.model => host(&ordered.primary.url),
-        Door::Fallback(ordered) => host(&ordered.fallback.url),
+        // Two doors can run one model (Gemini on Vertex AI and on
+        // OpenRouter), so the door that answered last names the host.
+        Door::Fallback(ordered) if model == ordered.answering().model => {
+            host(&ordered.answering().url)
+        }
+        Door::Fallback(ordered) => ordered
+            .doors()
+            .find(|door| door.model == model)
+            .map_or_else(|| host(&ordered.fallback.url), |door| host(&door.url)),
         Door::Live(live) => host(&live.url),
         other => other.name().to_string(),
     }

@@ -21,6 +21,9 @@
 //! The bearer is a Google OAuth access token. It comes from the file named
 //! by `VERTEX_TOKEN_FILE` when that's set, read before every request as the
 //! `--provider vertex` model provider does. Otherwise it comes from
+//! the Google credential the inference gateway reads
+//! (`GOOGLE_APPLICATION_CREDENTIALS`, or the GCE metadata server when
+//! `GCE_METADATA_HOST` is set), and failing that from
 //! `gcloud auth print-access-token`, which honors `CLOUDSDK_CONFIG`, and is
 //! reused for up to [`TOKEN_REUSE`]. The token is never printed.
 
@@ -56,6 +59,20 @@ pub const MAX_REQUEST_TOKENS: usize = 20_000;
 /// Tokens of one input that Vertex embeds; the rest is truncated.
 pub const MAX_INPUT_TOKENS: usize = 2_048;
 
+/// Google's Gemini embedding model, an alternative to [`MODEL`]: one input
+/// a request, truncated (Matryoshka) to [`GEMINI_DIMENSIONS`] dimensions.
+pub const GEMINI_MODEL: &str = "gemini-embedding-001";
+
+/// The dimensions [`GEMINI_MODEL`] is asked for: [`MODEL`]'s 768.
+pub const GEMINI_DIMENSIONS: u32 = 768;
+
+/// The name that keys [`GEMINI_MODEL`]'s vectors in the cache.
+pub const GEMINI_CACHE_MODEL: &str = "vertex/gemini-embedding-001@768";
+
+/// The variable that picks the model: unset or [`MODEL`], or
+/// [`GEMINI_MODEL`].
+pub const MODEL_VAR: &str = "KB_VERTEX_MODEL";
+
 /// The variable that names the Google Cloud project.
 pub const PROJECT_VAR: &str = "KB_VERTEX_PROJECT";
 
@@ -76,12 +93,18 @@ pub const DEFAULT_LOCATION: &str = "us-central1";
 pub const TOKEN_REUSE: Duration = Duration::from_secs(30 * 60);
 
 /// Where the access token comes from.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum Token {
     /// A file, read before every request.
     File(PathBuf),
     /// `gcloud auth print-access-token`.
     Gcloud,
+    /// The inference gateway's Google credential
+    /// (`inference::upstream::google::TokenSource`): a service-account key
+    /// (`GOOGLE_APPLICATION_CREDENTIALS`) or the GCE metadata server
+    /// (`GCE_METADATA_HOST`), its token cached until a minute before it
+    /// expires. The chat worker's VM uses the metadata server.
+    Google(inference::upstream::google::TokenSource),
 }
 
 /// What an input is for, which `text-embedding-005` embeds differently.
@@ -109,6 +132,8 @@ pub struct Vertex {
     /// `https://us-central1-aiplatform.googleapis.com/v1/projects/P/locations/us-central1/publishers/google/models`.
     pub base_url: String,
     pub token: Token,
+    /// The model on Vertex AI: [`MODEL`] or [`GEMINI_MODEL`].
+    pub model: String,
     /// Retries after a retryable status or a broken connection.
     pub retries: u32,
     /// A token from `gcloud` and when it was fetched.
@@ -137,9 +162,31 @@ impl Vertex {
         Vertex {
             base_url: base_url.trim_end_matches('/').to_string(),
             token,
+            model: MODEL.to_string(),
             retries: 2,
             fetched: Mutex::new(None),
         }
+    }
+
+    /// The same client on `model` ([`MODEL`] or [`GEMINI_MODEL`]).
+    #[must_use]
+    pub fn on(mut self, model: &str) -> Self {
+        self.model = model.to_string();
+        self
+    }
+
+    /// The name this client's vectors are keyed by in caches and indexes.
+    #[must_use]
+    pub fn cache_model(&self) -> &'static str {
+        if self.model == GEMINI_MODEL {
+            GEMINI_CACHE_MODEL
+        } else {
+            CACHE_MODEL
+        }
+    }
+
+    fn gemini(&self) -> bool {
+        self.model == GEMINI_MODEL
     }
 
     /// A client configured by the environment: [`URL_VAR`], or else
@@ -154,6 +201,7 @@ impl Vertex {
             Some(url) => url,
             None => {
                 let project = var(PROJECT_VAR)
+                    .or_else(|| var("VERTEX_PROJECT"))
                     .or_else(|| var("GOOGLE_CLOUD_PROJECT"))
                     .ok_or(format!(
                         "Vertex AI embeddings need a project: set {PROJECT_VAR}"
@@ -162,13 +210,33 @@ impl Vertex {
                 models_url(&project, &location)
             }
         };
-        let token = var(TOKEN_VAR).map_or(Token::Gcloud, |path| Token::File(path.into()));
-        Ok(Vertex::new(&base_url, token))
+        let token = match var(TOKEN_VAR) {
+            Some(path) => Token::File(path.into()),
+            None => {
+                let google = inference::upstream::google::TokenSource::from_env();
+                if google.present() {
+                    Token::Google(google)
+                } else {
+                    Token::Gcloud
+                }
+            }
+        };
+        let model = match var(MODEL_VAR).as_deref() {
+            None | Some(MODEL) => MODEL,
+            Some(GEMINI_MODEL) => GEMINI_MODEL,
+            Some(other) => {
+                return Err(format!(
+                    "{MODEL_VAR} is {MODEL} or {GEMINI_MODEL}, not {other}"
+                ));
+            }
+        };
+        Ok(Vertex::new(&base_url, token).on(model))
     }
 
     /// The bearer for the next request.
-    fn bearer(&self) -> Result<String, String> {
+    async fn bearer(&self) -> Result<String, String> {
         match &self.token {
+            Token::Google(google) => google.token().await.map(|token| token.expose().to_string()),
             Token::File(path) => {
                 let token = std::fs::read_to_string(path).map_err(|e| {
                     format!("can't read the Vertex token at {}: {e}", path.display())
@@ -226,7 +294,13 @@ impl Vertex {
     ) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
         let mut vectors = Vec::with_capacity(inputs.len());
         let mut usd = Some(0.0);
-        for (index, range) in batches(inputs).into_iter().enumerate() {
+        let ranges = if self.gemini() {
+            // Gemini's embedding model takes one input a request.
+            (0..inputs.len()).map(|i| i..i + 1).collect()
+        } else {
+            batches(inputs)
+        };
+        for (index, range) in ranges.into_iter().enumerate() {
             let earlier = index > 0;
             let (batch, cost) =
                 self.request(&inputs[range.clone()])
@@ -260,7 +334,7 @@ impl Vertex {
             message,
             refused: true,
         };
-        let token = self.bearer().map_err(refused)?;
+        let token = self.bearer().await.map_err(refused)?;
         let mut config = openrouter::Config::new(openrouter::ApiKey::new(&token));
         config.base_url.clone_from(&self.base_url);
         config.referer = None;
@@ -277,18 +351,22 @@ impl Vertex {
                 .collect(),
             parameters: Parameters {
                 auto_truncate: true,
+                output_dimensionality: self.gemini().then_some(GEMINI_DIMENSIONS),
             },
         };
         let reply: Predicted = client
-            .post_json(&format!("{MODEL}:predict"), &body)
+            .post_json(&format!("{}:predict", self.model), &body)
             .await
             .map_err(|e| EmbedError {
                 refused: matches!(e, openrouter::Error::Api { .. } | openrouter::Error::NoKey),
                 // The client is OpenRouter's, which names itself in errors.
                 message: e.to_string().replace("OpenRouter", "Vertex AI"),
             })?;
+        // Gemini's embedding model is priced by token, not character, and
+        // its response carries no count: the cost stays unknown.
         let usd = reply
             .metadata
+            .filter(|_| !self.gemini())
             .and_then(|m| m.billable_character_count)
             .filter(|count| *count > 0 || inputs.iter().all(|(c, _)| c.trim().is_empty()))
             .map(|count| count as f64 * USD_PER_THOUSAND_CHARACTERS / 1_000.0);
@@ -360,6 +438,11 @@ struct Instance<'a> {
 struct Parameters {
     #[serde(rename = "autoTruncate")]
     auto_truncate: bool,
+    #[serde(
+        rename = "outputDimensionality",
+        skip_serializing_if = "Option::is_none"
+    )]
+    output_dimensionality: Option<u32>,
 }
 
 #[derive(Deserialize)]

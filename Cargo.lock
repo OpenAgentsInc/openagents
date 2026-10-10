@@ -7982,6 +7982,7 @@ dependencies = [
  "codex-transport",
  "flate2",
  "getrandom 0.3.4",
+ "inference",
  "model-access",
  "nostr",
  "openrouter",

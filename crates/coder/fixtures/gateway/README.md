@@ -43,3 +43,14 @@ Send the request above to `/v1/responses` with `CODER_AI_GATEWAY_KEY` as
 the bearer, write the response body to the matching file unchanged, and
 check that no header or field carries the key. A re-recording is a new
 measurement: say in the commit message what the gateway changed.
+
+## Vertex AI
+
+`vertex-gemini-3.8-flash.sse` is not a gateway stream: it is Vertex AI's
+native `streamGenerateContent?alt=sse` answer from
+`gemini-3.8-flash` (global endpoint, project `openagentsgemini`,
+2026-10-10), the chat worker's Vertex door (`CODER_WORKER_VERTEX`). The
+request was "Count from one to five, one word per line." with the system
+instruction "You are terse." and `thinkingConfig {thinkingLevel: low,
+includeThoughts: true}`. Re-record it with a Google access token as the
+bearer; the response carries no credential.

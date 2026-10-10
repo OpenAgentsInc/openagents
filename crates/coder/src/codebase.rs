@@ -99,9 +99,42 @@ pub fn configured_path() -> Option<PathBuf> {
 ///
 /// None of the three has a key.
 pub fn embedder() -> Result<knowledge::search::Embedder, String> {
+    match std::env::var(EMBEDDINGS_VAR).ok().as_deref().map(str::trim) {
+        Some("vertex") => return knowledge::search::Embedder::vertex(),
+        None | Some("" | "gateway") => {}
+        Some(other) => {
+            return Err(format!(
+                "{EMBEDDINGS_VAR} is `vertex` or `gateway`, not `{other}`"
+            ));
+        }
+    }
     knowledge::search::Embedder::gateway().or_else(|gateway| {
         knowledge::search::Embedder::from_env().map_err(|other| format!("{gateway}; {other}"))
     })
+}
+
+/// The variable that picks the embedder an index is built with
+/// ([`embedder`]): `vertex` for Google's `text-embedding-005` on Vertex AI,
+/// unset or `gateway` for OpenAI's `text-embedding-3-small`. Reading an
+/// index needs none: [`embedder_for`] takes the model the index was built
+/// with.
+pub const EMBEDDINGS_VAR: &str = "CODER_CODEBASE_EMBEDDINGS";
+
+/// The embedder that reads questions into an index built by `model`:
+/// Vertex AI for a Vertex-built index, else [`embedder`]'s OpenAI model,
+/// so a worker never pairs an index with another model's questions.
+///
+/// # Errors
+///
+/// The embedder for that model cannot be set up.
+pub fn embedder_for(model: &str) -> Result<knowledge::search::Embedder, String> {
+    if model.starts_with("vertex/") {
+        knowledge::search::Embedder::vertex()
+    } else {
+        knowledge::search::Embedder::gateway().or_else(|gateway| {
+            knowledge::search::Embedder::from_env().map_err(|other| format!("{gateway}; {other}"))
+        })
+    }
 }
 
 /// Why a question goes to Coder instead of being answered here.
@@ -748,7 +781,9 @@ impl Seam {
     /// The reason the seam is not available.
     pub fn from_env(judge: std::sync::Arc<jev::Client>) -> Result<Self, String> {
         let path = configured_path().ok_or("no HOME and no CODER_CODEBASE_KB")?;
-        let kb = Codebase::open(&path, embedder()?)?;
+        let index = Index::read(&path)?;
+        let embedder = embedder_for(&index.model)?;
+        let kb = Codebase::new(index, embedder)?;
         Ok(Self::new(kb, judge))
     }
 
