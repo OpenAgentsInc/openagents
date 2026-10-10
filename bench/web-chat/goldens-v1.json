@@ -45,7 +45,8 @@
       "account.connect_computer",
       "github.connect_repo",
       "pricing",
-      "privacy"
+      "privacy",
+      "project.summarize_repo"
     ]
   },
   "flows": [
@@ -590,6 +591,48 @@
           "required": [["coder login"]],
           "forbidden": [],
           "ui": {"required": false}
+        }
+      ]
+    },
+    {
+      "id": "project",
+      "title": "A chat in a project with a connected GitHub repository: questions about the repository are answered from it",
+      "goldens": [
+        {
+          "id": "project.summarize_repo",
+          "phrasings": [
+            "Summarize this repo.",
+            "what does this repo do",
+            "explain the structure of this repository"
+          ],
+          "route": [],
+          "answers": [],
+          "tier": [
+            "model"
+          ],
+          "speed": "model",
+          "required": [
+            [
+              "ledger",
+              "budget",
+              "CSV"
+            ]
+          ],
+          "forbidden": [
+            "coder login",
+            "install.sh",
+            "install Coder",
+            "/device"
+          ],
+          "repository": {
+            "name": "example-org/finances",
+            "branch": "main",
+            "snapshot": "Repository: example-org/finances (public), branch main\nDescription: Personal finance tracking: imports bank CSV exports into a ledger and builds monthly budget reports\nLanguages: Python 88%, Shell 12%\n\nRecent commits on main:\n- 2026-10-08 3f9a2c1 Add 2026 budget categories\n- 2026-10-02 b71e044 Parse the new credit card CSV format\n\nFiles (6 files; 7 of 7 paths shown, shallowest first):\nREADME.md\nfinances/\nfinances/importer.py\nfinances/ledger.py\nfinances/report.py\npyproject.toml\nscripts/monthly.sh\n\nREADME:\n# finances\n\nImports bank and card CSV exports into a SQLite ledger, categorizes transactions, and prints a monthly budget report. Run `scripts/monthly.sh` at the start of each month.\n\npyproject.toml:\n[project]\nname = \"finances\"\nrequires-python = \">=3.11\"\ndependencies = [\"pandas\", \"rich\"]\n"
+          },
+          "note": [
+            "repo",
+            "none"
+          ]
         }
       ]
     }

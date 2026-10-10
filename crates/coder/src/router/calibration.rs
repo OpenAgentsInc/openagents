@@ -334,6 +334,7 @@ mod tests {
             capability_missing_p: 0.0,
             capability_closest: None,
             deck: None,
+            repository: None,
             engine: None,
             fanout: None,
             read_only: 0.0,

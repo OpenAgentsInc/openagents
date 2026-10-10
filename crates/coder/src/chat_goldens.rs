@@ -122,6 +122,34 @@ pub struct Golden {
     /// about components.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiExpect>,
+    /// The chat's project's repository as the website reads it for the
+    /// turn (`context.repository`): the golden is asked in a project chat.
+    /// Only the router mode can send it; the website's visitor chat has no
+    /// project, so `http` and `local` skip such a golden.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<RepositoryFixture>,
+    /// The note the model must be told, when the tier is the model's:
+    /// `repo` (answer from the chat's repository), `web` (the website's
+    /// "Coder does that" note), or `none`. Empty checks nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub note: Vec<String>,
+}
+
+/// A project chat's repository for a golden, as `context.repository`
+/// carries it.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RepositoryFixture {
+    pub name: String,
+    pub branch: String,
+    pub snapshot: String,
+}
+
+impl RepositoryFixture {
+    /// The context's `repository` object.
+    #[must_use]
+    pub fn json(&self) -> serde_json::Value {
+        serde_json::json!({"name": self.name, "branch": self.branch, "snapshot": self.snapshot})
+    }
 }
 
 /// The sources a golden's `grounded` may name: the public rate card
@@ -405,6 +433,10 @@ pub struct Observed {
     /// written ([`ui_seen`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiSeen>,
+    /// The note the model was told on a model tier ([`Golden::note`]'s
+    /// words), when the mode can see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// A check's outcome.
@@ -621,6 +653,9 @@ pub fn grade(set: &Set, case: &Case<'_>, observed: Observed) -> Grade {
         },
     );
     checks.push(one_of("tier", &golden.tier, observed.tier.as_deref()));
+    if !golden.note.is_empty() {
+        checks.push(one_of("note", &golden.note, observed.note.as_deref()));
+    }
     checks.push(match (golden.answers.is_empty(), answer, &observed.tier) {
         (true, _, _) => mk("answer", Status::Pass, "any"),
         (false, Some(_), _) => one_of("answer", &golden.answers, answer),

@@ -101,7 +101,7 @@
 
 use super::bank::{Bank, Entry, Facts};
 use super::capability::{Capability, Reach};
-use super::judge::Routing;
+use super::judge::{RepositoryAsk, Routing};
 use super::{Context, Corpus, Offer, Risk, RouteFamily, RouteId, Surface};
 use crate::first::Lane;
 
@@ -987,9 +987,66 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         {
             return plugins;
         }
-        for_web(routing, tier)
+        let held = for_web(routing, tier);
+        if situation.context.repository.is_some() {
+            in_project(routing, held)
+        } else {
+            held
+        }
     } else {
         tier
+    }
+}
+
+/// How sure the `repository` reading must be that a message asks about
+/// the chat's repository before the model answers it from the repository
+/// whatever the route read ([`in_project`]).
+pub const REPOSITORY_READ_CONFIDENCE: f64 = 0.5;
+
+/// What the model is told on the website when the chat is in a project
+/// whose GitHub repository the website read for this turn
+/// (`context.repository`): the repository itself is in its instructions
+/// ([`super::Context::repository_note`]), so it answers from that.
+pub const REPO_NOTE: &str = "This chat is on the openagents.com website, in the user's \
+project, and the repository's contents read for this message are in these instructions. \
+Answer the message from them: what the repository is and does, how it is laid out, its \
+languages, key files, and recent changes. When the user asks for a change to its code \
+(editing files, running commands or tests), answer what you can from what was read and say in \
+one sentence that Coder, our coding agent, makes changes: `curl -fsSL \
+https://openagents.com/cli/install.sh | bash` installs it. Never send them to install Coder \
+only to read or explain this repository.";
+
+/// The website's tier in a project chat with its repository read
+/// (`context.repository`): a turn that would have told the visitor to
+/// install Coder ([`WEB_NOTE`]), or that would have answered from the
+/// OpenAgents codebase (the typed `codebase.kb` route), is answered by the
+/// model from the repository instead ([`REPO_NOTE`]). Every other tier
+/// stands: a prepared answer, a product note, a GitHub command card, a
+/// refusal.
+#[must_use]
+pub fn in_project(routing: &Routing, tier: Tier) -> Tier {
+    let repo = || Tier::Model {
+        lead: None,
+        note: Some(REPO_NOTE),
+    };
+    // The `repository` reading (asked only in a project chat) says the
+    // message asks about the repository, which reading it answers: the
+    // model answers from it, whatever the route read, unless refused.
+    if let Some((RepositoryAsk::Read, p)) = routing.repository
+        && p >= REPOSITORY_READ_CONFIDENCE
+        && !matches!(tier, Tier::Refuse { .. })
+    {
+        return repo();
+    }
+    match tier {
+        Tier::Model {
+            note: Some(note), ..
+        } if note == WEB_NOTE => repo(),
+        Tier::Grounded {
+            corpus: Corpus::Codebase,
+            ..
+        } if routing.route == RouteId::CodebaseKb => repo(),
+        tier => tier,
     }
 }
 
@@ -1531,6 +1588,7 @@ mod tests {
             capability_missing_p: 0.0,
             capability_closest: None,
             deck: None,
+            repository: None,
             engine: None,
             fanout: None,
             read_only: 0.0,
@@ -1659,6 +1717,99 @@ mod tests {
                 "{group}"
             );
         }
+    }
+
+    fn in_a_project() -> Context {
+        Context::of(&serde_json::json!({
+            "surface": "web",
+            "repository": {
+                "name": "AtlantisPleb/finances",
+                "branch": "main",
+                "snapshot": "Repository: AtlantisPleb/finances\nREADME.md:\nPersonal finance scripts."
+            }
+        }))
+    }
+
+    /// A project chat on the website with its repository read: "Summarize
+    /// this repo" (read as work, or as the OpenAgents codebase) is answered
+    /// by the model from the repository, never with the install text;
+    /// answers, product notes, and GitHub command cards stand.
+    #[test]
+    fn a_project_chat_answers_about_its_repository_from_it() {
+        let project = in_a_project();
+        assert!(project.repository.is_some());
+        let note = project.repository_note().unwrap();
+        assert!(note.contains("AtlantisPleb/finances"));
+        assert!(note.contains("Personal finance scripts."));
+        assert!(!REPO_NOTE.contains("coder login"));
+        let repo = Tier::Model {
+            lead: None,
+            note: Some(REPO_NOTE),
+        };
+        let work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
+        assert_eq!(decided(&work, &project, true), repo);
+        let code = routed(RouteId::CodebaseKb, 0.9, "none", 0.0, 0.5);
+        assert_eq!(decided(&code, &project, false), repo);
+        // Without a repository the website still says what Coder does.
+        assert_eq!(
+            decided(&work, &web(), true),
+            Tier::Model {
+                lead: None,
+                note: Some(WEB_NOTE)
+            }
+        );
+        let kb = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
+        assert!(matches!(
+            decided(&kb, &project, false),
+            Tier::Grounded {
+                corpus: Corpus::Product,
+                ..
+            }
+        ));
+        let mut cli = routed(RouteId::Cli, 0.95, "cli.offer", 0.9, 0.9);
+        cli.cli_group = Some(("issue".to_string(), 0.95));
+        assert!(matches!(decided(&cli, &project, false), Tier::Cli { .. }));
+        // The `repository` reading "read" answers from the repository
+        // whatever the route read (a prepared answer about connecting a
+        // codebase, the product notes); unsure, or not asked, it doesn't.
+        let mut meta = routed(RouteId::Meta, 0.4, "meta.codebase", 0.9, 0.1);
+        let before = decided(&meta, &project, false);
+        assert_ne!(before, repo);
+        meta.repository = Some((RepositoryAsk::Read, 0.8));
+        assert_eq!(decided(&meta, &project, false), repo);
+        meta.repository = Some((RepositoryAsk::Read, 0.3));
+        assert_eq!(decided(&meta, &project, false), before);
+        let mut kb = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
+        kb.repository = Some((RepositoryAsk::Read, 0.9));
+        assert_eq!(decided(&kb, &project, false), repo);
+        kb.repository = Some((RepositoryAsk::Other, 0.9));
+        assert!(matches!(
+            decided(&kb, &project, false),
+            Tier::Grounded { .. }
+        ));
+        // Off the website, or with no repository, the reading changes nothing.
+        let mut away = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
+        away.repository = Some((RepositoryAsk::Read, 0.9));
+        assert!(matches!(
+            decided(&away, &web(), false),
+            Tier::Grounded { .. }
+        ));
+    }
+
+    /// Jev reads that the chat has a repository, by name, just before the
+    /// latest message; never the repository's own text.
+    #[test]
+    fn jev_reads_the_project_repository_by_name_only() {
+        let input = vec![crate::generate::Message {
+            role: crate::generate::Role::User,
+            text: "Summarize this repo.".into(),
+        }];
+        let judged = in_a_project().judged(&input);
+        assert_eq!(judged.len(), 2);
+        assert!(judged[0].text.contains("AtlantisPleb/finances"));
+        assert!(!judged[0].text.contains("Personal finance scripts."));
+        assert_eq!(judged[1].text, "Summarize this repo.");
+        assert_eq!(web().judged(&input).len(), 1);
     }
 
     /// On the website (#10106) work, commands, and screens become the

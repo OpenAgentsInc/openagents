@@ -367,10 +367,14 @@ impl Routed {
             role: Role::User,
             text: case.phrasing.to_string(),
         });
-        let context = router::Context {
-            surface: Some(router::Surface::Web),
-            ..router::Context::default()
-        };
+        let mut wire = serde_json::json!({"surface": "web"});
+        if let Some(repository) = &case.golden.repository {
+            wire["repository"] = repository.json();
+        }
+        let context = router::Context::of(&wire);
+        // Jev reads what the worker gives it: the transcript with the
+        // context's fixed lines (the project's repository, by name).
+        let transcript = context.judged(&transcript);
         let situation = router::Situation {
             mode: router::Mode::Router,
             context: &context,
@@ -392,6 +396,11 @@ impl Routed {
             &self.admitted,
             &[],
         );
+        let request = if context.repository.is_some() {
+            request.with_repository(case.phrasing, &transcript)
+        } else {
+            request
+        };
         let response = match router::ask(&self.judge, request).await {
             Ok(r) => r,
             Err(e) => {
@@ -413,6 +422,9 @@ impl Routed {
             None => why.push_str("; answer none"),
         }
         why.push_str(&format!("; specifics {:.2}", routing.needs_specifics));
+        if let Some((ask, p)) = routing.repository {
+            why.push_str(&format!("; repository {} {p:.2}", ask.word()));
+        }
         let mut observed = Observed {
             route: Some(routing.route.word().to_string()),
             tier: Some(tier.word().to_string()),
@@ -431,6 +443,17 @@ impl Routed {
                 });
             }
             router::Tier::Refuse { text, .. } => observed.text = Some(text.clone()),
+            router::Tier::Model { note, .. } => {
+                observed.note = Some(
+                    match note {
+                        Some(note) if *note == router::policy::REPO_NOTE => "repo",
+                        Some(note) if *note == router::policy::WEB_NOTE => "web",
+                        Some(_) => "other",
+                        None => "none",
+                    }
+                    .to_string(),
+                );
+            }
             router::Tier::CannedStem {
                 answer,
                 stem,
@@ -679,6 +702,13 @@ impl Site {
     }
 
     async fn ask(&self, case: &Case<'_>) -> Observed {
+        if case.golden.repository.is_some() {
+            // A visitor's chat has no project; the router mode asks it.
+            return Observed {
+                why: Some("a project chat: asked in router mode only".into()),
+                ..Observed::default()
+            };
+        }
         let visitor = match self.visitor().await {
             Ok(v) => v,
             Err(e) => {

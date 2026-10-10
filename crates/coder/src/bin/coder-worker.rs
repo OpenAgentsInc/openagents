@@ -2443,6 +2443,15 @@ impl Job {
                         }
                         instructions.push_str(&note);
                     }
+                    // The chat's project's repository, as the website read
+                    // it for this turn: questions about it are answered
+                    // from it, never with "install Coder".
+                    if let Some(note) = turn.context.repository_note() {
+                        if !instructions.is_empty() {
+                            instructions.push_str("\n\n");
+                        }
+                        instructions.push_str(&note);
+                    }
                     if opener && triage.is_some() {
                         if !instructions.is_empty() {
                             instructions.push_str("\n\n");
@@ -2616,6 +2625,13 @@ impl Job {
             &admitted,
             decks,
         );
+        // A project chat with its repository read asks one more question:
+        // what the message asks of that repository.
+        let request = if turn.context.repository.is_some() {
+            request.with_repository(&turn.message, &judged)
+        } else {
+            request
+        };
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
         // Whether the latest message has earlier ones to refer to: a

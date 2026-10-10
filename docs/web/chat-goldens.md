@@ -88,6 +88,7 @@ own text, and it rejects a source name it doesn't know.
 | general | general questions, and code work the website can't do |
 | followup | a question after another in the same chat |
 | interactive | answers the model writes with components, and a follow-up that edits them (#11113) |
+| project | a chat in a project with a connected GitHub repository: "Summarize this repo." and similar are answered from the repository, never with the install text. These goldens carry the repository as the website reads it (`repository`), so only `router` mode asks them (`http` and `local` skip them: a visitor's chat has no project); `note` checks the model is told to answer from it |
 
 ### Components (#11113)
 

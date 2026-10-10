@@ -409,7 +409,14 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         }
     };
     if cloud.is_none() {
-        spawn_answer(app.clone(), loaded, admitted_at);
+        let repo = repo_read(
+            &app,
+            &headers,
+            picked.project.as_ref(),
+            picked.branch.as_deref(),
+        )
+        .await;
+        spawn_answer(app.clone(), loaded, admitted_at, repo);
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
@@ -1192,7 +1199,21 @@ async fn follow(
         }
     };
     if cloud.is_none() {
-        spawn_answer(app.clone(), loaded.clone(), admitted_at);
+        // The chat's project: the row's, else the one the chat is in.
+        let sidebar = match &picked.project {
+            Some(_) => None,
+            None => crate::projects::sidebar(&app).await,
+        };
+        let project = picked.project.as_ref().or_else(|| {
+            let id = loaded.conversation.project.as_deref()?;
+            sidebar.as_deref()?.project(id)
+        });
+        let branch = picked
+            .branch
+            .as_deref()
+            .or(loaded.conversation.branch.as_deref());
+        let repo = repo_read(&app, &headers, project, branch).await;
+        spawn_answer(app.clone(), loaded.clone(), admitted_at, repo);
     }
     accepted(&app, &headers, &loaded.conversation).await
 }
@@ -1315,7 +1336,8 @@ pub(crate) async fn follow_from_app(
     });
     match store.compare_and_swap(&loaded, &next).await {
         Ok(saved) => {
-            spawn_answer(app.clone(), saved, admitted_at);
+            // An app's own token reaches no GitHub connection here.
+            spawn_answer(app.clone(), saved, admitted_at, None);
             AppSent::Answering
         }
         Err(e) => {
@@ -1442,13 +1464,57 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
     }
 }
 
-fn spawn_answer(app: App, loaded: Loaded, admitted_at: u64) {
+fn spawn_answer(
+    app: App,
+    loaded: Loaded,
+    admitted_at: u64,
+    repo: Option<crate::repo_snapshot::RepoRead>,
+) {
     tokio::spawn(async move {
-        answer(app, loaded, admitted_at).await;
+        answer(app, loaded, admitted_at, repo).await;
     });
 }
 
-async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
+/// How to read the chat's project's repository for this turn
+/// ([`crate::repo_snapshot`]): its `owner/name` and branch, with the
+/// signed-in person's GitHub token, fetched for this turn only. `None`
+/// outside a project, or for a private repository with no connection.
+async fn repo_read(
+    app: &App,
+    headers: &HeaderMap,
+    project: Option<&oa_auth::repos::Project>,
+    branch: Option<&str>,
+) -> Option<crate::repo_snapshot::RepoRead> {
+    let project = project?;
+    let token = match app.config.cloud.as_deref() {
+        Some(service) => service.github_token(headers).await.ok(),
+        None => None,
+    };
+    if project.private && token.is_none() {
+        return None;
+    }
+    let base = app.config.github.as_ref().map_or_else(
+        || "https://api.github.com".to_string(),
+        |github| github.endpoints.api_url.trim_end_matches('/').to_string(),
+    );
+    Some(crate::repo_snapshot::RepoRead {
+        base,
+        token,
+        repository: project.repository.clone(),
+        branch: branch
+            .filter(|branch| !branch.is_empty())
+            .unwrap_or(&project.default_branch)
+            .to_string(),
+        private: project.private,
+    })
+}
+
+async fn answer(
+    app: App,
+    mut loaded: Loaded,
+    admitted_at: u64,
+    repo: Option<crate::repo_snapshot::RepoRead>,
+) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
     let request_id = chat
@@ -1570,6 +1636,17 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         },
         (None, _) => None,
     };
+    // The chat's project's repository, read for this turn with the
+    // person's GitHub connection, so a question about it is answered from
+    // it. A slow or failed read costs the turn its repository, never its
+    // answer.
+    let repository = match (&door, repo) {
+        (Some(_), Some(repo)) => tokio::time::timeout(Duration::from_secs(8), repo.read())
+            .await
+            .ok()
+            .flatten(),
+        _ => None,
+    };
     let mut job = match door {
         Some(door) => Some(
             door.ask(
@@ -1589,6 +1666,7 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                             path: None,
                         }),
                     memory,
+                    repository,
                     ..Context::default()
                 },
                 reply.clone(),

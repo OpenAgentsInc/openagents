@@ -850,6 +850,7 @@ impl CoderTab {
             skip: self.gym.skip(),
             runs: Vec::new(),
             memory: self.memory.clone(),
+            repository: None,
         }
     }
 

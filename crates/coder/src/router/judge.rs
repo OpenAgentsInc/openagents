@@ -417,6 +417,112 @@ impl Split {
     pub fn requests(&self) -> impl Iterator<Item = &jev::SystemOneRequest> {
         std::iter::once(&self.main).chain(self.sides.iter().map(|(_, request)| request))
     }
+
+    /// The same requests and the [`REPOSITORY`] question as a side
+    /// request over the same state: asked only when the chat is in a
+    /// project whose repository the turn carries.
+    #[must_use]
+    pub fn with_repository(mut self, task: &str, transcript: &[Message]) -> Self {
+        let request = jev::SystemOneRequest::new(
+            state(task, transcript),
+            Questions::new().with(REPOSITORY, repository()),
+        )
+        .retry(crate::first::retry())
+        .timeout(crate::first::LATE);
+        self.sides.push((REPOSITORY, request));
+        self
+    }
+}
+
+/// The `repository` question's id.
+pub const REPOSITORY: &str = "repository";
+
+/// What the latest message asks of the repository the chat is in, as the
+/// `repository` question reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RepositoryAsk {
+    /// About the repository, answered by reading it.
+    Read,
+    /// Work on the repository that reading can't do.
+    Change,
+    /// Not about the repository.
+    Other,
+}
+
+impl RepositoryAsk {
+    /// The option word the question carries.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            RepositoryAsk::Read => "read",
+            RepositoryAsk::Change => "change",
+            RepositoryAsk::Other => "other",
+        }
+    }
+
+    fn parse(word: &str) -> Option<Self> {
+        [
+            RepositoryAsk::Read,
+            RepositoryAsk::Change,
+            RepositoryAsk::Other,
+        ]
+        .into_iter()
+        .find(|ask| ask.word() == word)
+    }
+}
+
+/// The `repository` question (asked only in a project chat with its
+/// repository read, [`Split::with_repository`]): whether the latest
+/// message asks about the user's repository in a way reading it answers,
+/// asks for work on it, or is about something else.
+#[must_use]
+pub fn repository() -> Choice {
+    let mut options: IndexMap<String, Option<Criterion>> = IndexMap::new();
+    let mut add = |ask: RepositoryAsk, what: &str, not_for: &str| {
+        options.insert(
+            ask.word().to_string(),
+            Some(Criterion::from(super::rubric::option(
+                what,
+                Some(not_for),
+                &[],
+            ))),
+        );
+    };
+    add(
+        RepositoryAsk::Read,
+        "The latest message asks about the user's own repository that this chat is in, in a \
+         way that reading the repository answers: summarize it or give an overview, say what \
+         it does or is for, explain how it is laid out or structured, what a file or folder \
+         in it is for, which languages, frameworks, or dependencies it uses, how to run it \
+         according to its README, or what changed in it recently",
+        "Asking for its code or files to be changed, or its commands or tests run (change); \
+         questions about OpenAgents, the assistant, or how to use OpenAgents (other)",
+    );
+    add(
+        RepositoryAsk::Change,
+        "The latest message asks for work on the user's repository that reading it can't do: \
+         change, fix, add, or remove its code or files, run its commands or tests, build or \
+         deploy it, review or open a pull request, or pick up one of its issues",
+        "Only asking what the repository is, does, or contains (read)",
+    );
+    add(
+        RepositoryAsk::Other,
+        "The latest message is not about the user's repository: a question about OpenAgents \
+         or the assistant itself, the user's account, plans, or pricing, a general question, \
+         a greeting or thanks, or anything else",
+        "Anything that asks what the user's repository is, does, or contains (read), or for \
+         work on it (change)",
+    );
+    Choice::new(
+        super::rubric::instructions(
+            "What does the user's latest message ask of the GitHub repository this chat is in?",
+            "This chat is in the user's project: one of their own GitHub repositories is \
+             connected to it, and \"this repo\", \"the repository\", \"the project\", or \
+             \"the code\" in their messages mean that repository, not OpenAgents. Earlier \
+             messages only resolve what the latest one refers to.",
+        ),
+        options,
+    )
 }
 
 /// The requests the worker sends, each bounded by `coder::first::LATE`.
@@ -617,6 +723,9 @@ pub struct Routing {
     /// `None` for `none` or not asked. The id is one of the decks the
     /// question listed.
     pub deck: Option<(String, f64)>,
+    /// What the latest message asks of the chat's repository, with its
+    /// probability; `None` when not asked ([`Split::with_repository`]).
+    pub repository: Option<(RepositoryAsk, f64)>,
     /// The coding engine the `engine` reading named, with the
     /// probability of that option; `None` for `none` or not asked. Only a
     /// dispatch reads it, and only at
@@ -768,6 +877,15 @@ pub fn reading(
             .unwrap_or(answer.confidence);
         Some((fanout, finite(p)))
     });
+    let repository = choice(response, REPOSITORY).and_then(|answer| {
+        let ask = RepositoryAsk::parse(&answer.choice)?;
+        let p = answer
+            .probabilities
+            .get(&answer.choice)
+            .copied()
+            .unwrap_or(answer.confidence);
+        Some((ask, finite(p)))
+    });
     let noul = |id: &str| match response.answers.get(id) {
         Some(Answer::Noul(noul)) if noul.noul.is_finite() => noul.noul.clamp(0.0, 1.0),
         _ => 0.0,
@@ -791,6 +909,7 @@ pub fn reading(
         capability_missing_p,
         capability_closest,
         deck,
+        repository,
         engine,
         fanout,
         read_only: noul("read_only"),

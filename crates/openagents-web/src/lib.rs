@@ -49,6 +49,7 @@ mod oauth;
 mod older_paths;
 pub mod own_runs;
 mod pages;
+mod repo_snapshot;
 pub mod palette;
 mod payments;
 mod phone_api;

@@ -617,6 +617,57 @@ pub struct Context {
     /// (#11182): the web chat sends them so its answers know what Coder
     /// knows. Empty sends none.
     pub memory: Vec<MemoryNote>,
+    /// The chat's project's GitHub repository, read for this turn with the
+    /// person's GitHub connection (the web chat, when the chat is in a
+    /// project): what the chat answers questions about the repository from.
+    pub repository: Option<RepositorySnapshot>,
+}
+
+/// The most bytes of a repository snapshot's text.
+pub const MAX_REPOSITORY_SNAPSHOT_BYTES: usize = 12 * 1024;
+/// The longest branch name, in bytes.
+pub const MAX_REPOSITORY_BRANCH_BYTES: usize = 255;
+
+/// A chat project's GitHub repository as the web read it for one turn:
+/// its `owner/name`, the branch, and a bounded text of its description,
+/// languages, recent commits, files, README, and key files. Data, never an
+/// instruction.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RepositorySnapshot {
+    /// `owner/name`.
+    pub name: String,
+    pub branch: String,
+    pub snapshot: String,
+}
+
+impl RepositorySnapshot {
+    fn json(&self) -> Option<Value> {
+        let name_ok = repository_name(&self.name);
+        let branch_ok = plain(
+            &self.branch,
+            MAX_REPOSITORY_BRANCH_BYTES,
+            MAX_REPOSITORY_BRANCH_BYTES,
+        );
+        let snapshot_ok = !self.snapshot.trim().is_empty()
+            && self.snapshot.len() <= MAX_REPOSITORY_SNAPSHOT_BYTES;
+        (name_ok && branch_ok && snapshot_ok)
+            .then(|| json!({"name": self.name, "branch": self.branch, "snapshot": self.snapshot}))
+    }
+}
+
+/// `owner/name`: one slash, GitHub's name characters, at most 140 bytes.
+fn repository_name(text: &str) -> bool {
+    let mut parts = text.split('/');
+    let ok = |part: Option<&str>| {
+        part.is_some_and(|part| {
+            !part.is_empty()
+                && part.len() <= 100
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+        })
+    };
+    text.len() <= 140 && ok(parts.next()) && ok(parts.next()) && parts.next().is_none()
 }
 
 impl Context {
@@ -676,6 +727,9 @@ impl Context {
         let memory = memory_json(&self.memory);
         if !memory.is_empty() {
             context["memory"] = json!(memory);
+        }
+        if let Some(repository) = self.repository.as_ref().and_then(RepositorySnapshot::json) {
+            context["repository"] = repository;
         }
         context
     }
@@ -2038,6 +2092,33 @@ mod memory_tests {
             description: "One\nline".into(),
             body: body.into(),
         }
+    }
+
+    #[test]
+    fn a_repository_travels_only_named_and_bounded() {
+        assert!(Context::default().json().get("repository").is_none());
+        let with = |name: &str, snapshot: String| Context {
+            surface: Surface::Web,
+            repository: Some(RepositorySnapshot {
+                name: name.into(),
+                branch: "main".into(),
+                snapshot,
+            }),
+            ..Context::default()
+        };
+        let sent = with("AtlantisPleb/finances", "README: a ledger".into()).json();
+        assert_eq!(sent["repository"]["name"], "AtlantisPleb/finances");
+        assert_eq!(sent["repository"]["branch"], "main");
+        assert_eq!(sent["repository"]["snapshot"], "README: a ledger");
+        assert!(
+            with("not a repo", "x".into())
+                .json()
+                .get("repository")
+                .is_none()
+        );
+        assert!(with("a/b/c", "x".into()).json().get("repository").is_none());
+        let long = "x".repeat(MAX_REPOSITORY_SNAPSHOT_BYTES + 1);
+        assert!(with("a/b", long).json().get("repository").is_none());
     }
 
     #[test]
