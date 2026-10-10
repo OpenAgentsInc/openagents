@@ -109,6 +109,18 @@ async fn disconnect(State(state): State<Arc<ServeState>>, headers: HeaderMap) ->
 #[derive(serde::Deserialize)]
 struct RepositoryPage {
     page: Option<u32>,
+    /// The previous answer's `next` (the shared cursor, #11156).
+    after: Option<String>,
+}
+
+impl RepositoryPage {
+    fn page(&self) -> u32 {
+        self.after
+            .as_deref()
+            .and_then(|after| after.parse().ok())
+            .or(self.page)
+            .unwrap_or(1)
+    }
 }
 
 async fn repositories(
@@ -116,12 +128,7 @@ async fn repositories(
     headers: HeaderMap,
     axum::extract::Query(query): axum::extract::Query<RepositoryPage>,
 ) -> Response {
-    run(
-        &state,
-        &headers,
-        Call::Repositories(query.page.unwrap_or(1)),
-    )
-    .await
+    run(&state, &headers, Call::Repositories(query.page())).await
 }
 
 async fn token(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {

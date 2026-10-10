@@ -415,7 +415,17 @@ pub async fn answer_with(
                     Some(app) => installed::repositories(dir, app, account, page).await?,
                     None => repositories(dir, github()?, account, page).await?,
                 };
-                serde_json::to_value(listing).map_err(|_| RepoError::BadAnswer)?
+                let more = listing.more;
+                let mut body = serde_json::to_value(listing).map_err(|_| RepoError::BadAnswer)?;
+                // The shared list shape (#11156): `data` and `next` (the
+                // cursor for `?after=`) beside `repositories` and `more`.
+                body["data"] = body["repositories"].clone();
+                body["next"] = if more {
+                    json!(page.clamp(1, MAX_PAGE).saturating_add(1).to_string())
+                } else {
+                    Value::Null
+                };
+                body
             }
             Call::Token => {
                 let (token, private) = match via_app {

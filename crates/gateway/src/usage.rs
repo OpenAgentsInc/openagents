@@ -102,7 +102,9 @@ pub(crate) struct Filter {
     pub(crate) capacity: Option<String>,
     /// Page size — activity and export bound at `PAGE_MAX`.
     pub(crate) limit: Option<usize>,
-    /// A keyset cursor from an earlier page.
+    /// A keyset cursor from an earlier page's `next` (`?after=`, or the
+    /// older `?cursor=`).
+    #[serde(alias = "after")]
     pub(crate) cursor: Option<String>,
     /// Joined original financial records through separately reviewed read grants.
     pub(crate) joined: Option<bool>,
@@ -755,6 +757,8 @@ async fn activity(
             StatusCode::OK,
             json!({
                 "workspace": &workspace,
+                "data": [],
+                "next": Value::Null,
                 "items": [],
                 "cursor": Value::Null,
                 "disclosure": disclosure(&scan),
@@ -790,6 +794,8 @@ async fn activity(
         StatusCode::OK,
         json!({
             "workspace": &workspace,
+            "data": &items,
+            "next": next.clone().unwrap_or(Value::Null),
             "items": items,
             "cursor": next.unwrap_or(Value::Null),
             "disclosure": disclosure(&scan),

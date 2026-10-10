@@ -580,6 +580,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn(purchase_route))
+        .layer(middleware::from_fn(crate::envelope::layer))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
 }

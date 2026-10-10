@@ -360,6 +360,9 @@ async fn a_busy_account_pages_by_githubs_links() {
     assert_eq!(listed.len(), 29, "thirty, less the disabled one");
     assert!(!listed.contains(&"example-labs/project-0005".to_string()));
     assert_eq!(body["more"], true);
+    // The shared list shape beside the older fields (#11156).
+    assert_eq!(body["data"], body["repositories"]);
+    assert_eq!(body["next"], "2");
     assert_eq!(body["sso_hidden"], false);
     let rows = body["repositories"].as_array().unwrap();
     let find = |name: &str| rows.iter().find(|r| r["full_name"] == name).unwrap();
@@ -378,6 +381,7 @@ async fn a_busy_account_pages_by_githubs_links() {
         (names(&body).len(), body["more"].clone()),
         (10, json!(false))
     );
+    assert_eq!(body["next"], Value::Null);
     assert_eq!(names(&body).last().unwrap(), "acme-corp/project-0250");
 }
 

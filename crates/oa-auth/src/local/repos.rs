@@ -78,6 +78,8 @@ async fn disconnect(State(state): State<LocalService>, headers: HeaderMap) -> Re
 #[derive(serde::Deserialize)]
 struct RepositoryPage {
     page: Option<u32>,
+    /// The previous answer's `next` (the shared cursor, #11156).
+    after: Option<String>,
 }
 
 async fn repositories(
@@ -88,7 +90,14 @@ async fn repositories(
     run(
         &state,
         &headers,
-        Call::Repositories(query.page.unwrap_or(1)),
+        Call::Repositories(
+            query
+                .after
+                .as_deref()
+                .and_then(|after| after.parse().ok())
+                .or(query.page)
+                .unwrap_or(1),
+        ),
     )
     .await
 }

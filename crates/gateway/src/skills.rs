@@ -587,9 +587,13 @@ async fn browse(State(state): State<Arc<ServeState>>, Query(query): Query<Browse
         .take(limit)
         .map(|entry| entry_document(&state, entry))
         .collect();
+    // `data` and `next` are the shared list shape (#11156); `entries` and
+    // `next_cursor` stay beside them for one release.
     answered(
         StatusCode::OK,
         json!({
+            "data": &items,
+            "next": &next,
             "entries": items,
             "next_cursor": next,
         }),
@@ -605,6 +609,9 @@ struct Browse {
     author: Option<String>,
     sort: Option<String>,
     limit: Option<usize>,
+    /// The cursor from the previous page's `next`; `?cursor=` is the older
+    /// name for it.
+    #[serde(alias = "after")]
     cursor: Option<String>,
 }
 

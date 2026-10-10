@@ -348,7 +348,9 @@ pub(crate) async fn results(
         .filter(|limit| *limit > 0)
         .unwrap_or(PAGE_DEFAULT)
         .min(PAGE_MAX);
-    let offset = match params.get("cursor") {
+    // `?after=` is the shared cursor parameter (#11156); `?cursor=` the
+    // older name for it.
+    let offset = match params.get("after").or_else(|| params.get("cursor")) {
         None => 0,
         Some(cursor) => match parse_cursor(cursor) {
             Some((issued, offset)) => {
@@ -366,7 +368,7 @@ pub(crate) async fn results(
                 return job_error(
                     StatusCode::BAD_REQUEST,
                     "bad_cursor",
-                    "This cursor isn't valid. Use the `next_cursor` value from the previous page.",
+                    "This cursor isn't valid. Use the `next` value from the previous page.",
                     Some(&id),
                 );
             }
@@ -390,6 +392,8 @@ pub(crate) async fn results(
     Json(json!({
         "v": RESULTS_SCHEMA,
         "job": id,
+        "data": &page,
+        "next": &next_cursor,
         "items": page,
         "next_cursor": next_cursor,
         "terminal": status["status"],
