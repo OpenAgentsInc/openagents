@@ -144,6 +144,10 @@ pub(crate) struct Choices {
     /// the person adds their Claude key (#11234): picking it shows the
     /// connect card ([`connect_card`]).
     pub claude_connect: bool,
+    /// The person may connect their Claude subscription here (the
+    /// subscription-token allowlist): the connect card leads with it and
+    /// opens its dialog in place ([`crate::settings::subscription`]).
+    pub claude_subscription: bool,
 }
 
 /// Why a message for Claude Code wasn't sent while Claude isn't connected
@@ -254,6 +258,8 @@ pub(crate) async fn choices(
             })
             .collect();
     }
+    let claude_subscription =
+        claude_connect && crate::settings::subscription::offered(app, headers).await;
     let mut computers = Vec::new();
     if new_chat
         && crate::chat_store::is_account_owner(owner)
@@ -274,6 +280,7 @@ pub(crate) async fn choices(
         environments,
         computers,
         claude_connect,
+        claude_subscription,
     })
 }
 
@@ -415,7 +422,7 @@ pub(crate) fn row(
                         .autofocus(focus == Some("target")))
                 }
                 @if matches!(picked.target, Target::Claude(_)) && choices.claude_connect {
-                    (connect_card())
+                    (connect_card(choices.claude_subscription, chat))
                 }
             }
         }
@@ -423,14 +430,31 @@ pub(crate) fn row(
 }
 
 /// The card shown when Claude Code is picked before Claude is connected
-/// (#11234): what it needs, in plain words, and the one control that
-/// works from here.
-pub(crate) fn connect_card() -> Markup {
+/// (#11234): what it needs, in plain words, and the controls that work
+/// from here. With `subscription` (the allowlist) it leads with Use your
+/// Claude subscription, which loads the Settings, Claude dialog over the
+/// page (`hx-get`, appended to the body, outside this form) and, without
+/// script, opens the same steps as a page; it returns to `chat`.
+pub(crate) fn connect_card(subscription: bool, chat: Option<&str>) -> Markup {
+    use crate::settings::subscription::PATH;
+    let back = chat.map_or_else(|| "/".to_owned(), |chat| format!("/chat/{chat}"));
+    let page = href(PATH, &[("back", back.clone())]);
+    let dialog = href(PATH, &[("part", "dialog".to_owned()), ("back", back)]);
     html! {
         div.oa-composer-connect #composer-connect role="status" {
             strong { "Connect Claude to run Claude Code" }
-            span {
-                "Each run starts on a fresh computer, so it needs your Anthropic API key or cloud credential. Your message stays in the box."
+            @if subscription {
+                span {
+                    "Each run starts on a fresh computer, so it needs your Claude subscription, Anthropic API key, or cloud credential. Your message stays in the box."
+                }
+                a.oa-composer-connect-action href=(page) hx-get=(dialog) hx-target="body"
+                    hx-swap="beforeend" aria-haspopup="dialog" {
+                    "Use your Claude subscription"
+                }
+            } @else {
+                span {
+                    "Each run starts on a fresh computer, so it needs your Anthropic API key or cloud credential. Your message stays in the box."
+                }
             }
             a.oa-composer-connect-action href=(CONNECT_KEY) { "Use a key" }
         }

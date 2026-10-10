@@ -9,6 +9,27 @@
   "use strict";
 
   function register(Alpine) {
+    // SubmitWhenValid: the form's submit buttons stay disabled until every
+    // field is valid (required, pattern). Without script the browser still
+    // refuses an invalid form and the stylesheet shows the button disabled.
+    Alpine.data("oaSubmitWhenValid", function () {
+      return {
+        init: function () {
+          var form = this.$el;
+          var sync = function () {
+            var ok = form.checkValidity();
+            form.querySelectorAll("button[type=submit]:not([formnovalidate])").forEach(function (button) {
+              button.disabled = !ok;
+              button.toggleAttribute("data-disabled", !ok);
+            });
+          };
+          form.addEventListener("input", sync);
+          form.addEventListener("change", sync);
+          sync();
+        }
+      };
+    });
+
     // TagInput: turns a comma-separated text field into removable tags. The
     // submitted value stays one field with the same name, joined by the
     // delimiter, so the server parses it the same way with or without JS.

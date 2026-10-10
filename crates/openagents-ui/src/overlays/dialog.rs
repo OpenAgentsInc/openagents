@@ -51,6 +51,7 @@ pub struct Dialog {
     size: DialogSize,
     dismissible: bool,
     close_label: String,
+    open_on_load: bool,
 }
 
 impl Dialog {
@@ -64,6 +65,7 @@ impl Dialog {
             size: DialogSize::default(),
             dismissible: true,
             close_label: "Close".to_string(),
+            open_on_load: false,
         }
     }
 
@@ -92,6 +94,14 @@ impl Dialog {
         self
     }
 
+    /// Open as soon as it is on the page, and leave the page when closed
+    /// (`data-oa-open`): for a dialog loaded on demand, such as a form that
+    /// needs fresh tickets. Needs `oaDialog` (the component script).
+    pub fn open_on_load(mut self, open: bool) -> Self {
+        self.open_on_load = open;
+        self
+    }
+
     /// Accessible name of the close button (default "Close").
     pub fn close_label(mut self, label: impl Into<String>) -> Self {
         self.close_label = label.into();
@@ -108,7 +118,7 @@ impl Render for Dialog {
                 aria-labelledby=(title_id)
                 aria-describedby=[self.description.as_ref().map(|_| description_id.as_str())]
                 closedby=(if self.dismissible { "any" } else { "closerequest" })
-                data-size=(self.size.as_str()) {
+                data-size=(self.size.as_str()) data-oa-open[self.open_on_load] {
                 div class="oa-dialog-container" {
                     div class="oa-dialog-header" {
                         h2 id=(title_id) class="oa-dialog-title" { (self.title) }
