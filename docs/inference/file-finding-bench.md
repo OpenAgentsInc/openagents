@@ -654,3 +654,44 @@ Receipts, comparison reports and data metadata are in
 `crates/psionic/fixtures/decision-train/file-relevance-v1/`. They chain the
 corpus manifest, the Clef artifact and head digests, the recipe digest, the
 data digest and the model digest.
+
+## Two candidates through the ranker gate (#11220, #11231, 2026-10-10)
+
+Both ran through `file-finding-bench.py compare` under the gate's frozen
+plan (`ranker_gate.py`, plan `sha256:d835c0d2f1ea…`) on the same 100
+held-out eval cases (`sha256:65f862d38a6c…`), against the active
+`scripts/filefind/model.json` (`sha256:b11f9b6b1b74…`). Every feature came
+from Vertex AI `text-embedding-005` vectors (the finder's first door since
+`960ba59cf9`). The active model was trained on 93 of the 100 eval cases, so
+its numbers are optimistic and the gate is harder to pass. Receipts and the
+fusion card are in
+`crates/psionic/fixtures/decision-train/file-relevance-v1/gate-2026-10-10/`.
+
+| Candidate | recall@50 (primary) | recall@20 | recall@100 | Brier top 100 | Verdict |
+|---|---|---|---|---|---|
+| Active model | 0.8075 | 0.6531 | 0.9117 | 0.0717 | stays |
+| Retrained on Vertex vectors (`model-9e44a34bb536`, 1,509 train cases) | 0.8029 (−0.0046, SE 0.0060) | 0.6428 (−0.0102, SE 0.0119) | 0.9036 (−0.0081, SE 0.0055) | 0.0586 (−0.0131) | fail: no gain |
+| That model + #11217's frozen Clef fusion, top 100 (`model-c8ad7220c0bc`) | 0.8454 (+0.0379, SE 0.0190) | 0.6961 (+0.0430, SE 0.0177) | 0.9036 (−0.0081, SE 0.0055) | 0.0479 (−0.0238) | fail: +1.99 SE, the plan needs 2.0 |
+
+Neither was promoted. What this shows:
+
+- **The active model holds up on Vertex vectors.** It was trained on OpenAI
+  similarity values, but retraining on Vertex's does not beat it.
+- **The fusion helps.** It is the strongest candidate at @20 and @50 and the
+  best calibrated, and it misses the primary bar by 0.0001 of recall in
+  standard-error terms. Its base is the retrained model, the only numpy base
+  with no overlap with the eval cases. The plan is frozen and was not
+  loosened. Fusing over a base that beats the active model at @100, or a
+  larger held-out set (the SE is what fails), is the next try.
+- **Cost.** The fusion asked Clef 9,900 times through
+  `https://openagents.com/api/v1/systemone` (answered by
+  `pylon:coderos-4080-clef`, artifact `sha256:fd3e9060…`, head
+  `sha256:6e469970…`), one request at a time so production decisions kept
+  the GPU. It took 2 h at 0.6–2.5 s an answer. A Vertex answer during a
+  pylon bench was refused by the card's digest check, and the case was asked
+  again. At query time a fused card re-ranks the top 100 in about 15–60 s
+  on that pylon, and falls back to the numpy order past
+  `FILEFIND_CLEF_BUDGET_S` (default 20 s) or on any miss.
+- **A fix along the way.** The feature stage crashed (segfault, then
+  "database disk image is malformed") because its worker threads shared one
+  SQLite connection; each thread now opens its own (`900d756e39`).

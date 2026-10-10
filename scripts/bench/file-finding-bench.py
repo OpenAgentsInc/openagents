@@ -360,8 +360,13 @@ def fused_rankings(a, ev, feats, card):
     for i, c in enumerate(ev):
         ranked = ff.rank(card["stage2"], feats[c["issue"]]["feats"])
         tree = ff.ls_tree(a.repo, c["parent"])
-        fused, info = ff.clef_fuse(card["fusion"], ranked, c["issue"], c["title"], c["body"], tree, a.repo,
-                                   door=door, budget=3600, workers=a.clef_workers)
+        for attempt in range(6):  # a pylon benched for a minute, or busy: wait and ask again
+            fused, info = ff.clef_fuse(card["fusion"], ranked, c["issue"], c["title"], c["body"], tree, a.repo,
+                                       door=door, budget=3600, workers=a.clef_workers)
+            if info["fused"]:
+                break
+            print(f"#{c['issue']}: Clef fusion missed ({info['why']}); asking again in 90 s", file=sys.stderr)
+            time.sleep(90)
         if not info["fused"]:
             sys.exit(f"#{c['issue']}: Clef fusion failed ({info['why']}); no receipt written")
         out[c["issue"]] = fused
