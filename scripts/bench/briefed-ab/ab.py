@@ -296,7 +296,8 @@ def how_to_work(builtins: list[str], custom: list[str], checks: bool, pkgs: list
         lines.append("- Check your work with `run_check`: the `check` first, then the `test` with a filter naming "
                      "your tests, then `fmt`. Fix what fails and run again.")
     if "finish" in custom:
-        lines.append("- When the checks pass, call `finish` with a short summary; that ends the run.")
+        lines.append("- When `verify` passes, call `finish` with a short summary. It runs the final checks (compile, "
+                     "every test your change adds, fmt); on a pass the run ends.")
     else:
         lines.append("- When the checks pass, stop. Reply in two or three lines with what changed.")
     return "\n".join(lines)

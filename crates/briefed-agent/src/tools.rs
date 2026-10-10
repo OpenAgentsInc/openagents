@@ -9,9 +9,11 @@
 //! - `related {path | symbol, limit}`: what else goes with it: files that
 //!   changed together with the path in history before the base commit,
 //!   files that use the symbol, and paired test files.
-//! - `finish {summary, risk}`: runs `verify`; on a pass it records the
-//!   summary and the host ends the run, on a failure it returns the
-//!   failures and the run goes on.
+//! - `finish {summary, risk}`: runs the final plan
+//!   ([`Verify::final_check`]: compile, every test the change adds, fmt;
+//!   never cached); only on `pass` does it record the summary and the host
+//!   end the run, on anything else it returns the verdict and the run goes
+//!   on.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -404,8 +406,9 @@ pub fn server(
         let summary_path = config["finish_path"].as_str().map(PathBuf::from);
         server = server.tool(
             "finish",
-            "Say you are done. Runs verify once more: on a pass the run ends and your summary \
-             becomes the pull request description; on a failure you get the failures and go on.",
+            "Say you are done. Runs the final checks (compile, every test your change adds, fmt), \
+             never a cached result: on a pass the run ends and your summary becomes the pull \
+             request description; otherwise you get the verdict and go on.",
             json!({"type": "object", "properties": {
                 "summary": {"type": "string"},
                 "risk": {"type": "string", "enum": ["low", "medium", "high"]}},
@@ -415,12 +418,9 @@ pub fn server(
                 let finished = finished.clone();
                 let summary_path = summary_path.clone();
                 async move {
-                    let filter = verify
-                        .last_filter
-                        .lock()
-                        .map(|last| last.clone())
-                        .unwrap_or_default();
-                    let verdict = verify.run(&filter, false).await;
+                    // The declared final plan, never the cache or the
+                    // agent's last filter (#11229).
+                    let verdict = verify.final_check().await;
                     if verdict["status"].as_str() == Some("pass") {
                         finished.store(true, Ordering::SeqCst);
                         if let Some(path) = summary_path {

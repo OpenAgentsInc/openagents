@@ -2210,6 +2210,7 @@ dependencies = [
  "claude_agent_sdk",
  "futures",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
