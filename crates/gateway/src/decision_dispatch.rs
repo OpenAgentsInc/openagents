@@ -457,7 +457,14 @@ impl Dispatch {
         let mut attempts = Vec::new();
         // 1. Connected pylons.
         let candidates = self.candidates(skip).await;
-        for candidate in candidates.into_iter().take(self.config.pylon_tries.max(1)) {
+        let mut tries = 0;
+        let mut queue: std::collections::VecDeque<(Candidate, u32)> =
+            candidates.into_iter().map(|c| (c, 0)).collect();
+        while let Some((candidate, busy_before)) = queue.pop_front() {
+            if tries >= self.config.pylon_tries.max(1) + 2 {
+                break;
+            }
+            tries += 1;
             let left = deadline.saturating_duration_since(Instant::now());
             if left < Duration::from_millis(500) {
                 break;
@@ -469,6 +476,24 @@ impl Dispatch {
                 .ask_pylon(&candidate, model, state, questions, request, budget)
                 .await;
             let ms = millis(t.elapsed());
+            // A pylon whose slots are all taken is asked again shortly
+            // (twice at most) rather than benched: a router turn sends its
+            // questions at once.
+            if let Err((_, code)) = &result
+                && matches!(code.as_str(), "busy" | "rate_limited")
+                && busy_before < 2
+            {
+                attempts.push(Attempt {
+                    door,
+                    pylon: Some(candidate.provider.clone()),
+                    outcome: "refused",
+                    code: Some(code.clone()),
+                    ms,
+                });
+                tokio::time::sleep(Duration::from_millis(150 * u64::from(busy_before + 1))).await;
+                queue.push_back((candidate, busy_before + 1));
+                continue;
+            }
             match result {
                 Ok(response) => {
                     self.standing(&candidate, Some(ms)).await;
@@ -482,7 +507,9 @@ impl Dispatch {
                     return (Some((Kind::Pylon, door, response)), attempts);
                 }
                 Err((outcome, code)) => {
-                    self.standing(&candidate, None).await;
+                    if !matches!(code.as_str(), "busy" | "rate_limited") {
+                        self.standing(&candidate, None).await;
+                    }
                     eprintln!(
                         "decisions: pylon {} ({}) {outcome}: {code}",
                         candidate.slug,
