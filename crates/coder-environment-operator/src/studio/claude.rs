@@ -93,6 +93,11 @@ pub struct Run {
     pub reply: Option<String>,
     pub error: Option<String>,
     pub created_ms: u64,
+    /// Dollars spent so far: the computer's time, plus Claude Code's own
+    /// cost when it reported one. `None` until either is known.
+    pub cost_usd: Option<f64>,
+    /// While a usage limit pauses it: when it continues, in Unix seconds.
+    pub paused_until: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -244,7 +249,31 @@ fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>) {
     }
 }
 
+/// What a run cost: the computer's time ([`Record::usage`]) plus Claude
+/// Code's own reported cost in its result, when either is known.
+pub fn cost(record: &Record) -> Option<f64> {
+    let machine = record
+        .usage
+        .as_ref()
+        .and_then(|usage| usage["cost_usd"].as_f64());
+    let engine = record.result.as_ref().and_then(|result| {
+        ["cost_usd", "total_cost_usd"].iter().find_map(|key| {
+            result[*key]
+                .as_f64()
+                .or_else(|| result["result"][*key].as_f64())
+        })
+    });
+    let parts: Vec<f64> = [machine, engine]
+        .into_iter()
+        .flatten()
+        .filter(|cost| cost.is_finite() && *cost >= 0.0)
+        .collect();
+    (!parts.is_empty()).then(|| parts.iter().sum())
+}
+
 fn view(environment: &str, r: Record) -> Run {
+    let cost_usd = cost(&r);
+    let paused_until = coder_cloud::claude_task::pause(&r).map(|pause| pause.until);
     let state = match r.state {
         State::Created | State::Provisioning | State::Resuming | State::Ready => RunState::Starting,
         State::Dispatching | State::Running => RunState::Running,
@@ -277,6 +306,8 @@ fn view(environment: &str, r: Record) -> Run {
             .error
             .map(|e| crate::activity::plain(&e, "The run failed.")),
         created_ms: r.created_ms,
+        cost_usd,
+        paused_until,
     }
 }
 
@@ -356,6 +387,34 @@ mod tests {
         // A token under the API key's name never reaches a run.
         let wrong = Key::new(coder_cloud::claude::API_KEY, token.clone()).unwrap();
         assert!(wrong.credentials().is_err());
+    }
+
+    #[test]
+    fn a_run_costs_its_computer_time_plus_what_claude_code_reported() {
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix it", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let mut record = Record::new("claude-env-1-1", spec).unwrap();
+        assert_eq!(cost(&record), None);
+        record.usage = Some(json!({"cost_usd": 0.25}));
+        assert_eq!(cost(&record), Some(0.25));
+        record.result = Some(json!({"reply": "done", "result": {"total_cost_usd": 0.5}}));
+        assert_eq!(cost(&record), Some(0.75));
+        record.usage = Some(json!({"cost_usd": -1.0}));
+        assert_eq!(cost(&record), Some(0.5), "a negative cost is ignored");
+        let run = view("env-1", record);
+        assert_eq!(run.cost_usd, Some(0.5));
+        assert_eq!(run.paused_until, None);
     }
 
     #[test]

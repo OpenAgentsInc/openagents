@@ -267,6 +267,7 @@ fn a_chat_row_keeps_its_project_branch_and_claude_code() {
             after_message: 1,
             version: Some(3),
             finished_unix: None,
+            agent: None,
         }],
         opened_unix: None,
         branch: Some("fix-login".into()),

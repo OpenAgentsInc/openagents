@@ -56,6 +56,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(delete_all::routes())
         .merge(live::routes())
         .merge(work::routes())
+        .merge(agents::routes())
         .merge(continued::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
@@ -1801,6 +1802,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 (ThreadMessage::user(&reply.text).id(format!("chat-reply-{index}")))
             }
         }
+        // The chat's agents (#11164): they load themselves.
+        @if before.is_none() { (agents::slot(chat)) }
         div #chat-status.oa-thread-status role="status" aria-live="polite"
             data-oa-composer-busy=[(chat.working() || work::running(chat)).then_some("chat-form")] {
             @if chat.working() {(openagents_ui::actions::Busy::new("Working"))}
@@ -2261,6 +2264,8 @@ mod uuid_tests {
 #[path = "chat_sidebar.rs"]
 mod sidebar;
 
+#[path = "chat_agents.rs"]
+mod agents;
 #[path = "chat_continued.rs"]
 mod continued;
 #[path = "chat_delete_all.rs"]

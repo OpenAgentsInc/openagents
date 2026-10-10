@@ -395,6 +395,7 @@ async fn start(
         after_message: 0,
         version,
         finished_unix: None,
+        agent: None,
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         if chat.terminal.is_none() {
@@ -485,6 +486,7 @@ mod tests {
             after_message: 0,
             version: Some(3),
             finished_unix: None,
+            agent: None,
         }
     }
 
@@ -599,6 +601,8 @@ mod tests {
                 state,
                 version: Some(3),
                 reply: reply.map(str::to_owned),
+                error: None,
+                cost_usd: None,
             })
         }
     }

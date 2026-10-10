@@ -38,13 +38,18 @@
 //! Not wired, because nothing records them yet: runs report no steps ("3 of 7"),
 //! and no run asks the person anything or pauses for a usage limit (runs
 //! here use the person's API key and are driven without the operator that
-//! records sign-in prompts and limit pauses), so no Waiting for you and no
-//! Paused until.
+//! records sign-in prompts and limit pauses), so no Waiting for you here.
+//! When a run does report a usage-limit pause, the Agents panel reads it
+//! as "Paused until hh:mm" ([`super::agents`]).
+//!
+//! The Run page can also start several agents at once, each its own run
+//! and branch, with a live list, Stop and Message, and each result back in
+//! the chat (#11164, [`super::agents`]).
 
 use coder_environment_operator::studio::claude::{MAX_PROMPT, RUN_SECONDS, RunState};
 use coder_environment_operator::studio::{Studio, Summary};
 use openagents_ui::actions::{ButtonLink, ButtonVariant, ControlSize};
-use openagents_ui::forms::{Field, Textarea};
+use openagents_ui::forms::{Field, Select, Textarea};
 use openagents_ui::shell::{TaskRow, TaskStatus};
 
 use crate::chat_store::{ChatEnvironment, ChatTask, MAX_TASKS, TaskKind, TaskState};
@@ -314,19 +319,25 @@ pub(super) fn state(run: RunState) -> TaskState {
 }
 
 /// What reading a run found.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct Seen {
     pub state: TaskState,
     pub version: Option<u64>,
     /// Claude Code's answer, once it has one.
     pub reply: Option<String>,
+    /// What went wrong, when it failed.
+    pub error: Option<String>,
+    /// Dollars it cost so far, when known.
+    pub cost_usd: Option<f64>,
 }
 
 /// The chat with its unfinished tasks' states as `read` reports them, or
 /// `None` when nothing changed. A run `read` can't find keeps its last
 /// state. The chat gets a run's answer as its next message when the run
 /// is done (a Claude Code run, and a Coder chat continued on a Cloud
-/// computer, #11050), in the same write, so the answer lands once.
+/// computer, #11050), in the same write, so the answer lands once. A run
+/// started as one of several agents (#11164) puts its short result in the
+/// chat however it ended ([`super::agents::result_text`]).
 pub(super) fn observe(
     chat: &Conversation,
     read: impl Fn(&str, &str) -> Option<Seen>,
@@ -344,7 +355,19 @@ pub(super) fn observe(
                 task.finished_unix = Some(now());
             }
             changed = true;
-            if seen.state == TaskState::Done
+            if let Some(agent) = task.agent.clone() {
+                if seen.state.finished() {
+                    answers.push(super::agents::result_text(
+                        task,
+                        &agent,
+                        seen.state,
+                        seen.reply.as_deref(),
+                        seen.error.as_deref(),
+                        seen.cost_usd,
+                        now(),
+                    ));
+                }
+            } else if seen.state == TaskState::Done
                 && let Some(reply) = seen.reply.filter(|reply| !reply.trim().is_empty())
             {
                 answers.push(reply);
@@ -375,6 +398,8 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
             state: state(run.state),
             version: run.version,
             reply: run.reply.or_else(|| said(&run.events)),
+            error: run.error,
+            cost_usd: run.cost_usd,
         })
     }) else {
         return loaded;
@@ -494,6 +519,7 @@ pub(super) async fn begin(
             after_message: 0,
             version,
             finished_unix: None,
+            agent: None,
         },
     ))
 }
@@ -541,6 +567,9 @@ struct RunForm {
     csrf: String,
     environment: String,
     prompt: String,
+    /// How many agents to run in parallel (#11164); one when absent.
+    #[serde(default)]
+    agents: Option<String>,
 }
 
 /// The chat and its runnable offer, for the run page and its post.
@@ -558,12 +587,14 @@ async fn runnable(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_form(
     app: &App,
     headers: &HeaderMap,
     chat: &Conversation,
     offer: &Offer,
     prompt: &str,
+    agents: u32,
     error: Option<&str>,
 ) -> Response {
     let id = &chat.id;
@@ -577,6 +608,20 @@ fn run_form(
             .value(prompt)
             .aria(aria),
     );
+    let mut count = Select::new("agents").id("chat-claude-agents").block(false);
+    for n in 1..=super::agents::MAX_AGENTS {
+        let label = if n == 1 {
+            "1 agent".to_owned()
+        } else {
+            format!("{n} agents in parallel")
+        };
+        count = count.option(n.to_string(), label);
+    }
+    let count = Field::new("chat-claude-agents", "How many agents")
+        .description(
+            "Each runs on its own computer and works on its own branch. Each result joins this chat.",
+        )
+        .control(count.selected(agents.to_string()));
     let page = UiPage::new("Run Claude Code")
         .path(format!("/chat/{id}/claude"))
         .head(crate::chat_html::head())
@@ -593,6 +638,7 @@ fn run_form(
                 input type="hidden" name="csrf" value=(csrf(app, &chat.owner));
                 input type="hidden" name="environment" value=(offer.id);
                 (field)
+                (count)
                 (Button::new("Run").kind(ButtonType::Submit))
             }
         }))
@@ -609,7 +655,7 @@ async fn run_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         return missing();
     };
     match runnable(&app, &headers, &owner, &id).await {
-        Ok((chat, offer)) => run_form(&app, &headers, &chat, &offer, "", None),
+        Ok((chat, offer)) => run_form(&app, &headers, &chat, &offer, "", 1, None),
         Err(response) => response,
     }
 }
@@ -638,6 +684,20 @@ async fn run(
         return missing();
     };
     let prompt = form.prompt.trim();
+    let agents = match super::agents::count(form.agents.as_deref()) {
+        Ok(agents) => agents,
+        Err(error) => {
+            return run_form(
+                &app,
+                &headers,
+                &chat,
+                &offer,
+                prompt,
+                1,
+                Some(error.as_str()),
+            );
+        }
+    };
     if prompt.is_empty() {
         return run_form(
             &app,
@@ -645,13 +705,27 @@ async fn run(
             &chat,
             &offer,
             "",
+            agents,
             Some("Write what Claude Code should do."),
         );
+    }
+    if agents > 1 {
+        return run_agents(app, headers, owner, id, chat, offer, prompt, agents).await;
     }
     let own = crate::cloud::byo::run_key(&app, &headers).await;
     let run = match studio.run_claude(&offer.id, prompt, own) {
         Ok(run) => run,
-        Err(error) => return run_form(&app, &headers, &chat, &offer, prompt, Some(error.as_str())),
+        Err(error) => {
+            return run_form(
+                &app,
+                &headers,
+                &chat,
+                &offer,
+                prompt,
+                1,
+                Some(error.as_str()),
+            );
+        }
     };
     let version = studio
         .claude_run(&offer.id, &run)
@@ -673,6 +747,7 @@ async fn run(
         after_message: 0,
         version,
         finished_unix: None,
+        agent: None,
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         record(chat, environment.clone(), task.clone());
@@ -680,6 +755,101 @@ async fn run(
     })
     .await;
     if let Err(response) = recorded {
+        return response;
+    }
+    watch(app, owner, id.clone());
+    crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// Starts `count` agents on the chat's environment for `prompt` (#11164):
+/// each its own run, name and branch, recorded on the chat together.
+#[allow(clippy::too_many_arguments)]
+async fn run_agents(
+    app: App,
+    headers: HeaderMap,
+    owner: String,
+    id: String,
+    chat: Conversation,
+    offer: Offer,
+    prompt: &str,
+    count: u32,
+) -> Response {
+    let Some(studio) = studio(&app).cloned() else {
+        return missing();
+    };
+    let planned = super::agents::plan(&chat, prompt, count);
+    let prompts: Vec<String> = planned
+        .iter()
+        .map(|agent| super::agents::fleet_prompt(prompt, agent, count))
+        .collect();
+    if prompts.iter().any(|text| text.len() > MAX_PROMPT) {
+        return run_form(
+            &app,
+            &headers,
+            &chat,
+            &offer,
+            prompt,
+            count,
+            Some(
+                "Shorten what Claude Code should do a little: each agent also gets its own instructions.",
+            ),
+        );
+    }
+    let mut tasks: Vec<ChatTask> = Vec::new();
+    for (agent, text) in planned.into_iter().zip(prompts) {
+        // Each run gets its own release of the person's key.
+        let own = crate::cloud::byo::run_key(&app, &headers).await;
+        let run = match studio.run_claude(&offer.id, &text, own) {
+            Ok(run) => run,
+            Err(error) => {
+                for task in &tasks {
+                    abandon(&app, task);
+                }
+                return run_form(
+                    &app,
+                    &headers,
+                    &chat,
+                    &offer,
+                    prompt,
+                    count,
+                    Some(error.as_str()),
+                );
+            }
+        };
+        let version = studio
+            .claude_run(&offer.id, &run)
+            .and_then(|run| run.version)
+            .or(offer.version);
+        tasks.push(ChatTask {
+            id: run,
+            kind: TaskKind::Claude,
+            environment: offer.id.clone(),
+            title: title(prompt),
+            state: TaskState::Working,
+            started_unix: now(),
+            after_message: 0,
+            version,
+            finished_unix: None,
+            agent: Some(agent),
+        });
+    }
+    let environment = ChatEnvironment {
+        id: offer.id.clone(),
+        repository: offer.repository.clone(),
+        version: tasks.last().and_then(|task| task.version).or(offer.version),
+        removed: false,
+    };
+    let recorded = sidebar::update(&app, &owner, &id, |chat| {
+        for task in &tasks {
+            record(chat, environment.clone(), task.clone());
+        }
+        true
+    })
+    .await;
+    if let Err(response) = recorded {
+        for task in &tasks {
+            abandon(&app, task);
+        }
         return response;
     }
     watch(app, owner, id.clone());
@@ -741,6 +911,7 @@ mod tests {
             after_message: after,
             version: Some(3),
             finished_unix: None,
+            agent: None,
         }
     }
 
@@ -813,6 +984,8 @@ mod tests {
                 state,
                 version,
                 reply: None,
+                error: None,
+                cost_usd: None,
             })
         };
         let same = observe(&chat, |_, run| match run {

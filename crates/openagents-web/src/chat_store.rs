@@ -307,6 +307,51 @@ pub(crate) struct ChatTask {
     /// When the chat first saw the task finished. Older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_unix: Option<u64>,
+    /// One of several agents started together (#11164): its name, its
+    /// branch, and the messages waiting for its next run. Single runs and
+    /// older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<TaskAgent>,
+}
+
+/// The most messages that wait for one agent's next run.
+pub(crate) const MAX_AGENT_INBOX: usize = 8;
+/// The longest message to an agent, in characters (the composer's limit).
+pub(crate) const MAX_AGENT_MESSAGE: usize = 4_000;
+
+/// A chat task run as a named agent beside others (#11164).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskAgent {
+    /// Short and unique in the chat, such as `fix-login-2`.
+    pub name: String,
+    /// The branch it commits its work to.
+    pub branch: String,
+    /// Its run: 1, then one more per run a message started.
+    pub run: u32,
+    /// Messages sent while it ran; the next run reads them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inbox: Vec<String>,
+}
+
+impl TaskAgent {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        let branch_ok = bounded_text(&self.branch, 128)
+            && !self.branch.chars().any(char::is_whitespace)
+            && !self.branch.starts_with('-');
+        if !agent_fleet::valid_name(&self.name)
+            || !branch_ok
+            || self.run == 0
+            || self.inbox.len() > MAX_AGENT_INBOX
+            || self
+                .inbox
+                .iter()
+                .any(|text| text.trim().is_empty() || text.chars().count() > MAX_AGENT_MESSAGE)
+        {
+            return Err(Error::Invalid("The chat's agent is invalid."));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -343,6 +388,9 @@ impl ChatTask {
             || !bounded_text(&self.title, 512)
         {
             return Err(Error::Invalid("The chat's task is invalid."));
+        }
+        if let Some(agent) = &self.agent {
+            agent.validate()?;
         }
         Ok(())
     }
@@ -2471,6 +2519,7 @@ mod tests {
             after_message: 2,
             version: Some(3),
             finished_unix: None,
+            agent: None,
         }];
         let bytes = encode(&record).unwrap();
         let text = String::from_utf8(bytes.clone()).unwrap();

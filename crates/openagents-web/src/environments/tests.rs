@@ -280,6 +280,8 @@ fn a_claude_code_run_reads_as_a_conversation() {
         reply: None,
         error: None,
         created_ms: 1,
+        cost_usd: None,
+        paused_until: None,
     };
     let html = view::run_transcript(&run).into_string();
     for needle in [

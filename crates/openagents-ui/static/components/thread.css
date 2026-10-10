@@ -187,3 +187,35 @@ a.oa-task-row:focus-visible {
   margin-inline-start: auto;
   --indicator-size: 12px;
 }
+
+/* A chat's agents (#11164): one task row each, with Stop, Message and
+   Open transcript under it. */
+.oa-agents:empty {
+  display: none;
+}
+.oa-agents-title {
+  margin: 0 0 calc(var(--spacing) * 2);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+.oa-agents-row {
+  margin-bottom: calc(var(--spacing) * 1);
+}
+.oa-agents-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin: 0 0 calc(var(--spacing) * 4);
+}
+.oa-agents-message {
+  display: flex;
+  flex: 1;
+  min-width: 12rem;
+  gap: calc(var(--spacing) * 2);
+}
+.oa-agents-notice {
+  margin: 0 0 calc(var(--spacing) * 4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}

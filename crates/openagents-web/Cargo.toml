@@ -9,6 +9,7 @@ default-run = "openagents-web"
 
 [dependencies]
 openagents-ui = { path = "../openagents-ui" }
+agent-fleet = { path = "../agent-fleet" }
 atif = { path = "../atif" }
 markdown-stream = { path = "../markdown-stream" }
 openui-lang = { path = "../openui-lang" }

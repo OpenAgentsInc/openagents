@@ -10627,6 +10627,7 @@ dependencies = [
 name = "openagents-web"
 version = "0.1.0"
 dependencies = [
+ "agent-fleet",
  "atif",
  "axum 0.8.9",
  "base64 0.22.1",
