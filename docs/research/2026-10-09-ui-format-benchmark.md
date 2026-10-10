@@ -66,5 +66,8 @@ prompt).
 
 ## Results
 
-Not run yet. The first run goes here: date, models, runs, the table, and
-the decision.
+Not measured yet. A first run on 2026-10-10 (`--model google/gemini-3.8-flash
+--model zai/glm-5.3-flash --runs 1`, the house door) got no replies: every
+call answered HTTP 402 because the Vercel AI Gateway account has no credit
+left. Rerun the command above once it is topped up; the first real run goes
+here: date, models, runs, the table, and the decision.
