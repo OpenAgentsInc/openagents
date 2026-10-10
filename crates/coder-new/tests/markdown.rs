@@ -54,7 +54,7 @@ fn live_app() -> App {
 
 #[test]
 fn system_notices_use_dim_text_and_errors_keep_their_color() {
-    for width in [110, 40] {
+    for width in [110, 38] {
         let mut app = live_app();
         app.live.entries.push(Entry::Assistant {
             elapsed_ms: None,
@@ -144,7 +144,10 @@ fn replies_render_markdown_structure_and_grok_code_styles() {
     assert_eq!(keyword.bg, theme::BG_DARK);
     assert_eq!(string.bg, theme::BG_DARK);
     assert_ne!(keyword.fg, string.fg);
-    assert_eq!(cell(&buffer, "openai/gpt-6-luna").fg, theme::GRAY);
+    assert!(
+        !rows(&buffer).join("\n").contains("openai/gpt-6-luna"),
+        "a reply shows no model"
+    );
     assert_eq!(app.live.messages()[0].content, source);
     let svg = coder_new::snapshot::svg(&mut app, 110, 60);
     assert!(svg.contains("font-style=\"italic\""));
@@ -185,7 +188,10 @@ fn open_fences_keep_their_highlighting_when_streaming_and_stopping() {
     let (stopped, _) = render(&mut app, 80, 24);
     assert_eq!(cell(&continued, "let label"), cell(&stopped, "let label"));
     assert!(rows(&stopped).join("\n").contains("Reply stopped."));
-    assert_eq!(cell(&stopped, "x-ai/grok-4.7").fg, theme::GRAY);
+    assert!(
+        !rows(&stopped).join("\n").contains("x-ai/grok-4.7"),
+        "a reply shows no model"
+    );
     assert!(app.live.messages()[1].content.contains("```rust"));
 }
 
@@ -283,7 +289,10 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
     );
     app.scroll = 0;
     let (wide_again, _) = render(&mut app, 110, 36);
-    assert_eq!(cell(&wide_again, "openai/gpt-6-luna").fg, theme::GRAY);
+    assert!(
+        !rows(&wide_again).join("\n").contains("openai/gpt-6-luna"),
+        "a reply shows no model"
+    );
     assert!(rows(&wide_again).join("\n").contains(code_token));
 }
 

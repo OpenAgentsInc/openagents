@@ -60,7 +60,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
         let available = width.saturating_sub(7 + key.width() as u16);
         rows.push(
             Line::from(vec![
-                styled("   │ ", t::GRAY_DIM),
+                styled("  │  ", t::GRAY_DIM),
                 styled(format!("{key}: "), t::TEXT_SECONDARY),
                 styled(truncate(value, available), t::GRAY_BRIGHT),
             ])
@@ -70,7 +70,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
     if omitted > 0 {
         rows.push(
             Line::from(vec![
-                styled("   │ ", t::GRAY_DIM),
+                styled("  │  ", t::GRAY_DIM),
                 styled(
                     truncate(&format!("… {omitted} more fields"), width.saturating_sub(5)),
                     t::GRAY,
@@ -90,12 +90,12 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
         ToolKind::Run => ("Run", t::ACCENT_SUCCESS),
     };
     let (glyph, status_color) = match call.state {
-        ToolState::Complete => ("◆", accent),
+        ToolState::Complete => ("●", accent),
         ToolState::Running => (spinner(phase), accent),
         ToolState::Failed => ("×", t::DIFF_DELETE_FG),
     };
     let mut lines = vec![Line::from(vec![
-        styled(format!(" {glyph} "), status_color),
+        styled(format!("{glyph} "), status_color),
         Span::styled(
             label,
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
@@ -133,18 +133,18 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
 
     match call.state {
         ToolState::Running => lines.push(Line::from(vec![
-            styled("   ╰ ", t::GRAY_DIM),
+            styled("  ⎿  ", t::GRAY_DIM),
             styled("Running", accent),
             styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
         ])),
         ToolState::Failed => lines.push(Line::from(vec![
-            styled("   ╰ ", t::GRAY_DIM),
+            styled("  ⎿  ", t::GRAY_DIM),
             styled("Failed", t::DIFF_DELETE_FG),
             styled(format!(" · {}", call.output), t::DIFF_DELETE_FG),
         ])),
         ToolState::Complete => {
             for (index, output) in call.output.lines().enumerate() {
-                let prefix = if index == 0 { "   ╰ " } else { "     " };
+                let prefix = if index == 0 { "  ⎿  " } else { "     " };
                 lines.push(Line::from(vec![
                     styled(prefix, t::GRAY_DIM),
                     styled(output, t::GRAY_BRIGHT),
@@ -183,7 +183,7 @@ pub fn file_tool_lines(
     } else if failed {
         "×"
     } else {
-        "◆"
+        "●"
     };
     let subject = input
         .get("path")
@@ -198,7 +198,7 @@ pub fn file_tool_lines(
         .map_or(subject.clone(), str::to_owned);
     let mut header = vec![
         styled(
-            format!(" {glyph} "),
+            format!("{glyph} "),
             if failed { t::DIFF_DELETE_FG } else { accent },
         ),
         Span::styled(
@@ -226,7 +226,7 @@ pub fn file_tool_lines(
     let mut lines = vec![Line::from(header)];
     let detail = |text: String, color: Color| {
         Line::from(vec![
-            styled("   ╰ ", t::GRAY_DIM),
+            styled("  ⎿  ", t::GRAY_DIM),
             styled(truncate(&text, width.saturating_sub(5)), color),
         ])
     };
@@ -308,12 +308,12 @@ pub fn file_tool_lines(
 
 pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
     let (glyph, status_color) = match call.state {
-        ToolState::Complete => ("◆", t::ACCENT_SKILL),
+        ToolState::Complete => ("●", t::ACCENT_SKILL),
         ToolState::Running => (spinner(phase), t::ACCENT_SKILL),
         ToolState::Failed => ("×", t::DIFF_DELETE_FG),
     };
     let mut header = Line::from(vec![
-        styled(format!(" {glyph} "), status_color),
+        styled(format!("{glyph} "), status_color),
         Span::styled(
             "Plugin",
             Style::default()
@@ -330,7 +330,7 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
             .spans
             .push(styled(format!(" · {}", call.input), t::GRAY_BRIGHT));
     }
-    let mut result = vec![styled("   ╰ ", t::GRAY_DIM)];
+    let mut result = vec![styled("  ⎿  ", t::GRAY_DIM)];
     match call.state {
         ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),
         ToolState::Running => result.extend([
@@ -347,7 +347,7 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
 
 pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'static>> {
     let narrow = width < 32;
-    let mut header = vec![styled(" ◆ ", pulse(t::ACCENT_DELEGATE, phase))];
+    let mut header = vec![styled("● ", pulse(t::ACCENT_DELEGATE, phase))];
     if !narrow {
         header.extend([
             Span::styled(
@@ -366,7 +366,7 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
         format!(" · {} tokens", agent.tokens)
     };
     let task_width = width.saturating_sub(5 + 3 + 7 + tokens.width() as u16);
-    let mut detail = vec![styled("   ╰ ", t::GRAY_DIM)];
+    let mut detail = vec![styled("  ⎿  ", t::GRAY_DIM)];
     if task_width > 0 {
         detail.extend([
             styled(truncate(agent.task, task_width), t::TEXT_SECONDARY),
