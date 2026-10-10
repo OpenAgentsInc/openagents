@@ -1900,3 +1900,17 @@ int psionic_cuda_attention_causal_sequence_backward_f32(
     (void)stream;
     return 1;
 }
+
+/* Kernels added to quantized_matvec.cu after this stub file was last
+ * filled. Without nvcc they are never called (the CUDA backend reports
+ * itself unavailable); they exist so a CPU-only build links. Each returns
+ * a nonzero CUDA error, like every stub above. The arguments are ignored,
+ * which the C calling convention allows for an int-returning function. */
+#define PSIONIC_DEFINE_UNAVAILABLE(NAME) int NAME(void) { return 1; }
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_add_residual_rms_norm_q8_1_router_topk)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_apply_sampling_penalties_f32_sparse)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_attention_causal_sequence_backward_bf16_to_f32)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_attention_causal_sequence_bf16)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_attention_decode_mrope_cache_f16_kv)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_gather_f32_by_indices)
+PSIONIC_DEFINE_UNAVAILABLE(psionic_cuda_top_k_f32_one_row_partitioned)

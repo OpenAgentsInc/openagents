@@ -1,6 +1,10 @@
 # NIP-ATT — Attested Workloads and Sealed Jobs
 
-`draft` `optional` — v1, 2026-10-10. **Designed; nothing is implemented.**
+`draft` `optional` — v1, 2026-10-10. **Implemented for Google Confidential
+Space on Intel TDX** (see [Implementation status](#implementation-status)):
+`crates/nostr` (`att`), `crates/oa-att` (the client verifier, native and
+WebAssembly), `crates/pylon` (`serve --attested`), and the live demo at
+<https://openagents.com/att>.
 The [shared contracts](contracts.md) are normative. The designs this profile
 serves are the [sensitive data vault](../../docs/security/sensitive-data-vault.md)
 and [private inference](../../docs/security/private-inference.md).
@@ -89,6 +93,7 @@ Content (JCS JSON):
   "measurements": [],
   "gpu": null,
   "models": [],
+  "components": [],
   "source": {
     "repo": "https://github.com/OpenAgentsInc/openagents",
     "commit": "<40 hex>",
@@ -118,6 +123,10 @@ Content (JCS JSON):
 - `models` lists the weights the image serves, as `{id, digest}`, where `digest` is
   the SHA-256 of the weight manifest. The image MUST refuse to load weights
   that do not match.
+- `components` lists the programs inside the image as `{name, digest}`
+  (SHA-256 of the binary). The image digest already covers them; the list
+  lets a reader match a rebuilt binary, such as the inference engine,
+  without unpacking the image. Absent means empty.
 - `rebuilds` are independent builders' results. A client policy MAY require
   at least one independent rebuild with an equal digest.
 - `changes` is shown to people when they are notified.
@@ -260,6 +269,22 @@ zeroes request buffers when the job ends. It writes no prompt or output to
 any log. The release's source is the evidence for these claims; the
 attestation proves only that this source is what runs.
 
+### Sealed answers
+
+The worker's `26910` result for a sealed job is signed by the endpoint key
+and, inside its NIP-44 content, its `response` carries
+`attested: {endpoint, release, level, measurement, request_ciphertext_digest,
+model, model_digest}`, where `request_ciphertext_digest` is the SHA-256 of
+the request event's content. The execution receipt in the same result sets
+`result_digest` to the SHA-256 of the response's JCS bytes, so the block is
+covered by the receipt's seal, and `served.artifact_signature` to the
+model digest. The client checks every one of these against its request
+and the release before it shows the answer as sealed.
+
+A NIP-PYLON `30200` beacon from an attested worker MAY carry
+`meta: {attested_endpoint, claimed_level}`. It is inert: the level a
+reader shows comes only from the endpoint's evidence.
+
 ### Receipts
 
 A NIP-PYLON `3201` receipt for a sealed job:
@@ -328,9 +353,26 @@ batch on its own.
 
 ## Implementation status
 
-Nothing is implemented. The [sensitive data vault](../../docs/security/sensitive-data-vault.md)
-milestones V2–V3 and the [private inference](../../docs/security/private-inference.md)
-milestones P1–P3 build it.
+Implemented (2026-10-10, #11241), for the `gcp-confidential-space` platform:
+
+- `crates/nostr` `att`: the three records, the binding, admission under the
+  notice delay and emergencies, the rollback check, and the sealed-job
+  fields and answer block.
+- `crates/oa-att`: Confidential Space PKI tokens verified to Google's root
+  (pinned by its bytes and SHA-256), the measurement and support level
+  against the release, the binding in `eat_nonce`, the sealed request, and
+  the answer and receipt checks. The same code runs in the gateway and, as
+  WebAssembly, in the browser. The `oa-att` CLI publishes releases and
+  heads and runs a verified round from a terminal.
+- `crates/pylon` `serve --attested`: the worker inside the release image.
+- `deploy/att/`: the release image (Psionic serving Clef on the CPU), and
+  `scripts/deploy/att-provider.sh` for the build, the release and the VM.
+
+Not yet: raw TDX quotes, SEV-SNP and NVIDIA evidence, HPKE keys, Rekor
+entries and independent rebuilds in the release, gift-wrapped requests,
+per-chunk streamed output, the personal approval set, and the public `3201`
+receipt for sealed jobs. The [private inference](../../docs/security/private-inference.md)
+milestones P2–P4 track them.
 
 ## Conformance
 
