@@ -498,3 +498,81 @@ fn a_launcher_crash_before_its_host_claims_skips_the_generation() {
     launcher.stop_host();
     launcher.save().unwrap();
 }
+
+/// Starts `sleep` as the leader of its own process group, standing in for
+/// an unrelated program that took a recorded host's group number.
+fn unrelated_group() -> (Child, i32) {
+    let mut command = Command::new("sleep");
+    command.arg("30");
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let child = command.spawn().unwrap();
+    let group = i32::try_from(child.id()).unwrap();
+    (child, group)
+}
+
+fn record_group(fixture: &Fixture, group: i32, identity: Option<String>) -> Launcher {
+    let mut launcher = reopen(fixture);
+    launcher.state.host_group = Some(group);
+    launcher.state.host_identity = identity;
+    launcher.save().unwrap();
+    drop(launcher);
+    reopen(fixture)
+}
+
+#[test]
+fn recovery_spares_a_reused_group_whose_leader_does_not_match() {
+    let fixture = fixture(5);
+    let (mut child, group) = unrelated_group();
+    let mut launcher = record_group(&fixture, group, Some("linux:other:1".into()));
+    launcher.recover().unwrap();
+    assert!(supervise::running(group), "the unrelated group survives");
+    assert_eq!(launcher.state().host_group, None);
+    assert_eq!(launcher.state().host_identity, None);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn recovery_spares_a_live_group_when_no_identity_was_recorded() {
+    let fixture = fixture(5);
+    let (mut child, group) = unrelated_group();
+    let mut launcher = record_group(&fixture, group, None);
+    launcher.recover().unwrap();
+    assert!(supervise::running(group), "an unverifiable group survives");
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn recovery_stops_a_group_whose_leader_matches() {
+    let fixture = fixture(5);
+    let (child, group) = unrelated_group();
+    let identity = process_identity(group);
+    assert!(identity.is_some(), "a live process has an identity");
+    let mut launcher = record_group(&fixture, group, identity);
+    let reaper = reap(Some(child));
+    launcher.recover().unwrap();
+    reaper.join().unwrap();
+    assert!(
+        !supervise::running(group),
+        "the recorded host group is stopped"
+    );
+}
+
+#[test]
+fn process_identity_is_stable_and_distinguishes_processes() {
+    let (mut first, first_group) = unrelated_group();
+    let (mut second, second_group) = unrelated_group();
+    let one = process_identity(first_group).unwrap();
+    assert_eq!(Some(one.clone()), process_identity(first_group));
+    std::thread::sleep(Duration::from_millis(50));
+    let _ = second.kill();
+    let _ = second.wait();
+    let (mut third, third_group) = unrelated_group();
+    assert_ne!(Some(one), process_identity(third_group));
+    assert_eq!(process_identity(second_group), None);
+    for child in [&mut first, &mut third] {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}

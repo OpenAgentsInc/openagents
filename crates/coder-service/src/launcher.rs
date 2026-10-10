@@ -362,6 +362,12 @@ pub struct LauncherState {
     pub last: UpdateView,
     /// The process group of the host last started, until it is stopped.
     pub host_group: Option<i32>,
+    /// The identity (start time, and on Linux the boot) of the process that
+    /// leads `host_group`, recorded when the host started. Recovery kills
+    /// the group only when a live leader still matches it, so a reused
+    /// group identifier never names an unrelated process group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_identity: Option<String>,
 }
 
 /// What a host writes when it is ready to serve.
@@ -439,6 +445,7 @@ pub fn initialize(layout: &Layout, config: &Config, version: &str) -> Result<()>
             phase: Phase::Idle,
             last: UpdateView::none(),
             host_group: None,
+            host_identity: None,
         };
         fsx::atomic_write(&layout.state(), &serde_json::to_vec_pretty(&state)?, 0o600)?;
     }
@@ -542,8 +549,14 @@ impl Launcher {
     /// in any phase, and returns the update outcome it recorded, if any.
     pub fn recover(&mut self) -> Result<Option<UpdateState>> {
         if let Some(group) = self.state.host_group {
-            stop_orphan(group, Duration::from_secs(self.config.stop_grace_secs));
+            let identity = self.state.host_identity.clone();
+            stop_orphan(
+                group,
+                identity.as_deref(),
+                Duration::from_secs(self.config.stop_grace_secs),
+            );
             self.state.host_group = None;
+            self.state.host_identity = None;
             self.save()?;
         }
         let outcome = match self.state.phase.clone() {
@@ -894,6 +907,7 @@ impl Launcher {
             ready: None,
         });
         self.state.host_group = Some(group);
+        self.state.host_identity = process_identity(group);
         self.save()
     }
 
@@ -953,6 +967,7 @@ impl Launcher {
             let _ = supervise::blocking::wait(&mut host.child, Duration::ZERO);
         }
         self.state.host_group = None;
+        self.state.host_identity = None;
     }
 
     fn pending_request(&mut self) -> Result<Option<UpdateRequest>> {
@@ -1083,12 +1098,29 @@ fn view(
 }
 
 /// Stops a host process group a previous launcher recorded and no longer
-/// owns. The group identifier could in principle be reused after that host
-/// exited; the launcher refuses its own group and group 1.
-fn stop_orphan(group: i32, grace: Duration) {
+/// owns, but only when the group is still provably that host's.
+///
+/// The group identifier can be reused after that host exited, so the kill
+/// is refused unless one of these holds:
+/// - the group leader is alive and its identity (start time, and on Linux
+///   the boot) equals the one recorded when the host started; or
+/// - the group leader is gone but the group still has members. A process
+///   identifier is never handed out while a process group of that number
+///   exists, so such a group is the recorded host's leftover children.
+///
+/// A live leader with a different or unknown identity is some other
+/// process that took the number; it is left alone. The launcher also
+/// refuses its own group and group 1.
+fn stop_orphan(group: i32, recorded: Option<&str>, grace: Duration) {
     // SAFETY: `getpgrp` takes no arguments and cannot fail.
     let own = unsafe { libc::getpgrp() };
     if group <= 1 || group == own || !supervise::running(group) {
+        return;
+    }
+    if !orphan_is_ours(group, recorded) {
+        eprintln!(
+            "coder-service: not stopping process group {group}: its leader does not match the recorded host"
+        );
         return;
     }
     // SAFETY: `killpg` reads two integers.
@@ -1103,6 +1135,68 @@ fn stop_orphan(group: i32, grace: Duration) {
     while Instant::now() < deadline && supervise::running(group) {
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Whether the live process group `group` is the host recorded with
+/// `recorded` (see [`stop_orphan`]).
+fn orphan_is_ours(group: i32, recorded: Option<&str>) -> bool {
+    let Ok(leader) = u32::try_from(group) else {
+        return false;
+    };
+    if !supervise::process_running(leader) {
+        // Leaderless group: the number cannot have been reissued.
+        return true;
+    }
+    match (recorded, process_identity(group)) {
+        (Some(recorded), Some(live)) => recorded == live,
+        _ => false,
+    }
+}
+
+/// A string that names one process instance: the same process identifier
+/// reused by another process yields a different string. `None` when the
+/// process is gone or the platform offers no start time.
+#[cfg(target_os = "linux")]
+fn process_identity(pid: i32) -> Option<String> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // The command name is parenthesized and may hold spaces or parentheses;
+    // fields after the last `)` start at field 3 (`state`), so the start
+    // time (field 22) is the 20th of them.
+    let rest = &stat[stat.rfind(')')? + 1..];
+    let start = rest.split_whitespace().nth(19)?;
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default();
+    Some(format!("linux:{}:{start}", boot.trim()))
+}
+
+#[cfg(target_os = "macos")]
+fn process_identity(pid: i32) -> Option<String> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = i32::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).ok()?;
+    // SAFETY: the buffer is a zeroed `proc_bsdinfo` of exactly `size` bytes,
+    // which is what `PROC_PIDTBSDINFO` fills.
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written != size {
+        return None;
+    }
+    // SAFETY: the kernel filled the whole structure.
+    let info = unsafe { info.assume_init() };
+    Some(format!(
+        "macos:{}.{:06}",
+        info.pbi_start_tvsec, info.pbi_start_tvusec
+    ))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn process_identity(_pid: i32) -> Option<String> {
+    None
 }
 
 #[cfg(test)]
