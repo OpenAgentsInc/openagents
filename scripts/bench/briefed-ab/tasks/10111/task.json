@@ -1,0 +1,18 @@
+{
+  "issue": 10111,
+  "title": "OpenAgents Terminal phase 1: the screen (v1)",
+  "body": "Phase 1 of [docs/terminal/README.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal/README.md), owner-directed 2026-10-01. It builds on phase 0 (#10108, b997e85685): `openagents_chat::client` with its event stream, and the `terminal` surface carried through the host.\n\nScope (sizes from the doc):\n- **`crates/openagents-terminal`:** app state, input loop, transcript rows, and composer, over `crates/coder-terminal` (its composer/Editor, markdown, wrap cache, Scrollback, panic-safe Guard, two-lane events). **L**\n- **Theme: white intensities on near-black**, matching the desktop app and the website (`crates/openagents-web/src/palette.rs` ladder). **Not amber.** If `coder-terminal`'s ladder is amber, add the white ladder and use it here, keeping `NO_COLOR` and 256-color fallbacks.\n- **Coder runs:** start, step, output, progress (\"step N \u00b7 \u2248X% done\"; no budget, no \"of N\"), provider switch, result, question. Esc stops the run, and quitting leaves it running. **M**\n- **Components** in `coder-terminal` (turn, card, run, overlay), with text snapshots. **M**\n- **Threads:** a thread list overlay, resume (`--thread`, last-for-folder), and a new thread. **M**\n- **Slash commands** as a closed enum, plus `/help`. No keyword or intent matching on free text: free text always goes to the chat. **S**\n- **Welcome card:** backend (host or in-process), project folder, engines ready, and the offer to keep chats in sync (install the host service). **M**\n- **`/connect`:** QR pairing through the host, drawn as text so it works over SSH. **S**\n- **Entry:** bare `openagents` on a TTY opens the terminal, and so does `openagents terminal` (the owner's `terminal` shell function runs `cargo run -q -p openagents-cli --bin openagents -- terminal` from the checkout). Non-TTY bare `openagents` keeps today's behavior. **S**\n- **Docs:** `docs/terminal/` becomes the user guide, plus docs/cli/README.md and the glossary (\"OpenAgents Terminal\"). **S**\n\nRules: text only, no attachments. Approve everything (#10104). No Coder budgets. The user-facing word is \"plugin\". Open questions in the doc take its recommended defaults; record each decision in the doc.\n\nDone when: the screen works end to end in a real TTY (scripted pty test: send a question, get a streamed answer, start a Coder run on a scratch repo, Esc stops it, the thread list resumes it); snapshots, tests, clippy and fmt pass; `openagents chat` is unchanged.",
+  "fix": "23221210548e1ca0c7ac13ac4f31aca876bee03d",
+  "parent": "2aacde4e249f6d3665c55af923f5c6ce59e9dada",
+  "package": "coder-connect",
+  "source_files": [
+    "crates/coder-connect/src/pairing.rs"
+  ],
+  "test_files": [
+    "crates/coder-connect/src/tests/pairing.rs"
+  ],
+  "test_names": [
+    "text_qr_rows_fill_light_modules_without_escapes"
+  ],
+  "fix_lines": 55
+}

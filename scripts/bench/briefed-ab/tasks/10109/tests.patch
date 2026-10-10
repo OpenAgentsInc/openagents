@@ -1,0 +1,63 @@
+diff --git a/crates/coder/tests/gateway_stream.rs b/crates/coder/tests/gateway_stream.rs
+index baca6204710106376b88ee5bb7156042a1e3238b..090faded9b75ef5efd0cddecc15550b7e656f1c4 100644
+--- a/crates/coder/tests/gateway_stream.rs
++++ b/crates/coder/tests/gateway_stream.rs
+@@ -620,3 +620,58 @@ async fn a_primary_that_thinks_past_the_bound_falls_back() {
+         "{took:?}"
+     );
+ }
++
++/// Live: a primary OpenRouter does not serve (as Space Bunny Alpha will
++/// be after 2026-10-05) hands the turn to Gemini 3.8 Flash on the gateway,
++/// which names itself. Needs `OPENROUTER_API_KEY` and `AI_GATEWAY_API_KEY`;
++/// prints the timings.
++#[tokio::test]
++#[ignore = "live: asks OpenRouter and the Vercel AI Gateway"]
++async fn live_a_retired_primary_falls_back_to_gemini() {
++    let key = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set"));
++    for primary in ["stealth/no-such-model", Lane::SpaceBunny.model()] {
++        let door = FallbackDoor::openrouter(
++            primary,
++            &key("OPENROUTER_API_KEY"),
++            ResponsesDoor::new(
++                coder::generate::DEFAULT_DOOR_URL,
++                Lane::Gemini.model(),
++                key("AI_GATEWAY_API_KEY"),
++            ),
++        );
++        let started = Instant::now();
++        let mut first = None;
++        let mut named = None;
++        let answered = door
++            .generate(
++                "Answer in one sentence.",
++                &[Message {
++                    role: Role::User,
++                    text: "What is the capital of France?".to_string(),
++                }],
++                &mut |_| {
++                    first.get_or_insert(started.elapsed());
++                },
++                &mut |meta| {
++                    if let Meta::Model(model) = meta {
++                        named = Some(model);
++                    }
++                },
++            )
++            .await;
++        let (text, _) = answered.unwrap_or_else(|error| panic!("{primary}: {error}"));
++        println!(
++            "primary {primary}: answered by {} with first words at {:?}, done at {:?}: {text:?}",
++            named.as_deref().unwrap_or("?"),
++            first.unwrap_or_default(),
++            started.elapsed()
++        );
++        let expected = if primary == Lane::SpaceBunny.model() {
++            Lane::SpaceBunny.model()
++        } else {
++            Lane::Gemini.model()
++        };
++        assert_eq!(named.as_deref(), Some(expected));
++        assert!(text.contains("Paris"), "{text}");
++    }
++}

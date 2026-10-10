@@ -1,0 +1,53 @@
+diff --git a/crates/openagents-cli/src/ext_eval.rs b/crates/openagents-cli/src/ext_eval.rs
+index 1609aef67269c1b3ad4bd8f250dc3635e640eded..eb9998f75e62741ff7c38d64cb50b59bb46fb3e6 100644
+--- a/crates/openagents-cli/src/ext_eval.rs
++++ b/crates/openagents-cli/src/ext_eval.rs
+@@ -1385,6 +1449,48 @@ fn original_event_ref(original: &nostr::eval_ext::Publication) -> Option<Value>
+ mod tests {
+     use super::*;
+ 
++    fn request<'a>(
++        tool: &'a ext_eval::author::Tool,
++        evals: &'a Path,
++        extension: Option<&'a Path>,
++    ) -> ext_eval::author::RunRequest<'a> {
++        ext_eval::author::RunRequest {
++            tool,
++            eval_dir: evals,
++            extension,
++            runs: 1,
++        }
++    }
++
++    // #10179: the interview's runs used to end with a command to type.
++    #[test]
++    fn the_interviews_runner_runs_instead_of_naming_a_command() {
++        use ext_eval::author::Runner;
++        let dir = tempfile::tempdir().unwrap();
++        let tool = ext_eval::author::Tool {
++            name: "plain".into(),
++            summary: "A plugin.".into(),
++            words: String::new(),
++            source: ext_eval::author::Source::Made {
++                skill: String::new(),
++                uses: Vec::new(),
++            },
++            operations: Vec::new(),
++        };
++        let runner = LocalRunner {
++            results_base: dir.path().join("results"),
++        };
++        let away = runner.run(&request(&tool, dir.path(), None)).unwrap_err();
++        assert_eq!(away, "the plugin isn't on this computer");
++        let not_a_plugin = runner
++            .run(&request(&tool, dir.path(), Some(dir.path())))
++            .unwrap_err();
++        assert!(
++            !not_a_plugin.contains("plugin test run"),
++            "it tried to run, not name a command: {not_a_plugin}"
++        );
++    }
++
+     #[test]
+     fn the_template_is_the_spec_s() {
+         assert!(TEMPLATE_PROMPT.starts_with("+++\nv = \"openagents.eval-case.v1\"\n"));

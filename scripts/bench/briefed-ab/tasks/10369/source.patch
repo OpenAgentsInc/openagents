@@ -1,0 +1,182 @@
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 87d607480989e87e30c8cad9647f2a7895139399..a74ce66b7e3e4f2079ebcb227ac44de63c311b00 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -13,6 +13,8 @@ use std::time::Duration;
+ use coder_access::host::Host;
+ use coder_access::{RelayPolicy, Rights};
+ 
++use openagents_connect::control::{Op, Reply, Request};
++
+ use crate::config::{Config, Ready, WebsocketTls};
+ use crate::settings::{ServeSettings, TailnetSetting, TlsSetting, parse_advertise};
+ use crate::tasks::Tasks;
+@@ -28,10 +30,10 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
+        [--listen-websocket ADDR] [--allow-nonloopback] [--advertise CLASS=HOST:PORT|URL]...
+        [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
+        [--tailnet-admission RIGHTS [--no-tailnet-chats]]
+-  public-key
++  public-key [--control-socket PATH]
+   invite [--relay URL] [--rights LIST] [--grant-secs N]
+   request [--relay URL] [--rights LIST]
+-  list [--json]
++  list [--json] [--control-socket PATH]
+   revoke --device KEY
+   spend request|list|show ...   ask the owner's phone to pay (`openagents host spend help`)
+   adopt [--keys DIR]  move a host set up the old way under the desktop app
+@@ -48,7 +50,8 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
+ The desktop app runs `serve --keychain --iroh --control`: the owner, host,
+ and iroh keys live in the keychain, the host establishes its own owner on
+ first start, and `openagents connect` and the app reach it through the
+-same-user control socket.
++same-user control socket. On such a computer `public-key` and `list` ask
++that running host over the socket too.
+ Every command also takes --state DIR (the access store, default
+ ~/.openagents/coder-access), --root DIR (default ~/.openagents/host), and
+ --loopback-test (allow ws:// to a numeric loopback relay, for fixtures only).
+@@ -95,10 +98,10 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
+     };
+     let result = match command.as_str() {
+         "init" => init(&common, &mut options),
+-        "public-key" => public_key(&common, &mut options),
++        "public-key" => public_key(&common, &mut options).await,
+         "invite" => invite(&common, &mut options),
+         "request" => request(&common, &mut options).await,
+-        "list" => list(&common, &mut options),
++        "list" => list(&common, &mut options).await,
+         "revoke" => revoke(&common, &mut options),
+         "serve" => serve(&common, &mut options, open_tasks).await,
+         "help" | "--help" | "-h" => {
+@@ -113,9 +116,14 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
+     match result {
+         Ok(()) => 0,
+         Err(Error::Config(message)) if message.starts_with("usage:") => {
+-            eprintln!("openagents host: {}\n\n{USAGE}", &message[6..]);
++            eprintln!("openagents host: {}\n\n{USAGE}", message[6..].trim_start());
+             EXIT_USAGE
+         }
++        // A local precondition says what to do in its own words.
++        Err(Error::Config(message)) => {
++            eprintln!("openagents host: {message}");
++            EXIT_FAILED
++        }
+         Err(error) => {
+             eprintln!("openagents host: {error}");
+             EXIT_FAILED
+@@ -414,12 +422,79 @@ fn listen_websocket(options: &mut Options) -> Result<Option<SocketAddr>> {
+         .transpose()
+ }
+ 
+-fn public_key(common: &Common, options: &mut Options) -> Result<()> {
++async fn public_key(common: &Common, options: &mut Options) -> Result<()> {
++    let source = Source::take(common, options)?;
+     options.finish()?;
+-    println!("{}", Host::new(&common.state, common.policy).public_key()?);
++    let key = match source {
++        Source::Store => Host::new(&common.state, common.policy).public_key()?,
++        Source::Control(socket) => match control_call(&socket, Op::Status {}).await? {
++            Reply::Status(status) => status.host,
++            _ => return Err(no_answer(&socket)),
++        },
++    };
++    println!("{key}");
+     Ok(())
+ }
+ 
++/// Where `public-key` and `list` read the host from. A host set up with
++/// `init` keeps its key in a file in the store, and these read the store.
++/// The desktop app's host keeps its key in the keychain, which a command
++/// does not open (that would ask the person for access), so they ask the
++/// running host over its same-user control socket instead.
++enum Source {
++    Store,
++    Control(PathBuf),
++}
++
++impl Source {
++    fn take(common: &Common, options: &mut Options) -> Result<Self> {
++        if let Some(path) = options.one("--control-socket")? {
++            return Ok(Self::Control(PathBuf::from(path)));
++        }
++        if common.state.join("host.key").is_file() {
++            return Ok(Self::Store);
++        }
++        crate::control::default_path()
++            .map(Self::Control)
++            .ok_or_else(no_host)
++    }
++}
++
++fn no_host() -> Error {
++    Error::Config(
++        "no host runs on this computer: open the OpenAgents app, or start one with \
++         `openagents host serve --control`"
++            .into(),
++    )
++}
++
++fn no_answer(socket: &Path) -> Error {
++    Error::Config(format!(
++        "the host at {} answered something else; update OpenAgents",
++        socket.display()
++    ))
++}
++
++/// One request to the running host's control socket.
++#[cfg(unix)]
++async fn control_call(socket: &Path, op: Op) -> Result<Reply> {
++    let mut stream = tokio::net::UnixStream::connect(socket)
++        .await
++        .map_err(|_| no_host())?;
++    match openagents_connect::control::call(&mut stream, &Request::new(1, op)).await {
++        Ok(Reply::Refused { code, message }) => Err(Error::Config(format!(
++            "the host refused: {message} ({code})"
++        ))),
++        Ok(reply) => Ok(reply),
++        Err(error) => Err(Error::Config(format!("the host did not answer: {error}"))),
++    }
++}
++
++#[cfg(not(unix))]
++async fn control_call(_socket: &Path, _op: Op) -> Result<Reply> {
++    Err(no_host())
++}
++
+ /// Print one `coder-host:` invitation line. It admits one device for five
+ /// minutes; show it only to the device being enrolled.
+ fn invite(common: &Common, options: &mut Options) -> Result<()> {
+@@ -494,9 +569,33 @@ async fn request(common: &Common, options: &mut Options) -> Result<()> {
+     }
+ }
+ 
+-fn list(common: &Common, options: &mut Options) -> Result<()> {
++async fn list(common: &Common, options: &mut Options) -> Result<()> {
+     let json = options.flag("--json");
++    let source = Source::take(common, options)?;
+     options.finish()?;
++    if let Source::Control(socket) = source {
++        let Reply::Devices { devices } = control_call(&socket, Op::DeviceList {}).await? else {
++            return Err(no_answer(&socket));
++        };
++        if json {
++            let text = serde_json::to_string_pretty(&devices)
++                .map_err(|_| Error::Config("the device list cannot be encoded".into()))?;
++            println!("{text}");
++        } else {
++            for d in devices {
++                println!(
++                    "{} {} {} epoch {} last-seen {}",
++                    d.device,
++                    if d.revoked { "Revoked" } else { "Active" },
++                    d.rights.join(","),
++                    d.epoch,
++                    d.last_seen
++                        .map_or_else(|| "none".to_owned(), |at| at.to_string())
++                );
++            }
++        }
++        return Ok(());
++    }
+     let host = Host::new(&common.state, common.policy);
+     let devices = retry_busy(|| host.devices(coder_access::unix_time()?))?;
+     if json {

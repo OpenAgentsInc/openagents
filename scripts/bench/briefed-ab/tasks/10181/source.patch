@@ -1,0 +1,156 @@
+diff --git a/crates/ext-eval/Cargo.toml b/crates/ext-eval/Cargo.toml
+index 139c2cd22ac656a11aba71d30c9151efce4fb18d..05ed98d69ca2edadc6be9f89c1cc0682cf0b6214 100644
+--- a/crates/ext-eval/Cargo.toml
++++ b/crates/ext-eval/Cargo.toml
+@@ -71,6 +71,10 @@ tempfile = "3"
+ name = "runner"
+ required-features = ["runner"]
+ 
++[[test]]
++name = "blob"
++required-features = ["runner"]
++
+ [[test]]
+ name = "confinement"
+ required-features = ["runner"]
+diff --git a/crates/ext-eval/src/blob.rs b/crates/ext-eval/src/blob.rs
+index 8939eaf0ed0199e08a6553974e5cc7bb69b710fc..0efc7f19ea73642568d720a8dd7a59bc2ef9939f 100644
+--- a/crates/ext-eval/src/blob.rs
++++ b/crates/ext-eval/src/blob.rs
+@@ -146,6 +146,15 @@ impl Blossom {
+                 wait = (wait * 2).min(Duration::from_secs(30));
+                 continue;
+             }
++            if status == reqwest::StatusCode::METHOD_NOT_ALLOWED
++                || status == reqwest::StatusCode::NOT_FOUND
++            {
++                return Err(format!(
++                    "{} takes no uploads ({status}): it serves no Blossom media; \
++                     pass --blossom URL naming a Blossom server that does",
++                    self.base
++                ));
++            }
+             let text = response.text().unwrap_or_default();
+             return Err(format!(
+                 "{} refused the upload ({status}): {}",
+diff --git a/docs/deployment/README.md b/docs/deployment/README.md
+index f87fed9605325620f36e113685a2884e19170763..f35a7a5d1290f697ab954044cdfb0cfff1a34e93 100644
+--- a/docs/deployment/README.md
++++ b/docs/deployment/README.md
+@@ -21,8 +21,9 @@ or a labor marketplace as part of starting the relay.
+ Use the pinned compiler from [rust-toolchain.toml](../../rust-toolchain.toml).
+ The relay's database client currently uses `NoTls`; use the documented local
+ or protected socket topology. Direct managed-Postgres TLS needs a separate
+-adapter. Media bytes require persistent storage, so the Cloud Run procedure
+-leaves media disabled.
++adapter. Media bytes require persistent storage; on Cloud Run they live in the
++`openagentsgemini-relay-media` bucket, mounted with Cloud Storage FUSE (see the
++Cloud Run runbook).
+ 
+ ## Other services
+ 
+diff --git a/docs/deployment/eval-runner.md b/docs/deployment/eval-runner.md
+index ad2b6a5f25f296bdd797dccf8ca3bfaba4490439..f2deb43825c4a414fd001a2138d202c63338b6a2 100644
+--- a/docs/deployment/eval-runner.md
++++ b/docs/deployment/eval-runner.md
+@@ -53,8 +53,12 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
+ - **Suite files.** A released suite's files live in the public-read
+   bucket `gs://openagentsgemini-eval-blobs`, read like a Blossom server at
+   `https://storage.googleapis.com/openagentsgemini-eval-blobs/<sha256>`.
+-  `relay.openagents.com` runs on Cloud Run with Blossom media off (media
+-  needs persistent storage), so there's no relay-hosted store yet. The
++  This bucket predates the relay's own media: the relay's Cloud Run
++  service is configured to serve Blossom uploads (`PUT /upload` with a
++  NIP-98 authorization signed by the publisher's key) into
++  `gs://openagentsgemini-relay-media`, so a publisher needs no cloud
++  credentials (#10181); the Cloud Run runbook records when that revision
++  serves. The
+   runner writes the bucket with `gcloud storage cp` as the service account
+   `oa-eval-runner`, which may only create and read objects in that bucket;
+   its key and gcloud configuration stay on the runner host. To check a
+diff --git a/docs/deployment/runbook-cloud-run.md b/docs/deployment/runbook-cloud-run.md
+index 357be0accf4cab191c350f58cfdd88ccec923af4..0815c955360e2e3e22d0feda3b6b0e060a6e1fbc 100644
+--- a/docs/deployment/runbook-cloud-run.md
++++ b/docs/deployment/runbook-cloud-run.md
+@@ -17,7 +17,8 @@ same binary on one box.
+ | Tag convention | the 10-character commit hash the image was built from (`git rev-parse --short=10 HEAD`) |
+ | Database | Cloud SQL `openagentsgemini:us-central1:khala-sync-pg`, database `nostr_relay_v2`, user `khala_app`, over the `/cloudsql/...` socket |
+ | Secrets | `PGPASSWORD` from `openagents-monolith-pgpassword`, `NOSTR_RELAY_SECRET_KEY` from `openagents-nostr-relay-private-key` |
+-| Runtime service account | `157437760789-compute@developer.gserviceaccount.com` |
++| Runtime service account | `oa-nostr-relay@openagentsgemini.iam.gserviceaccount.com` in the service template since 2026-10-02 (the serving revision `00034-pit` still runs as `157437760789-compute@developer.gserviceaccount.com`); see [Accounts](#accounts) |
++| Media | Bucket `gs://openagentsgemini-relay-media` (public read; `oa-nostr-relay` is `roles/storage.objectAdmin` on it) mounted as volume `media` (Cloud Storage FUSE) at `/var/lib/nostr-relay/media`, with `NOSTR_RELAY_MEDIA_ROOT=/var/lib/nostr-relay/media`, `NOSTR_RELAY_MEDIA_CLOUD_BASE_URL=https://storage.googleapis.com/openagentsgemini-relay-media`, `NOSTR_RELAY_MEDIA_MAX_BLOB_BYTES=16777216` (the CLI's `MAX_BLOB`; Cloud Run's request limit is 32 MiB). Uploads are `PUT /upload` with a NIP-98 event signed by the uploader's key (`docs/protocol/media.md`); reads redirect to the bucket |
+ 
+ The rest of the environment (`NOSTR_RELAY_URL=wss://relay.openagents.com`,
+ `NOSTR_RELAY_TRUST_PROXY=true`, the rate limits, name, and description) lives
+@@ -39,7 +40,33 @@ History:
+ | 2026-09-27 | `openagents-nostr-relay-00029-nar` | `24fc83269a` | Applied migration 11 (`push_executor`, new tables only; NIP-PL delivery stays off without `NOSTR_RELAY_PUSH_SECRET`). NIP-CAP heads with `requires: ["oa-x402-v1"]` are now accepted. Build ran as the automation account; deploy and traffic shift ran as `chris@` after a `--no-launch-browser` login. Verified by `openagents x402 advertise --binding mcp:1` publishing to `next` and `openagents cap describe` reading it from `relay.openagents.com` |
+ | 2026-09-29 | `openagents-nostr-relay-00031-mel` | `358975bdbd` | No migrations. Pipelined admission statements, in-memory fan-out after commit, `TCP_NODELAY` (`f20742ebf7`). Build ran as the automation account; its deploy was again refused `actAs` although it holds `roles/iam.serviceAccountUser` on the runtime account, so deploy and traffic shift ran as `chris@`. Verified by the step 3 checks and `chat-load-bench` against `relay.openagents.com`: median request `OK` 78 to 71 ms, request to reply 221 to 178 ms, chat open done 424 to 331 ms |
+ | 2026-09-29 | `openagents-nostr-relay-00034-pit` | `17cefc1703` | No migrations. A lost Postgres notification listener no longer stops the relay: it reconnects with backoff and catches up by sequence; a cancelled history read no longer fails the next statement on its worker, which stopped the relay four times on 2026-09-29 (#9947). Rollback revision: `00031-mel`. Build ran as the automation account; the deploy, the traffic shift, and removing the crash-looping `candidate` tag and revision 00023-kax ran as `chris@` (the account was refused `actAs` again, including for `update-traffic --remove-tags`). Verified by the step 3 checks on `next` and production, `live_basic_coder_streams_a_reply` (first words 0.66 s, answer 5.2 s), an XP referee pass reading the relay after the shift, and 11 minutes of logs with no warning, error, or restart (70 WebSocket sessions, no 5xx) |
++| 2026-10-02 | `openagents-nostr-relay-00036-toy` (failed, never served) | `17cefc1703` | Same image; adds the media volume and variables above and moves the template to the new `oa-nostr-relay` account, so `plugin publish` and `plugin test publish` can upload without cloud credentials (#10181). The bucket mounted; the revision failed its startup probe because `oa-nostr-relay` lacks project `roles/cloudsql.client` (`boss::NOT_AUTHORIZED` on `khala-sync-pg`), which the automation account cannot grant. Traffic stayed on `00034-pit`; the `next` tag was removed. Pending the owner's grant (workspace `NEEDS_OWNER.md`), then [Enabling media](#enabling-media) |
+ 
++## Enabling media
++
++After `oa-nostr-relay` holds project `roles/cloudsql.client`,
++`roles/logging.logWriter`, and `roles/monitoring.metricWriter` (it already
++reads the two secrets and writes the media bucket), the automation account
++can create the revision itself, since it may act as that account:
++
++```sh
++gcloud run services update openagents-nostr-relay --region us-central1 \
++  --project openagentsgemini --no-traffic --tag next   # the template already carries media
++gcloud run services update-traffic openagents-nostr-relay \
++  --to-revisions <new-revision>=100 --region us-central1 --project openagentsgemini
++gcloud run services update-traffic openagents-nostr-relay --remove-tags next \
++  --region us-central1 --project openagentsgemini
++```
++
++Until that grant, any new revision from the template fails the same way.
++To ship an image before it, deploy as `chris@` with
++`--service-account 157437760789-compute@developer.gserviceaccount.com`
++(media then works too: that account is also `roles/storage.objectAdmin` on
++the bucket).
++
++Check it: `curl -s -o /dev/null -w '%{http_code}' -X PUT https://relay.openagents.com/upload`
++answers `401` (no authorization), not `405`, and a `plugin test publish`
++with no `--blossom` uploads its files.
+ 
+ ## Accounts
+ 
+@@ -54,6 +81,14 @@ On 2026-09-26 it was still refused
+ cannot read the project IAM policy, so it cannot grant itself more; plan on
+ `chris@` for these two steps until an owner fixes the binding.
+ 
++On 2026-10-02 the service template moved to a dedicated runtime account,
++`oa-nostr-relay@openagentsgemini.iam.gserviceaccount.com`, on which the
++automation account does hold a working `roles/iam.serviceAccountUser`
++(it created revision `00036-toy` with no `actAs` refusal). It reads
++`openagents-monolith-pgpassword` and `openagents-nostr-relay-private-key`
++and administers objects in the media bucket; it still needs the project
++roles named in [Enabling media](#enabling-media) from an owner.
++
+ ## 1. Check migrations before you build
+ 
+ The binary applies pending migrations at startup, in one transaction, before
+diff --git a/docs/protocol/media.md b/docs/protocol/media.md
+index c6ea1c40de09bc0d44506d983274e517d101edbd..67addca193985ebb1790d5f354bd376258fae24e 100644
+--- a/docs/protocol/media.md
++++ b/docs/protocol/media.md
+@@ -77,8 +77,16 @@ and includes the same generation key in the private filename.
+ 
+ The committed single-box deployment uses the filesystem adapter. A container
+ must bind-mount a persistent writable media directory or leave media disabled.
+-The Cloud Run path leaves M7 disabled because its ordinary writable filesystem
+-is ephemeral.
++The Cloud Run path uses the mounted-cloud adapter: the public-read bucket
++`openagentsgemini-relay-media` is mounted with Cloud Storage FUSE at
++`NOSTR_RELAY_MEDIA_ROOT`, and `NOSTR_RELAY_MEDIA_CLOUD_BASE_URL` is
++`https://storage.googleapis.com/openagentsgemini-relay-media`. A FUSE rename
++on a flat bucket is a server-side copy then a delete, not an atomic rename,
++but the copy's object appears whole or not at all, and a blob is served only
++after its `ready` row commits, so a reader never sees a partial blob. The
++service runs one instance, so no two writers race on one temporary name. The
++`.tmp/` and `.deleted/` prefixes are public-readable objects in that bucket;
++they hold only bytes that were uploaded to be public.
+ 
+ ## Deletion retention and backups
+ 

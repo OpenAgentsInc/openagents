@@ -1,0 +1,33 @@
+diff --git a/crates/coder/src/router/gym.rs b/crates/coder/src/router/gym.rs
+index d92d5a3600eb376db7a43cac1c170c28018acd64..a32c00fe79b22313929793e0959f0403c2d966f2 100644
+--- a/crates/coder/src/router/gym.rs
++++ b/crates/coder/src/router/gym.rs
+@@ -1712,6 +1713,13 @@ mod tests {
+ 
+     /// "Your keys" names a person's own API keys; any other key is still
+     /// a banned word.
++    #[test]
++    fn the_phone_keeps_the_same_banned_words_and_names() {
++        use openagents_chat_app::eval_cards;
++        assert_eq!(BANNED, eval_cards::BANNED);
++        assert_eq!(NAMES, eval_cards::NAMES);
++    }
++
+     #[test]
+     fn your_keys_is_a_name_and_any_other_key_is_banned() {
+         assert_eq!(jargon("Your own keys"), None);
+diff --git a/crates/openagents-chat-app/src/eval_cards.rs b/crates/openagents-chat-app/src/eval_cards.rs
+index 063641a9eb1cc90e5d6c3e2e425b38c9ee60616b..a19e94d2ea16a90bf621c7d02df4c371b92347ae 100644
+--- a/crates/openagents-chat-app/src/eval_cards.rs
++++ b/crates/openagents-chat-app/src/eval_cards.rs
+@@ -1063,6 +1075,10 @@ mod tests {
+         assert_eq!(jargon("TB score"), Some("tb"));
+         // A word that contains a banned word is fine.
+         assert_eq!(jargon("Keyboard shortcuts and hosting"), None);
++        // "Your keys" names a person's own API keys; any other key is banned.
++        assert_eq!(jargon("Your own keys"), None);
++        assert_eq!(jargon("Turn on Use my keys"), None);
++        assert_eq!(jargon("Account, then Your keys: add a key"), Some("key"));
+     }
+ 
+     #[test]

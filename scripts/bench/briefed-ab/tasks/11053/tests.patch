@@ -1,0 +1,38 @@
+diff --git a/crates/pay-ledger/src/lib.rs b/crates/pay-ledger/src/lib.rs
+index 7f3139b084f69b66011048ae4d43d30ef5549dda..1e4f47e41ea2af639531631ca7412205c80f4ac8 100644
+--- a/crates/pay-ledger/src/lib.rs
++++ b/crates/pay-ledger/src/lib.rs
+@@ -1103,6 +1138,33 @@ fn read_record(connection: &Connection, key: &str) -> Result<Option<Recorded>> {
+ mod origin_tests {
+     use super::*;
+     #[test]
++    fn reopening_an_unchanged_ledger_leaves_its_bytes_alone() {
++        let dir = tempfile::tempdir().unwrap();
++        let path = dir.path().join("native.db");
++        drop(Ledger::open(&path).unwrap());
++        let before = std::fs::read(&path).unwrap();
++        drop(Ledger::open(&path).unwrap());
++        assert_eq!(std::fs::read(&path).unwrap(), before);
++        // A changed view definition is still replaced on open.
++        let connection = Connection::open(&path).unwrap();
++        connection
++            .execute_batch(
++                "DROP VIEW payable_share; CREATE VIEW payable_share AS SELECT 1 AS stale;",
++            )
++            .unwrap();
++        drop(connection);
++        let book = Ledger::open(&path).unwrap();
++        let stored: String = book
++            .connection
++            .query_row(
++                "SELECT sql FROM sqlite_master WHERE type='view' AND name='payable_share'",
++                [],
++                |row| row.get(0),
++            )
++            .unwrap();
++        assert!(stored.contains("FROM share s"));
++    }
++    #[test]
+     fn native_origin_survives_reopen_copy_and_read_only_without_relabeling() {
+         let dir = tempfile::tempdir().unwrap();
+         let path = dir.path().join("native.db");

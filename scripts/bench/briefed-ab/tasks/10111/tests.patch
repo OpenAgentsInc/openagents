@@ -1,0 +1,42 @@
+diff --git a/crates/coder-connect/src/tests/pairing.rs b/crates/coder-connect/src/tests/pairing.rs
+index 65e8558c2d56b1a453ea87959f2460a86752035d..a5c50dbcefdcc0b0279028c3baf583e555610aeb 100644
+--- a/crates/coder-connect/src/tests/pairing.rs
++++ b/crates/coder-connect/src/tests/pairing.rs
+@@ -337,6 +337,37 @@ fn qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns() {
+     assert!(pairing::qr_modules_prefixed("coder-host:", &code).is_err());
+ }
+ 
++#[test]
++fn text_qr_rows_fill_light_modules_without_escapes() {
++    let f = Fixture::new("wss://relay.example/");
++    let code = invite(&f);
++    let modules = pairing::qr_modules_prefixed(pairing::PREFIX, &code).unwrap();
++    let rows = pairing::text_qr_rows_prefixed(pairing::PREFIX, &code).unwrap();
++    let side = modules.len();
++    // Two modules per row.
++    assert_eq!(rows.len(), side.div_ceil(2));
++    assert!(rows.iter().all(|row| row.chars().count() == side));
++    // The quiet zone's top two rows and its bottom row are all light.
++    assert!(rows[..2].iter().all(|row| row.chars().all(|c| c == '█')));
++    assert!(rows[rows.len() - 1].chars().all(|c| c == '█'));
++    assert!(rows.iter().all(|row| !row.contains('\x1b')));
++    // Each cell is the module pair, light filled.
++    for (y, row) in rows.iter().enumerate() {
++        for (x, cell) in row.chars().enumerate() {
++            let top = !modules[2 * y][x];
++            let bottom = modules.get(2 * y + 1).is_none_or(|r| !r[x]);
++            let want = match (top, bottom) {
++                (true, true) => '█',
++                (true, false) => '▀',
++                (false, true) => '▄',
++                (false, false) => ' ',
++            };
++            assert_eq!(cell, want, "row {y} column {x}");
++        }
++    }
++    assert!(pairing::text_qr_rows_prefixed("coder-host:", &code).is_err());
++}
++
+ #[cfg(unix)]
+ #[test]
+ #[ignore = "writes a synthetic invitation SVG and exact payload for an independent native QR decoder"]

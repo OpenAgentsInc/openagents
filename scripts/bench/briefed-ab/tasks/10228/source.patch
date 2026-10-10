@@ -1,0 +1,35 @@
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index 68ada61bac1551c7b59f60bb259a3b20c1a68b88..ec9589bd7c2357a421b3ad2015818178a0b9ec1d 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -2351,9 +2351,7 @@ const MICROCODER: &str = if cfg!(windows) {
+ /// # Errors
+ /// Names where it looked.
+ pub fn default_controller() -> std::result::Result<PathBuf, String> {
+-    let exe = std::env::current_exe()
+-        .ok()
+-        .and_then(|exe| exe.canonicalize().ok());
++    let exe = std::env::current_exe().ok().map(controller_executable_path);
+     let home = std::env::var_os("HOME").map(PathBuf::from);
+     controller_candidates(exe.as_deref(), home.as_deref())
+         .into_iter()
+@@ -2363,6 +2361,19 @@ pub fn default_controller() -> std::result::Result<PathBuf, String> {
+         })
+ }
+ 
++/// Linux appends ` (deleted)` when a running executable has been replaced.
++/// Keep its directory even if the original executable no longer exists.
++fn controller_executable_path(exe: PathBuf) -> PathBuf {
++    let exe = if let Some(name) = exe.file_name().and_then(|name| name.to_str())
++        && let Some(name) = name.strip_suffix(" (deleted)")
++    {
++        exe.with_file_name(name)
++    } else {
++        exe
++    };
++    exe.canonicalize().unwrap_or(exe)
++}
++
+ /// Where [`default_controller`] looks, in order: beside `exe`; when `exe`
+ /// is the `openagents` CLI in an app bundle's `Contents/Helpers`, the
+ /// bundle's `Contents/MacOS` (where `scripts/desktop/package-macos.sh`

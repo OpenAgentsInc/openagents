@@ -1,0 +1,18 @@
+{
+  "issue": 10109,
+  "title": "Chat model: Space Bunny Alpha (OpenRouter) primary, Gemini 3.8 Flash fallback",
+  "body": "Owner, 2026-10-01: make `stealth/space-bunny-alpha` on OpenRouter the primary model for the web chat and everything the chat worker answers with (the phone, desktop, CLI and website chats), and turn our Gemini 3.8 Flash path into the fallback.\n\n**Why:** Gemini 3.8 Flash takes ~5.5 s to its first token through both Vercel and OpenRouter, at any reasoning effort, so knowledge answers take 8\u201310 s end to end. Space Bunny Alpha, measured 2026-10-01 through `https://openrouter.ai/api/v1/responses` (streaming, Open Responses): first token 1.8\u20132.9 s at the default effort, **0.96 s at `reasoning.effort: low`**, 1.3 s at minimal; done in ~1.6 s. Free. 1M context.\n\n**Constraints**\n- **It goes away October 5, 2026** (OpenRouter's page). The fallback must be automatic and per request: on any failure before the first token (HTTP error, unknown model/404, 429, refusal, timeout to first token of a few seconds), retry the same turn on Gemini 3.8 Flash through the current door, and log which door answered. Once the model is gone, every turn falls back with no deploy.\n- **Privacy:** OpenRouter's notice says the stealth provider may retain prompts and completions (not used for training). Check our privacy copy (`crates/openagents-web/content/docs/privacy-and-security.md`, knowledge entries about data retention and model providers, `meta.privacy` / `meta.data_retention` / `meta.model` bank answers, `first.rs` model names) and make it true. Do NOT edit the published legal Privacy Policy (`content/legal/privacy.md`); if it needs a change, record it in NEEDS_OWNER.md (workspace repo).\n- \"Which model are you?\" answers must name the model that actually answered (the bank/facts use `Lane`).\n\n**Scope:** the chat worker's generation door (`coder::generate` Lane/door, `CODER_WORKER_MODEL`, door construction in `coder-worker`): the model answer, grounded answers, Gym news, and the author interview door if it uses the same model. Request `reasoning: {effort: low}` for the primary. The key is `OPENROUTER_API_KEY`, already in the worker env. Leave Jev, embeddings, personalization (2.5 Flash Lite), and Coder engines alone.\n\nTests: the fallback on 404/429/timeout-before-first-token, which door answered, the model facts. Then deploy the chat worker, and live-check from a fresh key (`openagents chat --scratch --no-run --json` and the website `/ask`) with timings.",
+  "fix": "6257eead2873d317bd3deab66b5e7384b380707f",
+  "parent": "7b63f163184acb63d9b32db924fe0a5b02362fd8",
+  "package": "coder",
+  "source_files": [
+    "docs/deployment/chat-worker.md"
+  ],
+  "test_files": [
+    "crates/coder/tests/gateway_stream.rs"
+  ],
+  "test_names": [
+    "live_a_retired_primary_falls_back_to_gemini"
+  ],
+  "fix_lines": 122
+}

@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10986,
+  "title": "Coder landing: cargo fmt drift in files the change did not touch strands the change",
+  "body": "When the issue flow's gate (`crates/coder/src/task/issue_run.rs`, `Gate::check`) runs `cargo fmt -p PACKAGE -- --check`, it reports every unformatted file in the package, including files the change never touched. On #10940 the change was green on its first rebase, then `main` moved and brought `d138fad182`, whose `kit_bake.rs` was not formatted; the second recheck went red on that file alone, the landing stranded the change on `coder/stranded-1eac219c`, and the issue was released. The change itself was formatted.\n\nFix: keep only the `Diff in PATH:LINE:` hunks of files in the staged change (`git diff --cached --name-only`); when none remain, count the package as formatted and say in the evidence that drift in untouched files was left alone. Drift that `main` carries belongs to `main`, not to the change being landed.\n\nFound while running #10940 through `openagents chat work --on boat`.\n",
+  "fix": "ebb0cca95cee5df635266109da8c5156070e330e",
+  "parent": "7afd440fe81caaeb1609fbe857c8d5f15c4437a6",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/issue_run.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/issue_run_tests.rs"
+  ],
+  "test_names": [
+    "fmt_drift_outside_the_change_is_left_to_the_base_branch"
+  ],
+  "fix_lines": 83
+}

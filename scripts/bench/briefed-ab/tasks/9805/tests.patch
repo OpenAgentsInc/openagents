@@ -1,0 +1,153 @@
+diff --git a/crates/coder-computers/src/terminal/session.rs b/crates/coder-computers/src/terminal/session.rs
+index 267272b3d9f33aded32ce87646a4ce420d767632..c484bb1afd1c9f0822a32d7e888e216aad807b31 100644
+--- a/crates/coder-computers/src/terminal/session.rs
++++ b/crates/coder-computers/src/terminal/session.rs
+@@ -756,6 +759,16 @@ mod tests {
+             panic!("a missing right is a refusal")
+         };
+         assert!(text.contains("\"Open terminals\" right"), "{text}");
++        let none = HostError::Access(AccessError::new(Code::Unsupported, "none"));
++        let Some(Phase::Refused(text)) = open_refusal(&none) else {
++            panic!("no workspace is a refusal")
++        };
++        assert!(text.contains("serves no workspace"), "{text}");
++        let unusable = HostError::Access(AccessError::new(Code::Unavailable, "gone"));
++        let Some(Phase::Refused(text)) = open_refusal(&unusable) else {
++            panic!("a missing root is a refusal")
++        };
++        assert!(text.contains("workspace directory is missing"), "{text}");
+         let transport = HostError::Access(AccessError::new(Code::Transport, "down"));
+         assert!(open_refusal(&transport).is_none());
+         assert!(open_refusal(&HostError::Closed(None)).is_none());
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 1af7e7ac0324947aaa7ddda761cf479e32e42cec..82a4e360ac5f65134d491ee15210a274d8f63a03 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -668,6 +702,35 @@ mod tests {
+         })
+     }
+ 
++    #[test]
++    fn missing_workspace_roots_are_named_or_created_under_the_host_root() {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().join("host");
++        let present = dir.path().join("present");
++        std::fs::create_dir_all(&present).unwrap();
++        let gone = dir.path().join("gone");
++        let owned = root.join("tasks");
++        let workspaces: BTreeMap<String, PathBuf> = [
++            ("a".to_owned(), present.clone()),
++            ("b".to_owned(), gone.clone()),
++            ("c".to_owned(), owned.clone()),
++        ]
++        .into_iter()
++        .collect();
++        let lines = check_workspaces(&workspaces, &root);
++        assert_eq!(lines.len(), 2, "{lines:?}");
++        assert!(lines[0].contains("`b`") && lines[0].contains(gone.to_str().unwrap()));
++        assert!(lines[0].contains("missing"), "{}", lines[0]);
++        assert!(
++            lines[1].starts_with("created workspace `c`"),
++            "{}",
++            lines[1]
++        );
++        assert!(owned.is_dir());
++        assert!(!gone.exists());
++        assert!(check_workspaces(&workspaces, &root).len() == 1);
++    }
++
+     #[tokio::test]
+     async fn init_records_listeners_and_refuses_ones_that_could_never_serve() {
+         let dir = tempfile::tempdir().unwrap();
+diff --git a/crates/coder-host/tests/serve.rs b/crates/coder-host/tests/serve.rs
+index 4285342b11a887d533e4ad10f5c38be382547d18..e410b40c3db168d7a95062c2593e05ef986998ef 100644
+--- a/crates/coder-host/tests/serve.rs
++++ b/crates/coder-host/tests/serve.rs
+@@ -34,18 +34,38 @@ struct Fixture {
+     running: coder_host::Running,
+ }
+ 
++/// Which workspace the served host is given.
++#[derive(Clone, Copy)]
++enum Workspace {
++    /// A `checkout` label whose root exists.
++    Present,
++    /// A `checkout` label whose root does not exist on disk.
++    Missing,
++    /// No workspace at all.
++    None,
++}
++
+ async fn fixture(generation: u64) -> Fixture {
++    fixture_with(generation, Workspace::Present).await
++}
++
++async fn fixture_with(generation: u64, workspace: Workspace) -> Fixture {
+     let temp = tempfile::tempdir().unwrap();
+     let (relay, _task, _events) = relay::start().await;
+     let access = temp.path().join("access");
+     let store = coder_host::access::host::Host::new(&access, POLICY);
+     store.init(&pubkey(&key())).unwrap();
+     let root = temp.path().join("checkout");
+-    std::fs::create_dir_all(&root).unwrap();
+     let mut config = Config::new(access, vec![relay.clone()], generation);
+     config.policy = POLICY;
+-    config.workspaces =
+-        BTreeMap::from([("checkout".to_owned(), std::fs::canonicalize(&root).unwrap())]);
++    config.workspaces = match workspace {
++        Workspace::Present => {
++            std::fs::create_dir_all(&root).unwrap();
++            BTreeMap::from([("checkout".to_owned(), std::fs::canonicalize(&root).unwrap())])
++        }
++        Workspace::Missing => BTreeMap::from([("checkout".to_owned(), root)]),
++        Workspace::None => BTreeMap::new(),
++    };
+     config.ready = Some(Ready {
+         file: temp.path().join("run/ready-9.json"),
+         version: "e".repeat(64),
+@@ -105,6 +125,45 @@ async fn ready_record_is_the_one_the_host_service_reads() {
+     fixture.running.shutdown().await;
+ }
+ 
++#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++async fn terminal_open_tells_no_workspace_from_a_missing_root() {
++    // A host with no workspace cannot serve `terminal.open` at all.
++    let fixture = fixture_with(3, Workspace::None).await;
++    let operator = fixture.enroll(Rights::standard()).await;
++    let error = fixture
++        .direct(&operator)
++        .await
++        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
++        .await
++        .unwrap_err();
++    assert!(
++        matches!(&error, Error::Access(e) if e.code == Code::Unsupported),
++        "{error:?}"
++    );
++    fixture.running.shutdown().await;
++
++    // A configured root that is gone is a passing condition.
++    let fixture = fixture_with(3, Workspace::Missing).await;
++    let operator = fixture.enroll(Rights::standard()).await;
++    let direct = fixture.direct(&operator).await;
++    let error = direct
++        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
++        .await
++        .unwrap_err();
++    assert!(
++        matches!(&error, Error::Access(e) if e.code == Code::Unavailable),
++        "{error:?}"
++    );
++    // Creating the directory repairs it without a restart.
++    std::fs::create_dir_all(fixture.temp.path().join("checkout")).unwrap();
++    let outcome = direct
++        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
++        .await
++        .unwrap();
++    assert!(matches!(outcome, Outcome::Dispatched { .. }), "{outcome:?}");
++    fixture.running.shutdown().await;
++}
++
+ #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+ async fn terminal_open_dispatches_and_rights_are_checked_per_operation() {
+     let fixture = fixture(3).await;

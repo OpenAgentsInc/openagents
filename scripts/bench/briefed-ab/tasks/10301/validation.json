@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 44,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/worktree_hooks.rs:53:20: warning: unused import: `Command`\n",
+    "tests_err": "Applied patch to 'crates/coder/src/task/owner/tests.rs' cleanly.\n",
+    "test_tail": "   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\n    Finished `test` profile [unoptimized] target(s) in 19.34s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 1 test\ntest task::owner::tests::a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1001 filtered out; finished in 6.80s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 1,
+    "eval_secs": 13,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/worktree_hooks.rs:53:20: warning: unused import: `Command`\n",
+    "tests_err": "Applied patch to 'crates/coder/src/task/owner/tests.rs' cleanly.\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n    Finished `test` profile [unoptimized] target(s) in 6.67s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 1 test\ntest task::owner::tests::a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock ... FAILED\n\nfailures:\n\n---- task::owner::tests::a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock stdout ----\n\nthread 'task::owner::tests::a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock' (2238521) panicked at crates/coder/src/task/owner/tests.rs:1104:44:\ncalled `Result::unwrap()` on an `Err` value: Busy\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    task::owner::tests::a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1001 filtered out; finished in 2.62s\n\nerror: test failed, to rerun pass `-p coder --lib`\nerror: 1 target failed:\n    `-p coder --lib`\n"
+  },
+  "usable": true,
+  "behavioral": true
+}

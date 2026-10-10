@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 10256,
+  "title": "Claim comment says \"on this computer\" for runs on Boat or GCE",
+  "body": "From #10220: the issue flow's claim comment still says Coder is working \"on this computer\" when the run is on a Boat sandbox or a GCE pool host. Name the placement (\"on a Boat sandbox\", \"on a cloud host\"). Test the comment text per placement.",
+  "fix": "61c036c552808403b314573e759bfcc24b83f6c2",
+  "parent": "41e0b9ce4a03cca836d40ccb834d791730a9bece",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/lib.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "crates/openagents-cli/src/chat_boat.rs",
+    "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/issue_run_tests.rs",
+    "crates/openagents-cli/src/chat_boat.rs",
+    "crates/openagents-cli/src/chat_gce.rs"
+  ],
+  "test_names": [
+    "the_comments_name_where_the_run_is"
+  ],
+  "fix_lines": 63
+}

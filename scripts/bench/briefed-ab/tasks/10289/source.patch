@@ -1,0 +1,68 @@
+diff --git a/crates/coder/Cargo.toml b/crates/coder/Cargo.toml
+index a114ab15fd5fd3f5dccd8599a5fd71064a803e1c..7951ee59e3d0da781b07d4e45dfcefbaea44598f 100644
+--- a/crates/coder/Cargo.toml
++++ b/crates/coder/Cargo.toml
+@@ -68,7 +68,7 @@ receipts = { path = "../receipts" }
+ private-fs = { path = "../private-fs" }
+ 
+ [dev-dependencies]
+-openagents-chat-app = { path = "../openagents-chat-app" }
++openagents-chat-app = { path = "../openagents-chat-app", features = ["test-support"] }
+ openagents-desktop = { path = "../openagents-desktop", default-features = false }
+ coder-history = { path = "../coder-history" }
+ coder-connect = { path = "../coder-connect" }
+diff --git a/crates/coder/src/efficiency.rs b/crates/coder/src/efficiency.rs
+index 4d79cc4eba21a11715e5e059f1c3e61a4a9b1f1c..926c3296b84b3ecdeb088d5a7706cdd5a55e7b66 100644
+--- a/crates/coder/src/efficiency.rs
++++ b/crates/coder/src/efficiency.rs
+@@ -388,7 +388,6 @@ pub fn study(name: &str, label: &str, source: &str, rows: &[Row]) -> Value {
+     let mut classes: Vec<String> = rows.iter().map(|r| r.class.clone()).collect();
+     classes.sort();
+     classes.dedup();
+-    let base = of(BASELINE, None);
+     let compare = |arm: &str, baseline: &str| -> Option<Value> {
+         let base = of(baseline, None);
+         if base.is_empty() || arm == baseline {
+diff --git a/crates/coder/src/router/gym.rs b/crates/coder/src/router/gym.rs
+index d92d5a3600eb376db7a43cac1c170c28018acd64..a32c00fe79b22313929793e0959f0403c2d966f2 100644
+--- a/crates/coder/src/router/gym.rs
++++ b/crates/coder/src/router/gym.rs
+@@ -895,7 +895,8 @@ pub fn check_reply(reply: &str, items: &[Item]) -> Cited {
+ /// Words the app never shows on a card, a label, or a Gym reply: the
+ /// wireframe's banned list (`docs/product/2026-09-28-app-wireframe.md`,
+ /// Words on screen; `CHK-02`), lowercased. The phone keeps the same list
+-/// (`crates/openagents-chat-app/src/eval_cards.rs`). The word for anything
++/// and [`NAMES`] (`crates/openagents-chat-app/src/eval_cards.rs`); a test
++/// holds them equal. The word for anything
+ /// a person adds is "plugin" since 2026-10-01 (#10087): "capability",
+ /// "extension", and "tool" are banned as names for it. A model's tool call
+ /// in a transcript is the model's text, not ours.
+diff --git a/crates/openagents-chat-app/src/eval_cards.rs b/crates/openagents-chat-app/src/eval_cards.rs
+index 063641a9eb1cc90e5d6c3e2e425b38c9ee60616b..a19e94d2ea16a90bf621c7d02df4c371b92347ae 100644
+--- a/crates/openagents-chat-app/src/eval_cards.rs
++++ b/crates/openagents-chat-app/src/eval_cards.rs
+@@ -76,10 +76,22 @@ pub const BANNED: &[&str] = &[
+     "hex",
+ ];
+ 
+-/// Whether `text` contains a banned word as a whole word, in any case.
++/// Product names that hold a banned word on purpose: bring-your-own-keys
++/// names a person's own API keys "Your keys". Longest first. "Key" anywhere
++/// else ("Your Nostr key", "secret key") stays banned. The host keeps the
++/// same lists (`crates/coder/src/router/gym.rs`); a test there holds them
++/// equal.
++#[cfg(any(test, feature = "test-support"))]
++pub const NAMES: &[&str] = &["your own keys", "use my keys", "your keys", "my keys"];
++
++/// Whether `text` contains a banned word as a whole word, in any case,
++/// outside the product [`NAMES`].
+ #[cfg(any(test, feature = "test-support"))]
+ pub fn jargon(text: &str) -> Option<&'static str> {
+-    let lower = text.to_lowercase();
++    let mut lower = text.to_lowercase();
++    for name in NAMES {
++        lower = lower.replace(name, " ");
++    }
+     let words: Vec<&str> = lower
+         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '₿'))
+         .filter(|w| !w.is_empty())

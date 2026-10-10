@@ -1,0 +1,44 @@
+diff --git a/crates/coder-new/src/bundled_runtime.rs b/crates/coder-new/src/bundled_runtime.rs
+index cbb8b28053fdb0387872ac6cad997b21fcecf5f2..c09aa92f5778c8b186d26fd3e3f3d57593eb08bc 100644
+--- a/crates/coder-new/src/bundled_runtime.rs
++++ b/crates/coder-new/src/bundled_runtime.rs
+@@ -1652,6 +1661,39 @@ fn bounded(text: &str, bytes: usize) -> String {
+ mod tests {
+     use super::*;
+ 
++    #[tokio::test]
++    #[cfg(unix)]
++    async fn silent_run_reports_elapsed_and_silence() {
++        let dir = tempfile::tempdir().unwrap();
++        let mut updates = Vec::new();
++        let result = run_command(
++            "# Waiting for fixture\nsleep 1.2",
++            dir.path(),
++            &[],
++            &Arc::new(AtomicBool::new(false)),
++            &mut |event| {
++                if let RuntimeEvent::Tool {
++                    output,
++                    running: true,
++                    ..
++                } = event
++                {
++                    updates.push(output);
++                }
++            },
++        )
++        .await
++        .unwrap();
++        assert!(
++            updates
++                .iter()
++                .any(|output| output["elapsed_seconds"] == 1 && output["silent_seconds"] == 1)
++        );
++        assert_eq!(updates[0]["activity"], "Waiting for fixture");
++        assert!(result["seconds"].as_f64().unwrap() >= 1.0);
++        assert_eq!(result["exit"], 0);
++    }
++
+     #[tokio::test]
+     #[cfg(unix)]
+     async fn run_streams_both_pipes_before_exit_and_retains_final_output() {

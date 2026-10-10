@@ -1,0 +1,43 @@
+diff --git a/crates/coder-new/src/bundled_runtime.rs b/crates/coder-new/src/bundled_runtime.rs
+index cbb8b28053fdb0387872ac6cad997b21fcecf5f2..c09aa92f5778c8b186d26fd3e3f3d57593eb08bc 100644
+--- a/crates/coder-new/src/bundled_runtime.rs
++++ b/crates/coder-new/src/bundled_runtime.rs
+@@ -282,7 +282,7 @@ pub async fn run_command(
+         events: Some(&sink),
+     };
+     let ran = checkout.run(script, Duration::from_secs(120)).await;
+-    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out}))
++    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out,"seconds":ran.seconds}))
+ }
+ 
+ /// `word` as a shell word, quoted only when it needs quoting.
+@@ -432,10 +432,19 @@ async fn wait_job(
+ ) -> Result<supervise::Stopped, String> {
+     let live = job.start(supervise::Input::Null)?;
+     let mut captured = Vec::new();
++    let started = Instant::now();
++    let mut last_output = started;
++    let mut last_tick = None;
+     while !live.finished() {
+         if let Some((sink, script)) = progress {
+             let delivery = live.take();
+-            if !delivery.is_empty() {
++            let changed = !delivery.is_empty();
++            if changed {
++                last_output = Instant::now();
++            }
++            let tick = started.elapsed().as_secs();
++            if changed || last_tick != Some(tick) {
++                last_tick = Some(tick);
+                 captured.extend_from_slice(
+                     &delivery.bytes[..delivery
+                         .bytes
+@@ -445,7 +454,7 @@ async fn wait_job(
+                 sink.emit(RuntimeEvent::Tool {
+                     name: "Run".into(),
+                     input: json!({"command":script}),
+-                    output: json!({"output":redact_stream(&captured, keys)}),
++                    output: json!({"output":redact_stream(&captured, keys),"elapsed_seconds":tick,"silent_seconds":last_output.elapsed().as_secs(),"activity":script.lines().next().unwrap_or("Executing command").trim_start_matches("# ")}),
+                     running: true,
+                 });
+             }

@@ -1,0 +1,53 @@
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 06b8446739d0d9ce87b922226f6d9c965bd30e68..d3346281ffdd16eab91b023292d1566a9ce1b393 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -408,6 +408,23 @@ fn bounded(text: &str) -> String {
+     format!("{}…", &text[..end])
+ }
+ 
++/// Where a full-access run's Cargo builds go when the owner's login
++/// environment names no `CARGO_TARGET_DIR`: beside the task store, one
++/// directory per workspace, never inside the workspace (#10118).
++fn build_directory(store: &Path, workspace: &Path) -> PathBuf {
++    let name = workspace.file_name().map_or_else(
++        || "workspace".into(),
++        |name| name.to_string_lossy().into_owned(),
++    );
++    let digest = digest_bytes(workspace.as_os_str().as_encoded_bytes());
++    let tag = &digest.trim_start_matches("sha256:")[..12];
++    store
++        .parent()
++        .unwrap_or(store)
++        .join("targets")
++        .join(format!("{name}-{tag}"))
++}
++
+ /// Why a workspace observation cannot admit a run, or `None` when it can:
+ /// an incomplete observation names its first fault (the limit reached, or
+ /// the file that could not be read, and how many faults there were), and a
+@@ -1229,8 +1246,22 @@ impl Host {
+                     .args(&arguments)
+                     .current_dir(&directory)
+                     .env_clear()
+-                    .envs(login.variables.iter().map(|(key, value)| (key, value)))
+-                    .envs(script_variables);
++                    .envs(login.variables.iter().map(|(key, value)| (key, value)));
++                // Build output stays out of the workspace (#10118): a Cargo
++                // target directory inside it would grow past what the next
++                // task's workspace observation can hash, and every later
++                // task there would be refused.
++                if !login
++                    .variables
++                    .iter()
++                    .any(|(name, _)| name == "CARGO_TARGET_DIR")
++                {
++                    command.env(
++                        "CARGO_TARGET_DIR",
++                        build_directory(&self.owner.dir, self.workspace()),
++                    );
++                }
++                command.envs(script_variables);
+                 command
+             }
+             None => {

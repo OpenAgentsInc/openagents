@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--bins"
+  ],
+  "issue": 10179,
+  "title": "Terminal plugin test interview prints a command instead of running the tests",
+  "body": "Found while OpenAgents created the disk-cleanup plugin through its own flow (#10165, thread 06904082b508c7130af68f9a00386d37 on the Mac; doc docs/background/2026-10-02-disk-cleanup-plugin.md).\n\nIn OpenAgents Terminal, the plugin test interview (`openagents plugin test init` path) ends by printing the command to run the tests instead of running them. It should run them in place (streaming progress) and show the result, and offer to publish.",
+  "fix": "41e0b9ce4a03cca836d40ccb834d791730a9bece",
+  "parent": "390f2c1367675996dea9d7445e85174a4ba31012",
+  "package": "openagents-cli",
+  "source_files": [
+    "crates/openagents-cli/src/ext_eval.rs",
+    "crates/openagents-cli/src/ext_eval_init.rs"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/ext_eval.rs"
+  ],
+  "test_names": [
+    "the_interviews_runner_runs_instead_of_naming_a_command"
+  ],
+  "fix_lines": 134
+}

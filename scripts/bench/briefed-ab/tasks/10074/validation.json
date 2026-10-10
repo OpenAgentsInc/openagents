@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 96,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "Applied patch to 'crates/coder/src/task/autostart.rs' cleanly.\n",
+    "test_tail": ")\n   Compiling receipts v0.1.0 (/home/christopherdavid/ab/build/crates/receipts)\n   Compiling wasm-compose v0.254.0\n   Compiling secret-service v5.2.0\n   Compiling openagents-deck v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-deck)\n   Compiling iroh-dns v1.3.0\n   Compiling zbus-secret-service-keyring-store v1.0.1\n   Compiling iroh-relay v1.3.0\n   Compiling keyring v4.2.0\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build/crates/nostr-transport)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build/crates/xp-ledger)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build/crates/coder-reach)\n   Compiling capability v0.1.0 (/home/christopherdavid/ab/build/crates/capability)\n   Compiling image v0.25.10\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build/crates/coder-connect)\n   Compiling cranelift-codegen v0.135.2\n   Compiling jev-hosted v0.1.0 (/home/christopherdavid/ab/build/crates/jev-hosted)\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build/crates/knowledge)\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat)\n   Compiling iroh v1.3.0\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build/crates/coder-access)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build/crates/gym)\n   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/ab/build/crates/microcoder-loop)\n   Compiling wasmtime-internal-cache v48.0.2\n   Compiling wasmtime-internal-fiber v48.0.2\n   Compiling iroh-mdns-address-lookup v0.5.0\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build/crates/coder-host)\n   Compiling cranelift-frontend v0.135.2\n   Compiling wasmtime-internal-unwinder v48.0.2\n   Compiling cranelift-native v0.135.2\n   Compiling wasmtime-internal-cranelift v48.0.2\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build/crates/coder-computers)\n   Compiling wasmtime v48.0.2\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat-app)\n   Compiling coderbench v0.1.0 (/home/christopherdavid/ab/build/crates/coderbench)\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build/crates/ext-eval)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build/crates/openagents-desktop)\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build/crates/plugin)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build/crates/coder-delegate)\n    Finished `test` profile [unoptimized] target(s) in 53.47s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target/debug/deps/coder-8f9db7f4f1eba869)\n\nrunning 1 test\ntest task::autostart::tests::the_app_cli_runs_the_engine_its_bundle_ships ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 810 filtered out; finished in 0.00s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 15,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "Applied patch to 'crates/coder/src/task/autostart.rs' cleanly.\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build/crates/coder)\nerror[E0425]: cannot find function `controller_candidates` in this scope\n    --> crates/coder/src/task/autostart.rs:3546:13\n     |\n3546 |             controller_candidates(Some(exe), Some(&home))\n     |             ^^^^^^^^^^^^^^^^^^^^^ not found in this scope\n\nerror[E0425]: cannot find function `controller_candidates` in this scope\n    --> crates/coder/src/task/autostart.rs:3560:14\n     |\n3560 |             !controller_candidates(Some(&temp.path().join(\"Helpers/openagents\")), None)\n     |              ^^^^^^^^^^^^^^^^^^^^^ not found in this scope\n\nFor more information about this error, try `rustc --explain E0425`.\nerror: could not compile `coder` (lib test) due to 2 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

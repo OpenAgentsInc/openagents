@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 11,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-computers/src/terminal/session.rs: applied\ncrates/coder-host/src/cli.rs: applied\ncrates/coder-host/tests/serve.rs: applied\n",
+    "test_tail": "error: no test target named `serve` in `coder-computers` package\n\nhelp: a target with a similar name exists: `live`\nhelp: available test in `coder-host` package:\n    serve\nhelp: available test in `gateway` package:\n    serve\nhelp: available test in `kev` package:\n    serve\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 2,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-computers/src/terminal/session.rs: applied\ncrates/coder-host/src/cli.rs: applied\ncrates/coder-host/tests/serve.rs: applied\n",
+    "test_tail": "error: no test target named `serve` in `coder-computers` package\n\nhelp: a target with a similar name exists: `live`\nhelp: available test in `coder-host` package:\n    serve\nhelp: available test in `gateway` package:\n    serve\nhelp: available test in `kev` package:\n    serve\n"
+  },
+  "usable": false,
+  "behavioral": true
+}

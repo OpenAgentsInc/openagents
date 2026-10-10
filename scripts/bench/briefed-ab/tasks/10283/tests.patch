@@ -1,0 +1,58 @@
+diff --git a/crates/openagents-terminal/src/app_tests.rs b/crates/openagents-terminal/src/app_tests.rs
+index 98513b28a32904c84d98fd8e08508d31fe64e3a1..7ffb8354fca2ea712e849835fbb14ade015bca5c 100644
+--- a/crates/openagents-terminal/src/app_tests.rs
++++ b/crates/openagents-terminal/src/app_tests.rs
+@@ -1949,3 +1949,53 @@ fn a_plans_runs_each_get_a_rail_row_and_their_results_show_by_engine() {
+     let view = frame(&mut app, 70, 30);
+     assert!(view.contains("ls crates"), "{view}");
+ }
++
++/// A background watcher's notification never lands in the transcript
++/// (#10283): it is counted on the status rail, and Left on an empty input
++/// opens the watchers view, which shows it and clears the count.
++#[test]
++fn watcher_notifications_wait_in_the_watchers_view_not_the_transcript() {
++    let mut app = app();
++    let before = shown(&mut app);
++    app.notice("Disk almost full: 12 GB free. Cleanup ran and freed 40 GB.");
++    let after = frame(&mut app, 100, 24);
++    assert!(!after.contains("Disk almost full"), "{after}");
++    assert_eq!(shown(&mut app), before, "the transcript is unchanged");
++    assert!(
++        app.tail().starts_with("← 1 from watchers · "),
++        "{}",
++        app.tail()
++    );
++    // Left with text in the input still moves the cursor.
++    app.editor.insert_str("hi");
++    assert!(app.key(&key(KeyCode::Left), 80).is_empty());
++    assert_eq!(app.unseen_notices, 1);
++    app.editor.take();
++    assert_eq!(app.key(&key(KeyCode::Left), 80), vec![Action::Background]);
++    assert_eq!(app.unseen_notices, 0);
++    assert!(!app.tail().contains("watchers"), "{}", app.tail());
++    // The view lists the rules, then the notifications, newest first.
++    app.notice("Cleanup paused: a worktree has ignored files.");
++    app.overlay = Some(Overlay::Background {
++        rows: vec![crate::BackgroundRow {
++            id: "disk".into(),
++            line: "disk · on".into(),
++            paused: false,
++        }],
++        selected: 0,
++    });
++    let view = frame(&mut app, 100, 24);
++    assert!(view.contains("Background watchers"), "{view}");
++    let paused = view.find("Cleanup paused").expect("newest notice");
++    let full = view.find("Disk almost full").expect("older notice");
++    assert!(
++        view.find("disk · on").unwrap() < paused && paused < full,
++        "{view}"
++    );
++    // Down reaches the notifications; acts there do nothing.
++    app.key(&key(KeyCode::Down), 80);
++    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
++    // Left again closes it.
++    app.key(&key(KeyCode::Left), 80);
++    assert!(app.overlay.is_none());
++}

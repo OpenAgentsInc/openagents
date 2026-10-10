@@ -1,0 +1,105 @@
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 8ea792a4d3985b931ae9aad8dc8e7d1df339e88c..f3f806755c4c1a0345314eb87dfb4bb38d8945c1 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -975,6 +975,8 @@ impl Checks for Gate {
+             );
+             if policy.fmt && !packages.is_empty() {
+                 let mut unformatted = Vec::new();
++                let mut left_alone = 0usize;
++                let staged = staged_paths(worktree);
+                 for package in &packages {
+                     let output = std::process::Command::new("cargo")
+                         .args(["fmt", "-p", package, "--", "--check"])
+@@ -983,24 +985,39 @@ impl Checks for Gate {
+                         .output();
+                     match output {
+                         Ok(output) if output.status.success() => {}
+-                        Ok(output) => unformatted.push(format!(
+-                            "`cargo fmt -p {package} -- --check` finds unformatted code: {}",
+-                            clip(&String::from_utf8_lossy(&output.stdout), FAILING_MAX / 2)
+-                        )),
++                        Ok(output) => {
++                            let (in_change, untouched) =
++                                fmt_drift_in_change(&String::from_utf8_lossy(&output.stdout), &staged);
++                            left_alone += untouched;
++                            if !in_change.is_empty() {
++                                unformatted.push(format!(
++                                    "`cargo fmt -p {package} -- --check` finds unformatted code: {}",
++                                    clip(&in_change, FAILING_MAX / 2)
++                                ));
++                            }
++                        }
+                         Err(error) => {
+                             unformatted.push(format!("cargo fmt could not run: {error}"));
+                         }
+                     }
+                 }
+-                ran.push(format!(
+-                    "`cargo fmt --check` ran on {}: {}.",
++                let mut line = format!(
++                    "`cargo fmt --check` ran on {}: {}",
+                     names(&packages),
+                     if unformatted.is_empty() {
+                         "formatted"
+                     } else {
+                         "unformatted code"
+                     }
+-                ));
++                );
++                if left_alone > 0 {
++                    line.push_str(&format!(
++                        "; {left_alone} unformatted file(s) the change does not touch were left \
++                         as the base branch has them"
++                    ));
++                }
++                line.push('.');
++                ran.push(line);
+                 problems.extend(unformatted);
+             }
+             if policy.clippy && !packages.is_empty() {
+@@ -1028,6 +1045,44 @@ impl Checks for Gate {
+     }
+ }
+ 
++/// The paths of the staged change, relative to the worktree.
++fn staged_paths(worktree: &Path) -> Vec<String> {
++    local::git_out(worktree, &["diff", "--cached", "--name-only"])
++        .unwrap_or_default()
++        .lines()
++        .map(str::trim)
++        .filter(|line| !line.is_empty())
++        .map(str::to_owned)
++        .collect()
++}
++
++/// Splits `rustfmt --check` output into the hunks of files in the staged
++/// change and the count of unformatted files the change does not touch.
++/// Drift the base branch carries in other files is the base branch's, not
++/// the change's, so it must not keep the change from landing.
++fn fmt_drift_in_change(output: &str, staged: &[String]) -> (String, usize) {
++    let mut kept = String::new();
++    let mut untouched = std::collections::BTreeSet::new();
++    let mut keep = false;
++    for line in output.lines() {
++        if let Some(rest) = line.strip_prefix("Diff in ") {
++            let path = rest.rsplitn(3, ':').nth(2).unwrap_or(rest);
++            let path = path.replace('\\', "/");
++            keep = staged
++                .iter()
++                .any(|s| path == *s || path.ends_with(&format!("/{s}")));
++            if !keep {
++                untouched.insert(path);
++            }
++        }
++        if keep {
++            kept.push_str(line);
++            kept.push('\n');
++        }
++    }
++    (kept, untouched.len())
++}
++
+ fn names(packages: &[String]) -> String {
+     packages
+         .iter()

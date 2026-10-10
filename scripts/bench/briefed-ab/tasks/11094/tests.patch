@@ -1,0 +1,24 @@
+diff --git a/crates/openagents-web/src/ui_page.rs b/crates/openagents-web/src/ui_page.rs
+index 8f1a8df971baff5ea3dfcdba7e4da2f3d683bfe8..f95ed210dcb2ffc2681baf5519edc086b66a0739 100644
+--- a/crates/openagents-web/src/ui_page.rs
++++ b/crates/openagents-web/src/ui_page.rs
+@@ -444,6 +460,19 @@ mod tests {
+     use super::*;
+     use axum::http::{HeaderValue, header};
+ 
++    #[test]
++    fn environments_is_offered_on_the_local_address_only() {
++        assert!(nav_shown(Nav::Environments, true, true));
++        assert!(!nav_shown(Nav::Environments, true, false), "public host");
++        assert!(!nav_shown(Nav::Environments, false, true), "no studio");
++        // A public page carries no link to it.
++        let html = UiPage::new("OpenAgents")
++            .content(html! { p { "x" } })
++            .render(&HeaderMap::new())
++            .into_string();
++        assert!(!html.contains("href=\"/environments\""));
++    }
++
+     #[test]
+     fn follows_the_system_without_a_cookie_and_the_cookie_with_one() {
+         let page = |h: &HeaderMap| UiPage::new("Test").content(html! { p { "hi" } }).render(h);

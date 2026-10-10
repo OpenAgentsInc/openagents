@@ -1,0 +1,124 @@
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index c693f1ca446db25d42609cb8df9f38ba93c234f9..65861aa714b61cc5a6adabcb19343973111e8f0c 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -195,7 +195,7 @@ pub fn load(store: &Path, task: &str) -> Option<Flow> {
+         .filter(|flow| flow.schema == FLOW_SCHEMA && flow.task == task)
+ }
+ 
+-fn save(store: &Path, flow: &Flow) -> Result<(), String> {
++pub(crate) fn save(store: &Path, flow: &Flow) -> Result<(), String> {
+     let bytes = serde_json::to_vec_pretty(flow).map_err(|e| e.to_string())?;
+     super::autostart::write_private(&flow_path(store, &flow.task), &bytes)
+ }
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index a1cdc2e58b82e8664d89d81b3c6b91a766e18a28..b085714ef3f12b672477680b8d7f4f6cbb34380f 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -1942,6 +1942,9 @@ impl Follow {
+             };
+             let mut record = record(&self.store, &self.task);
+             let flow = super::issue_run::load(&self.store, &self.task);
++            // An issue flow whose process is gone never finishes: its
++            // turn's ending does not wait for it (#10248).
++            let orphan = flow.as_ref().is_some_and(super::issue_run::orphaned);
+             if let Some(state) = self.ended {
+                 let runs = task.earlier.len() + usize::from(task.run.is_some());
+                 if task.turn() > self.turn && runs >= self.turn {
+@@ -1988,7 +1991,7 @@ impl Follow {
+                     return Ok((out, State::Running));
+                 };
+                 self.notes(flow.as_ref(), self.turn, &mut out);
+-                if flow.as_ref().is_some_and(|flow| !flow.finished) {
++                if !orphan && flow.as_ref().is_some_and(|flow| !flow.finished) {
+                     return Ok((out, State::Running));
+                 }
+                 let event = match &flow {
+@@ -2018,13 +2021,24 @@ impl Follow {
+                 self.line(event, &mut out);
+             }
+             let Some(result) = &run.result else {
++                // A run whose owner process died never records a result
++                // (#10248): the store ends it once the owner's lock is free
++                // and no process group it recorded is left, so the wait
++                // ends with that ending instead of lasting forever. A live
++                // owner holds its lock, so this never ends a running turn.
++                if self.turn == runs.len()
++                    && Store::open(&self.store)
++                        .is_ok_and(|mut store| store.settle(&self.task).is_ok_and(|t| t.is_some()))
++                {
++                    continue;
++                }
+                 return Ok((out, State::Running));
+             };
+             // An issue flow checks and lands after its latest turn: that
+             // turn's ending waits for the flow's, which it carries.
+             self.notes(flow.as_ref(), self.turn, &mut out);
+             let last = task.turn() == self.turn;
+-            if last && flow.as_ref().is_some_and(|flow| !flow.finished) {
++            if last && !orphan && flow.as_ref().is_some_and(|flow| !flow.finished) {
+                 return Ok((out, State::Running));
+             }
+             let flow = flow.filter(|_| last);
+@@ -2068,6 +2082,20 @@ impl Follow {
+                     if let CoderEvent::Result(finished) = &mut end {
+                         finished.cost_microusd = result.cost_microusd;
+                     }
++                    // The flow's process died before it checked and
++                    // landed this turn: nothing landed, whatever the
++                    // turn did (#10248).
++                    let end = if last && orphan {
++                        CoderEvent::Failure(coder_events::Failure {
++                            turn: self.turn,
++                            message: coder_events::OWNER_ENDED_MESSAGE.into(),
++                            ending: Some(owner::OWNER_ENDED.into()),
++                            resets_at: None,
++                            issue: None,
++                        })
++                    } else {
++                        end
++                    };
+                     let end = match &flow {
+                         Some(flow) => flow.ending(end),
+                         None => end,
+diff --git a/crates/coder/src/task/owner.rs b/crates/coder/src/task/owner.rs
+index b808b473ed4d72b0469def6c51aa3fa460258296..a5d718561f5c9338a39e1b98eb9bbdfb744bf148 100644
+--- a/crates/coder/src/task/owner.rs
++++ b/crates/coder/src/task/owner.rs
+@@ -1279,3 +1279,6 @@ mod tests;
+ // owner, with a retained patch and an independent check.
+ #[cfg(all(test, unix))]
+ mod route_tests;
++// `chat send` following a task whose owner process died (#10248).
++#[cfg(all(test, unix))]
++mod follow_tests;
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index b85f50a6d2c643ff9f7e5ae020feeb5e01ac4762..65e5708d7cab6287dc125e207391394ef97166fa 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -39,6 +39,9 @@ pub const SCHEMA: &str = "openagents.coder.events.v1";
+ pub const MAX_OUTPUT: usize = 4 * 1024;
+ /// The most bytes of text a [`Step`] event carries.
+ pub const MAX_TEXT: usize = 2 * 1024;
++/// What a person reads when a turn ended because its owner process died
++/// and the task store ended the run for it (#10248).
++pub const OWNER_ENDED_MESSAGE: &str = "Coder's process ended unexpectedly.";
+ 
+ /// One thing a Coder task did, said, or became.
+ #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+@@ -1231,6 +1234,15 @@ impl Mapper {
+                 resets_at,
+                 issue: None,
+             }),
++            // The task store ended a run whose owner process died
++            // (`coder::task::owner::OWNER_ENDED`, #10248).
++            "owner_process_ended" => CoderEvent::Failure(Failure {
++                turn,
++                message: OWNER_ENDED_MESSAGE.into(),
++                ending: Some(ending.into()),
++                resets_at: None,
++                issue: None,
++            }),
+             other => {
+                 let why = match &self.ending {
+                     Some((reason, Some(detail))) => {

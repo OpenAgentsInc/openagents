@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11118,
+  "title": "Coder: show elapsed time and activity for silent Run commands",
+  "body": "Keep Run visibly informative during silent waits: elapsed time, time since output, and a plain-language activity label. Test silent execution progress and completed status.",
+  "fix": "29fa00319821dc99e799392f7d2a10082a94f80e",
+  "parent": "7344d6fb526004b1eeee560dde9f809914d7cdac",
+  "package": "coder-new",
+  "source_files": [
+    "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "test_files": [
+    "crates/coder-new/src/bundled_runtime.rs"
+  ],
+  "test_names": [
+    "silent_run_reports_elapsed_and_silence"
+  ],
+  "fix_lines": 48
+}

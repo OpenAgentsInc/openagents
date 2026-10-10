@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10349,
+  "title": "Rules made from words are saved but the Mac's host never checks them",
+  "body": "Shakeout on the owner Mac (host: ~/.openagents/dev-host/current \u2192 32a6df832d, started Oct 2 17:08; CLI at eeae76ff5a):\n```\nopenagents background draft --id shake900 -- \"notify me when free disk space is under 900 GB\"   # dry run: \"would tell you: Disk space is low: 502 GB free\"\nopenagents background apply shake900   # \"Saved \u2026 It runs on its own from now on\"\n# 9+ minutes later (interval 5 min):\nopenagents background log low-disk-900gb   # No runs yet.\n```\n`~/.openagents/background/state.json` has entries only for `disk` and `disk-cleanup`; `disk-cleanup` is checked every 5 min, the new rule (in `background/rules/low-disk-900gb.json`) never is. So either the running host does not load rules added after it started, or that host build predates rules from words \u2014 either way the CLI tells the user it runs when it does not. Expected: the host picks up saved rules without a restart (or `apply` signals it), and if the running host can\u2019t run a rule, `apply`/`list` say so. Also the Mac dev host is ~8h behind main; CoderOS self-updates when idle, this Mac doesn\u2019t seem to. Minor: there is no `background remove ID`; removal only works by words (`draft \"remove the rule X\"` + `apply`). (Test rules removed afterwards.)",
+  "fix": "bb6a6a5a6f6a07eed6df9e907f6e6996771b7054",
+  "parent": "b873f50508d8ce37008aed4e6a064a91a23a3dd9",
+  "package": "background",
+  "source_files": [
+    "crates/background/src/lib.rs",
+    "crates/background/src/paths.rs",
+    "crates/background/src/runner.rs",
+    "crates/openagents-cli/src/background.rs",
+    "docs/background/2026-10-02-background-processes.md"
+  ],
+  "test_files": [
+    "crates/background/src/presence.rs"
+  ],
+  "test_names": [
+    "a_current_host_runs_what_it_saw_and_takes_up_new_rules_soon",
+    "a_host_that_writes_no_presence_is_too_old_for_rules_from_words",
+    "a_presence_without_the_feature_is_old_too",
+    "no_host_holds_the_lock_so_nothing_runs"
+  ],
+  "fix_lines": 406
+}

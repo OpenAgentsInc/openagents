@@ -1,0 +1,302 @@
+diff --git a/crates/background/src/presence.rs b/crates/background/src/presence.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..76ed78f8f5f953f8209210f82b365883c2a47bf1
+--- /dev/null
++++ b/crates/background/src/presence.rs
+@@ -0,0 +1,296 @@
++//! Whether a background runner is running on this computer, and what it
++//! runs (#10349).
++//!
++//! The runner holds `runner.lock` for its lifetime and, on every wake,
++//! writes `runner.json`: its process, the program it runs from, what it
++//! can run, and the rules it saw. The CLI reads both to say truthfully
++//! whether a rule it just saved will run: the runner picks up new rules
++//! within one poll, but a host started from an older build never runs
++//! rules made from words, and with no host nothing runs at all.
++
++use std::fs::File;
++use std::path::PathBuf;
++
++use serde::{Deserialize, Serialize};
++
++use crate::paths::Layout;
++
++/// What this build's runner can run. A runner without
++/// [`CONVERSATION_RULES`] predates rules made from words.
++pub const FEATURES: &[&str] = &[CONVERSATION_RULES, RELOAD];
++/// Runs rules made from words (`background/rules/*.json`).
++pub const CONVERSATION_RULES: &str = "conversation-rules";
++/// Reads the rules again on every wake, so new ones need no restart.
++pub const RELOAD: &str = "reload";
++
++/// The most a running runner goes between wakes, with slack: its poll
++/// (30 s) plus time for a check to finish.
++pub const PICKUP_SECS: u64 = 90;
++/// Slack between a save and a wake that may not have seen it yet.
++const SETTLE_SECS: u64 = 5;
++
++/// What the runner last wrote about itself.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Presence {
++    pub pid: u32,
++    /// When it took the runner lock (Unix seconds).
++    pub started: u64,
++    /// When it last woke (Unix seconds).
++    pub seen: u64,
++    /// The program it runs from, to name what to update.
++    #[serde(default)]
++    pub program: Option<PathBuf>,
++    #[serde(default)]
++    pub features: Vec<String>,
++    /// The ids of the rules it ran at its last wake.
++    #[serde(default)]
++    pub rules: Vec<String>,
++}
++
++impl Presence {
++    /// This process, now, running `rules`.
++    #[must_use]
++    pub fn here(started: u64, rules: Vec<String>) -> Self {
++        Self {
++            pid: std::process::id(),
++            started,
++            seen: crate::paths::now(),
++            program: std::env::current_exe().ok(),
++            features: FEATURES.iter().map(|f| (*f).to_owned()).collect(),
++            rules,
++        }
++    }
++
++    #[must_use]
++    pub fn can(&self, feature: &str) -> bool {
++        self.features.iter().any(|f| f == feature)
++    }
++}
++
++/// Write the runner's presence. Written whole and renamed into place,
++/// so a reader never sees half of it.
++///
++/// # Errors
++/// The background folder can't be written.
++pub fn write(layout: &Layout, presence: &Presence) -> std::io::Result<()> {
++    std::fs::create_dir_all(layout.background())?;
++    let path = layout.runner_presence();
++    let temp = path.with_extension(format!("json.{}", std::process::id()));
++    std::fs::write(&temp, serde_json::to_vec_pretty(presence)?)?;
++    std::fs::rename(&temp, &path)
++}
++
++/// What the runner last wrote, if anything.
++#[must_use]
++pub fn read(layout: &Layout) -> Option<Presence> {
++    serde_json::from_slice(&std::fs::read(layout.runner_presence()).ok()?).ok()
++}
++
++/// Who runs background rules on this computer right now.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum Runner {
++    /// Nobody holds the runner lock: no host is running here.
++    None,
++    /// A runner from this build or newer.
++    Current(Presence),
++    /// A runner holds the lock but predates rules made from words (it
++    /// writes no presence, or one without that feature).
++    Old(Option<Presence>),
++}
++
++/// Look at the runner lock and the runner's presence.
++#[must_use]
++pub fn look(layout: &Layout) -> Runner {
++    if !held(layout) {
++        return Runner::None;
++    }
++    match read(layout) {
++        Some(presence) if presence.can(CONVERSATION_RULES) => Runner::Current(presence),
++        other => Runner::Old(other),
++    }
++}
++
++/// Whether some process holds the runner lock. Taking it to find out is
++/// safe: it is let go at once, and a runner waiting for it retries.
++fn held(layout: &Layout) -> bool {
++    let Ok(file) = File::options()
++        .read(true)
++        .write(true)
++        .create(true)
++        .truncate(false)
++        .open(layout.runner_lock())
++    else {
++        return false;
++    };
++    match file.try_lock() {
++        Ok(()) => {
++            let _ = file.unlock();
++            false
++        }
++        Err(_) => true,
++    }
++}
++
++/// Whether a rule saved at `saved` runs, as far as this computer can
++/// tell.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum Pickup {
++    /// The runner saw it at its last wake.
++    Running,
++    /// Saved after the runner's last wake: it picks it up at the next.
++    Soon,
++    /// The runner has woken since it was saved without taking it up:
++    /// something else is wrong (say, the rule can't be read).
++    Missed(Presence),
++    /// The runner here predates rules made from words.
++    OldHost(Option<Presence>),
++    /// No host runs here.
++    NoHost,
++}
++
++/// Whether `rule`, saved at `saved` (Unix seconds), runs.
++#[must_use]
++pub fn pickup(layout: &Layout, rule: &str, saved: u64) -> Pickup {
++    match look(layout) {
++        Runner::None => Pickup::NoHost,
++        Runner::Old(presence) => Pickup::OldHost(presence),
++        Runner::Current(presence) => {
++            if presence.rules.iter().any(|id| id == rule) {
++                Pickup::Running
++            } else if presence.seen <= saved + SETTLE_SECS {
++                // It reads the rules just before it writes this, so a
++                // wake after the save would have listed it.
++                Pickup::Soon
++            } else {
++                Pickup::Missed(presence)
++            }
++        }
++    }
++}
++
++/// One sentence on whether a saved rule runs, for the CLI and chat.
++#[must_use]
++pub fn sentence(pickup: &Pickup) -> String {
++    let update = |presence: &Option<Presence>| {
++        presence
++            .as_ref()
++            .and_then(|p| p.program.as_ref())
++            .map_or_else(String::new, |program| {
++                format!(" (it runs from {})", program.display())
++            })
++    };
++    match pickup {
++        Pickup::Running => "The host here runs it.".to_owned(),
++        Pickup::Soon => format!("The host here picks it up within {} seconds.", PICKUP_SECS),
++        Pickup::Missed(_) => "The host here is running but hasn't taken it up; \
++             openagents background show checks the rule can be read."
++            .to_owned(),
++        Pickup::OldHost(presence) => format!(
++            "But the host running here is an older build that doesn't run rules made from \
++             words{}, so it won't run until OpenAgents is updated and its host restarted \
++             (quit and reopen the OpenAgents app, or openagents service restart).",
++            update(presence)
++        ),
++        Pickup::NoHost => "No host is running on this computer, so it runs once one starts: \
++             open the OpenAgents app, or run openagents host serve."
++            .to_owned(),
++    }
++}
++
++/// One line for `background list` when the rules shown aren't all
++/// running: no host here, or a host too old for rules made from words.
++#[must_use]
++pub fn summary(layout: &Layout) -> Option<String> {
++    match look(layout) {
++        Runner::Current(_) => None,
++        Runner::None => Some(sentence(&Pickup::NoHost).replacen("it runs", "these rules run", 1)),
++        Runner::Old(_) => Some(
++            "The host running here is an older build: it runs the built-in and plugin rules, \
++             but rules made from words wait until OpenAgents is updated and its host restarted \
++             (quit and reopen the OpenAgents app, or openagents service restart)."
++                .to_owned(),
++        ),
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn layout(home: &std::path::Path) -> Layout {
++        Layout::new(home, None).expect("layout")
++    }
++
++    fn hold(layout: &Layout) -> File {
++        std::fs::create_dir_all(layout.background()).expect("dir");
++        let file = File::options()
++            .read(true)
++            .write(true)
++            .create(true)
++            .truncate(false)
++            .open(layout.runner_lock())
++            .expect("lock file");
++        file.try_lock().expect("take the runner lock");
++        file
++    }
++
++    #[test]
++    fn no_host_holds_the_lock_so_nothing_runs() {
++        let home = tempfile::tempdir().expect("home");
++        let layout = layout(home.path());
++        assert_eq!(look(&layout), Runner::None);
++        assert_eq!(pickup(&layout, "x", crate::paths::now()), Pickup::NoHost);
++        assert!(
++            summary(&layout)
++                .expect("says so")
++                .contains("No host is running")
++        );
++        // Looking let the lock go again.
++        let _held = hold(&layout);
++    }
++
++    #[test]
++    fn a_host_that_writes_no_presence_is_too_old_for_rules_from_words() {
++        let home = tempfile::tempdir().expect("home");
++        let layout = layout(home.path());
++        let _held = hold(&layout);
++        assert_eq!(look(&layout), Runner::Old(None));
++        let said = sentence(&pickup(&layout, "x", crate::paths::now()));
++        assert!(said.contains("older build"), "{said}");
++        assert!(summary(&layout).expect("says so").contains("older build"));
++    }
++
++    #[test]
++    fn a_presence_without_the_feature_is_old_too() {
++        let home = tempfile::tempdir().expect("home");
++        let layout = layout(home.path());
++        let _held = hold(&layout);
++        let mut presence = Presence::here(1, vec!["disk".into()]);
++        presence.features.clear();
++        write(&layout, &presence).expect("write");
++        assert!(matches!(look(&layout), Runner::Old(Some(_))));
++    }
++
++    #[test]
++    fn a_current_host_runs_what_it_saw_and_takes_up_new_rules_soon() {
++        let home = tempfile::tempdir().expect("home");
++        let layout = layout(home.path());
++        let _held = hold(&layout);
++        let now = crate::paths::now();
++        let mut presence = Presence::here(now - 600, vec!["disk".into(), "seen".into()]);
++        presence.seen = now - 5;
++        write(&layout, &presence).expect("write");
++        assert_eq!(read(&layout), Some(presence.clone()));
++        assert!(summary(&layout).is_none());
++        assert_eq!(pickup(&layout, "seen", now), Pickup::Running);
++        // Saved after its last wake: the next wake takes it up.
++        assert_eq!(pickup(&layout, "new", now), Pickup::Soon);
++        // Saved long ago and the host has woken since without it.
++        presence.seen = now;
++        write(&layout, &presence).expect("write");
++        assert!(matches!(
++            pickup(&layout, "lost", now - 2 * PICKUP_SECS),
++            Pickup::Missed(_)
++        ));
++    }
++}

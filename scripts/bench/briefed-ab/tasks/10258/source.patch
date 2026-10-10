@@ -1,0 +1,133 @@
+diff --git a/crates/coder/src/claim.rs b/crates/coder/src/claim.rs
+index f2db58058fab9d33bda38d6bd7738394f99301a0..42d410864f928baab841a90a3f9eeb1b2f1a163b 100644
+--- a/crates/coder/src/claim.rs
++++ b/crates/coder/src/claim.rs
+@@ -326,6 +326,33 @@ fn assignee<H: Hub + ?Sized>(
+     }
+ }
+ 
++/// The repositories whose projects this process could not read; each is
++/// said once, not on every claim, release and close.
++static UNREADABLE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
++
++/// What to say the first time `repository`'s projects cannot be read
++/// (`why`), or `None` when this process already said it. A token without
++/// the `project` scope reads like this: the flow goes on with comments
++/// and assignees, and the project status stays as it was.
++#[must_use]
++pub fn unreadable_projects(repository: &str, why: &str) -> Option<String> {
++    let mut said = UNREADABLE
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++    if said.iter().any(|seen| seen == repository) {
++        return None;
++    }
++    said.push(repository.to_owned());
++    let scope = if why.contains("project") || why.contains("INSUFFICIENT_SCOPES") {
++        " The GitHub token needs the `project` scope (`read:project` to read it)."
++    } else {
++        ""
++    };
++    Some(format!(
++        "Could not read {repository}'s project board, so issue statuses there stay as they are: {why}.{scope} Claims go on with comments and assignees."
++    ))
++}
++
+ /// Moves the issue's status to the first of `targets` each project has.
+ fn status<H: Hub + ?Sized>(
+     hub: &H,
+@@ -338,7 +365,9 @@ fn status<H: Hub + ?Sized>(
+     let items = match hub.items(repository, number, &project.field) {
+         Ok(items) => items,
+         Err(why) => {
+-            said.push(format!("Could not read #{number}'s projects: {why}"));
++            if let Some(line) = unreadable_projects(repository, &why) {
++                said.push(line);
++            }
+             return;
+         }
+     };
+diff --git a/crates/coder/src/claim/fake.rs b/crates/coder/src/claim/fake.rs
+index 8aae60867900db5e9791e38109d45f2ebbd53679..101060eaad067995e9e9b9c1dcbd0ba2c04198c5 100644
+--- a/crates/coder/src/claim/fake.rs
++++ b/crates/coder/src/claim/fake.rs
+@@ -34,6 +34,9 @@ pub struct Fake {
+     pub order: Mutex<Vec<u64>>,
+     /// The clock writes are stamped with.
+     pub now: u64,
++    /// Why the projects cannot be read (a token without the `project`
++    /// scope), when they cannot.
++    pub unreadable: Option<String>,
+ }
+ 
+ impl Fake {
+@@ -46,6 +49,7 @@ impl Fake {
+             issues: Mutex::new(BTreeMap::new()),
+             order: Mutex::new(Vec::new()),
+             now: 1_000,
++            unreadable: None,
+         }
+     }
+ 
+@@ -139,6 +143,9 @@ impl Hub for Fake {
+     }
+ 
+     fn items(&self, _: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
++        if let Some(why) = &self.unreadable {
++            return Err(why.clone());
++        }
+         let Some(options) = &self.options else {
+             return Ok(Vec::new());
+         };
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 65861aa714b61cc5a6adabcb19343973111e8f0c..7d36a73cf70a6d9dbbd043dfb8c9364d0a375153 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -1099,12 +1099,9 @@ impl Runner {
+         {
+             Ok(items) => items,
+             Err(why) => {
+-                note(
+-                    &mut notes,
+-                    format!(
+-                        "Coder could not read #{number}'s projects ({why}); it reads the comments only."
+-                    ),
+-                );
++                if let Some(line) = crate::claim::unreadable_projects(&repository, &why) {
++                    note(&mut notes, line);
++                }
+                 Vec::new()
+             }
+         };
+diff --git a/docs/cloud/boat-chat-work.md b/docs/cloud/boat-chat-work.md
+index c2b23b228ae2b391717a06ea8a6f368a189b0935..50a3972017ec5bdfc466765c069d1508dc905c7c 100644
+--- a/docs/cloud/boat-chat-work.md
++++ b/docs/cloud/boat-chat-work.md
+@@ -109,6 +109,11 @@ reads and deletes first. That keeps credentials:
+ | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; this computer's `git config user.name/email` | commit identity |
+ 
+ `coder-pool-git-token` is an owner OAuth token with push to the repository.
++It needs the scopes `repo` (claim comments, assignees, close, `git push`) and
++`project` (read and move the issue's Status on the OpenAgents board, project
++19; `read:project` alone reads it but cannot move it). Without `project` the
++run still lands, comments and closes; it says once that the board could not
++be read and leaves the Status as it was.
+ A GitHub App installation token (Secret Manager `coder-github-app-key`, one
+ hour, one repository) is the narrower follow-up; the reader above is the one
+ place to change.
+diff --git a/docs/cloud/gce-pool.md b/docs/cloud/gce-pool.md
+index 3a6e604aba04b4a57b2cc0ed77126faaf00e4b8f..8f252f93a00cf66f1d3295bef2acb25fa09b51be 100644
+--- a/docs/cloud/gce-pool.md
++++ b/docs/cloud/gce-pool.md
+@@ -124,6 +124,11 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
+ | `OA_CODEX_API_KEY` (optional) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
+ | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
+ 
++`GH_TOKEN` needs the scopes `repo` and `project`, as for `--on boat`
++([boat-chat-work.md](boat-chat-work.md#credentials)): without `project` the
++run lands and closes but says once that it could not read the board, and the
++issue's Status stays where it was.
++
+ They travel inside the run's script on ssh's standard input, never on a
+ command line. The host saves the script with mode 600 and the script deletes
+ its own file before anything else runs. Nothing is in the image.

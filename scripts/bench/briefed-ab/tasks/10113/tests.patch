@@ -1,0 +1,84 @@
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 594e45c5ba9d44a91b3447f2b9cf54ec8e044ee9..ca1862900ac8ead3a54ad4cfebaebd2f97ca0d52 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -1188,6 +1265,79 @@ mod tests {
+     use super::*;
+     use serde_json::json;
+ 
++    /// Grok Build's tool calls as the owner saw them on 2026-10-01
++    /// (#10113): kind `other`, its typed arguments, and its own title. Each
++    /// is a readable step line, and an unknown tool a short one, never JSON.
++    #[test]
++    fn an_agents_tool_calls_are_readable_lines() {
++        let line = |name: &str, arguments: Value, extra: Value| {
++            tool_line(
++                &json!({"tool_call_id": "c", "function_name": name, "arguments": arguments}),
++                &extra,
++            )
++        };
++        let grok = |kind: &str, title: &str| {
++            let tool = json!({"kind": kind, "status": "completed"});
++            json!({"purpose": title, "grok_tool": tool})
++        };
++        assert_eq!(
++            line(
++                "other",
++                json!({"target_directory": "."}),
++                grok("other", "List `.`")
++            ),
++            "Listed the project"
++        );
++        assert_eq!(
++            line(
++                "other",
++                json!({"target_file": "README.md"}),
++                grok("other", "Read `README.md`")
++            ),
++            "Read README.md"
++        );
++        assert_eq!(
++            line(
++                "other",
++                json!({"target_directory": "/private/var/x/scratch-1/src"}),
++                json!({})
++            ),
++            "Listed src"
++        );
++        assert_eq!(
++            line(
++                "edit",
++                json!({"file_path": "/w/src/lib.rs", "new_string": "x"}),
++                grok("edit", "")
++            ),
++            "Edited lib.rs"
++        );
++        assert_eq!(
++            line("other", json!({"command": "cargo test\n--more"}), json!({})),
++            "Ran cargo test"
++        );
++        assert_eq!(
++            line("other", json!({"pattern": "fn main"}), json!({})),
++            "Searched for fn main"
++        );
++        // No field this reads: the agent's own title, then the tool's name.
++        assert_eq!(
++            line("other", json!({"x": 1}), grok("other", "Think about `it`")),
++            "Think about it"
++        );
++        assert_eq!(
++            line("web_search", json!({"x": 1}), json!({})),
++            "Used web_search"
++        );
++        assert_eq!(
++            line("other", json!({"x": 1}), json!({"purpose": "{\"x\":1}"})),
++            "Used a tool"
++        );
++        assert_eq!(line("read", json!("a.rs"), json!({})), "read a.rs");
++        let long = line("other", json!({"command": "y".repeat(500)}), json!({}));
++        assert!(long.chars().count() <= TOOL_LINE_CHARS + 1 && long.ends_with('…'));
++    }
++
+     fn step(id: u64, source: &str, message: &str, extra: Value) -> Value {
+         json!({"step_id": id, "timestamp": format!("2026-09-30T12:00:{:02}.000Z", id), "source": source, "message": message, "extra": extra})
+     }

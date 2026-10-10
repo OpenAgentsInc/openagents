@@ -1,0 +1,37 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": false,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 2,
+    "failed": 0,
+    "eval_secs": 174,
+    "errors": [
+      "crates/coder/src/task/issue_run_tests.rs: error[E0063]: missing field `stranded` in initializer of `issue_run::Run<'_>`: missing `stranded`",
+      "error: could not compile `coder` (lib test) due to 2 previous errors"
+    ],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/issue_run_tests.rs:440:23: error[E0063]: missing field `stranded` in initializer of `issue_run::Run<'_>`: missing `stranded`\ncrates/coder/src/task/issue_run_tests.rs:520:19: error[E0063]: missing field `stranded` in initializer of `issue_run::Run<'_>`: missing `stranded`\nerror: could not compile `coder` (lib test) due to 2 previous errors\n",
+    "tests_err": "Applied patch to 'crates/coder/src/task/issue_run_tests.rs' cleanly.\n",
+    "test_tail": " Compiling iroh-relay v1.3.0\n   Compiling wat v1.259.0\n   Compiling moxcms v0.8.1\n   Compiling wasm-compose v0.254.0\n   Compiling iroh v1.3.0\n   Compiling secret-service v5.2.0\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr-transport)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build-v/crates/xp-ledger)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build-v/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-reach)\n   Compiling capability v0.1.0 (/home/christopherdavid/ab/build-v/crates/capability)\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-connect)\n   Compiling jev-hosted v0.1.0 (/home/christopherdavid/ab/build-v/crates/jev-hosted)\n   Compiling zbus-secret-service-keyring-store v1.0.1\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build-v/crates/knowledge)\n   Compiling keyring v4.2.0\n   Compiling image v0.25.10\n   Compiling cranelift-codegen v0.135.2\n   Compiling wasmtime-internal-cache v48.0.2\n   Compiling wasmtime-internal-fiber v48.0.2\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-access)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym)\n   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/ab/build-v/crates/microcoder-loop)\n   Compiling iroh-mdns-address-lookup v0.5.0\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling wasmtime-internal-unwinder v48.0.2\n   Compiling cranelift-native v0.135.2\n   Compiling cranelift-frontend v0.135.2\n   Compiling wasmtime-internal-cranelift v48.0.2\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling wasmtime v48.0.2\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build-v/crates/ext-eval)\n   Compiling coderbench v0.1.0 (/home/christopherdavid/ab/build-v/crates/coderbench)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build-v/crates/plugin)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\n    Finished `test` profile [unoptimized] target(s) in 1m 29s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 2 tests\ntest task::issue_run::tests::a_stranded_push_that_fails_says_nothing_was_pushed ... ok\ntest task::issue_run::tests::a_change_that_cannot_land_is_kept_on_a_stranded_branch_on_origin ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 972 filtered out; finished in 0.92s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 32,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "Applied patch to 'crates/coder/src/task/issue_run_tests.rs' cleanly.\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\nerror[E0425]: cannot find function `stranded_branch` in module `super`\n    --> crates/coder/src/task/issue_run_tests.rs:1055:25\n     |\n1055 |     let branch = super::stranded_branch(\"task-fixture-1234\");\n     |                         ^^^^^^^^^^^^^^^ not found in `super`\n\nerror[E0560]: struct `issue_run::Run<'_>` has no field named `stranded`\n   --> crates/coder/src/task/issue_run_tests.rs:451:13\n    |\n451 |             stranded: None,\n    |             ^^^^^^^^ `issue_run::Run<'_>` does not have this field\n    |\n    = note: all struct fields are already assigned\n\nerror[E0560]: struct `issue_run::Run<'_>` has no field named `stranded`\n   --> crates/coder/src/task/issue_run_tests.rs:535:9\n    |\n535 |         stranded: None,\n    |         ^^^^^^^^ `issue_run::Run<'_>` does not have this field\n    |\n    = note: all struct fields are already assigned\n\nerror[E0560]: struct `issue_run::Run<'_>` has no field named `stranded`\n    --> crates/coder/src/task/issue_run_tests.rs:1035:9\n     |\n1035 |         stranded: None,\n     |         ^^^^^^^^ `issue_run::Run<'_>` does not have this field\n     |\n     = note: all struct fields are already assigned\n\nerror[E0599]: no method named `strand` found for struct `issue_run::Run<'a>` in the current scope\n    --> crates/coder/src/task/issue_run_tests.rs:1037:20\n     |\n1037 |     let kept = run.strand();\n     |                    ^^^^^^\n     |\n    ::: crates/coder/src/task/issue_run.rs:1521:1\n     |\n1521 | struct Run<'a> {\n     | -------------- method `strand` not found for this struct\n     |\nhelp: there is a method `and` with a similar name, but with different arguments\n    --> /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tower-http-0.6.11/src/follow_redirect/policy/mod.rs:141:5\n     |\n 141 | /     fn and<P, B, E>(self, other: P) -> And<Self, P>\n 142 | |     where\n 143 | |         Self: Policy<B, E> + Sized,\n 144 | |         P: Policy<B, E>;\n     | |________________________^\n\nSome errors have detailed explanations: E0425, E0560, E0599.\nFor more information about an error, try `rustc --explain E0425`.\nerror: could not compile `coder` (lib test) due to 5 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

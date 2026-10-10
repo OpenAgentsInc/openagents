@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10299,
+  "title": "Fold coder-delegate branched runs onto task worktrees",
+  "body": "P4.1: coder-delegate keeps its own branched-run worktrees; move them onto the task worktree/slot machinery so lifecycle removal, slots and guard apply uniformly.\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec).",
+  "fix": "51f76912e8616ff611a52b4122a47af811a6a1fd",
+  "parent": "82be23cec192785ea80e4e85a4ed9b595ff958e2",
+  "package": "coder",
+  "source_files": [
+    "crates/coder-delegate/src/issue.rs",
+    "crates/coder/src/delegate_door/microcoder.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/delegate_door/microcoder.rs"
+  ],
+  "test_names": [
+    "a_clone_of_its_own_is_not_released",
+    "a_flow_that_changed_nothing_leaves_no_worktree_or_branch",
+    "a_flow_whose_work_would_be_lost_keeps_its_worktree"
+  ],
+  "fix_lines": 263
+}

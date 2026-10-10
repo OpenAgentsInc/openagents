@@ -1,0 +1,107 @@
+diff --git a/crates/verse-zone-everglade/src/zones/everglade/demolition/town_tests.rs b/crates/verse-zone-everglade/src/zones/everglade/demolition/town_tests.rs
+index b0076eb4e2a12f3f2d6f9e8b2235c1286a090140..fe602fce65db04ab4b7a5e452317c7dfb0282987 100644
+--- a/crates/verse-zone-everglade/src/zones/everglade/demolition/town_tests.rs
++++ b/crates/verse-zone-everglade/src/zones/everglade/demolition/town_tests.rs
+@@ -356,7 +356,7 @@ fn the_caps_hold_under_repeated_casts() {
+             .count();
+         assert!(alive <= MAX_CHUNKS, "{alive} chunks");
+     }
+-    // Buildings let go stand whole in the static cells again.
++    // Buildings let go keep their damage; see the eviction test.
+     let raised = town.raised();
+     let hidden_raised = town
+         .refs()
+@@ -1072,3 +1072,93 @@ fn a_kit_house_breaks_piece_by_piece_and_its_upper_story_falls_with_its_walls()
+         "pieces above the ground floor still stand"
+     );
+ }
++
++/// Blasts the south front of `building` hard enough to break pieces, and
++/// runs `after` seconds.
++fn wreck_front(town: &mut Town, building: usize, after: f32) -> PlayerController {
++    let at = south_front(&town.buildings()[building]);
++    let player = caster(at, 14.0);
++    for up in [0.5, 2.0] {
++        town.blast(at + Vec3::Y * up, 2.0, 400, Vec3::Z);
++    }
++    run(town, &player, after);
++    player
++}
++
++fn gone(town: &Town, building: usize) -> usize {
++    pieces(town, building)
++        .into_iter()
++        .filter(|&(_, s)| s != Status::Standing)
++        .count()
++}
++
++/// Destroys more buildings than the live cap holds: the evicted ones keep
++/// their damage instead of standing whole again, and keep breaking from
++/// where they were when hit again.
++#[test]
++fn eviction_freezes_destruction_and_a_frozen_building_breaks_on() {
++    let mut town = town();
++    town.set_caps(2, super::town::MAX_PIECES);
++    let targets: Vec<usize> = town
++        .buildings()
++        .iter()
++        .enumerate()
++        .filter(|(_, b)| b.destructible() && !b.is_carved())
++        .map(|(i, _)| i)
++        .take(3)
++        .collect();
++    assert_eq!(targets.len(), 3, "three kit buildings to break");
++    let first = targets[0];
++    wreck_front(&mut town, first, 4.0);
++    let broken = gone(&town, first);
++    assert!(broken >= 1, "the first blast broke {broken} pieces");
++    let whole = town.buildings()[first].pieces.len();
++    for &b in &targets[1..] {
++        wreck_front(&mut town, b, 4.0);
++    }
++    assert!(town.raised().len() <= 2, "{:?}", town.raised());
++    assert!(
++        !town.raised().contains(&first),
++        "the first building was evicted"
++    );
++    let frozen = town.frozen();
++    let kept = frozen
++        .iter()
++        .find(|(b, _)| *b == first)
++        .map(|(_, gone)| *gone)
++        .expect("the evicted building froze");
++    assert!(kept >= broken, "{kept} pieces stay gone of {broken} broken");
++    assert!(
++        town.hidden() >= kept,
++        "its gone pieces stay out of the static cells"
++    );
++    // Hit again, it lifts from its frozen state, not whole.
++    wreck_front(&mut town, first, 2.0);
++    assert!(town.raised().contains(&first));
++    let live = pieces(&town, first).len();
++    assert!(
++        live + kept <= whole && live < whole,
++        "{live} live of {whole}"
++    );
++    // Only the restore key brings it back.
++    town.restore();
++    assert!(town.frozen().is_empty());
++    assert_eq!(town.hidden(), 0);
++}
++
++#[cfg(feature = "dev-destruction")]
++#[test]
++fn dev_destruction_never_regrows_on_its_own() {
++    use super::town::REGROW;
++    let mut town = town();
++    let hut = building(&town, HUT);
++    wreck_front(&mut town, hut, 2.0);
++    let broken = gone(&town, hut);
++    assert!(broken >= 1);
++    let far = PlayerController::new(Vec3::new(500.0, 0.0, 500.0), 0.0);
++    run(&mut town, &far, 2.0 * REGROW + 5.0);
++    let standing_whole =
++        !town.raised().contains(&hut) && town.frozen().iter().all(|(b, _)| *b != hut);
++    assert!(!standing_whole, "the hut regrew");
++    assert!(town.hidden() >= 1);
++}

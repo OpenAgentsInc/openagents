@@ -1,0 +1,230 @@
+diff --git a/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs b/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
+index de3a41444fffe257f925605f1d8d1c8dd1aa38e5..113337b50684f0e1087aa3675aedf1524832aa00 100644
+--- a/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
++++ b/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
+@@ -35,7 +35,8 @@
+ //! frame's figure, posed each frame from their bodies. At most
+ //! [`MAX_LIVE`] buildings are raised at once and at most [`MAX_CHUNKS`]
+ //! chunks live. A raised building that took no damage goes back to the
+-//! static cells at once; a damaged one regrows whole after [`REGROW`]
++//! static cells at once; a damaged one let go keeps its damage frozen until
++//! the town is restored, and, unless [`REGROWS`] is off, regrows whole after [`REGROW`]
+ //! seconds of rest with the player away; `R` restores the whole town.
+ //! While a building is raised, its blockers and roof surface come from its
+ //! standing pieces, and a carved building's columns from its standing
+@@ -76,10 +77,10 @@ const SMALL: bool = cfg!(any(
+     target_os = "android"
+ ));
+ /// Most buildings raised into the rules at once.
+-pub const MAX_LIVE: usize = if SMALL { 6 } else { 12 };
++pub const MAX_LIVE: usize = if SMALL { 6 } else { 24 };
+ /// Most pieces of the raised buildings at once: a big carved hall has a
+-/// hundred blocks.
+-pub const MAX_PIECES: usize = if SMALL { 240 } else { 520 };
++/// hundred blocks, a medieval kit house about sixty pieces.
++pub const MAX_PIECES: usize = if SMALL { 240 } else { 1500 };
+ /// Most chunks alive at once across the town.
+ pub const MAX_CHUNKS: usize = if SMALL { 128 } else { 260 };
+ /// The most bytes of geometry the town's loose pieces and debris hold, on
+@@ -98,6 +99,9 @@ const SHRINK_FLOOR: usize = 1 << 16;
+ /// [`REGROW_DISTANCE`] m away, before it stands whole again.
+ pub const REGROW: f32 = 60.0;
+ pub const REGROW_DISTANCE: f32 = 30.0;
++/// Whether damaged buildings regrow on their own at all. A
++/// `dev-destruction` build rebuilds only on the restore key.
++pub const REGROWS: bool = !cfg!(feature = "dev-destruction");
+ /// Seconds a raised building that took no damage waits before it goes
+ /// back to the static cells.
+ const SETTLE: f32 = 2.0;
+@@ -266,6 +270,16 @@ fn surface(roof: &Roof, x: f32, z: f32) -> Option<f32> {
+         .then(|| roof.ridge - (roof.ridge - roof.eave) * u.abs() / roof.half[0])
+ }
+ 
++/// What a piece of a building that left the rules keeps of its damage.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum Frozen {
++    Whole,
++    /// Standing, with these hit points left.
++    Damaged(i32),
++    /// Broken or fallen: it stays out of the static cells.
++    Gone,
++}
++
+ /// A building raised into the rules, and when.
+ #[derive(Clone, Copy, Debug)]
+ struct Lifted {
+@@ -346,6 +360,13 @@ struct Wreck {
+     /// For each site piece, its building and its index there.
+     refs: Vec<(usize, usize)>,
+     lifted: Vec<Lifted>,
++    /// Most buildings and pieces raised at once.
++    max_live: usize,
++    max_pieces: usize,
++    /// The damage each building that left the rules keeps, by piece: a
++    /// building let go freezes as it was rather than standing whole again,
++    /// until the town is restored.
++    frozen: BTreeMap<usize, Vec<Frozen>>,
+     /// Each chunk shape's boxes, in the body frame, and its meshes.
+     cuboids: Vec<Vec<Cuboid>>,
+     meshes: Vec<Vec<ChunkMesh>>,
+@@ -464,7 +485,7 @@ impl Wreck {
+             return false;
+         }
+         let size = self.buildings[building].pieces.len();
+-        while self.lifted.len() >= MAX_LIVE || self.live_pieces() + size > MAX_PIECES {
++        while self.lifted.len() >= self.max_live || self.live_pieces() + size > self.max_pieces {
+             if self.lifted.is_empty() {
+                 return false;
+             }
+@@ -482,21 +503,31 @@ impl Wreck {
+         }
+         self.prepare(building);
+         let b = &self.buildings[building];
++        let frozen = self.frozen.get(&building);
++        let mut kept = Vec::new();
+         let specs: Vec<PieceSpec> = b
+             .pieces
+             .iter()
+-            .map(|p| {
++            .enumerate()
++            .filter_map(|(k, p)| {
++                let state = frozen.and_then(|f| f.get(k)).copied();
++                if state == Some(Frozen::Gone) {
++                    return None;
++                }
+                 let mut spec = p.draft.spec(self.cuboids[p.look.shape].clone());
+                 if p.carve.is_some() {
+                     spec.link = p.link.clone();
+                     spec.blocks = false;
+                 }
+-                spec
++                if let Some(Frozen::Damaged(left)) = state {
++                    spec.hit_points = left.min(spec.hit_points);
++                }
++                kept.push((building, k));
++                Some(spec)
+             })
+             .collect();
+-        let count = specs.len();
+         self.site.add(specs);
+-        self.refs.extend((0..count).map(|k| (building, k)));
++        self.refs.extend(kept);
+         self.lifted.push(Lifted {
+             building,
+             since: self.clock,
+@@ -506,9 +537,29 @@ impl Wreck {
+         true
+     }
+ 
+-    /// Takes `building` out of the rules: it stands whole in the static
+-    /// cells again.
++    /// Takes `building` out of the rules. Damage it took stays: broken and
++    /// fallen pieces stay out of the static cells and standing pieces keep
++    /// their hit points, until the town is restored.
+     fn let_go(&mut self, building: usize) {
++        let count = self.buildings[building].pieces.len();
++        let mut frozen = self
++            .frozen
++            .remove(&building)
++            .unwrap_or_else(|| vec![Frozen::Whole; count]);
++        for (i, (spec, piece)) in self.site.specs().iter().zip(self.site.pieces()).enumerate() {
++            if spec.building != building {
++                continue;
++            }
++            let k = self.refs[i].1;
++            frozen[k] = match piece.status {
++                Status::Standing if piece.hit_points >= spec.hit_points => Frozen::Whole,
++                Status::Standing => Frozen::Damaged(piece.hit_points),
++                Status::Loose | Status::Broken => Frozen::Gone,
++            };
++        }
++        if frozen.iter().any(|f| *f != Frozen::Whole) {
++            self.frozen.insert(building, frozen);
++        }
+         self.site.retain(|spec| spec.building != building);
+         self.refs.retain(|&(b, _)| b != building);
+         self.lifted.retain(|l| l.building != building);
+@@ -1176,6 +1227,9 @@ impl Town {
+                 floors,
+                 refs: Vec::new(),
+                 lifted: Vec::new(),
++                max_live: MAX_LIVE,
++                max_pieces: MAX_PIECES,
++                frozen: BTreeMap::new(),
+                 cuboids,
+                 meshes,
+                 placements: placements.to_vec(),
+@@ -1247,6 +1301,24 @@ impl Town {
+         self.hidden.len()
+     }
+ 
++    /// The buildings that left the rules damaged, each with how many of
++    /// its pieces are gone.
++    #[must_use]
++    pub fn frozen(&self) -> Vec<(usize, usize)> {
++        self.wreck
++            .frozen
++            .iter()
++            .map(|(&b, f)| (b, f.iter().filter(|f| **f == Frozen::Gone).count()))
++            .collect()
++    }
++
++    /// Bounds the buildings and pieces raised at once, under
++    /// [`MAX_LIVE`] and [`MAX_PIECES`].
++    pub fn set_caps(&mut self, live: usize, pieces: usize) {
++        self.wreck.max_live = live.clamp(1, MAX_LIVE);
++        self.wreck.max_pieces = pieces.clamp(1, MAX_PIECES);
++    }
++
+     /// Swings with the player's character's chop `track` from now on.
+     pub fn set_track(&mut self, track: Option<SwingTrack>) {
+         self.hammer.set_track(track);
+@@ -1489,6 +1561,7 @@ impl Town {
+         self.wreck.site =
+             Wreck::empty_site(&self.wreck.floors, self.wreck.water, self.wreck.debris);
+         self.wreck.refs.clear();
++        self.wreck.frozen.clear();
+         self.swarm.reset();
+         self.rebuild = self.rebuild_every;
+         for (i, caster) in self.bombardiers.iter_mut().enumerate() {
+@@ -1719,8 +1792,8 @@ impl Town {
+             let away = self.wreck.buildings[l.building].distance(player.pos) > REGROW_DISTANCE;
+             let rested = now - l.hit.max(l.since);
+             if (whole && rested > SETTLE)
+-                || (quiet && away && rested > REGROW)
+-                || (away && rested > 2.0 * REGROW)
++                || (REGROWS && quiet && away && rested > REGROW)
++                || (REGROWS && away && rested > 2.0 * REGROW)
+             {
+                 done.push(l.building);
+             }
+@@ -1749,8 +1822,17 @@ impl Town {
+             .filter(|(_, (s, p))| p.status != Status::Standing || p.hit_points < s.hit_points)
+             .map(|(i, _)| i)
+             .collect();
+-        let hidden: BTreeSet<(usize, usize)> =
++        let mut hidden: BTreeSet<(usize, usize)> =
+             damaged.iter().map(|&i| self.wreck.refs[i]).collect();
++        for (&b, frozen) in &self.wreck.frozen {
++            hidden.extend(
++                frozen
++                    .iter()
++                    .enumerate()
++                    .filter(|(_, f)| **f == Frozen::Gone)
++                    .map(|(k, _)| (b, k)),
++            );
++        }
+         self.world.edits.set_group_fallbacks(
+             hidden
+                 .iter()
+@@ -1958,7 +2040,9 @@ impl Town {
+             }
+         }
+         for (b, building) in self.wreck.buildings.iter().enumerate() {
+-            let lifted = self.wreck.lifted(b);
++            // A frozen building's walls are partly gone, so its whole-building
++            // blocks and roofs come out with it.
++            let lifted = self.wreck.lifted(b) || self.wreck.frozen.contains_key(&b);
+             for c in &building.carved {
+                 let mask = if lifted {
+                     standing.remove(&c.placement).map(Arc::new)

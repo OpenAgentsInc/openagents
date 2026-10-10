@@ -1,0 +1,84 @@
+diff --git a/crates/coder/src/task/owner/route_tests.rs b/crates/coder/src/task/owner/route_tests.rs
+index 526e7e7f521a2edda6a0bc274c64d51acd11547a..23491afdcf32988df254ecc42555f509b50e781c 100644
+--- a/crates/coder/src/task/owner/route_tests.rs
++++ b/crates/coder/src/task/owner/route_tests.rs
+@@ -485,3 +485,79 @@ async fn a_local_check_whose_owner_is_gone_is_not_waited_on() {
+     let task = Store::open(&dir).unwrap().show(&grant.task_id).unwrap();
+     assert_eq!(task.checks, Checks::Unavailable);
+ }
++
++/// An issue flow's fix turn waits for the host's checks of the last turn
++/// (#10273): while they run, the finished task cannot continue ("the task
++/// cannot make this transition"), so the flow waits; once the checks end
++/// (here, unavailable because their owner is gone), the next turn starts.
++#[cfg(unix)]
++#[tokio::test]
++async fn a_fix_turn_waits_for_the_last_turns_checks_to_end() {
++    use crate::task::{local, local_checks};
++    let (root, _workspace, mut grant) = fixture();
++    let dir = root.path().join("store");
++    grant.arguments[1] = "printf output > result.txt".into();
++    grant.requirements = local_checks::requirements(
++        &root.path().join("grants"),
++        &grant.task_id,
++        grant.expected_revision,
++    )
++    .unwrap();
++    let task = execute(&dir, &serde_json::to_vec(&grant).unwrap())
++        .await
++        .unwrap();
++    let run = task.run.as_ref().unwrap();
++    local_checks::list(
++        grant.requirements.as_ref().unwrap(),
++        &run.admission.workspace,
++        &run.admission.source_revision,
++        &["true".into()],
++        &[],
++    )
++    .unwrap();
++    let id = grant.task_id.clone();
++    let fix = |revision: u64| {
++        serde_json::to_vec(&Command {
++            schema: COMMAND_SCHEMA.into(),
++            command_id: format!("fix-{revision}"),
++            task_id: id.clone(),
++            expected_revision: Some(revision),
++            action: Action::Continue {
++                prompt: "Fix the problems the checks found.".into(),
++            },
++        })
++        .unwrap()
++    };
++    let owner = hold(&dir, &id);
++    owner.record(Event::CheckIntent).unwrap();
++    let checking = Store::open(&dir).unwrap().show(&id).unwrap();
++    assert_eq!(checking.status, Status::Finished);
++    assert_eq!(checking.checks, Checks::Running);
++    // The transition coderos-4080 refused for #10258.
++    assert!(matches!(
++        Store::open(&dir).unwrap().apply(&fix(checking.revision)),
++        Err(Error::InvalidTransition)
++    ));
++    // A stop ends the wait at once.
++    assert_eq!(
++        local::await_checks(&dir, &id, &|| true, Duration::from_millis(10)),
++        Ok(false)
++    );
++    std::thread::scope(|scope| {
++        let waiting =
++            scope.spawn(|| local::await_checks(&dir, &id, &|| false, Duration::from_millis(20)));
++        std::thread::sleep(Duration::from_millis(300));
++        assert!(!waiting.is_finished(), "waits while the checks run");
++        drop(owner);
++        assert_eq!(waiting.join().unwrap(), Ok(true));
++    });
++    let checked = Store::open(&dir).unwrap().show(&id).unwrap();
++    assert_eq!(checked.checks, Checks::Unavailable);
++    Store::open(&dir)
++        .unwrap()
++        .apply(&fix(checked.revision))
++        .unwrap();
++    let next = Store::open(&dir).unwrap().show(&id).unwrap();
++    assert_eq!(next.status, Status::Queued);
++    assert_eq!(next.follow_ups.len(), 1);
++}

@@ -1,0 +1,36 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": false,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 2,
+    "failed": 0,
+    "eval_secs": 37,
+    "errors": [
+      "error: failed to parse manifest at `/home/christopherdavid/ab/build-v/crates/ext-eval/Cargo.toml`"
+    ],
+    "apply_err": "",
+    "check_tail": "error: failed to parse manifest at `/home/christopherdavid/ab/build-v/crates/ext-eval/Cargo.toml`\n\nCaused by:\n  can't find `blob` test at `tests/blob.rs` or `tests/blob/main.rs`. Please specify test.path if you want to use a non-default path.\n",
+    "tests_err": "crates/ext-eval/tests/blob.rs: applied\n",
+    "test_tail": "ng rand v0.9.5\n   Compiling url v2.5.8\n   Compiling wasmtime-internal-jit-debug v48.0.2\n   Compiling wasmtime-internal-fiber v48.0.2\n   Compiling wasmtime v48.0.2\n   Compiling pulley-interpreter v48.0.2\n   Compiling tempfile v3.27.0\n   Compiling memfd v0.6.6\n   Compiling secp256k1 v0.31.1\n   Compiling fxprof-processed-profile v0.8.1\n   Compiling atif v0.1.0 (/home/christopherdavid/ab/build-v/crates/atif)\n   Compiling coder-boundary v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-boundary)\n   Compiling nostr v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr)\n   Compiling tracing v0.1.44\n   Compiling axum-core v0.5.6\n   Compiling hyper v1.11.1\n   Compiling tower v0.5.3\n   Compiling tokio-util v0.7.19\n   Compiling tokio-rustls v0.26.5\n   Compiling tungstenite v0.30.0\n   Compiling tower-http v0.6.11\n   Compiling cranelift-codegen-meta v0.135.2\n   Compiling hyper-util v0.1.20\n   Compiling tokio-tungstenite v0.30.0\n   Compiling addr2line v0.26.1\n   Compiling wasm-encoder v0.254.0\n   Compiling wit-parser v0.254.0\n   Compiling hyper-rustls v0.27.9\n   Compiling axum v0.8.9\n   Compiling reqwest v0.12.28\n   Compiling cranelift-codegen v0.135.2\n   Compiling wasmprinter v0.254.0\n   Compiling wasm-metadata v0.254.0\n   Compiling jev v0.1.0 (/home/christopherdavid/ab/build-v/crates/jev)\n   Compiling codex-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/codex-transport)\n   Compiling openrouter v0.1.0 (/home/christopherdavid/ab/build-v/crates/openrouter)\n   Compiling wit-component v0.254.0\n   Compiling wasmtime-environ v48.0.2\n   Compiling wasm-compose v0.254.0\n   Compiling model-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/model-access)\n   Compiling wasmtime-internal-wit-bindgen v48.0.2\n   Compiling wasmtime-internal-component-macro v48.0.2\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr-transport)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build-v/crates/xp-ledger)\n   Compiling jev-hosted v0.1.0 (/home/christopherdavid/ab/build-v/crates/jev-hosted)\n   Compiling wasmtime-internal-cache v48.0.2\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build-v/crates/knowledge)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym)\n   Compiling wasmtime-internal-unwinder v48.0.2\n   Compiling cranelift-frontend v0.135.2\n   Compiling cranelift-native v0.135.2\n   Compiling wasmtime-internal-cranelift v48.0.2\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build-v/crates/plugin)\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build-v/crates/ext-eval)\n    Finished `test` profile [unoptimized] target(s) in 36.43s\n     Running tests/blob.rs (/home/christopherdavid/ab/target-v/debug/deps/blob-d809dfebfe4781c5)\n\nrunning 2 tests\ntest a_relay_without_media_refuses_with_a_way_out ... ok\ntest an_upload_carries_a_nip98_authorization_and_reads_back_through_a_redirect ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 1,
+    "failed": 1,
+    "eval_secs": 24,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/ext-eval/tests/blob.rs: applied\n",
+    "test_tail": "   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build-v/crates/ext-eval)\n    Finished `test` profile [unoptimized] target(s) in 3.03s\n     Running tests/blob.rs (/home/christopherdavid/ab/target-v/debug/deps/blob-d809dfebfe4781c5)\n\nrunning 2 tests\ntest a_relay_without_media_refuses_with_a_way_out ... FAILED\ntest an_upload_carries_a_nip98_authorization_and_reads_back_through_a_redirect ... ok\n\nfailures:\n\n---- a_relay_without_media_refuses_with_a_way_out stdout ----\n\nthread 'a_relay_without_media_refuses_with_a_way_out' (2508467) panicked at crates/ext-eval/tests/blob.rs:194:5:\nhttp://127.0.0.1:40139 refused the upload (405 Method Not Allowed): \nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    a_relay_without_media_refuses_with_a_way_out\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\nerror: test failed, to rerun pass `-p ext-eval --test blob`\nerror: 1 target failed:\n    `-p ext-eval --test blob`\n"
+  },
+  "usable": true,
+  "behavioral": true
+}

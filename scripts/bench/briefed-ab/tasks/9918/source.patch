@@ -1,0 +1,26 @@
+diff --git a/docs/verse/mobile.md b/docs/verse/mobile.md
+index 3ff6432de2abd742b9e0b5b376e3c4eda30010ed..b3c930ff3bf44ab2f97e15430b1bdd1597b3219e 100644
+--- a/docs/verse/mobile.md
++++ b/docs/verse/mobile.md
+@@ -70,10 +70,17 @@ Lab use:
+   (Cd 0.47, air 1.2 kg/m³). Pushed at running speed (6.4 m/s), the ball
+   rolls about 22 m and sleeps within 15 s.
+ - Steps are 1/120 s with at most 12 per frame, as in Lagrange 1; the ball is
+-  drawn between its last two poses. A step takes about 20 µs in a debug
+-  build (`cargo test -p verse --lib ball -- --nocapture` prints it), and the
+-  iOS simulator's debug build reports 0.02 ms asleep and 0.06 to 0.08 ms per
+-  frame while rolling.
++  drawn between its last two poses. The unit tests hold the step's work to
++  a budget by counting it, not timing it: two steps a frame, at most 80
++  manifolds and 320 contact points (the blocks settling as the world opens),
++  20 solver iterations, and one or two bodies awake once they settle
++  (`cargo test -p verse --lib ball -- --nocapture` prints the counts). The
++  wall-clock budget, a worst step under 5 ms, is an ignored test run in
++  release on an idle machine
++  (`cargo test --release -p verse --lib ball -- --ignored --nocapture`),
++  because a loaded machine stretches debug timings past it (#9918). A step
++  takes about 20 µs in a debug build, and the iOS simulator's debug build
++  reports 0.02 ms asleep and 0.06 to 0.08 ms per frame while rolling.
+ 
+ The ball is drawn through the physical renderer on the neon stage. A studio
+ [`pbr::Key`](../../crates/verse/src/pbr/mod.rs) lights lit geometry with

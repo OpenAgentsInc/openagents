@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 126,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/openagents-cli/src/service.rs: applied\n",
+    "test_tail": ".com/moneydevkit/rust-lightning?rev=a35e12311bf0b437f3ef9a7e00798eef5289930e#a35e1231)\n   Compiling lightning-persister v0.2.3 (https://github.com/moneydevkit/rust-lightning?rev=a35e12311bf0b437f3ef9a7e00798eef5289930e#a35e1231)\n   Compiling lightning-block-sync v0.2.0 (https://github.com/moneydevkit/rust-lightning?rev=a35e12311bf0b437f3ef9a7e00798eef5289930e#a35e1231)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling lightning-transaction-sync v0.2.1 (https://github.com/moneydevkit/rust-lightning?rev=a35e12311bf0b437f3ef9a7e00798eef5289930e#a35e1231)\n   Compiling verse v0.1.0 (/home/christopherdavid/ab/build-v/crates/verse)\n   Compiling wasmtime v48.0.2\n   Compiling lightning-background-processor v0.2.3 (https://github.com/moneydevkit/rust-lightning?rev=a35e12311bf0b437f3ef9a7e00798eef5289930e#a35e1231)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling spark-wallet v0.1.0 (https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d)\n   Compiling bitcoin-payment-instructions v0.6.0 (https://github.com/moneydevkit/bitcoin-payment-instructions?rev=6796e87525d6c564e1332354a808730e2ba2ebf8#6796e875)\n   Compiling ldk-node v0.7.0 (https://github.com/moneydevkit/ldk-node?rev=799e5be2ffaaaf2524d848ea1ba37bd15769f403#799e5be2)\n   Compiling flashnet v0.1.0 (https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d)\n   Compiling breez-sdk-common v0.1.0 (https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build-v/crates/plugin)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build-v/crates/ext-eval)\n   Compiling breez-sdk-spark v0.1.0 (https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d)\n   Compiling openagents-terminal v1.0.0-rc.2 (/home/christopherdavid/ab/build-v/crates/openagents-terminal)\n   Compiling openagents-wallet v0.1.0 (/home/christopherdavid/ab/build-v/crates/wallet)\n   Compiling openagents-spark v0.1.0 (/home/christopherdavid/ab/build-v/crates/spark-wallet)\n   Compiling coder-labor v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-labor)\n   Compiling microcoder v1.0.0-rc.2 (/home/christopherdavid/ab/build-v/crates/microcoder)\n   Compiling openagents-cli v1.0.0-rc.2 (/home/christopherdavid/ab/build-v/crates/openagents-cli)\n    Finished `test` profile [unoptimized] target(s) in 1m 16s\n     Running unittests src/main.rs (/home/christopherdavid/ab/target-v/debug/deps/openagents-3d5b0fb94665f352)\n\nrunning 1 test\ntest service::tests::the_app_host_is_reported_instead_of_asking_to_install ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 210 filtered out; finished in 0.00s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 19,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/openagents-cli/src/service.rs: applied\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling microcoder v1.0.0-rc.2 (/home/christopherdavid/ab/build-v/crates/microcoder)\n   Compiling coder-labor v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-labor)\n   Compiling openagents-cli v1.0.0-rc.2 (/home/christopherdavid/ab/build-v/crates/openagents-cli)\nerror[E0425]: cannot find function `app_host_value` in this scope\n   --> crates/openagents-cli/src/service.rs:552:21\n    |\n552 |         let value = app_host_value(Some(&app));\n    |                     ^^^^^^^^^^^^^^ not found in this scope\n\nerror[E0425]: cannot find function `render_app_host` in this scope\n   --> crates/openagents-cli/src/service.rs:554:20\n    |\n554 |         let text = render_app_host(&value);\n    |                    ^^^^^^^^^^^^^^^ not found in this scope\n\nFor more information about this error, try `rustc --explain E0425`.\nerror: could not compile `openagents-cli` (bin \"openagents\" test) due to 2 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

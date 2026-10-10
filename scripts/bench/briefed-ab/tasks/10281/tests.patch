@@ -1,0 +1,81 @@
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 5dadc36b5ab4431683182a610b22737b50b1c93a..3b72220630484195bc5e4da1eb6e8d4fac1b5073 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -1740,3 +1796,35 @@ mod source_snapshot_tests {
+         assert!(source_snapshot_refusal(&partial, Some(&partial.digest())).is_some());
+     }
+ }
++
++#[cfg(all(test, unix))]
++mod group_settle_tests {
++    use super::*;
++
++    /// #10281: a group not clear when the supervisor gave up is read again
++    /// for a while before the run counts its cleanup unknown: a group that
++    /// empties counts as clear, one that stays doesn't, and a group with
++    /// no identifier is never confirmed.
++    #[tokio::test]
++    async fn a_group_is_given_time_to_empty_before_cleanup_counts_unknown() {
++        let every = Duration::from_millis(10);
++        // This test's own process group stays running.
++        // SAFETY: getpgrp has no preconditions.
++        let own = unsafe { libc::getpgrp() };
++        assert!(!group_settles(Some(own), Duration::from_millis(50), every).await);
++        assert!(!group_settles(None, Duration::from_millis(50), every).await);
++        // A child in its own group that exits within the wait.
++        let mut child = {
++            use std::os::unix::process::CommandExt;
++            std::process::Command::new("sleep")
++                .arg("0.2")
++                .process_group(0)
++                .spawn()
++                .unwrap()
++        };
++        let group = i32::try_from(child.id()).unwrap();
++        let reaper = std::thread::spawn(move || child.wait());
++        assert!(group_settles(Some(group), Duration::from_secs(5), every).await);
++        reaper.join().unwrap().unwrap();
++    }
++}
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 65e5708d7cab6287dc125e207391394ef97166fa..17bf050b0bd89db00c13f5fc5a404d7d9e3310b1 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -2206,6 +2227,36 @@ mod tests {
+         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+     }
+ 
++    /// #10281: a command that ran past its deadline with its processes not
++    /// confirmed gone ends the turn as that fault, naming the command, and
++    /// never as a stop the person asked for.
++    #[test]
++    fn a_cleanup_fault_names_the_timed_out_command() {
++        let mut mapper = Mapper::new(1, None);
++        mapper.step(&step(
++            1,
++            "system",
++            "ran",
++            mc(json!({"event": "ran", "step": 1, "result": {"command": "cargo test -p coder follower_\necho done", "exit": null, "timed_out": true, "seconds": 300.4, "output": ""}})),
++        ));
++        let end = mapper.end("process_cleanup_unknown", vec![], "", "", None);
++        assert_eq!(end.name(), "failure");
++        let CoderEvent::Failure(failure) = &end else {
++            panic!("{end:?}")
++        };
++        assert!(
++            failure
++                .message
++                .contains("`cargo test -p coder follower_` ran past its deadline (300s)"),
++            "{}",
++            failure.message
++        );
++        assert!(failure.message.contains("Nobody stopped the task."));
++        assert_eq!(failure.ending.as_deref(), Some("process_cleanup_unknown"));
++        let unnamed = Mapper::new(1, None).end("process_cleanup_unknown", vec![], "", "", None);
++        assert_eq!(unnamed.name(), "failure");
++    }
++
+     /// When the person asked for an engine, the runner says so first, and
+     /// why another runs when it does (#10076).
+     #[test]

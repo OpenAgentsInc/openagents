@@ -1,0 +1,42 @@
+diff --git a/crates/coder/src/task/owner/tests.rs b/crates/coder/src/task/owner/tests.rs
+index 758c5b13bbed1e138575ef06463bf49366505161..219385de54bf3d3b2602b794444444a60401c2fb 100644
+--- a/crates/coder/src/task/owner/tests.rs
++++ b/crates/coder/src/task/owner/tests.rs
+@@ -1075,6 +1075,37 @@ async fn the_owner_process_waits_out_a_store_busy_past_the_lock_wait() {
+     assert_eq!(task.execution, Execution::Finished);
+ }
+ 
++/// A new turn's owner waits out another holder of the task's owner lock
++/// (a reader probing whether an owner lives, or the last turn's owner
++/// letting go) instead of refusing the start with "another process holds
++/// the task store lock" (#10301). A probe still answers at once.
++#[tokio::test]
++async fn a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock() {
++    let (root, _workspace, grant) = fixture();
++    let dir = root.path().join("store");
++    let bytes = serde_json::to_vec(&grant).unwrap();
++    let (held, taken) = std::sync::mpsc::channel();
++    let probe_dir = dir.clone();
++    let holder = std::thread::spawn(move || {
++        let store = Store::open(&probe_dir).unwrap();
++        let _owner = Owner::acquire(&store, "task-one").unwrap();
++        held.send(()).unwrap();
++        std::thread::sleep(Duration::from_millis(400));
++    });
++    taken.recv().unwrap();
++    // Probing while the lock is held refuses at once, as readers expect.
++    let started = std::time::Instant::now();
++    assert!(matches!(
++        Owner::acquire(&Store::open(&dir).unwrap(), "task-one"),
++        Err(Error::Busy)
++    ));
++    assert!(started.elapsed() < Duration::from_millis(200));
++    // The task's own process starts once the holder lets go.
++    let task = execute(&dir, &bytes).await.unwrap();
++    holder.join().unwrap();
++    assert_eq!(task.execution, Execution::Finished);
++}
++
+ /// A run's cost is recorded by part, priced only when every part is known,
+ /// and never a stand-in zero (#10161).
+ #[test]

@@ -1,0 +1,139 @@
+diff --git a/crates/openagents-cli/src/ext_eval.rs b/crates/openagents-cli/src/ext_eval.rs
+index 1609aef67269c1b3ad4bd8f250dc3635e640eded..eb9998f75e62741ff7c38d64cb50b59bb46fb3e6 100644
+--- a/crates/openagents-cli/src/ext_eval.rs
++++ b/crates/openagents-cli/src/ext_eval.rs
+@@ -671,16 +671,67 @@ fn suite_package(slug: &str) -> String {
+     format!("{base}-tests")
+ }
+ 
+-/// Runs a prepared suite and prints its summary, on stderr when `quiet`.
+-/// Returns the exit code and, when it finished, the results directory.
+-fn execute(
+-    output: &Output,
++/// The interview's runs on this computer (#10179): the try and the full
++/// run go through the same engine as `plugin test run`, with progress on
++/// stderr, instead of ending with a command to type.
++pub(crate) struct LocalRunner {
++    /// Where each run's results directory goes.
++    pub(crate) results_base: PathBuf,
++}
++
++impl ext_eval::author::Runner for LocalRunner {
++    fn run(
++        &self,
++        request: &ext_eval::author::RunRequest<'_>,
++    ) -> Result<ext_eval::author::Tried, String> {
++        let root = request
++            .extension
++            .ok_or("the plugin isn't on this computer")?;
++        let target = resolve(&root.display().to_string())?;
++        ext_eval::sandbox::confinement_available()
++            .map_err(|error| format!("unconfined_host: {error}"))?;
++        let operator = signer_for(None)?.pubkey().to_string();
++        if !target.installed {
++            ext_eval::trust::check_owner(&target.root).map_err(|e| e.to_string())?;
++            let store = ext_eval::trust::TrustStore::under(&openagents_home());
++            ext_eval::trust::decide(&store, &target.root, ext_eval::trust::Answer::Terminal)
++                .map_err(|e| e.to_string())?;
++        }
++        let suite =
++            Suite::load(request.eval_dir, LoadOptions::default()).map_err(|e| e.to_string())?;
++        let options = Options {
++            runs: Some(request.runs),
++            ..Options::default()
++        };
++        let args = Args::parse(&[], SWITCHES)?;
++        let prepared = prepare(&args, target, suite, options)?;
++        let author = Author {
++            author: operator.clone(),
++            package: suite_package(&prepared.target.package.slug),
++            component: ext_eval::publish::SUITE_COMPONENT.to_string(),
++            evaluator: operator,
++            suite_release: None,
++            requester: None,
++        };
++        let outcome = run_prepared(&prepared, &author, &self.results_base)?;
++        eprintln!(
++            "The report is at {}.",
++            outcome.results.join("report.json").display()
++        );
++        Ok(ext_eval::author::Tried::from_evaluation(
++            &outcome.evaluation,
++            request.runs,
++        ))
++    }
++}
++
++/// Runs a prepared suite with progress on stderr: `run`, `check`, and
++/// the interview's runs.
++fn run_prepared(
+     prepared: &Prepared,
+     author: &Author,
+     results_base: &Path,
+-    json_path: Option<&str>,
+-    quiet: bool,
+-) -> (u8, Option<PathBuf>) {
++) -> Result<run::Outcome, String> {
+     let mut held = HeldLock::open(&prepared.target.lock);
+     for warning in prepared
+         .suite
+@@ -725,9 +776,22 @@ fn execute(
+         eprintln!("warning: the plugin changed during the run: {refusal}");
+     }
+     held.finish();
+-    let outcome = match outcome {
++    outcome.map_err(|error| error.to_string())
++}
++
++/// Runs a prepared suite and prints its summary, on stderr when `quiet`.
++/// Returns the exit code and, when it finished, the results directory.
++fn execute(
++    output: &Output,
++    prepared: &Prepared,
++    author: &Author,
++    results_base: &Path,
++    json_path: Option<&str>,
++    quiet: bool,
++) -> (u8, Option<PathBuf>) {
++    let outcome = match run_prepared(prepared, author, results_base) {
+         Ok(outcome) => outcome,
+-        Err(error) => return (output.fail(NAME, &error.to_string()), None),
++        Err(message) => return (output.fail(NAME, &message), None),
+     };
+     for path in &outcome.kept {
+         eprintln!("kept {}", path.display());
+diff --git a/crates/openagents-cli/src/ext_eval_init.rs b/crates/openagents-cli/src/ext_eval_init.rs
+index da213c8a3e3920260fbff8a0ff8bd3c8137619ac..ab151f904346cf15f12554b9bcb0aa1645c6a68e 100644
+--- a/crates/openagents-cli/src/ext_eval_init.rs
++++ b/crates/openagents-cli/src/ext_eval_init.rs
+@@ -17,8 +17,8 @@ use coder::generate::{Door, Generate, Message, Role};
+ use coder::package::Package;
+ use ext_eval::author::runner::{FULL_RUNS, TRY_RUNS};
+ use ext_eval::author::{
+-    Catalog, Event, Interview, NoRunner, Pick, Planned, RunRequest, Runner, Source, Stage, Surface,
+-    Tool, Turn, files,
++    Catalog, Event, Interview, Pick, Planned, RunRequest, Runner, Source, Stage, Surface, Tool,
++    Turn, files,
+ };
+ use nostr::contracts::parse_definition;
+ use serde_json::{Value, json};
+@@ -101,7 +101,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
+         &author,
+         &root,
+         &target,
+-        &NoRunner,
++        &crate::ext_eval::LocalRunner {
++            results_base: target.join("results"),
++        },
+         stdin.lock(),
+         std::io::stdout(),
+     ));
+@@ -437,7 +439,7 @@ pub async fn interview<G: Generate>(
+                 show(&mut out, &turn.say);
+                 show(
+                     &mut out,
+-                    "To add it to the Gym, run `openagents plugin test publish` on the report the run wrote.",
++                    "To add it to the Gym, run `openagents plugin test publish` on that report.",
+                 );
+             }
+             Err(why) => show(&mut out, &format!("We couldn't run it: {why}")),

@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--bins"
+  ],
+  "issue": 10893,
+  "title": "Drop the command hint from the agent's PROPOSED line",
+  "body": "`openagents agent ask NAME ... --wait` and `openagents agent show NAME` print a pending proposal as:\n\n```\nPROPOSED: touch notes.txt (Coder needs it for this step) -- openagents agent answer alice confirm|reject\n```\n\nThe trailing hint repeats what `openagents agent --help` already says, and it doubles the line's length in terminals and logs.\n\n## Acceptance\n\n- Both places print `PROPOSED: COMMAND (WHY)`, with no `-- openagents agent answer ...` hint.\n- One function in `crates/openagents-cli/src/agent.rs` formats the line, and both places use it.\n- A unit test pins the format.\n- `cargo test -p openagents-cli --bin openagents -- agent` passes.\n\nSmall and repository-local: only `crates/openagents-cli/src/agent.rs` changes.\n",
+  "fix": "d3f3ad546cff031f58b2b63eb9b62bf29d9a2fb0",
+  "parent": "743a2620842e59c894d0a45f074fe8f71244aa91",
+  "package": "openagents-cli",
+  "source_files": [
+    "crates/openagents-cli/src/agent.rs"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/agent.rs"
+  ],
+  "test_names": [
+    "proposed_line_has_command_and_reason_without_hint"
+  ],
+  "fix_lines": 27
+}

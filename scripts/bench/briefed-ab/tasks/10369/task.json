@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10369,
+  "title": "host list / host public-key fail with \"host access artifact or transport check failed\" (running host and fresh install)",
+  "body": "Found in shakeout round 2 (38fbc3d0d9).\n\n```\n$ openagents host list\nopenagents host: host access: Unavailable: host access artifact or transport check failed\n$ openagents host public-key\nopenagents host: host access: Unavailable: host access artifact or transport check failed\n```\nSame on this Mac (desktop app host running; `connect status` shows Online and 5 phones) and in a fresh HOME, and also while a fresh `host serve --keys DIR --control --relay \u2026` is running in that HOME. The message gives no cause or next step. Also `host list --keychain` \u2192 `openagents host:  --keychain does not apply to this command` (double space), so there's no way to point these at the app's keychain host.\n\nExpected: `host list`/`public-key` work against the running host (or the app's host via its control socket/keychain), and when there is no host say so plainly with the command to start one.",
+  "fix": "aeb120a028d517bb8731683a908729a893428384",
+  "parent": "348aee9f600c1177dd73e65256fad1fc52948d74",
+  "package": "coder-host",
+  "source_files": [
+    "crates/coder-host/src/cli.rs"
+  ],
+  "test_files": [
+    "crates/coder-host/src/cli.rs"
+  ],
+  "test_names": [
+    "host_key_and_devices_come_from_the_running_host_without_a_key_file"
+  ],
+  "fix_lines": 205
+}

@@ -1,0 +1,38 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 6699389eb3cb402038439df7c0e7fe1334900947..9dfb3fff97eafb5cc8dbc219e0bbb57235d33ff7 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -10434,6 +10434,7 @@ name = "openagents-ui"
+ version = "0.1.0"
+ dependencies = [
+  "maud",
++ "oa-copy",
+  "oa-tokens",
+ ]
+ 
+diff --git a/crates/openagents-ui/Cargo.toml b/crates/openagents-ui/Cargo.toml
+index 37de95dda226362e0ca8f1ac7679c34974f98439..5e58eb0bbcdd81a951ef12d1ea9320442d5287fb 100644
+--- a/crates/openagents-ui/Cargo.toml
++++ b/crates/openagents-ui/Cargo.toml
+@@ -10,5 +10,8 @@ description = "Server-rendered web components in the Apps SDK UI design language
+ maud = "0.27"
+ oa-tokens = { path = "../oa-tokens" }
+ 
++[dev-dependencies]
++oa-copy = { path = "../oa-copy" }
++
+ [build-dependencies]
+ oa-tokens = { path = "../oa-tokens" }
+diff --git a/crates/openagents-ui/src/catalog/shell.rs b/crates/openagents-ui/src/catalog/shell.rs
+index 653efc408c1163b668802b0f7a9bfe16e1b56c20..c16f744b2db7938d35bef603c5a26539ecf621eb 100644
+--- a/crates/openagents-ui/src/catalog/shell.rs
++++ b/crates/openagents-ui/src/catalog/shell.rs
+@@ -61,7 +61,7 @@ pub(super) fn composer(pane: Pane) -> Markup {
+         .status(html! { "Ready" });
+     let draft = Composer::new(pane.id("composer-draft"), "/ui")
+         .enhanced(false)
+-        .draft("Fix the flaky upstream test")
++        .draft("Fix the flaky login test")
+         .model_picker(ModelPickerTrigger::new("Mini").hx(HxGet::new("/composer/models")))
+         .send_label("Start task");
+     let rich = Composer::new(pane.id("composer-rich"), "/ui")

@@ -1,0 +1,59 @@
+diff --git a/crates/pay-ledger/src/lib.rs b/crates/pay-ledger/src/lib.rs
+index 7f3139b084f69b66011048ae4d43d30ef5549dda..1e4f47e41ea2af639531631ca7412205c80f4ac8 100644
+--- a/crates/pay-ledger/src/lib.rs
++++ b/crates/pay-ledger/src/lib.rs
+@@ -318,6 +318,43 @@ impl PayoutState {
+     }
+ }
+ 
++/// Replace the payable views only when their stored text differs. Reopening an
++/// unchanged ledger must not rewrite it: a rewrite bumps the schema cookie and
++/// file change counter, so byte-level checkpoint comparisons would see live
++/// accounting change on every open.
++fn install_payable_views(connection: &mut Connection) -> Result<()> {
++    const SQL: &str = include_str!("payable.sql");
++    let expected: Vec<(&str, &str)> = SQL
++        .match_indices("CREATE VIEW ")
++        .map(|(start, _)| {
++            let rest = &SQL[start..];
++            let statement = rest[..rest.find(';').unwrap_or(rest.len())].trim_end();
++            let name = statement["CREATE VIEW ".len()..]
++                .split_whitespace()
++                .next()
++                .unwrap_or_default();
++            (name, statement)
++        })
++        .collect();
++    let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
++    let mut current = true;
++    for (name, statement) in &expected {
++        let stored: Option<String> = tx
++            .query_row(
++                "SELECT sql FROM sqlite_master WHERE type='view' AND name=?",
++                [name],
++                |row| row.get(0),
++            )
++            .optional()?;
++        current &= stored.as_deref() == Some(*statement);
++    }
++    if !current || expected.is_empty() {
++        tx.execute_batch(SQL)?;
++    }
++    tx.commit()?;
++    Ok(())
++}
++
+ pub struct Ledger {
+     connection: Connection,
+     #[cfg(unix)]
+@@ -373,9 +410,7 @@ impl Ledger {
+         connection.execute_batch(adjustment::TABLES)?;
+         connection.execute_batch(commission::TABLES)?;
+         connection.execute_batch(commission_abuse::TABLES)?;
+-        connection.execute_batch("BEGIN IMMEDIATE;")?;
+-        connection.execute_batch(include_str!("payable.sql"))?;
+-        connection.execute_batch("COMMIT;")?;
++        install_payable_views(&mut connection)?;
+         // Existing ledgers predate plugin release attribution. Serialize the
+         // check and alteration so concurrent receiver opens migrate once.
+         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;

@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10273,
+  "title": "Issue flow fix turn fails with \"the task cannot make this transition\"",
+  "body": "Seen on coderos-4080 (`chat work --issues 10256,10257,10258 --parallel 3`, runner at 8bf9ee262a+): #10258 failed with `The fix turn could not start: the task cannot make this transition`. The fix turn tries a task state transition the task store (v2) rejects \u2014 likely starting a fix turn on a task whose previous turn is in a state (ended/stopped/failed) that doesn't allow it, or a race with the parallel runs. Find the transition from the task's record in ~/.openagents on coderos, make the fix turn's transition valid (or start a fresh turn), add a regression test. A rerun of #10258 is in progress.",
+  "fix": "581cd44c541436fcfa9ed6bd6f4e84f3371c90e3",
+  "parent": "3009ed5d9f0c6b87f4bb6b153f5d388c8fb5ef24",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/local.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/owner/route_tests.rs"
+  ],
+  "test_names": [
+    "a_fix_turn_waits_for_the_last_turns_checks_to_end"
+  ],
+  "fix_lines": 138
+}

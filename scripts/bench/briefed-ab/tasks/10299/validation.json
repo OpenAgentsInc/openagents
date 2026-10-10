@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 3,
+    "failed": 0,
+    "eval_secs": 34,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/worktree_hooks.rs:53:20: warning: unused import: `Command`\n",
+    "tests_err": "crates/coder/src/delegate_door/microcoder.rs: applied\n",
+    "test_tail": "   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\n    Finished `test` profile [unoptimized] target(s) in 19.87s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 3 tests\ntest delegate_door::microcoder::release_tests::a_clone_of_its_own_is_not_released ... ok\ntest delegate_door::microcoder::release_tests::a_flow_that_changed_nothing_leaves_no_worktree_or_branch ... ok\ntest delegate_door::microcoder::release_tests::a_flow_whose_work_would_be_lost_keeps_its_worktree ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 991 filtered out; finished in 2.02s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 21,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/worktree_hooks.rs:53:20: warning: unused import: `Command`\n",
+    "tests_err": "crates/coder/src/delegate_door/microcoder.rs: applied\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\nerror[E0432]: unresolved import `coder_delegate::issue::Ended`\n    --> crates/coder/src/delegate_door/microcoder.rs:1044:9\n     |\n1044 |     use coder_delegate::issue::Ended;\n     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `Ended` in `issue`\n     |\nnote: variant `crate::runtime::StepsEnd::Ended` exists but is inaccessible\n    --> crates/coder/src/runtime.rs:618:5\n     |\n 618 |     Ended(Refused),\n     |     ^^^^^^^^^^^^^^ not accessible\nhelp: consider importing one of these variants instead\n     |\n1044 -     use coder_delegate::issue::Ended;\n1044 +     use crate::reattach::Observation::Ended;\n     |\n1044 -     use coder_delegate::issue::Ended;\n1044 +     use crate::task::commands::Phase::Ended;\n     |\n1044 -     use coder_delegate::issue::Ended;\n1044 +     use crate::task::local::State::Ended;\n     |\n\nerror[E0432]: unresolved import `super::release`\n    --> crates/coder/src/delegate_door/microcoder.rs:1043:9\n     |\n1043 |     use super::release;\n     |         ^^^^^^^^^^^^^^ no `release` in `delegate_door::microcoder`\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `coder` (lib test) due to 2 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

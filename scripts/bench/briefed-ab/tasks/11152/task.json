@@ -1,0 +1,16 @@
+{
+  "issue": 11152,
+  "title": "Chat never fails while any provider answers: worker door chain with failover, embeddings and judge failover",
+  "body": "Owner, 2026-10-09: every production chat failed with \"We couldn't answer this time\": the chat worker's primary (stealth/space-bunny-alpha on OpenRouter) answered 404 \"No endpoints found\" and its one fallback (Vercel AI Gateway) answered 402 insufficient_funds. Hot-fixed by pointing CODER_DOOR_URL at OpenRouter.\n\nBuild real failover:\n- The chat worker tries an ordered chain of doors/models (our inference gateway first when reachable, then direct OpenRouter and Vercel doors) and fails over on any failure before the first token (402, 401/403, 404, 429, 5xx, timeouts, connection errors), with a per-attempt first-word deadline.\n- Embeddings (product KB, Gym records, codebase) and the Jev judge fail over across providers too, never fatal.\n- Replace the retired primary with a live model; a 404 (model gone) benches that door for a while.\n- Tests with fake doors (402, then 404, then success \u2192 answered; all fail \u2192 plain failure; per-attempt deadlines); a log line naming each switch.\n- Deploy to production and verify, including a forced failover.\n\nRelated: #11132 (the visible \"switched provider\" note on web and Coder).",
+  "fix": "1f8b74df6e7a7124173329f2284d19865e1a655a",
+  "parent": "8eb3b89db5b88d1e1b6411ea1f77d0120fe507a0",
+  "package": "coder",
+  "source_files": [],
+  "test_files": [
+    "crates/coder/tests/gateway_stream.rs"
+  ],
+  "test_names": [
+    "live_a_dead_chain_head_fails_over_to_a_live_door"
+  ],
+  "fix_lines": 54
+}

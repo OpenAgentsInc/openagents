@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 35,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\n",
+    "tests_err": "crates/coder/src/task/adapter.rs: applied\ncrates/openagents-chat/src/coder_events.rs: applied\n",
+    "test_tail": "   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coder` (lib test) generated 1 warning (run `cargo fix --lib -p coder --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized] target(s) in 21.35s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-cf3acd9c5ea3858c)\n\nrunning 1 test\ntest task::adapter::group_settle_tests::a_group_is_given_time_to_empty_before_cleanup_counts_unknown ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 969 filtered out; finished in 0.27s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 25,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\n",
+    "tests_err": "crates/coder/src/task/adapter.rs: applied\ncrates/openagents-chat/src/coder_events.rs: applied\n",
+    "test_tail": "   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\nerror[E0425]: cannot find function `group_settles` in this scope\n    --> crates/coder/src/task/adapter.rs:1758:18\n     |\n1758 |         assert!(!group_settles(Some(own), Duration::from_millis(50), every).await);\n     |                  ^^^^^^^^^^^^^ not found in this scope\n\nerror[E0425]: cannot find function `group_settles` in this scope\n    --> crates/coder/src/task/adapter.rs:1759:18\n     |\n1759 |         assert!(!group_settles(None, Duration::from_millis(50), every).await);\n     |                  ^^^^^^^^^^^^^ not found in this scope\n\nerror[E0425]: cannot find function `group_settles` in this scope\n    --> crates/coder/src/task/adapter.rs:1771:17\n     |\n1771 |         assert!(group_settles(Some(group), Duration::from_secs(5), every).await);\n     |                 ^^^^^^^^^^^^^ not found in this scope\n\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nFor more information about this error, try `rustc --explain E0425`.\nwarning: `coder` (lib test) generated 1 warning\nerror: could not compile `coder` (lib test) due to 3 previous errors; 1 warning emitted\n"
+  },
+  "usable": false,
+  "behavioral": false
+}

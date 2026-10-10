@@ -1,0 +1,18 @@
+{
+  "issue": 9503,
+  "title": "coder: version decision functions and admit workload-specific policies",
+  "body": "<!-- openagents-project-triage:start -->\n## Project triage\n\nProject: [Coder as Decision Router Consumer](https://github.com/orgs/OpenAgentsInc/projects/16) \u00b7 Workstream: Decision integration \u00b7 Priority: P1 \u00b7 Readiness: Blocked.\n\nParent tracker: #9501.\n\nOpen prerequisites linked with native **blocked by** relationships: #9486, #9485. Completed admission prerequisite: #9473; its native link is retained.\n\nFunction inventory and stable IDs can start immediately. Full admitted model/policy behavior consumes review, admission, and backend-capability contracts; individual functions ship only with evidence for their supported scope.\n\n<!-- openagents-project-triage:end -->\n\n---\n\nMake each judgment Coder consumes a named, versioned function with an explicit role and measured policy.\n\nSpecification: [decision functions and policies](https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/coder-as-decision-router-consumer.md#decision-functions-and-policies). Consumer tracker: #9501. Service tracker: #9481.\n\n## Acceptance\n\n- [ ] Inventory current decision sites and unify code-defined turn/shell questions with file-defined program questions through stable IDs, schema versions, question digests, and input/output contracts.\n- [ ] Bind each function to allowed model/artifact profiles, state limits, evaluation/calibration evidence, policy version, and typed abstain/review behavior. Executor selection can consider only host-authorized candidates; operator-pinned selections remain pinned.\n- [ ] Give any new context/relevance, review, ranking, or executor-choice question a baseline/headroom test before production. Preserve retired questions and historical digests without reintroducing questions merely to increase API use.\n- [x] Correct the meaning of requires_calibration: require admitted workload/model-specific evidence for that promise, or rename the existing probability/name check so it cannot imply calibration.\n- [ ] Integrate opt-in #9485 review/fallback with original and reviewed results, nullable reviewer scores, complete attempt/cost attribution, and local data-disclosure restrictions.\n- [ ] Select thresholds on development data and confirm on held-out data; tests must cover confident wrong answers, missing evidence, changed artifacts, and absent candidates.\n\n## Dependencies and boundaries\n\n#9485, #9473, #9486 and existing Gym evidence; no universal confidence threshold or noise floor.\n\nProduct code remains Rust; reuse the repository's shared contracts and manual/non-GitHub verification. This issue describes planned work, not implemented behavior.\n",
+  "fix": "18059c5290884cf2e89faa7b7c84d571d31fe76b",
+  "parent": "c88a800c727bf60e9d66a6b36e197e9ef8c2dfa1",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/runtime.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/runtime.rs"
+  ],
+  "test_names": [
+    "a_selection_is_held_to_the_offered_programs"
+  ],
+  "fix_lines": 95
+}

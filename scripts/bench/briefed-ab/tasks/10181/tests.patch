@@ -1,0 +1,201 @@
+diff --git a/crates/ext-eval/tests/blob.rs b/crates/ext-eval/tests/blob.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf4e85756f13a961e2d521f0e42e1463187aae39
+--- /dev/null
++++ b/crates/ext-eval/tests/blob.rs
+@@ -0,0 +1,195 @@
++//! The suite blob path against a fake Blossom server: the upload a
++//! `plugin test publish` and `plugin publish` send, the NIP-98
++//! authorization it carries, a read that redirects to object storage the
++//! way the production relay's mounted-cloud media does, and the refusal a
++//! relay without media gives.
++
++use std::collections::HashMap;
++use std::io::{BufRead, BufReader, Read, Write};
++use std::net::{TcpListener, TcpStream};
++use std::sync::{Arc, Mutex};
++
++use base64::Engine as _;
++use ext_eval::blob::{Blossom, HTTP_AUTH_KIND};
++use nostr::domain::RelaySigner;
++use serde_json::Value;
++
++#[derive(Default)]
++struct State {
++    blobs: HashMap<String, Vec<u8>>,
++    puts: usize,
++}
++
++struct Fake {
++    base: String,
++    state: Arc<Mutex<State>>,
++}
++
++/// A Blossom server on a loopback port. With `media` off it answers every
++/// upload `405`, as `relay.openagents.com` did before its media was on.
++fn fake(media: bool) -> Fake {
++    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
++    let base = format!("http://{}", listener.local_addr().unwrap());
++    let state = Arc::new(Mutex::new(State::default()));
++    let (served, origin) = (Arc::clone(&state), base.clone());
++    std::thread::spawn(move || {
++        for stream in listener.incoming().flatten() {
++            let (state, origin) = (Arc::clone(&served), origin.clone());
++            std::thread::spawn(move || answer(stream, &state, &origin, media));
++        }
++    });
++    Fake { base, state }
++}
++
++fn respond(stream: &mut TcpStream, status: &str, headers: &str, body: &[u8]) {
++    let _ = write!(
++        stream,
++        "HTTP/1.1 {status}\r\n{headers}content-length: {}\r\nconnection: close\r\n\r\n",
++        body.len()
++    );
++    let _ = stream.write_all(body);
++}
++
++/// Why a NIP-98 upload authorization is wrong for `url` and `digest`, if
++/// it is.
++fn refuse_auth(header: Option<&String>, url: &str, digest: &str) -> Option<&'static str> {
++    let token = header?.strip_prefix("Nostr ")?;
++    let event: Value = serde_json::from_slice(
++        &base64::engine::general_purpose::STANDARD
++            .decode(token)
++            .ok()?,
++    )
++    .ok()?;
++    let tag = |name: &str| {
++        event["tags"].as_array().and_then(|tags| {
++            tags.iter()
++                .find(|tag| tag[0] == name)
++                .and_then(|tag| tag[1].as_str().map(str::to_owned))
++        })
++    };
++    if event["kind"] != u64::from(HTTP_AUTH_KIND) {
++        return Some("kind");
++    }
++    if tag("u").as_deref() != Some(url) {
++        return Some("u");
++    }
++    if tag("method").as_deref() != Some("PUT") {
++        return Some("method");
++    }
++    if tag("payload").as_deref() != Some(digest) {
++        return Some("payload");
++    }
++    if event["sig"].as_str().is_none_or(str::is_empty) {
++        return Some("sig");
++    }
++    None
++}
++
++fn answer(mut stream: TcpStream, state: &Mutex<State>, origin: &str, media: bool) {
++    let mut reader = BufReader::new(stream.try_clone().unwrap());
++    let mut request = String::new();
++    if reader.read_line(&mut request).unwrap_or(0) == 0 {
++        return;
++    }
++    let mut headers = HashMap::new();
++    loop {
++        let mut line = String::new();
++        if reader.read_line(&mut line).unwrap_or(0) == 0 {
++            return;
++        }
++        let line = line.trim();
++        if line.is_empty() {
++            break;
++        }
++        if let Some((name, value)) = line.split_once(':') {
++            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
++        }
++    }
++    let length = headers
++        .get("content-length")
++        .and_then(|value| value.parse().ok())
++        .unwrap_or(0);
++    let mut body = vec![0; length];
++    let _ = reader.read_exact(&mut body);
++    let mut parts = request.split_whitespace();
++    let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
++    match (method, path) {
++        ("PUT", "/upload") if !media => respond(&mut stream, "405 Method Not Allowed", "", b""),
++        ("PUT", "/upload") => {
++            let digest = nostr::contracts::digest_bytes(&body);
++            let hex = digest.trim_start_matches("sha256:").to_string();
++            if let Some(why) = refuse_auth(
++                headers.get("authorization"),
++                &format!("{origin}/upload"),
++                &hex,
++            ) {
++                respond(&mut stream, "401 Unauthorized", "", why.as_bytes());
++                return;
++            }
++            let mut state = state.lock().unwrap();
++            state.puts += 1;
++            state.blobs.insert(hex, body);
++            respond(&mut stream, "201 Created", "", b"{}");
++        }
++        // The relay's mounted-cloud media answers a read with a redirect
++        // to the object store.
++        (_, path) if path.starts_with("/store/") => {
++            let hex = path.trim_start_matches("/store/");
++            let bytes = state.lock().unwrap().blobs.get(hex).cloned();
++            match bytes {
++                Some(_) if method == "HEAD" => {
++                    respond(&mut stream, "200 OK", &format!("x-sha-256: {hex}\r\n"), &[])
++                }
++                Some(bytes) => respond(&mut stream, "200 OK", "", &bytes),
++                None => respond(&mut stream, "404 Not Found", "", b""),
++            }
++        }
++        (_, path) => {
++            let hex = path.trim_start_matches('/');
++            if state.lock().unwrap().blobs.contains_key(hex) {
++                respond(
++                    &mut stream,
++                    "307 Temporary Redirect",
++                    &format!("location: {origin}/store/{hex}\r\n"),
++                    b"",
++                );
++            } else {
++                respond(&mut stream, "404 Not Found", "", b"");
++            }
++        }
++    }
++}
++
++fn signer() -> RelaySigner {
++    RelaySigner::from_secret_hex(&"11".repeat(32)).unwrap()
++}
++
++#[test]
++fn an_upload_carries_a_nip98_authorization_and_reads_back_through_a_redirect() {
++    let server = fake(true);
++    let blossom = Blossom::new(&server.base).unwrap();
++    let bytes = b"[plugin]\nname = \"tiny\"\n";
++    let digest = nostr::contracts::digest_bytes(bytes);
++    assert!(!blossom.has(&digest));
++    blossom
++        .upload(&signer(), bytes, "application/toml", 1_790_000_000)
++        .unwrap();
++    assert!(blossom.has(&digest));
++    assert_eq!(blossom.fetch(&digest).unwrap(), bytes);
++    // A blob the server already holds is not sent again.
++    blossom
++        .upload(&signer(), bytes, "application/toml", 1_790_000_000)
++        .unwrap();
++    assert_eq!(server.state.lock().unwrap().puts, 1);
++}
++
++#[test]
++fn a_relay_without_media_refuses_with_a_way_out() {
++    let server = fake(false);
++    let error = Blossom::new(&server.base)
++        .unwrap()
++        .upload(&signer(), b"bytes", "text/plain", 1_790_000_000)
++        .unwrap_err();
++    assert!(error.contains("405"), "{error}");
++    assert!(error.contains("--blossom"), "{error}");
++}

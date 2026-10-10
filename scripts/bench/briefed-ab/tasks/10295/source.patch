@@ -1,0 +1,141 @@
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 068226eec286d24b42cafa4e8bc0610ecf03ec5d..eeabde1936689b28797c20bb2bc5a0bca45a8d22 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -30,10 +30,12 @@
+ //!    request;
+ //! 5. comments the commit and the evidence on the issue and closes it.
+ //!
+-//! A flow never pushes a change whose checks failed: a red check, a run
++//! A flow never lands a change whose checks failed: a red check, a run
+ //! that the stuck guard ended, a question instead of a
+ //! result, or a stop leaves an honest comment with what was tried and the
+-//! failing output, and the issue open.
++//! failing output, and the issue open. A committed change that could not
++//! land (red after the rebase, a conflict, refused pushes) is pushed to
++//! `coder/stranded-<task8>` instead, so the work survives its worktree.
+ //!
+ //! Every step shows in the task's event stream: the flow writes its notes
+ //! and outcome beside the task (`<store>/local/<task>.issue.json`), and
+@@ -953,6 +955,11 @@ fn names(packages: &[String]) -> String {
+ /// does the same across the processes flows are handed to.
+ static LANDING: Mutex<()> = Mutex::new(());
+ 
++/// The branch on origin that keeps a change which could not land.
++pub(crate) fn stranded_branch(task: &str) -> String {
++    format!("coder/stranded-{}", &task[..8.min(task.len())])
++}
++
+ /// An exclusive lock on the task store's landing file, held while a flow
+ /// lands; `None` when the file cannot be opened or locked.
+ fn landing_lock(store: &Path) -> Option<std::fs::File> {
+@@ -1325,6 +1332,7 @@ impl Started {
+             summaries: Vec::new(),
+             checked: Checked::default(),
+             rounds: 0,
++            stranded: None,
+         };
+         run.drive();
+         flow
+@@ -1529,6 +1537,9 @@ struct Run<'a> {
+     summaries: Vec<String>,
+     checked: Checked,
+     rounds: usize,
++    /// The branch a change that failed to land was pushed to, so its
++    /// worktree holds nothing that exists only there.
++    stranded: Option<String>,
+ }
+ 
+ impl Run<'_> {
+@@ -1780,9 +1791,14 @@ impl Run<'_> {
+         let landed = match outcome {
+             Ok(landed) => landed,
+             Err(not) => {
+-                // The change goes back to staged on its latest base, as
+-                // the flow leaves every change it did not land.
+-                let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
++                // A change that could not land is kept on its own branch on
++                // origin, so it can be picked up from any computer and its
++                // worktree can be removed. A stopped run, or a push that
++                // fails, leaves the change staged on its latest base, as the
++                // flow leaves every change it did not land.
++                if matches!(not.failure, landing::Failure::Stopped) || !self.strand() {
++                    let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
++                }
+                 let tried = format!("\n\n**Landing**: {tries}");
+                 return match not.failure {
+                     landing::Failure::Stopped => {
+@@ -1855,6 +1871,35 @@ impl Run<'_> {
+         self.end(closing)
+     }
+ 
++    /// Push the committed change that failed to land to
++    /// `coder/stranded-<task8>` on origin. Whether it was pushed.
++    fn strand(&mut self) -> bool {
++        let branch = stranded_branch(&self.record.task);
++        match local::git_out(
++            self.worktree,
++            &[
++                "push",
++                "-q",
++                "-f",
++                "origin",
++                &format!("HEAD:refs/heads/{branch}"),
++            ],
++        ) {
++            Ok(_) => {
++                self.note(format!("Kept the change on `{branch}` on origin."));
++                self.stranded = Some(branch);
++                true
++            }
++            Err(why) => {
++                self.note(format!(
++                    "Could not keep the change on `{branch}`: {}",
++                    clip(&why, 300)
++                ));
++                false
++            }
++        }
++    }
++
+     fn land_pull_request(&mut self) {
+         let commit = match self.commit() {
+             Ok(commit) => commit,
+@@ -2080,10 +2125,20 @@ impl Run<'_> {
+             comment.push_str("\n```\n\n");
+         }
+         comment.push_str(&self.how_far());
++        let kept = match &self.stranded {
++            Some(branch) => format!(
++                "Nothing landed on the default branch, and the issue stays open. The change is \
++                 kept on the branch [`{branch}`](https://github.com/{}/tree/{branch}).",
++                self.repository
++            ),
++            None => format!(
++                "Nothing was pushed, and the issue stays open. The change is in Coder's \
++                 worktree `{}` on the computer that ran it.",
++                self.worktree.display()
++            ),
++        };
+         comment.push_str(&format!(
+-            "Nothing was pushed, and the issue stays open. The change is in Coder's worktree \
+-             `{}` on the computer that ran it.\n\n{}{}\n\n{RELEASE_MARK}",
+-            self.worktree.display(),
++            "{kept}\n\n{}{}\n\n{RELEASE_MARK}",
+             self.run_line(),
+             self.artifacts(None)
+         ));
+@@ -2091,8 +2146,12 @@ impl Run<'_> {
+             .work
+             .tracker
+             .comment(self.repository, self.issue.number, &comment);
++        let pushed = match &self.stranded {
++            Some(branch) => format!("The change is kept on `{branch}`"),
++            None => "Nothing was pushed".to_owned(),
++        };
+         self.end(format!(
+-            "{why} Nothing was pushed; #{} stays open with a comment.",
++            "{why} {pushed}; #{} stays open with a comment.",
+             self.issue.number
+         ));
+     }

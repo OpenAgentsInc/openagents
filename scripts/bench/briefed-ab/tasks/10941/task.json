@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10941,
+  "title": "Everglade: destroyed buildings snap back after about 8 (live-building eviction restores them, and timed regrowth)",
+  "body": "The owner reports: \"My destruction world is resetting sometimes when I don't want it to. I do like 8 buildings in a row and then it resets.\" This is Everglade with `--dev-destruction`, on desktop High, 2026-10-07, after the medieval kit rebuild (P4\u2013P7).\n\n## Cause (found in `crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs`)\n\nTwo mechanisms restore destroyed buildings without the player asking:\n\n1. **The live-building cap evicts by restoring.**\n   - **The caps:** at most `MAX_LIVE` buildings (12 on desktop, 6 on web and phones) and `MAX_PIECES` pieces (520 on desktop, 240 small) can be \"raised\" (destructible and tracked) at once.\n   - **Eviction:** when the player damages a new building over either cap, `lift()` lets the oldest raised building go: the one hit more than `FRESH` (3 s) ago, chosen by `min_by(hit)`.\n   - **What letting go does:** `let_go()` removes the building's site spec, refs and lifted entry, and bumps the revision, so the building **returns to the static, intact cells**. Its damage vanishes.\n   - **Why it bites now:** kit houses are built from many more pieces than the old village-kit cottages, so the 520-piece budget fills after about 8 kit houses. That's the \"8 in a row, then it resets\" the owner sees.\n2. **Timed regrowth.** A damaged building regrows whole after `REGROW` (60 s) of rest while the player is more than `REGROW_DISTANCE` (30 m) away, as the module docs describe. In dev destruction this reads as an unwanted reset too.\n\n(The Meteor Showcase's own `rebuild_every` timer applies only when bombardiers are staged; the showcase's player mode has none.)\n\n## Fix\n\n- **Evicting must not undo destruction.** When a building must leave the live set, freeze its current state instead of restoring it:\n  - pieces that are broken or gone stay gone, through the same index edits that hide them while live;\n  - standing damaged pieces become static at their current state;\n  - settled chunks are baked into a static rubble mesh, and their bodies are dropped.\n\n  The cap then bounds only how many buildings are *actively simulating*, not how many stay destroyed. This shares work with merged rubble in #10937.\n- **No surprise regrowth in dev destruction.** Turn timed `REGROW` off when the dev-destruction switch is on (only `R` rebuilds), or make it opt-in.\n- **Caps sized for kit houses.** Measure pieces per kit house, and raise the desktop caps to fit, for example 24 buildings and about 1,500 pieces, within the frame budget. Measure with the live capture tool (`meteor_showcase_capture --live`, or an Everglade equivalent), and keep the small tier's caps safe for phones and web.\n- **Frozen state survives:** a frozen building can be hit again (it re-lifts from its frozen state, not from intact) and is cleared only by `R`.\n\n## Acceptance\n\n- Destroying 20 buildings in a row on desktop leaves all 20 destroyed, with no building snapping back.\n- Walking 100 m away for 2 minutes in dev destruction regrows nothing; `R` restores everything.\n- A frozen building can be hit again and keeps breaking from where it was.\n- A test covers each case: eviction freezes rather than restores; no regrow under dev destruction; re-lifting a frozen building.\n- Frame time recorded before and after at 20 destroyed buildings.\n",
+  "fix": "6a66d79237b442cd92db64626fce6695970777e3",
+  "parent": "6fba830052bf5012c5ef225c0fc117fde40a8555",
+  "package": "verse-zone-everglade",
+  "source_files": [
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs"
+  ],
+  "test_files": [
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/town_tests.rs"
+  ],
+  "test_names": [
+    "dev_destruction_never_regrows_on_its_own",
+    "eviction_freezes_destruction_and_a_frozen_building_breaks_on"
+  ],
+  "fix_lines": 206
+}

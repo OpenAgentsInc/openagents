@@ -1,0 +1,41 @@
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index d94461c2cd44a64627aff375e39b71fe77070e57..1fdc6661fb4fc48d2e544d152aa3bd3760c1b272 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -39,6 +39,7 @@ pub mod chat_client;
+ pub mod checks;
+ pub mod cli;
+ pub mod commands;
++pub mod freshen;
+ pub mod interaction;
+ pub mod issue_pick;
+ pub mod issue_run;
+diff --git a/crates/coder/src/task/landing.rs b/crates/coder/src/task/landing.rs
+index 2e41866cde07f08273c867b0cbf8f9ed4b0e098c..ae5d01ba57ea88e5cf793d23dd8ecad5e1c2cca6 100644
+--- a/crates/coder/src/task/landing.rs
++++ b/crates/coder/src/task/landing.rs
+@@ -237,7 +237,7 @@ pub(super) fn fetch(worktree: &Path, branch: &str) -> Result<(), String> {
+     result.and(unlocked)
+ }
+ 
+-fn fetch_lock(worktree: &Path) -> Result<std::fs::File, String> {
++pub(super) fn fetch_lock(worktree: &Path) -> Result<std::fs::File, String> {
+     let common = git(
+         worktree,
+         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index 599500086449779d20949bfbae1540fa67b06a6b..744d8cf1f2764fd0ffcd5515c79cdb07895e86d2 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -1047,6 +1047,11 @@ impl Local {
+             )
+             .map_err(|_| format!("{base} names no commit in {}", checkout.top.display()))?;
+             checkout.head = commit.trim().to_owned();
++        } else if let super::freshen::Fresh::Tracked { base, .. } =
++            super::freshen::base(&checkout.top, &checkout.head, super::freshen::TIMEOUT)
++        {
++            // A branch behind its remote starts at the fetched tip (#10298).
++            checkout.head = base;
+         }
+         let mut timings = Timings {
+             project_ms: millis(began),

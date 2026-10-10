@@ -1,0 +1,169 @@
+diff --git a/crates/openagents-terminal/src/app.rs b/crates/openagents-terminal/src/app.rs
+index 251c8d283e97b87d3f4b48ad9f0dfd8a79c0698a..ecca77370e2d6904d5a0a6b6f14ed1a77eac11ac 100644
+--- a/crates/openagents-terminal/src/app.rs
++++ b/crates/openagents-terminal/src/app.rs
+@@ -204,8 +204,15 @@ pub struct App {
+     /// The background rule whose dry run was just shown: `r` on it in
+     /// `/background` runs it for real.
+     pub background_armed: Option<String>,
+-    /// When the last background notification shown was sent.
++    /// When the last background notification taken in was sent.
+     pub notice_seen: u64,
++    /// Background notifications, newest last (#10283). They never go into
++    /// the transcript: the watchers view (Left on an empty input,
++    /// `/background`) shows them.
++    pub notices: Vec<String>,
++    /// How many of `notices` came in since the watchers view was last
++    /// open: the count on the status rail.
++    pub unseen_notices: usize,
+     /// The thread's Coder run alone, every call with its output, for the
+     /// run view.
+     pub run_log: Scrollback<Row, Line<'static>, Wrap>,
+@@ -274,6 +281,8 @@ impl App {
+             notice_seen: std::time::SystemTime::now()
+                 .duration_since(std::time::UNIX_EPOCH)
+                 .map_or(0, |since| since.as_secs()),
++            notices: Vec::new(),
++            unseen_notices: 0,
+             run_log: transcript(ladder),
+             run_view: None,
+             file: None,
+@@ -302,6 +311,25 @@ impl App {
+         self.push(Row::loud(text));
+     }
+ 
++    /// A background watcher's notification ("Disk almost full", a run's
++    /// result): kept for the watchers view and counted on the status
++    /// rail, never written into the transcript (#10283).
++    pub fn notice(&mut self, text: impl Into<String>) {
++        const KEPT: usize = 20;
++        self.notices.push(text.into());
++        if self.notices.len() > KEPT {
++            self.notices.remove(0);
++        }
++        self.unseen_notices += 1;
++    }
++
++    /// Opens the background watchers view: its rules and the
++    /// notifications, which are then seen.
++    pub fn watchers_view(&mut self) -> Vec<Action> {
++        self.unseen_notices = 0;
++        vec![Action::Background]
++    }
++
+     /// Clear the transcript and everything about the thread, for another.
+     pub fn switch(&mut self, thread: String, fresh: bool) {
+         self.thread = thread;
+@@ -475,6 +503,17 @@ impl App {
+                 Vec::new()
+             }
+             (KeyCode::Esc, _, _) => self.stop(),
++            // Left on an empty input opens the background watchers, where
++            // their notifications wait (#10283).
++            (KeyCode::Left, false, false)
++                if self.editor.is_empty()
++                    && self.run_view.is_none()
++                    && self.plugin.is_none()
++                    && self.command.is_none()
++                    && !self.asked =>
++            {
++                self.watchers_view()
++            }
+             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
+             (KeyCode::Char('n'), true, _) => vec![Action::New],
+             (KeyCode::Char('y'), true, _) => self.copy(copied),
+@@ -504,6 +543,7 @@ impl App {
+     }
+ 
+     fn overlay_key(&mut self, key: &KeyEvent) -> Vec<Action> {
++        let notices = self.notices.len();
+         let Some(overlay) = &mut self.overlay else {
+             return Vec::new();
+         };
+@@ -586,13 +626,18 @@ impl App {
+             }
+             Overlay::Background { rows, selected } => {
+                 let picked = rows.get(*selected).cloned();
++                let shown = rows.len() + notices;
+                 let act = match key.code {
++                    KeyCode::Left => {
++                        self.overlay = None;
++                        return Vec::new();
++                    }
+                     KeyCode::Up => {
+                         *selected = selected.saturating_sub(1);
+                         None
+                     }
+                     KeyCode::Down => {
+-                        *selected = (*selected + 1).min(rows.len().saturating_sub(1));
++                        *selected = (*selected + 1).min(shown.saturating_sub(1));
+                         None
+                     }
+                     KeyCode::Enter => Some(crate::BackgroundAct::Show),
+@@ -812,7 +857,7 @@ impl App {
+             Slash::Settings => vec![Action::Settings],
+             Slash::Connect => vec![Action::Connect],
+             Slash::Plugins => vec![Action::Plugins],
+-            Slash::Background => vec![Action::Background],
++            Slash::Background => self.watchers_view(),
+             Slash::Import => vec![Action::Import],
+             Slash::Efficiency => vec![Action::Efficiency],
+             Slash::Expand => {
+@@ -1572,9 +1617,15 @@ impl App {
+         } else {
+             format!("thread {}", &self.thread[..self.thread.len().min(8)])
+         };
+-        match &self.engine {
++        let tail = match &self.engine {
+             Some(engine) => format!("{engine} · {thread}"),
+             None => thread,
++        };
++        // Background notifications wait in the watchers view (#10283);
++        // only their count shows here.
++        match self.unseen_notices {
++            0 => tail,
++            count => format!("← {count} from watchers · {tail}"),
+         }
+     }
+ }
+diff --git a/crates/openagents-terminal/src/draw.rs b/crates/openagents-terminal/src/draw.rs
+index 0112c81d55af9b4bae2f509e15e6b9b3897451a5..6f8a3506da583b31a29d923a0eddfa60a953cb02 100644
+--- a/crates/openagents-terminal/src/draw.rs
++++ b/crates/openagents-terminal/src/draw.rs
+@@ -216,15 +216,21 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+                     .unwrap_or("There are no settings to change here."),
+             ),
+             Overlay::Background { rows, selected } => (
+-                "Background".to_owned(),
++                "Background watchers".to_owned(),
+                 rows.iter()
+                     .map(|row| Item {
+                         label: row.id.clone(),
+                         detail: row.line.clone(),
+                     })
++                    // Their notifications, newest first: they never go
++                    // into the transcript (#10283).
++                    .chain(app.notices.iter().rev().map(|notice| Item {
++                        label: "notice".to_owned(),
++                        detail: notice.clone(),
++                    }))
+                     .collect(),
+                 *selected,
+-                "Enter show · r run (dry run first) · p pause or resume · l log · Esc close",
++                "Enter show · r run (dry run first) · p pause or resume · l log · Esc or ← close",
+                 "No background rules.",
+             ),
+         };
+diff --git a/crates/openagents-terminal/src/screen.rs b/crates/openagents-terminal/src/screen.rs
+index 237ab2711c370ee8994f216b64f1cf5511231a9e..219acb984ed23d85b8835dbbc88fb73315309218 100644
+--- a/crates/openagents-terminal/src/screen.rs
++++ b/crates/openagents-terminal/src/screen.rs
+@@ -846,7 +846,7 @@ impl Screen {
+             Done::BackgroundCard(id, _, Err(why)) => self.app.loud(format!("{id}: {why}")),
+             Done::Notice(Some((at, line))) if at > self.app.notice_seen => {
+                 self.app.notice_seen = at;
+-                self.app.note(line);
++                self.app.notice(line);
+             }
+             Done::Notice(_) => {}
+             Done::Imported(Ok(message)) => self.app.note(message),

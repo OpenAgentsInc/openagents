@@ -1,0 +1,34 @@
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index 68ada61bac1551c7b59f60bb259a3b20c1a68b88..ec9589bd7c2357a421b3ad2015818178a0b9ec1d 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -4427,6 +4438,29 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn a_replaced_executable_keeps_the_engine_beside_it() {
++        let temp = tempfile::tempdir().unwrap();
++        let bin = temp.path().join("bin");
++        let home = temp.path().join("home");
++        std::fs::create_dir_all(&bin).unwrap();
++        std::fs::create_dir_all(home.join(".openagents/bin")).unwrap();
++        let beside = bin.join(MICROCODER);
++        let installed = home.join(".openagents/bin").join(MICROCODER);
++        std::fs::write(&beside, b"new").unwrap();
++        std::fs::write(&installed, b"old").unwrap();
++        let exe = controller_executable_path(bin.join("openagents (deleted)"));
++        assert_eq!(exe, bin.join("openagents"));
++        let find = || {
++            controller_candidates(Some(&exe), Some(&home))
++                .into_iter()
++                .find(|path| path.is_file())
++        };
++        assert_eq!(find(), Some(beside.clone()));
++        std::fs::remove_file(beside).unwrap();
++        assert_eq!(find(), Some(installed));
++    }
++
+     /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`
+     /// and its `microcoder` in `Contents/MacOS`. The CLI must run that
+     /// engine, not an older `~/.openagents/bin` copy that refuses a newer

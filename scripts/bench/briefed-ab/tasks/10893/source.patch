@@ -1,0 +1,39 @@
+diff --git a/crates/openagents-cli/src/agent.rs b/crates/openagents-cli/src/agent.rs
+index 237a08ad78ccaedbca7187fc8a2fb0a8bb4b082c..0228c3b39e72f75e580b8a5650ad936b5e6722ba 100644
+--- a/crates/openagents-cli/src/agent.rs
++++ b/crates/openagents-cli/src/agent.rs
+@@ -773,6 +773,10 @@ fn line(view: &wire::AgentView) -> String {
+     )
+ }
+ 
++fn proposed_line(pending: &wire::Proposal) -> String {
++    format!("PROPOSED: {} ({})", pending.command, pending.why)
++}
++
+ fn list(output: &Output, root: &Path, args: &Args) -> Result<(), Fail> {
+     let (agents, live) = agents(root, args)?;
+     let value = json!({"agents": agents.agents, "host": live});
+@@ -837,10 +841,7 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
+         if let Some(view) = &view {
+             text.push(line(view));
+             if let Some(pending) = &view.pending {
+-                text.push(format!(
+-                    "PROPOSED: {} ({}) -- openagents agent answer {name} confirm|reject",
+-                    pending.command, pending.why
+-                ));
++                text.push(proposed_line(pending));
+             }
+             if let Some(change) = &view.change {
+                 text.push(format!("change: task {} ({})", change.task, change.stage));
+@@ -977,10 +978,7 @@ fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail>
+                 && proposed != Some(pending.step)
+             {
+                 proposed = Some(pending.step);
+-                println!(
+-                    "PROPOSED: {} ({}) -- openagents agent answer {name} confirm|reject",
+-                    pending.command, pending.why
+-                );
++                println!("{}", proposed_line(pending));
+             }
+         }
+         if !view.busy && view.service.requests > before {

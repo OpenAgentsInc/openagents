@@ -1,0 +1,218 @@
+diff --git a/crates/coder-boundary/src/snapshot/observe.rs b/crates/coder-boundary/src/snapshot/observe.rs
+index f45f41a5dbf3fc0fe2a9ef4c3f9239b704df0da7..de029560b352bc154213cc49788093cdd645e2c6 100644
+--- a/crates/coder-boundary/src/snapshot/observe.rs
++++ b/crates/coder-boundary/src/snapshot/observe.rs
+@@ -259,14 +259,56 @@ fn list(
+     over: &AtomicBool,
+ ) {
+     let limits = walk.limits;
+-    // Each pending directory holds its own descriptor, so listing it
+-    // reads the directory that was found, not whatever the path names by
+-    // the time the walk reaches it.
+-    let mut pending: Vec<(PathBuf, File)> = vec![(PathBuf::new(), root_fd)];
+-    'walk: while let Some((rel, dir)) = pending.pop() {
++    // A pending directory is held by its parent's descriptor and its name,
++    // and opened only when the walk reaches it: holding a descriptor for
++    // every directory found but not yet listed exhausts a process's open
++    // files on a wide tree (a GUI-launched process gets 256), and every
++    // `EMFILE` is a fault (#10078). Opening it relative to the parent's
++    // descriptor under `O_NOFOLLOW`, and checking that it is still the
++    // directory the listing found, still reads the directory that was
++    // found, not whatever the path names by the time the walk reaches it.
++    // Only the ancestors of the directory being listed stay open.
++    let mut pending: Vec<(PathBuf, Pending)> = vec![(PathBuf::new(), Pending::Open(root_fd))];
++    'walk: while let Some((rel, next)) = pending.pop() {
+         if over.load(Ordering::Relaxed) {
+             break;
+         }
++        let dir = match next {
++            Pending::Open(dir) => dir,
++            Pending::At {
++                parent,
++                name,
++                id: found,
++            } => match open_at(&parent, &name, DIR_FLAGS) {
++                Ok(child) => match child.metadata() {
++                    Ok(metadata) if metadata.is_dir() && id(&metadata) == found => {
++                        walk.entries.insert(
++                            rel.clone(),
++                            Entry::Directory {
++                                id: id(&metadata),
++                                mode: mode(&metadata),
++                            },
++                        );
++                        child
++                    }
++                    // The entry named itself a directory and opened as
++                    // something else — a mid-walk swap, which is a fault
++                    // rather than a listing.
++                    Ok(_) => {
++                        walk.read(rel, "changed while it was being opened");
++                        continue;
++                    }
++                    Err(error) => {
++                        walk.read(rel, error);
++                        continue;
++                    }
++                },
++                Err(error) => {
++                    walk.read(rel, error);
++                    continue;
++                }
++            },
++        };
+         let dir = Arc::new(dir);
+         if walk.attempts > walk.limits.entries {
+             walk.fault(Fault::Entries {
+@@ -304,26 +346,14 @@ fn list(
+                 }
+             };
+             match kind_of(&st) {
+-                Kind::Directory => match open_at(&dir, &name, DIR_FLAGS) {
+-                    Ok(child) => match child.metadata() {
+-                        Ok(metadata) if metadata.is_dir() => {
+-                            walk.entries.insert(
+-                                path.clone(),
+-                                Entry::Directory {
+-                                    id: id(&metadata),
+-                                    mode: mode(&metadata),
+-                                },
+-                            );
+-                            pending.push((path, child));
+-                        }
+-                        // The entry named itself a directory and opened
+-                        // as something else — a mid-walk swap, which is
+-                        // a fault rather than a listing.
+-                        Ok(_) => walk.read(path, "changed while it was being opened"),
+-                        Err(error) => walk.read(path, error),
++                Kind::Directory => pending.push((
++                    path,
++                    Pending::At {
++                        parent: dir.clone(),
++                        name,
++                        id: id_of(&st),
+                     },
+-                    Err(error) => walk.read(path, error),
+-                },
++                )),
+                 // A file whose digest this process already took, and that
+                 // nothing moved since, needs no worker.
+                 Kind::File if let Some(digest) = reused(&Stamp::at(&st)) => {
+@@ -381,6 +411,18 @@ fn list(
+     }
+ }
+ 
++/// A directory the walk will list: the root, already open, or one found
++/// in a listing, by its parent's descriptor, its name there, and the
++/// identity the listing saw.
++enum Pending {
++    Open(File),
++    At {
++        parent: Arc<File>,
++        name: OsString,
++        id: Option<Id>,
++    },
++}
++
+ fn finish(walk: Walk, root: PathBuf) -> Snapshot {
+     Snapshot {
+         root,
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index b667a2f5bebdb7ec8a8f00ecc007b08f6481d209..74be38f23da26907ef894758831dda0eeab7f6d5 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -396,6 +396,11 @@ struct Document {
+ pub enum Error {
+     Io(std::io::Error),
+     InvalidCommand(&'static str),
++    /// The workspace's source snapshot cannot admit a run: the observation
++    /// was incomplete (which limit, or which file could not be read), or
++    /// it differs from the one the grant pinned. The message names a path
++    /// inside the workspace, never command contents.
++    SourceSnapshot(String),
+     UnsupportedSchema,
+     Conflict,
+     RevisionMismatch,
+@@ -415,7 +420,7 @@ impl Error {
+     pub fn code(&self) -> &'static str {
+         match self {
+             Self::Io(_) => "io",
+-            Self::InvalidCommand(_) => "invalid_command",
++            Self::InvalidCommand(_) | Self::SourceSnapshot(_) => "invalid_command",
+             Self::UnsupportedSchema => "unsupported_schema",
+             Self::Conflict => "command_conflict",
+             Self::RevisionMismatch => "revision_mismatch",
+@@ -436,6 +441,7 @@ impl std::fmt::Display for Error {
+         match self {
+             Self::Io(error) => write!(formatter, "task store I/O failed: {error}"),
+             Self::InvalidCommand(message) | Self::Corrupt(message) => formatter.write_str(message),
++            Self::SourceSnapshot(message) => formatter.write_str(message),
+             Self::UnsupportedSchema => formatter.write_str("the task schema is not supported"),
+             Self::Conflict => {
+                 formatter.write_str("the command identity already names different bytes")
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 83a6f6cf4d6630b90cb1f03feb366273f64ebaef..33e601c48fc7a421c22ee25aa567e2cbf0cc1a66 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -406,6 +406,27 @@ fn bounded(text: &str) -> String {
+     format!("{}…", &text[..end])
+ }
+ 
++/// Why a workspace observation cannot admit a run, or `None` when it can:
++/// an incomplete observation names its first fault (the limit reached, or
++/// the file that could not be read, and how many faults there were), and a
++/// complete one that differs from the grant's pin says it changed. The
++/// check itself is unchanged: either case refuses.
++fn source_snapshot_refusal(before: &Snapshot, pin: Option<&str>) -> Option<String> {
++    if let Some(first) = before.faults().first() {
++        let more = before.faults().len() - 1;
++        let more = if more == 0 {
++            String::new()
++        } else {
++            format!(" (and {more} more)")
++        };
++        return Some(format!(
++            "the workspace snapshot is incomplete: {first}{more}"
++        ));
++    }
++    pin.is_some_and(|pin| pin != before.digest())
++        .then(|| "the workspace changed since its source snapshot was granted".to_owned())
++}
++
+ /// The engine's last reply in a retained trace: the last agent message, or
+ /// the rationale of Microcoder's last generated action.
+ fn last_reply(path: &Path) -> Option<String> {
+@@ -625,15 +646,10 @@ impl Host {
+         let before = observing
+             .await
+             .map_err(|_| Error::InvalidCommand("the workspace could not be observed"))?;
+-        if !before.is_complete()
+-            || grant
+-                .expected_source_snapshot
+-                .as_ref()
+-                .is_some_and(|pin| pin != &before.digest())
++        if let Some(refusal) =
++            source_snapshot_refusal(&before, grant.expected_source_snapshot.as_deref())
+         {
+-            return Err(Error::InvalidCommand(
+-                "the granted source snapshot is unavailable or changed",
+-            ));
++            return Err(Error::SourceSnapshot(refusal));
+         }
+         let spec = if grant.write_workspace {
+             Boundary::writing(&workspace)
+diff --git a/crates/coder/src/task/remote.rs b/crates/coder/src/task/remote.rs
+index 74cfb6741e74e690d172e84d0992420dda38d2c4..1503fec4ad35efd0c14dd08a8f5f7c315d0f0a1e 100644
+--- a/crates/coder/src/task/remote.rs
++++ b/crates/coder/src/task/remote.rs
+@@ -602,7 +602,9 @@ fn reference(receipt: &Receipt) -> TaskRef {
+ /// local; the code carries no path or content.
+ fn refusal(error: Error) -> Code {
+     match error {
+-        Error::InvalidCommand(_) | Error::UnsupportedSchema => Code::Malformed,
++        Error::InvalidCommand(_) | Error::SourceSnapshot(_) | Error::UnsupportedSchema => {
++            Code::Malformed
++        }
+         Error::Conflict | Error::InvalidTransition => Code::Conflict,
+         Error::RevisionMismatch => Code::Stale,
+         Error::NotFound => Code::Forbidden,

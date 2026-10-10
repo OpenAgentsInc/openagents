@@ -1,0 +1,84 @@
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 7d36a73cf70a6d9dbbd043dfb8c9364d0a375153..068226eec286d24b42cafa4e8bc0610ecf03ec5d 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -2198,3 +2200,37 @@ fn clip(text: &str, max: usize) -> String {
+ #[cfg(test)]
+ #[path = "issue_run_tests.rs"]
+ mod tests;
++
++/// The variable `chat work --on boat|gce` sets on the machine it runs an
++/// issue's flow on, naming that placement for the issue's comments.
++pub const PLACEMENT_ENV: &str = "OPENAGENTS_CODER_PLACEMENT";
++
++/// Where the issue's comments say the run is.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) struct Placement {
++    /// For the claim, said by the machine itself.
++    pub claim: &'static str,
++    /// For the evidence's run line.
++    pub run: &'static str,
++}
++
++fn placement() -> Placement {
++    placement_named(std::env::var(PLACEMENT_ENV).ok().as_deref())
++}
++
++pub(crate) fn placement_named(name: Option<&str>) -> Placement {
++    match name {
++        Some("boat") => Placement {
++            claim: "on a Boat sandbox",
++            run: "on a Boat sandbox",
++        },
++        Some("gce") => Placement {
++            claim: "on a GCE pool host",
++            run: "on a GCE pool host",
++        },
++        _ => Placement {
++            claim: "on this computer",
++            run: "on the owner's computer",
++        },
++    }
++}
+diff --git a/crates/coder/src/task/issue_run_tests.rs b/crates/coder/src/task/issue_run_tests.rs
+index 2e3be30fdec3e29f45517d0503d8879282550a22..0d0ae69f6c6601c829fc0086411153835aa1d9ac 100644
+--- a/crates/coder/src/task/issue_run_tests.rs
++++ b/crates/coder/src/task/issue_run_tests.rs
+@@ -931,3 +931,13 @@ fn a_claim_whose_task_ended_is_stale_and_released_but_live_landed_and_foreign_on
+     };
+     assert!(stale_claims(dir.path(), &released, now, 6).is_empty());
+ }
++
++#[test]
++fn the_comments_name_where_the_run_is() {
++    use super::placement_named;
++    assert_eq!(placement_named(None).claim, "on this computer");
++    assert_eq!(placement_named(None).run, "on the owner's computer");
++    assert_eq!(placement_named(Some("boat")).claim, "on a Boat sandbox");
++    assert_eq!(placement_named(Some("gce")).run, "on a GCE pool host");
++    assert_eq!(placement_named(Some("other")).claim, "on this computer");
++}
+diff --git a/crates/openagents-cli/src/chat_boat.rs b/crates/openagents-cli/src/chat_boat.rs
+index 1f37207bb576cfc5e9c48484b4f7cb32186c8982..1ab2dfb21d8b7e1a1b1532b700a7c3575ee7cfac 100644
+--- a/crates/openagents-cli/src/chat_boat.rs
++++ b/crates/openagents-cli/src/chat_boat.rs
+@@ -1552,6 +1553,7 @@ mod tests {
+         assert!(setup < read && FORK_READY.contains("ascii-lazyfs"));
+         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
+         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
++        assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=boat"));
+         for word in ["GH_TOKEN=", "ghp_", "gho_", "xai-"] {
+             assert!(!script.contains(word), "{word}");
+         }
+diff --git a/crates/openagents-cli/src/chat_gce.rs b/crates/openagents-cli/src/chat_gce.rs
+index f6cfa7b02eda9cbb0b71ccb348f58a3211c3f04c..75bf83e804ba3f55b2e37df8f1e4fbc7586d0437 100644
+--- a/crates/openagents-cli/src/chat_gce.rs
++++ b/crates/openagents-cli/src/chat_gce.rs
+@@ -734,6 +734,7 @@ mod tests {
+         assert!(script.contains("$(seq 0 1)"));
+         assert!(script.contains("--issues 10225 --parallel 1 --land main"));
+         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
++        assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=gce"));
+         assert!(script.contains("return 75"));
+         // The remote command line carries no credential: only the script
+         // sent on standard input does.

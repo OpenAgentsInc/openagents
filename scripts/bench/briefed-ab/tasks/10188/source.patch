@@ -1,0 +1,195 @@
+diff --git a/crates/nostr/src/ext.rs b/crates/nostr/src/ext.rs
+index c63a87900e49e4b1ae05eda94dae2d3d9b7e562a..5c5306cf6b2dede69fe7ceb0be6345571631d0e9 100644
+--- a/crates/nostr/src/ext.rs
++++ b/crates/nostr/src/ext.rs
+@@ -949,7 +949,7 @@ fn parse_release(event: &Event, object: &Map<String, Value>) -> Result<(), Contr
+ }
+ 
+ /// Check a release's `payout`: a Lightning address (`name@domain`) or a
+-/// Lightning node's 33-byte compressed public key as 66 lowercase hex
++/// mainnet bare Spark address, or a Lightning node's 33-byte compressed public key as 66 lowercase hex
+ /// digits. A release that charges a `fee_msat` must name one; the fee and
+ /// the address are part of the signed, pinned release (API G9).
+ ///
+@@ -976,7 +976,7 @@ pub fn check_payout(payout: &str) -> Result<(), ContractError> {
+                 .bytes()
+                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+     });
+-    if node_key || address {
++    if node_key || address || crate::nip19::check_spark_payout(payout) {
+         Ok(())
+     } else {
+         Err(malformed("payout"))
+diff --git a/crates/nostr/src/nip19.rs b/crates/nostr/src/nip19.rs
+index 8bd323220baf3e82eb7bbda80928ed08f62f47e2..035913862be0d70adbc876c97abe67ab82130077 100644
+--- a/crates/nostr/src/nip19.rs
++++ b/crates/nostr/src/nip19.rs
+@@ -229,6 +229,10 @@ pub fn decode(text: &str) -> Result<(String, Vec<u8>), Nip19Error> {
+ }
+ 
+ fn decode_within(text: &str, max: usize) -> Result<(String, Vec<u8>), Nip19Error> {
++    decode_variant(text, max, 1)
++}
++
++fn decode_variant(text: &str, max: usize, variant: u32) -> Result<(String, Vec<u8>), Nip19Error> {
+     if text.len() > max || !text.is_ascii() {
+         return Err(Nip19Error::InvalidLength);
+     }
+@@ -255,13 +259,54 @@ fn decode_within(text: &str, max: usize) -> Result<(String, Vec<u8>), Nip19Error
+             .ok_or(Nip19Error::InvalidCharacter)?;
+         words.push(word as u8);
+     }
+-    if polymod(&expand_prefix(prefix), &words) != 1 {
++    if polymod(&expand_prefix(prefix), &words) != variant {
+         return Err(Nip19Error::InvalidChecksum);
+     }
+     let payload = &words[..words.len() - CHECKSUM_CHARS];
+     Ok((prefix.to_owned(), from_words(payload)?))
+ }
+ 
++/// Validate a mainnet Spark payout address with a bare identity key.
++/// Invoice-bearing addresses are not reusable payout destinations.
++/// Reimplemented from Spark's public address encoding: Bech32m over a
++/// protobuf field 1 containing a compressed secp256k1 key.
++pub(crate) fn check_spark_payout(text: &str) -> bool {
++    if !text.starts_with("spark1") {
++        return false;
++    }
++    let Ok((prefix, bytes)) = decode_variant(text, 90, 0x2bc8_30a3) else {
++        return false;
++    };
++    prefix == "spark"
++        && bytes.len() == 35
++        && bytes[..2] == [10, 33]
++        && secp256k1::PublicKey::from_slice(&bytes[2..]).is_ok()
++}
++
++#[cfg(test)]
++pub(crate) fn spark_fixture(prefix: &str) -> String {
++    let key = secp256k1::PublicKey::from_secret_key(
++        &secp256k1::Secp256k1::new(),
++        &SecretKey::from_byte_array([1; 32]).unwrap(),
++    );
++    let mut bytes = vec![10, 33];
++    bytes.extend_from_slice(&key.serialize());
++    let mut words = to_words(&bytes);
++    let mut padded = words.clone();
++    padded.extend_from_slice(&[0; 6]);
++    let sum = polymod(&expand_prefix(prefix), &padded) ^ 0x2bc8_30a3;
++    for i in 0..6 {
++        words.push(((sum >> (5 * (5 - i))) & 31) as u8);
++    }
++    format!(
++        "{prefix}1{}",
++        words
++            .iter()
++            .map(|w| CHARSET[*w as usize] as char)
++            .collect::<String>()
++    )
++}
++
+ fn checksum(prefix: &str, words: &[u8]) -> [u8; CHECKSUM_CHARS] {
+     let mut padded = words.to_vec();
+     padded.extend_from_slice(&[0; CHECKSUM_CHARS]);
+diff --git a/crates/openagents-cli/src/plugin_registry.rs b/crates/openagents-cli/src/plugin_registry.rs
+index 19c32d7002f02fc2de342d222ee8773cb7bfc508..73b3c286d94a35f453e1120ae82bf33472ae7353 100644
+--- a/crates/openagents-cli/src/plugin_registry.rs
++++ b/crates/openagents-cli/src/plugin_registry.rs
+@@ -411,8 +411,12 @@ pub(crate) fn publish(
+     now: u64,
+ ) -> Result<Published, String> {
+     if let Some(fee) = fee {
+-        nostr::ext::check_payout(&fee.payout)
+-            .map_err(|_| format!("{} is not a Lightning address or node key", fee.payout))?;
++        nostr::ext::check_payout(&fee.payout).map_err(|_| {
++            format!(
++                "{} is not a mainnet Spark address, Lightning address, or node key",
++                fee.payout
++            )
++        })?;
+     }
+     let pubkey = signer.pubkey().to_string();
+     let body = packed.release_body(fee);
+@@ -830,23 +834,48 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
+     })
+ }
+ 
++fn publication_fee(
++    msat: Option<&str>,
++    sats: Option<&str>,
++    payout: Option<&str>,
++) -> Result<Option<Fee>, String> {
++    if msat.is_some() && sats.is_some() {
++        return Err("Use either --fee-msat or --fee-sats, not both".into());
++    }
++    let amount = match (msat, sats) {
++        (Some(value), _) => value
++            .parse::<u64>()
++            .map_err(|_| "--fee-msat takes a whole number of millisatoshis")?,
++        (_, Some(value)) => value
++            .parse::<u64>()
++            .ok()
++            .and_then(|n| n.checked_mul(1000))
++            .ok_or("--fee-sats takes a whole number that fits in u64 millisatoshis")?,
++        _ => 0,
++    };
++    match payout {
++        Some(payout) => {
++            nostr::ext::check_payout(payout).map_err(|_| "Invalid payout destination")?;
++            Ok(Some(Fee {
++                msat: amount,
++                payout: payout.to_owned(),
++            }))
++        }
++        None if msat.is_some() || sats.is_some() => Err("A fee needs --payout".into()),
++        None => Ok(None),
++    }
++}
++
+ fn publish_command(args: &Args) -> Result<Value, String> {
+     let dir = PathBuf::from(args.positional().first().map_or(".", String::as_str));
+     let dir = dir
+         .canonicalize()
+         .map_err(|error| format!("{}: {error}", dir.display()))?;
+-    let fee = match (args.option("fee-msat"), args.option("payout")) {
+-        (None, None) => None,
+-        (fee, Some(payout)) => Some(Fee {
+-            msat: fee
+-                .map_or(Ok(0), str::parse::<u64>)
+-                .map_err(|_| "--fee-msat takes a whole number of millisatoshis".to_owned())?,
+-            payout: payout.to_owned(),
+-        }),
+-        (Some(_), None) => {
+-            return Err("--fee-msat needs --payout, the Lightning address paid".into());
+-        }
+-    };
++    let fee = publication_fee(
++        args.option("fee-msat"),
++        args.option("fee-sats"),
++        args.option("payout"),
++    )?;
+     let signer = signer_for(args.option("as"))?;
+     let packed = pack(&dir, signer.pubkey())?;
+     let relay = relay_url(args.option("relay"));
+diff --git a/nips/openagents/NIP-EXT.md b/nips/openagents/NIP-EXT.md
+index 7f69e572817ca371d3ebbd35d08f9b3394f68ef9..137842f4905aba782553666f236cf7424577e654 100644
+--- a/nips/openagents/NIP-EXT.md
++++ b/nips/openagents/NIP-EXT.md
+@@ -41,7 +41,8 @@ display name, administrator listing, or transport login does not confer it.
+ A `3184` body has `package`, `version` (human-readable string), and
+ `manifest: ArtifactRef` with schema `openagents.package.v1`, and optionally
+ `fee_msat` (the author's per-call fee in millisatoshis) and `payout` (a
+-Lightning address or a 66-hex compressed node key); a nonzero `fee_msat`
++mainnet bare Spark address (`spark1…`, Bech32m with a compressed identity key),
++Lightning address, or a 66-hex compressed node key); a nonzero `fee_msat`
+ requires `payout`, so the fee and where it is paid are part of the signed
+ release. Signer MUST equal the package root. A release is identified by its event ID and manifest digest,
+ not its version label. Different events rebinding a package/version to different
+@@ -374,3 +375,7 @@ and malformed/conflict paths are fixture-backed. Required client cases include
+ tampering, unavailable historical bytes, cycles, source replacement, label
+ equivocation, stale/withheld checkpoints, namespace spoofing, interrupted
+ installation, uninstall failure, rollback, and preservation of active pins.
++
++Publishers may accept `--fee-sats N` and convert it to `fee_msat` with checked
++multiplication by 1,000. Non-mainnet Spark prefixes and invoice-bearing Spark
++addresses are not reusable payout destinations and must be refused.

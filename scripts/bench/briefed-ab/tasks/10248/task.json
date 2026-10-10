@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10248,
+  "title": "openagents chat send waits forever on a task whose process died",
+  "body": "From the #10209 study (docs/cost/2026-10-02-shadow-baseline-measurement.md, de33359b99): on the shipped path, routed Claude cost 1.68\u00d7 raw Claude Code. Part of #10204.\n\nDuring the study, `chat send` kept waiting on tasks whose owner process had died, with no error. Detect a dead owner (task store disposition / pid liveness, like the issue flow's 'owner process ended') and end the wait with a plain message.",
+  "fix": "5c221e67dd9d8a3eebfde193622884bcdacc8c2f",
+  "parent": "4c087cb7b02b11eda50372ea8ba410b67b0bcc71",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/owner.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/owner/follow_tests.rs"
+  ],
+  "test_names": [
+    "following_a_task_whose_owner_died_ends_the_wait",
+    "following_an_issue_flow_whose_process_died_ends_the_wait"
+  ],
+  "fix_lines": 187
+}

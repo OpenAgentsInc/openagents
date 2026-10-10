@@ -1,0 +1,24 @@
+diff --git a/crates/openagents-cli/src/agent.rs b/crates/openagents-cli/src/agent.rs
+index 237a08ad78ccaedbca7187fc8a2fb0a8bb4b082c..0228c3b39e72f75e580b8a5650ad936b5e6722ba 100644
+--- a/crates/openagents-cli/src/agent.rs
++++ b/crates/openagents-cli/src/agent.rs
+@@ -1992,6 +1990,19 @@ mod tests {
+         Args::parse(&words, SWITCHES).unwrap()
+     }
+ 
++    #[test]
++    fn proposed_line_has_command_and_reason_without_hint() {
++        let pending = wire::Proposal {
++            step: 1,
++            command: "cargo test -p openagents-cli".into(),
++            why: "runs tests".into(),
++        };
++        assert_eq!(
++            proposed_line(&pending),
++            "PROPOSED: cargo test -p openagents-cli (runs tests)"
++        );
++    }
++
+     #[test]
+     fn new_makes_a_keyed_attested_agent_and_retire_deletes_the_key() {
+         let dir = tempfile::tempdir().unwrap();

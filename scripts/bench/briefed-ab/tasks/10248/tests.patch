@@ -1,0 +1,144 @@
+diff --git a/crates/coder/src/task/owner/follow_tests.rs b/crates/coder/src/task/owner/follow_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f31352e6a7a42a640e103fdb433ebde8a6bce399
+--- /dev/null
++++ b/crates/coder/src/task/owner/follow_tests.rs
+@@ -0,0 +1,138 @@
++//! `chat send` waits on a task through [`local::Follow`] (#10248). A turn
++//! whose owner process died never records a result, and an issue flow
++//! whose process died never finishes, so the follower once waited on
++//! either forever. It now ends the wait with a plain failure, and leaves a
++//! live owner's or flow's task alone.
++
++use std::path::Path;
++use std::time::{Duration, Instant};
++
++use openagents_chat::coder_events::{CoderEvent, IssueLink, Line, OWNER_ENDED_MESSAGE};
++
++use super::tests::fixture;
++use super::*;
++use crate::task::issue_run::{self, FLOW_SCHEMA, Flow};
++use crate::task::local::{Follow, Local, State};
++
++/// The owner of `id`, once no process another test forked holds its lock.
++fn hold(dir: &Path, id: &str) -> Owner {
++    let store = Store::open_for_owner(dir).unwrap();
++    let started = Instant::now();
++    loop {
++        match Owner::acquire(&store, id) {
++            Ok(owner) => return owner,
++            Err(Error::Busy) if started.elapsed() < Duration::from_secs(30) => {
++                std::thread::sleep(Duration::from_millis(50));
++            }
++            Err(error) => panic!("{error:?}"),
++        }
++    }
++}
++
++/// Polls `follow` until its turn ends, with every line it emitted.
++fn until_ended(follow: &mut Follow) -> Vec<Line> {
++    let started = Instant::now();
++    let mut lines = Vec::new();
++    loop {
++        let (new, state) = follow.poll().unwrap();
++        lines.extend(new);
++        if state == State::Ended {
++            return lines;
++        }
++        assert!(
++            started.elapsed() < Duration::from_secs(30),
++            "the wait never ended: {lines:?}"
++        );
++        std::thread::sleep(Duration::from_millis(20));
++    }
++}
++
++fn owner_ended(line: &Line) -> &openagents_chat::coder_events::Failure {
++    match &line.event {
++        CoderEvent::Failure(failure) => {
++            assert_eq!(failure.message, OWNER_ENDED_MESSAGE);
++            assert_eq!(failure.ending.as_deref(), Some(OWNER_ENDED));
++            failure
++        }
++        other => panic!("expected the owner-ended failure, got {other:?}"),
++    }
++}
++
++#[tokio::test]
++async fn following_a_task_whose_owner_died_ends_the_wait() {
++    let (root, _workspace, grant) = fixture();
++    let dir = root.path().join("store");
++    // The owner dies right after admission: the run has no result.
++    OWNER_FAULT.with(|fault| fault.set(Some("after_admission")));
++    assert!(
++        execute(&dir, &serde_json::to_vec(&grant).unwrap())
++            .await
++            .is_err()
++    );
++    let mut follow = Local::new(dir.clone()).follow("task-one", None, None);
++    {
++        // A live owner holds its lock: the follower waits, and nothing of
++        // the run is ended.
++        let _owner = hold(&dir, "task-one");
++        let (_, state) = follow.poll().unwrap();
++        assert_eq!(state, State::Running);
++        let running = Store::open(&dir).unwrap().show("task-one").unwrap();
++        assert_eq!(running.status, Status::Running);
++        assert!(running.run.unwrap().result.is_none());
++    }
++    // The owner is gone: the wait ends, plainly, and the task is marked.
++    let lines = until_ended(&mut follow);
++    owner_ended(lines.last().unwrap());
++    let ended = Store::open(&dir).unwrap().show("task-one").unwrap();
++    assert_eq!(ended.status, Status::Finished);
++    assert_eq!(ended.execution, Execution::Failed);
++    let result = ended.run.unwrap().result.unwrap();
++    assert_eq!(result.ending, OWNER_ENDED);
++    // Following it again reads the same ending at once.
++    let mut again = Local::new(dir.clone()).follow("task-one", None, None);
++    let (lines, state) = again.poll().unwrap();
++    assert_eq!(state, State::Ended);
++    owner_ended(lines.last().unwrap());
++}
++
++#[tokio::test]
++async fn following_an_issue_flow_whose_process_died_ends_the_wait() {
++    let (root, _workspace, grant) = fixture();
++    let dir = root.path().join("store");
++    let task = execute(&dir, &serde_json::to_vec(&grant).unwrap())
++        .await
++        .unwrap();
++    assert_eq!(task.status, Status::Finished);
++    let mut flow = Flow {
++        schema: FLOW_SCHEMA.into(),
++        task: "task-one".into(),
++        link: IssueLink {
++            repository: "acme/app".into(),
++            number: 42,
++            url: "https://github.com/acme/app/issues/42".into(),
++            title: "Fix the docs".into(),
++            outcome: String::new(),
++            commits: Vec::new(),
++            pull_request: None,
++            closed: false,
++        },
++        notes: Vec::new(),
++        finished: false,
++        // This process works the flow: the turn's ending waits for it.
++        process_id: Some(std::process::id()),
++        closing: String::new(),
++        files: None,
++    };
++    issue_run::save(&dir, &flow).unwrap();
++    let mut follow = Local::new(dir.clone()).follow("task-one", None, None);
++    let (_, state) = follow.poll().unwrap();
++    assert_eq!(state, State::Running, "a live flow is waited for");
++    // The flow's process is gone before it checked and landed the turn.
++    let mut child = std::process::Command::new("true").spawn().unwrap();
++    flow.process_id = Some(child.id());
++    child.wait().unwrap();
++    issue_run::save(&dir, &flow).unwrap();
++    let lines = until_ended(&mut follow);
++    let failure = owner_ended(lines.last().unwrap());
++    assert_eq!(failure.issue.as_ref().map(|link| link.number), Some(42));
++}

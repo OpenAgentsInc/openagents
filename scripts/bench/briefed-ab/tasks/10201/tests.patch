@@ -1,0 +1,37 @@
+diff --git a/crates/coder-host/tests/idle.rs b/crates/coder-host/tests/idle.rs
+index 4e38671f2a2a8d0e474cc6b2c9c9adf59c5d4e64..e2c8aa24a953ea898ba8633b6c97e90245af2632 100644
+--- a/crates/coder-host/tests/idle.rs
++++ b/crates/coder-host/tests/idle.rs
+@@ -178,3 +178,32 @@ async fn a_stop_drains_a_request_being_answered() {
+     client.write_all(&bytes[2..]).await.unwrap();
+     assert!(host.running.drain(Duration::from_secs(5)).await);
+ }
++
++/// Starting again, the host takes no new request: an open connection ends
++/// before its next one, and a new connection waits in the socket's queue
++/// (for the program that serves it next) instead of being refused.
++#[tokio::test]
++async fn a_host_starting_again_leaves_new_requests_for_the_next_program() {
++    let host = host().await;
++    let mut open = UnixStream::connect(&host.socket).await.unwrap();
++    let first = openagents_connect::control::call(&mut open, &Request::new(1, Op::Status {})).await;
++    assert!(matches!(first, Ok(Reply::Status { .. })), "{first:?}");
++    host.running.stop_taking_requests();
++    let ended = tokio::time::timeout(
++        Duration::from_secs(5),
++        openagents_connect::control::call(&mut open, &Request::new(2, Op::Status {})),
++    )
++    .await
++    .expect("the open connection ends");
++    assert!(ended.is_err(), "{ended:?}");
++    let mut queued = UnixStream::connect(&host.socket)
++        .await
++        .expect("the socket still takes connections");
++    let waiting = tokio::time::timeout(
++        Duration::from_secs(1),
++        openagents_connect::control::call(&mut queued, &Request::new(3, Op::Status {})),
++    )
++    .await;
++    assert!(waiting.is_err(), "nobody answers until the next program");
++    assert!(host.running.drain(Duration::from_secs(1)).await);
++}

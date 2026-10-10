@@ -1,0 +1,40 @@
+diff --git a/crates/openagents-web/src/ui_page.rs b/crates/openagents-web/src/ui_page.rs
+index 8f1a8df971baff5ea3dfcdba7e4da2f3d683bfe8..f95ed210dcb2ffc2681baf5519edc086b66a0739 100644
+--- a/crates/openagents-web/src/ui_page.rs
++++ b/crates/openagents-web/src/ui_page.rs
+@@ -62,9 +62,18 @@ impl Nav {
+ }
+ 
+ /// The destinations the left panel shows, in order. A destination is added
+-/// here when its page exists (`Nav::Environments` with `/environments`).
++/// here when its page exists (`Nav::Environments` with `/environments`,
++/// shown on the local address only).
+ pub const NAV: &[Nav] = &[Nav::Environments];
+ 
++/// Whether the left panel offers `nav`: Environments only when a studio is
++/// configured and the request came to the local address.
++fn nav_shown(nav: Nav, studio: bool, local: bool) -> bool {
++    match nav {
++        Nav::Environments => studio && local,
++    }
++}
++
+ /// One page: title, current section, content, and optional shell slots.
+ #[must_use]
+ pub struct UiPage {
+@@ -228,7 +237,14 @@ impl UiPage {
+                     .shortcut("Control+N", "⌃N"),
+             );
+         for nav in NAV {
+-            if *nav == Nav::Environments && !crate::environments::shown() {
++            // Environments answer only on the local address (the host
++            // guard refuses them on public hosts), so a public page never
++            // links them: no control that leads to a refusal.
++            if !nav_shown(
++                *nav,
++                crate::environments::shown(),
++                crate::local_request(headers),
++            ) {
+                 continue;
+             }
+             sidebar = sidebar.nav(

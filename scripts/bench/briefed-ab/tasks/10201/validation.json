@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 42,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-host/tests/idle.rs: applied\n",
+    "test_tail": "id/ab/build-v/crates/rust-native)\n   Compiling coder-service v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-service)\n   Compiling coder-pty v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-pty)\n   Compiling once_cell v1.21.4\n   Compiling tracing-core v0.1.36\n   Compiling rustls v0.23.45\n   Compiling zvariant v5.15.0\n   Compiling tracing v0.1.44\n   Compiling polling v3.11.0\n   Compiling tempfile v3.27.0\n   Compiling noq-udp v1.3.0\n   Compiling iroh-metrics v1.0.2\n   Compiling hickory-proto v0.26.3\n   Compiling async-io v2.6.0\n   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\n   Compiling coder-boundary v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-boundary)\n   Compiling ed25519-dalek v3.0.0\n   Compiling async-signal v0.2.14\n   Compiling iroh-base v1.3.0\n   Compiling async-process v2.5.0\n   Compiling tokio-util v0.7.19\n   Compiling hyper v1.11.1\n   Compiling tower v0.5.3\n   Compiling netlink-sys v0.8.8\n   Compiling acto v0.8.2\n   Compiling backon v1.6.0\n   Compiling netlink-proto v0.12.2\n   Compiling tower-http v0.6.11\n   Compiling zbus_names v4.3.4\n   Compiling swarm-discovery v0.6.3\n   Compiling n0-future v0.3.2\n   Compiling tokio-stream v0.1.19\n   Compiling zbus v5.19.0\n   Compiling n0-watcher v1.0.0\n   Compiling netwatch v0.19.3\n   Compiling hyper-util v0.1.20\n   Compiling tokio-rustls v0.26.5\n   Compiling rustls-platform-verifier v0.7.1\n   Compiling tungstenite v0.30.0\n   Compiling noq-proto v1.3.0\n   Compiling hyper-rustls v0.27.9\n   Compiling tokio-websockets v0.13.3\n   Compiling reqwest v0.13.5\n   Compiling tokio-tungstenite v0.30.0\n   Compiling n0-dns-resolver v0.1.0\n   Compiling iroh-dns v1.3.0\n   Compiling secret-service v5.2.0\n   Compiling noq v1.3.0\n   Compiling zbus-secret-service-keyring-store v1.0.1\n   Compiling iroh-relay v1.3.0\n   Compiling keyring v4.2.0\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr-transport)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build-v/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-reach)\n   Compiling iroh v1.3.0\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-connect)\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-access)\n   Compiling iroh-mdns-address-lookup v0.5.0\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n    Finished `test` profile [unoptimized] target(s) in 23.35s\n     Running tests/idle.rs (/home/christopherdavid/ab/target-v/debug/deps/idle-fc2507d11d35dc21)\n\nrunning 1 test\ntest a_host_starting_again_leaves_new_requests_for_the_next_program ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 2.08s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 6,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-host/tests/idle.rs: applied\n",
+    "test_tail": "   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\nerror[E0599]: no method named `stop_taking_requests` found for struct `coder_host::Running` in the current scope\n   --> crates/coder-host/tests/idle.rs:191:18\n    |\n191 |     host.running.stop_taking_requests();\n    |                  ^^^^^^^^^^^^^^^^^^^^ method not found in `coder_host::Running`\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `coder-host` (test \"idle\") due to 1 previous error\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

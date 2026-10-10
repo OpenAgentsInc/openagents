@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 42,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "Applied patch to 'crates/openagents-terminal/src/app_tests.rs' cleanly.\n",
+    "test_tail": ".3\n   Compiling ratatui-macros v0.7.2\n   Compiling ratatui v0.30.2\n   Compiling hyper v1.11.1\n   Compiling tokio-util v0.7.19\n   Compiling tower v0.5.3\n   Compiling netlink-sys v0.8.8\n   Compiling acto v0.8.2\n   Compiling backon v1.6.0\n   Compiling code-highlight v0.1.0 (/home/christopherdavid/ab/build/crates/code-highlight)\n   Compiling netlink-proto v0.12.2\n   Compiling image v0.25.10\n   Compiling tower-http v0.6.11\n   Compiling n0-future v0.3.2\n   Compiling tokio-stream v0.1.19\n   Compiling rust-native v0.1.0 (/home/christopherdavid/ab/build/crates/rust-native)\n   Compiling n0-watcher v1.0.0\n   Compiling netwatch v0.19.3\n   Compiling hyper-util v0.1.20\n   Compiling swarm-discovery v0.6.3\n   Compiling tokio-rustls v0.26.5\n   Compiling tungstenite v0.30.0\n   Compiling rustls-platform-verifier v0.7.1\n   Compiling noq-proto v1.3.0\n   Compiling tokio-websockets v0.13.3\n   Compiling hyper-rustls v0.27.9\n   Compiling tokio-tungstenite v0.30.0\n   Compiling reqwest v0.13.5\n   Compiling reqwest v0.12.28\n   Compiling coder-ui v0.1.0 (/home/christopherdavid/ab/build/crates/coder-ui)\n   Compiling jev v0.1.0 (/home/christopherdavid/ab/build/crates/jev)\n   Compiling n0-dns-resolver v0.1.0\n   Compiling coder-terminal v0.1.0 (/home/christopherdavid/ab/build/crates/coder-terminal)\n   Compiling iroh-dns v1.3.0\n   Compiling noq v1.3.0\n   Compiling model-access v0.1.0 (/home/christopherdavid/ab/build/crates/model-access)\n   Compiling iroh-relay v1.3.0\n   Compiling iroh v1.3.0\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build/crates/nostr-transport)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build/crates/coder-reach)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build/crates/xp-ledger)\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build/crates/coder-connect)\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat)\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build/crates/coder-access)\n   Compiling iroh-mdns-address-lookup v0.5.0\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat-app)\n   Compiling openagents-terminal v1.0.0-rc.2 (/home/christopherdavid/ab/build/crates/openagents-terminal)\n    Finished `test` profile [unoptimized] target(s) in 21.82s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target/debug/deps/openagents_terminal-c6cd1add8324d9ac)\n\nrunning 1 test\ntest app::tests::watcher_notifications_wait_in_the_watchers_view_not_the_transcript ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 70 filtered out; finished in 0.00s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 2,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "Applied patch to 'crates/openagents-terminal/src/app_tests.rs' cleanly.\n",
+    "test_tail": "   Compiling openagents-terminal v1.0.0-rc.2 (/home/christopherdavid/ab/build/crates/openagents-terminal)\nerror[E0599]: no method named `notice` found for struct `app::App` in the current scope\n    --> crates/openagents-terminal/src/app_tests.rs:1960:9\n     |\n1960 |     app.notice(\"Disk almost full: 12 GB free. Cleanup ran and freed 40 GB.\");\n     |         ^^^^^^\n     |\n    ::: crates/openagents-terminal/src/app.rs:132:1\n     |\n 132 | pub struct App {\n     | -------------- method `notice` not found for this struct\n     |\nhelp: there is a method `note` with a similar name\n     |\n1960 -     app.notice(\"Disk almost full: 12 GB free. Cleanup ran and freed 40 GB.\");\n1960 +     app.note(\"Disk almost full: 12 GB free. Cleanup ran and freed 40 GB.\");\n     |\n\nerror[E0609]: no field `unseen_notices` on type `app::App`\n    --> crates/openagents-terminal/src/app_tests.rs:1972:20\n     |\n1972 |     assert_eq!(app.unseen_notices, 1);\n     |                    ^^^^^^^^^^^^^^ unknown field\n     |\n     = note: available fields are: `ladder`, `thread`, `fresh`, `backend`, `folder` ... and 40 others\n\nerror[E0609]: no field `unseen_notices` on type `app::App`\n    --> crates/openagents-terminal/src/app_tests.rs:1975:20\n     |\n1975 |     assert_eq!(app.unseen_notices, 0);\n     |                    ^^^^^^^^^^^^^^ unknown field\n     |\n     = note: available fields are: `ladder`, `thread`, `fresh`, `backend`, `folder` ... and 40 others\n\nerror[E0599]: no method named `notice` found for struct `app::App` in the current scope\n    --> crates/openagents-terminal/src/app_tests.rs:1978:9\n     |\n1978 |     app.notice(\"Cleanup paused: a worktree has ignored files.\");\n     |         ^^^^^^\n     |\n    ::: crates/openagents-terminal/src/app.rs:132:1\n     |\n 132 | pub struct App {\n     | -------------- method `notice` not found for this struct\n     |\nhelp: there is a method `note` with a similar name\n     |\n1978 -     app.notice(\"Cleanup paused: a worktree has ignored files.\");\n1978 +     app.note(\"Cleanup paused: a worktree has ignored files.\");\n     |\n\nSome errors have detailed explanations: E0599, E0609.\nFor more information about an error, try `rustc --explain E0599`.\nerror: could not compile `openagents-terminal` (lib test) due to 4 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

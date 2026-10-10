@@ -1,0 +1,37 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": false,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 2,
+    "failed": 0,
+    "eval_secs": 36,
+    "errors": [
+      "crates/coder/src/task/owner.rs: error[E0583]: file not found for module `follow_tests`",
+      "error: could not compile `coder` (lib test) due to 1 previous error; 1 warning emitted"
+    ],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task/owner.rs:1284:1: error[E0583]: file not found for module `follow_tests`\ncrates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\nerror: could not compile `coder` (lib test) due to 1 previous error; 1 warning emitted\n",
+    "tests_err": "crates/coder/src/task/owner/follow_tests.rs: applied\n",
+    "test_tail": "   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coder` (lib test) generated 1 warning (run `cargo fix --lib -p coder --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized] target(s) in 20.56s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-cf3acd9c5ea3858c)\n\nrunning 2 tests\ntest task::owner::follow_tests::following_a_task_whose_owner_died_ends_the_wait ... ok\ntest task::owner::follow_tests::following_an_issue_flow_whose_process_died_ends_the_wait ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 965 filtered out; finished in 4.74s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 25,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\n",
+    "tests_err": "crates/coder/src/task/owner/follow_tests.rs: applied\n",
+    "test_tail": "   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coder` (lib test) generated 1 warning (run `cargo fix --lib -p coder --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized] target(s) in 12.64s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-cf3acd9c5ea3858c)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 965 filtered out; finished in 0.00s\n\n"
+  },
+  "usable": true,
+  "behavioral": true
+}

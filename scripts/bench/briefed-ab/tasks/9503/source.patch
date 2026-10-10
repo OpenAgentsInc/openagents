@@ -1,0 +1,33 @@
+diff --git a/crates/coder/src/runtime.rs b/crates/coder/src/runtime.rs
+index a554d35c4bc5dbe6b684e118a5a4b04e7ce68591..5f8a5e6313c203212f6030c3a99d4740eab65a17 100644
+--- a/crates/coder/src/runtime.rs
++++ b/crates/coder/src/runtime.rs
+@@ -1342,7 +1342,7 @@ impl Runtime {
+                 set,
+                 PROGRAM_CALL,
+                 &json!({ "request": request }),
+-                &Fill::Options(options),
++                &Fill::Options(options.clone()),
+                 trace,
+                 |read| format!("program {read}"),
+             )
+@@ -1364,12 +1364,17 @@ impl Runtime {
+         if choice == NO_PROGRAM {
+             return Ok(Selected::None);
+         }
+-        match self.survey.programs.get(&choice).is_some() {
++        // The answer is held to the option set the question offered: a
++        // door naming a program this host resolved but would not run —
++        // inadmissible, ungranted in capability, uninstalled — is the
++        // same refusal as one naming a program it never heard of, not a
++        // selection a later check has to catch.
++        match options.iter().any(|(slug, _)| *slug == choice) {
+             true => Ok(Selected::Program(choice)),
+             false => Err(Refused::at(
+                 "",
+                 "no_program_chosen",
+-                format!("the door named {choice}, which this host did not resolve"),
++                format!("the door named {choice}, which this host did not offer it"),
+             )),
+         }
+     }

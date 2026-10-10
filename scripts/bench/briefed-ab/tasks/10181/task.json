@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--test",
+    "blob"
+  ],
+  "issue": 10181,
+  "title": "`plugin test publish` fails: the relay refuses uploads (405)",
+  "body": "Found while OpenAgents created the disk-cleanup plugin through its own flow (#10165, thread 06904082b508c7130af68f9a00386d37 on the Mac; doc docs/background/2026-10-02-disk-cleanup-plugin.md).\n\n`openagents plugin test publish` uploads blobs to the relay, which answers 405. The agent worked around it by copying files to gs://openagentsgemini-eval-blobs with the automation service account. Fix the publish path: use the right blob endpoint (Blossom/NIP-96 or the eval-blob bucket via a signed upload URL from our service), so a user can publish without our cloud credentials. Test against the real endpoint.",
+  "fix": "1b8e76942855393f1580a3e14975573619b5f34e",
+  "parent": "ceac875a81f0452fd934a79c12ae7d594e33f1a8",
+  "package": "ext-eval",
+  "source_files": [
+    "crates/ext-eval/Cargo.toml",
+    "crates/ext-eval/src/blob.rs",
+    "docs/deployment/README.md",
+    "docs/deployment/eval-runner.md",
+    "docs/deployment/runbook-cloud-run.md",
+    "docs/protocol/media.md"
+  ],
+  "test_files": [
+    "crates/ext-eval/tests/blob.rs"
+  ],
+  "test_names": [
+    "a_relay_without_media_refuses_with_a_way_out",
+    "an_upload_carries_a_nip98_authorization_and_reads_back_through_a_redirect"
+  ],
+  "fix_lines": 270
+}

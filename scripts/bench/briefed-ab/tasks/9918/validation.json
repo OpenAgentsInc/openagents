@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 86,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/verse/src/ball.rs: applied\n",
+    "test_tail": "pherdavid/ab/build-v/crates/openrouter)\n   Compiling smol_str v0.2.2\n   Compiling dpi v0.1.2\n   Compiling png v0.18.1\n   Compiling verse-ruins v0.1.0 (/home/christopherdavid/ab/build-v/crates/verse-ruins)\n   Compiling skrifa v0.44.0\n   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/ab/build-v/crates/verse-lagrange)\n   Compiling cranelift-codegen v0.135.2\n   Compiling swash v0.2.10\n   Compiling wgpu-naga-bridge v29.0.4\n   Compiling wgpu-hal v29.0.4\n   Compiling wayland-protocols-wlr v0.3.12\n   Compiling wayland-protocols-plasma v0.3.12\n   Compiling smithay-client-toolkit v0.19.2\n   Compiling x11rb v0.13.2\n   Compiling wasmtime-internal-cache v48.0.2\n   Compiling wasmtime-internal-fiber v48.0.2\n   Compiling wgpu-core-deps-windows-linux-android v29.0.4\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr-transport)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-reach)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build-v/crates/xp-ledger)\n   Compiling capability v0.1.0 (/home/christopherdavid/ab/build-v/crates/capability)\n   Compiling gym-leaderboard v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym-leaderboard)\n   Compiling wgpu-core v29.0.4\n   Compiling winit v0.30.13\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-connect)\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build-v/crates/knowledge)\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-access)\n   Compiling gym-bridge v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym-bridge)\n   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/ab/build-v/crates/microcoder-loop)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym)\n   Compiling wgpu v29.0.4\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling coder-setup v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-setup)\n   Compiling cranelift-native v0.135.2\n   Compiling cranelift-frontend v0.135.2\n   Compiling wasmtime-internal-unwinder v48.0.2\n   Compiling wasmtime-internal-cranelift v48.0.2\n   Compiling wasmtime v48.0.2\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build-v/crates/plugin)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\n   Compiling verse v0.1.0 (/home/christopherdavid/ab/build-v/crates/verse)\n    Finished `test` profile [unoptimized] target(s) in 50.29s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/verse-ad91d4d138ab5894)\n\nrunning 1 test\ntest ball::tests::the_step_stays_within_lagrange_time_budget ... ignored, wall-clock; run in release on an idle machine: cargo test --release -p verse --lib ball -- --ignored --nocapture\n\ntest result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 322 filtered out; finished in 0.00s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 7,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/verse/src/ball.rs: applied\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n   Compiling verse v0.1.0 (/home/christopherdavid/ab/build-v/crates/verse)\n    Finished `test` profile [unoptimized] target(s) in 4.51s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/verse-ad91d4d138ab5894)\n\nrunning 1 test\ntest ball::tests::the_step_stays_within_lagrange_time_budget ... ignored, wall-clock; run in release on an idle machine: cargo test --release -p verse --lib ball -- --ignored --nocapture\n\ntest result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 322 filtered out; finished in 0.00s\n\n"
+  },
+  "usable": false,
+  "behavioral": true
+}

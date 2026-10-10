@@ -1,0 +1,263 @@
+diff --git a/crates/openagents-terminal/src/app.rs b/crates/openagents-terminal/src/app.rs
+index a21cdca0d104df22f5b407c00b0a8c92420b49ce..5103caf4b422df8e5501b4d05e26e4cd48a76f24 100644
+--- a/crates/openagents-terminal/src/app.rs
++++ b/crates/openagents-terminal/src/app.rs
+@@ -38,8 +38,13 @@ pub enum Phase {
+ /// A list over the transcript.
+ #[derive(Clone, Debug, PartialEq)]
+ pub enum Overlay {
+-    /// The thread list, in the shared chat-list order.
+-    Threads { rows: Vec<Summary>, selected: usize },
++    /// The thread list, in the shared chat-list order. Typing narrows it
++    /// to the rows `query` finds; `selected` indexes the rows shown.
++    Threads {
++        rows: Vec<Summary>,
++        selected: usize,
++        query: String,
++    },
+     /// The published plugins.
+     Plugins {
+         rows: Vec<(String, String)>,
+@@ -283,50 +288,58 @@ impl App {
+     }
+ 
+     fn overlay_key(&mut self, key: &KeyEvent) -> Vec<Action> {
++        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+         let Some(overlay) = &mut self.overlay else {
+             return Vec::new();
+         };
+-        let (len, selected) = match overlay {
+-            Overlay::Threads { rows, selected } => (rows.len(), selected),
+-            Overlay::Plugins { rows, selected } => (rows.len(), selected),
+-        };
+-        match key.code {
+-            KeyCode::Esc => {
+-                self.overlay = None;
+-                Vec::new()
+-            }
+-            KeyCode::Up => {
+-                *selected = selected.saturating_sub(1);
+-                Vec::new()
+-            }
+-            KeyCode::Down => {
+-                *selected = (*selected + 1).min(len.saturating_sub(1));
++        if key.code == KeyCode::Esc {
++            self.overlay = None;
++            return Vec::new();
++        }
++        match overlay {
++            Overlay::Threads {
++                rows,
++                selected,
++                query,
++            } => {
++                let shown = shown_threads(rows, query);
++                let picked = shown.get(*selected).map(|row| row.id.clone());
++                let len = shown.len();
++                match (key.code, ctrl) {
++                    (KeyCode::Up, _) => *selected = selected.saturating_sub(1),
++                    (KeyCode::Down, _) => *selected = (*selected + 1).min(len.saturating_sub(1)),
++                    (KeyCode::Enter, _) => {
++                        self.overlay = None;
++                        return picked.map(Action::Open).into_iter().collect();
++                    }
++                    (KeyCode::Char('n'), true) => {
++                        self.overlay = None;
++                        return vec![Action::New];
++                    }
++                    (KeyCode::Char('a'), true) => {
++                        return picked.map(Action::Archive).into_iter().collect();
++                    }
++                    (KeyCode::Backspace, _) => {
++                        query.pop();
++                        *selected = 0;
++                    }
++                    (KeyCode::Char(c), false) => {
++                        query.push(c);
++                        *selected = 0;
++                    }
++                    _ => {}
++                }
+                 Vec::new()
+             }
+-            KeyCode::Enter => match overlay {
+-                Overlay::Threads { rows, selected } => {
+-                    let id = rows.get(*selected).map(|row| row.id.clone());
+-                    self.overlay = None;
+-                    id.map(Action::Open).into_iter().collect()
+-                }
+-                Overlay::Plugins { .. } => {
+-                    self.overlay = None;
+-                    Vec::new()
++            Overlay::Plugins { rows, selected } => {
++                match key.code {
++                    KeyCode::Up => *selected = selected.saturating_sub(1),
++                    KeyCode::Down => *selected = (*selected + 1).min(rows.len().saturating_sub(1)),
++                    KeyCode::Enter => self.overlay = None,
++                    _ => {}
+                 }
+-            },
+-            KeyCode::Char('n') if matches!(overlay, Overlay::Threads { .. }) => {
+-                self.overlay = None;
+-                vec![Action::New]
++                Vec::new()
+             }
+-            KeyCode::Char('a') => match overlay {
+-                Overlay::Threads { rows, selected } => rows
+-                    .get(*selected)
+-                    .map(|row| Action::Archive(row.id.clone()))
+-                    .into_iter()
+-                    .collect(),
+-                Overlay::Plugins { .. } => Vec::new(),
+-            },
+-            _ => Vec::new(),
+         }
+     }
+ 
+@@ -773,6 +786,11 @@ pub fn welcome(backend: Kind, context: &Context, _resumed: Option<&str>) -> Card
+ }
+ 
+ /// The `/help` card.
++/// The thread list's rows `query` finds, in list order.
++pub fn shown_threads<'a>(rows: &'a [Summary], query: &str) -> Vec<&'a Summary> {
++    openagents_chat_app::chat_list::search(rows, query)
++}
++
+ pub fn help() -> Card {
+     let mut rows: Vec<(String, String)> = Slash::ALL
+         .iter()
+diff --git a/crates/openagents-terminal/src/draw.rs b/crates/openagents-terminal/src/draw.rs
+index cfc15c56753ba663d0b25c681a54383c163a15ae..2ec61d2883532c41d16c092bf0adab20e62554c9 100644
+--- a/crates/openagents-terminal/src/draw.rs
++++ b/crates/openagents-terminal/src/draw.rs
+@@ -83,9 +83,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+ 
+     if let Some(overlay) = &app.overlay {
+         let (title, items, selected, hint, empty) = match overlay {
+-            Overlay::Threads { rows, selected } => (
+-                "Threads",
+-                rows.iter()
++            Overlay::Threads {
++                rows,
++                selected,
++                query,
++            } => (
++                if query.is_empty() {
++                    "Threads".to_owned()
++                } else {
++                    format!("Threads · {query}")
++                },
++                crate::app::shown_threads(rows, query)
++                    .into_iter()
+                     .map(|row| Item {
+                         label: if row.title.trim().is_empty() {
+                             "New thread".to_owned()
+@@ -96,11 +105,15 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+                     })
+                     .collect::<Vec<_>>(),
+                 *selected,
+-                "Enter open · n new · a archive · Esc close",
+-                "No threads yet. Press n for a new one.",
++                "Type to search · Enter open · Ctrl+N new · Ctrl+A archive · Esc close",
++                if query.is_empty() {
++                    "No threads yet. Press Ctrl+N for a new one."
++                } else {
++                    "No threads match."
++                },
+             ),
+             Overlay::Plugins { rows, selected } => (
+-                "Plugins",
++                "Plugins".to_owned(),
+                 rows.iter()
+                     .map(|(name, about)| Item {
+                         label: name.clone(),
+@@ -113,7 +126,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+             ),
+         };
+         ListOverlay {
+-            title,
++            title: &title,
+             items: &items,
+             selected,
+             hint,
+diff --git a/crates/openagents-terminal/src/screen.rs b/crates/openagents-terminal/src/screen.rs
+index d55db4b0654a725f126d120e074fbb1b83852e05..a4c246b3be25499f104af79b02a71bc25194a091 100644
+--- a/crates/openagents-terminal/src/screen.rs
++++ b/crates/openagents-terminal/src/screen.rs
+@@ -321,17 +321,19 @@ impl Screen {
+                 self.app.switch(id, true);
+                 self.app.note("New thread. Type a message to start it.");
+             }
+-            Action::Threads => self.threads(None).await,
++            Action::Threads => self.threads(None, String::new()).await,
+             Action::Archive(id) => {
+                 let result = self.apply(Command::Archive { chat: id }).await;
+-                let selected = match &self.app.overlay {
+-                    Some(Overlay::Threads { selected, .. }) => *selected,
+-                    _ => 0,
++                let (selected, query) = match &self.app.overlay {
++                    Some(Overlay::Threads {
++                        selected, query, ..
++                    }) => (*selected, query.clone()),
++                    _ => (0, String::new()),
+                 };
+                 if let Err(message) = result {
+                     self.app.loud(message);
+                 }
+-                self.threads(Some(selected)).await;
++                self.threads(Some(selected), query).await;
+             }
+             Action::Export => self.export().await,
+             _ => {}
+@@ -427,8 +429,9 @@ impl Screen {
+         }
+     }
+ 
+-    /// Show the thread list, newest first in the shared order.
+-    async fn threads(&mut self, selected: Option<usize>) {
++    /// Show the thread list, newest first in the shared order, narrowed
++    /// to `query`.
++    async fn threads(&mut self, selected: Option<usize>, query: String) {
+         let Some(client) = self.client.as_mut() else {
+             return;
+         };
+@@ -438,17 +441,19 @@ impl Screen {
+                     .into_iter()
+                     .cloned()
+                     .collect();
++                let shown = crate::app::shown_threads(&ordered, &query);
+                 let selected = selected
+                     .unwrap_or_else(|| {
+-                        ordered
++                        shown
+                             .iter()
+                             .position(|row| row.id == self.app.thread)
+                             .unwrap_or(0)
+                     })
+-                    .min(ordered.len().saturating_sub(1));
++                    .min(shown.len().saturating_sub(1));
+                 self.app.overlay = Some(Overlay::Threads {
+                     rows: ordered,
+                     selected,
++                    query,
+                 });
+             }
+             Err(error) => self.app.loud(error.message().to_owned()),
+diff --git a/docs/terminal/README.md b/docs/terminal/README.md
+index cd52f12a6ffc9cdec460ec5b93443b29badb451a..533cef939046797f66f12a450682df42f29ba9a8 100644
+--- a/docs/terminal/README.md
++++ b/docs/terminal/README.md
+@@ -179,9 +179,10 @@ runs it there instead, as `openagents chat` does.
+ ## Threads
+ 
+ Ctrl+T or `/threads` lists threads in the same order as the desktop sidebar
+-and the phone: pinned first, then newest first, then archived. Enter opens
+-one, `n` starts a new one, `a` archives the selected one, and Esc closes the
+-list. Opening a thread while a run streams stops following it; the run keeps
++and the phone: pinned first, then newest first, then archived. Typing
++narrows it to threads whose title or project matches, Backspace widens it.
++Enter opens one, Ctrl+N starts a new one, Ctrl+A archives the selected one,
++and Esc closes the list. Opening a thread while a run streams stops following it; the run keeps
+ going.
+ 
+ ## Sync with your phone, and pairing

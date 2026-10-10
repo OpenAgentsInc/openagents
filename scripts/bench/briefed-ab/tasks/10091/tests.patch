@@ -1,0 +1,34 @@
+diff --git a/crates/openagents-desktop/src/late_click_tests.rs b/crates/openagents-desktop/src/late_click_tests.rs
+index 0162c1770b358da4f1e4b0951928fdda824cea74..4403ec736481fe34547d1f048bee811bb0d8c95d 100644
+--- a/crates/openagents-desktop/src/late_click_tests.rs
++++ b/crates/openagents-desktop/src/late_click_tests.rs
+@@ -126,6 +126,29 @@ fn stop_coder_stops_when_an_event_lands_between_press_and_release() {
+     assert_eq!(run_request(request), RunRequest::Stop { task });
+ }
+ 
++/// While Coder runs, the transcript's Stop Coder is as wide as its words,
++/// as the phone draws its Coder controls, not the reading band's width
++/// (#10091, #10075).
++#[test]
++fn the_running_stop_coder_control_is_content_sized() {
++    let (mut app, _, _) = running();
++    for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
++        app.present();
++        let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
++        let band = scene.surface_rect(TRANSCRIPT).expect("the transcript").w;
++        let panel = app.chat.as_ref().unwrap();
++        let stop = panel
++            .transcript
++            .control_bounds("coder-stop")
++            .expect("Stop Coder shows while Coder runs");
++        assert!(
++            stop.w < 160.0 && stop.w < band / 3.0,
++            "Stop Coder is {} wide in a {band}-point transcript at {width}",
++            stop.w
++        );
++    }
++}
++
+ #[test]
+ fn a_click_spanning_two_revisions_is_still_ignored() {
+     let (mut app, chat, next) = running();

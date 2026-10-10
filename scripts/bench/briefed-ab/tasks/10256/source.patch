@@ -1,0 +1,76 @@
+diff --git a/crates/coder/src/lib.rs b/crates/coder/src/lib.rs
+index 00397ac054753ad08885a34ba382c8a2446814f8..fde0632f0d417033d79b8c2ede01e30759f265e3 100644
+--- a/crates/coder/src/lib.rs
++++ b/crates/coder/src/lib.rs
+@@ -60,9 +60,9 @@ pub mod defaults;
+ pub mod delegate;
+ pub mod delegate_door;
+ pub mod doctor;
++pub mod efficiency;
+ pub mod eval_author;
+ pub mod evidence;
+-pub mod efficiency;
+ pub mod execution;
+ pub mod executor_door;
+ pub mod first;
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 7d36a73cf70a6d9dbbd043dfb8c9364d0a375153..068226eec286d24b42cafa4e8bc0610ecf03ec5d 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -1143,9 +1143,10 @@ impl Runner {
+             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
+         };
+         let claim = format!(
+-            "Claimed: Coder is working on this from an OpenAgents chat on this computer (task \
+-             `{}`), in its own worktree of `{base}`. It runs the repository's checks, {land}, \
+-             and comments the evidence here.\n\n{CLAIM_MARK} task={} -->",
++            "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
++             own worktree of `{base}`. It runs the repository's checks, {land}, and comments \
++             the evidence here.\n\n{CLAIM_MARK} task={} -->",
++            placement().claim,
+             &record.task[..12],
+             record.task
+         );
+@@ -1945,14 +1946,15 @@ impl Run<'_> {
+             .collect();
+         format!(
+             "**Run**: task `{}`, {turns} turn(s) ({} fix turn(s)) on {}, from an OpenAgents chat \
+-             on the owner's computer.",
++             {}.",
+             &self.record.task[..12],
+             self.rounds,
+             if providers.is_empty() {
+                 "a local provider".to_owned()
+             } else {
+                 providers.join(", ")
+-            }
++            },
++            placement().run
+         )
+     }
+ 
+diff --git a/crates/openagents-cli/src/chat_boat.rs b/crates/openagents-cli/src/chat_boat.rs
+index 1f37207bb576cfc5e9c48484b4f7cb32186c8982..1ab2dfb21d8b7e1a1b1532b700a7c3575ee7cfac 100644
+--- a/crates/openagents-cli/src/chat_boat.rs
++++ b/crates/openagents-cli/src/chat_boat.rs
+@@ -385,6 +385,7 @@ fi
+ # streaming in (a 2 GB copy took over 13 minutes once), and a later build
+ # into the slot replaces the files, never the running inodes.
+ export OPENAGENTS_CODER_CONTROLLER="$slot/debug/microcoder"
++export OPENAGENTS_CODER_PLACEMENT=boat
+ "$slot/debug/openagents" chat work --local --json --issues {issue} --parallel 1{land}
+ "#
+     )
+diff --git a/crates/openagents-cli/src/chat_gce.rs b/crates/openagents-cli/src/chat_gce.rs
+index f6cfa7b02eda9cbb0b71ccb348f58a3211c3f04c..75bf83e804ba3f55b2e37df8f1e4fbc7586d0437 100644
+--- a/crates/openagents-cli/src/chat_gce.rs
++++ b/crates/openagents-cli/src/chat_gce.rs
+@@ -113,7 +113,7 @@ d=$(dirname "$0")
+   fi
+   oa_build || return $?
+   cd "$HOME/openagents" || return 2
+-  OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder \
++  OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
+     "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1{land}
+ }}
+ main; rc=$?

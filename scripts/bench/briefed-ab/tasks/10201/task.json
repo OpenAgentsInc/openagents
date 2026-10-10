@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--test",
+    "idle"
+  ],
+  "issue": 10201,
+  "title": "Host restarts for updates only when idle; short reconnects are silent",
+  "body": "2026-10-02: the owner's OpenAgents Terminal showed \"OpenAgents cannot be reached. Trying again until it can; Esc stops.\" mid-message. `oa-terminal-dev` (Super+Return, also run by agents as `--build-only` after pushes) rebuilt the release `coder` and ran `systemctl --user restart com.openagents.desktop.host.service` while the message was in flight; the control connection dropped and the client showed `Event::Offline` for ~1 s. Same mechanism as #10168.\n\nFix:\n1. The host restarts for an update only when idle: `SIGUSR1` asks it to start again once no request is in flight or just answered on any path (control socket, relay, direct channel), no chat reply streams, and no device holds a terminal. It re-execs as the same PID and hands the bound control socket to the new program, so clients connecting meanwhile wait in the socket's queue. A stop (`SIGTERM`) first drains requests being answered (up to 10 s).\n2. The chat client says nothing for an outage shorter than 3 s; `Online` only follows an `Offline`. Applies to the terminal and `openagents chat`.\n3. Wording: \"Reconnecting to OpenAgents\u2026 (Esc stops)\" / \"(Ctrl-C stops)\"; rail \"reconnecting \u00b7 Esc stops\".\n4. coderos-hosts `oa-terminal-dev`: only an interactive launch starts the background host rebuild; `--build-only` never does; the rebuild sends SIGUSR1 instead of a hard restart.",
+  "fix": "74498aeb6a2b4d9f4527c69dc8be7b79fb263b64",
+  "parent": "f2429380a9eff51dedd63405950d2377787dc0e8",
+  "package": "coder-host",
+  "source_files": [
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/src/control/mod.rs",
+    "crates/coder-host/src/serve/mod.rs"
+  ],
+  "test_files": [
+    "crates/coder-host/tests/idle.rs"
+  ],
+  "test_names": [
+    "a_host_starting_again_leaves_new_requests_for_the_next_program"
+  ],
+  "fix_lines": 70
+}

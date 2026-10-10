@@ -1,0 +1,23 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10283,
+  "title": "Terminal: keep background-watcher notices (\"Disk almost full\" etc.) out of the transcript; show them in a watchers view",
+  "body": "Owner: \"i dont want to see 'Disk almost full' etc notifications in the transcript of the terminal, hide those somewhere else like user must hit left to see background watchers or something\". Background rule notices (disk cleanup, other watchers from crates/background) must not be inserted into the chat transcript. Put them in a background-watchers view the user opens on purpose (e.g. Left arrow from an empty input, or a key listed in the help/status line), with an unobtrusive indicator (a small count in the status line) when something new happened. Watcher start-up lists, run results and escalations all go there; nothing about background watchers appears in the transcript unless the user asks in chat. Snapshot tests for both.",
+  "fix": "17edcc548ab8fc85a27e65fbab72e767fe7b00a3",
+  "parent": "ec832a8d9ff8d2f6e0b4ea533968efedc4a762ec",
+  "package": "openagents-terminal",
+  "source_files": [
+    "crates/openagents-terminal/src/app.rs",
+    "crates/openagents-terminal/src/draw.rs",
+    "crates/openagents-terminal/src/screen.rs"
+  ],
+  "test_files": [
+    "crates/openagents-terminal/src/app_tests.rs"
+  ],
+  "test_names": [
+    "watcher_notifications_wait_in_the_watchers_view_not_the_transcript"
+  ],
+  "fix_lines": 121
+}

@@ -1,0 +1,52 @@
+diff --git a/crates/openagents-desktop/src/fake.rs b/crates/openagents-desktop/src/fake.rs
+index 642e157c876e162e210c84bca0dd6f37fe173203..3da822a68fe06f2c6c525ca1822011852e45e1c1 100644
+--- a/crates/openagents-desktop/src/fake.rs
++++ b/crates/openagents-desktop/src/fake.rs
+@@ -130,6 +130,12 @@ impl FakeHost {
+         })))
+     }
+ 
++    /// Answers chat messages through `door` instead of the offline
++    /// fixture's reply, as a test's scripted worker does.
++    pub fn answer_with(&self, door: Arc<dyn openagents_chat::basic_coder::Door>) {
++        self.state().chats = Some(FakeChat::with_door(door));
++    }
++
+     fn state(&self) -> MutexGuard<'_, State> {
+         self.0.lock().unwrap_or_else(|poison| poison.into_inner())
+     }
+@@ -500,10 +506,13 @@ impl std::fmt::Debug for FakeChat {
+ }
+ impl FakeChat {
+     fn new() -> Self {
++        Self::with_door(Arc::new(FixtureDoor))
++    }
++    fn with_door(door: Arc<dyn openagents_chat::basic_coder::Door>) -> Self {
+         let runtime = tokio::runtime::Runtime::new().expect("fixture runtime");
+         let chats = openagents_chat::basic_chats::BasicChats::new(
+             Some(runtime.handle().clone()),
+-            Some(Arc::new(FixtureDoor)),
++            Some(door),
+             None,
+         );
+         Self {
+diff --git a/crates/openagents-desktop/src/shell.rs b/crates/openagents-desktop/src/shell.rs
+index 8d86f06e91eb396e0a3c7b1513a0932f51c791d5..8c43d97be211dd2df71e8f2234d8d9e2e4da0863 100644
+--- a/crates/openagents-desktop/src/shell.rs
++++ b/crates/openagents-desktop/src/shell.rs
+@@ -763,6 +763,15 @@ impl App for DesktopApp {
+         if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
+             self.send(vec![request], now);
+         }
++        // A reply arrives here (the background worker's outcomes above, or
++        // an inline `send`), not on input: open the deck its typed
++        // `open_presentation` offer holds now, not on the next key (#10082).
++        self.chat_presentation(now);
++        let slides = slides.or_else(|| {
++            self.slides
++                .as_ref()
++                .and_then(|viewer| viewer.next_wake(now))
++        });
+         self.notify();
+         self.present();
+         let wake = self.model.next_wake().min(

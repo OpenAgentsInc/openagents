@@ -1,0 +1,29 @@
+diff --git a/crates/physics/src/lib.rs b/crates/physics/src/lib.rs
+index 35950876919bd20d2560620ea75e9f2e86705780..119a2ded45495832f5c44ef76538daa636f7f158 100644
+--- a/crates/physics/src/lib.rs
++++ b/crates/physics/src/lib.rs
+@@ -23,6 +23,8 @@
+ //!   long-range limits from each end, one-way by default or coupled to its
+ //!   end bodies.
+ //! - [`plume`]: free-molecular plume impingement forces on colliders.
++//! - [`modal`]: damped structural modes with an exact discrete update, for
++//!   flexible appendages.
+ //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
+ //!   force and torque to throttles, and a vector PID controller.
+ //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
+@@ -37,6 +39,7 @@ pub mod collision;
+ pub mod contact;
+ pub mod joint;
+ pub mod ledger;
++pub mod modal;
+ pub mod oracle;
+ pub mod plume;
+ pub mod rope;
+@@ -51,6 +54,7 @@ pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Materi
+ pub use contact::{ContactReport, SolverSettings};
+ pub use joint::{Joint, JointId, JointKind, Spring};
+ pub use ledger::{Ledger, LedgerError, Momentum};
++pub use modal::Mode;
+ pub use plume::{Plume, Reflection, Sample};
+ pub use rope::{Rope, RopeSettings};
+ pub use sensors::{DebugKind, DebugLine, Imu, ImuReading, RayHit};

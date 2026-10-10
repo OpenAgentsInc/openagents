@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10082,
+  "title": "Desktop: \"open the deck\" reply doesn't open the viewer until the next key or click",
+  "body": "Found by the release acceptance gate (#10080), scenario `open-deck`, on `30b7a81602` and `f6d0c4cb2a` (debug builds, real host and live chat worker).\n\n**What happens:** in the desktop app, \"open the three devdays later deck\" gets the reply \"Opening Three DevDays Later.\" with the typed `open_presentation { deck: \"three-devdays-later\" }` offer (#10058), but the slide viewer does not open. The deck waits in the chat panel and opens only on the person's next key or click.\n\n**Why:** `Panel::outcome` stores the offer's deck in `presentation` when the reply arrives (`crates/openagents-desktop/src/chat.rs`, the `presentation_offer` branch). The shell takes it only in `DesktopApp::chat_presentation`, which runs from `chat_effects` and `activate` (`crates/openagents-desktop/src/shell.rs`), that is, on input. A reply arrives on `tick` (`apply` for the window's background worker, `send` inline), and `tick` never calls `chat_presentation`. The #10058 test `a_typed_open_presentation_offer_opens_that_deck` calls `chat_presentation` by hand, so it does not see this.\n\n**Evidence:** gate output: `FAIL open-deck: the typed offer for three-devdays-later arrived, but the viewer did not open; the deck waits for the person's next key or click (reply \"Opening Three DevDays Later.\")`. The gate's `open-deck/snapshot.json` shows the offer on the reply.\n\n**Fix:** take the held deck when a reply's outcome is applied on `tick` (both runners), with a test that delivers the reply through `tick` rather than calling `chat_presentation`. `scripts/release/acceptance.sh --only open-deck` should then pass.\n",
+  "fix": "386e72dacdc5c8d396a9649e6f7f9c42825b2a84",
+  "parent": "0062a366eea71793387d06cb4d3e69608c707075",
+  "package": "openagents-desktop",
+  "source_files": [
+    "crates/openagents-desktop/src/fake.rs",
+    "crates/openagents-desktop/src/shell.rs"
+  ],
+  "test_files": [
+    "crates/openagents-desktop/src/slides_shell_tests.rs"
+  ],
+  "test_names": [
+    "the_viewer_opens_when_the_offer_arrives_not_on_the_next_input"
+  ],
+  "fix_lines": 111
+}

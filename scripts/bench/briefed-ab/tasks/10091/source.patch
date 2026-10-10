@@ -1,0 +1,48 @@
+diff --git a/crates/openagents-chat-app/src/coder_run.rs b/crates/openagents-chat-app/src/coder_run.rs
+index d52b0a661c8ca6e66ffd4294a26e5727b0014608..3a42c0ec258caab8b00c5349e5c6e4a2ee0f2f32 100644
+--- a/crates/openagents-chat-app/src/coder_run.rs
++++ b/crates/openagents-chat-app/src/coder_run.rs
+@@ -862,13 +862,19 @@ impl Run {
+         rows
+     }
+ 
++    /// A run's controls (Stop Coder, Approve and Deny, Retry, a queued
++    /// message's Send now and Remove): each as wide as its words in the
++    /// transcript, as the phone draws its Coder controls (#10075, #10091),
++    /// never spanning the reading band.
+     fn buttons(&mut self, key: &str, buttons: &[(&str, &str, Action)]) -> Node<()> {
+         let enabled = !self.busy();
+         let children = buttons
+             .iter()
+             .map(|(key, label, action)| {
+                 self.actions.insert((*key).into(), action.clone());
+-                button(key, label, enabled)
++                let mut node = button(key, label, enabled);
++                node.style.intrinsic_width = Some(true);
++                node
+             })
+             .collect();
+         Node {
+diff --git a/crates/openagents-chat-app/src/task_chat.rs b/crates/openagents-chat-app/src/task_chat.rs
+index 5b472a3af692658f9fcd383ef184f33673dc41ab..7cfb52ffa2b4285562b76207f00592ed13a6c27a 100644
+--- a/crates/openagents-chat-app/src/task_chat.rs
++++ b/crates/openagents-chat-app/src/task_chat.rs
+@@ -959,11 +959,17 @@ impl Session {
+         }
+         rows
+     }
++    /// A task's control (Stop Coder, Approve, Deny, Retry, the steps'
++    /// paging): as wide as its words in the transcript, as the phone draws
++    /// its Coder controls (#10075, #10091).
+     fn button(&mut self, key: &str, label: &str, action: Action) -> Node<()> {
+         self.actions.insert(key.into(), action);
+         Node {
+             key: key.into(),
+-            style: Style::default(),
++            style: Style {
++                intrinsic_width: Some(true),
++                ..Style::default()
++            },
+             element: Element::Button {
+                 shortcut: None,
+                 label: label.into(),

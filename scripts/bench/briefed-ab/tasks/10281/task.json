@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10281,
+  "title": "Coder: a timed-out command whose process group isn't confirmed clear ends the turn as a stop nobody asked for",
+  "body": "Found while fixing #10248. Coder's last run of #10248 on coderos-4080 (task `ab924162549f`, codex gpt-6.1-sol, `~/coder-work-r.log`) ended with **\"Coder stopped: the task was stopped, or its host refused to go on.\"** Nobody stopped it. The heredoc wasn't the cause either.\n\n## What happened (read-only evidence from `~/.openagents/tasks`)\n\n- Step 7's command was `cat >> crates/coder/src/task/owner/tests.rs <<'EOF' \u2026 EOF` followed by `cargo fmt --all; cargo test -p openagents-chat \u2026; cargo test -p coder follower_ -- --test-threads=1 \u2026`. The heredoc worked. The `openagents-chat` tests passed at about 180 s. Then `cargo test -p coder follower_` ran the agent's own new test. That test polls a follower until it ends, so it hung until the 300 s command deadline.\n- Trace `ab924162549f\u2026.1.atif.jsonl`, effect 52 result: `\"ending\":\"timed out\",\"group_clear\":false,\"requested_stop\":false,\"seconds\":300.36`.\n- `crates/coder/src/task/adapter.rs` `Host::command`: `if !ended.group_clear { self.fail(\"supervised process cleanup is unknown\"); }`. After that, `Host::cancelled()` is true, the microcoder loop ends `stopped` (`{\"ending\":{\"reason\":\"stopped\"},\"steps\":7}`), and the owner records `\"ending\":\"cancelled_or_host_refusal\",\"stop_requested\":true,\"group_clear\":false`. The task (`task/ab92\u2026.json`) has only a `submit` command and no cancel command. It is left at `status: unknown`.\n- The person reads the generic `cancelled_or_host_refusal` text from `coder_events::Mapper::end`. The real reason, a timed-out command whose processes the supervisor could not confirm gone, is dropped. `stop_requested: true` is recorded even though no stop was requested.\n\n## Bugs\n\n1. A command timeout whose process group isn't confirmed clear ends the whole turn, and the run is recorded as a stop the person asked for (`stop_requested: true`). The fault reason should be recorded as its own ending, for example `process_cleanup_unknown`, and not as a stop.\n2. The person's message hides the reason. It should say that a command ran past its deadline and its processes could not be confirmed gone. The command should be named.\n3. Possibly: why the group didn't clear. The test's children (owner fixtures that start supervised commands in their own process groups) likely outlived the kill. Decide whether a timed-out command's leftover descendants should end the turn at all, or be reaped or reported while the agent goes on.\n\nEarlier Coder attempts on #10248 also did not start (\"the workspace's source checkout cannot be found\", \"another process holds the task store lock\"), so they never got this far.\n",
+  "fix": "67d7c09e4bd5e5f2793162e95c0174c32b8e6a2c",
+  "parent": "0e8b9fcd39170052bf742c9d6943c066b1866f49",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/adapter.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/adapter.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "test_names": [
+    "a_cleanup_fault_names_the_timed_out_command",
+    "a_group_is_given_time_to_empty_before_cleanup_counts_unknown"
+  ],
+  "fix_lines": 155
+}

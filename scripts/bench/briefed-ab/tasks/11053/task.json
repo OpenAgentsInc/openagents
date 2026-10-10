@@ -1,0 +1,16 @@
+{
+  "issue": 11053,
+  "title": "retail-service test fails: killed_service_resumes_original_resource_task_and_settlement",
+  "body": "`crates/retail-service/tests/process.rs::killed_service_resumes_original_resource_task_and_settlement` fails with \"live accounting changed since the checkpoint\". Seen 2026-10-09 while building ENV-10 (#11006, 11aa37dd44); it still fails with ENV-10's two new pieces turned off, so it looks older. Find the cause and fix it.",
+  "fix": "d5d7ee9f252ac02dd32ac9ab8f2fbe76fddc7406",
+  "parent": "6da5f5313ae14011e49727163f21c7fbbc3059c4",
+  "package": "pay-ledger",
+  "source_files": [
+    "crates/pay-ledger/src/lib.rs"
+  ],
+  "test_files": [
+    "crates/pay-ledger/src/lib.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 68
+}

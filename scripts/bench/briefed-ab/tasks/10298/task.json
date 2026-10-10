@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10298,
+  "title": "Fetch the one tracked branch before creating a chat-run worktree (no refspec changes)",
+  "body": "P3.2: before creating a chat-run worktree from a tracked branch, fetch that one branch with a short timeout and cached fallback, never adding a refspec (Paseo #5788 / diagnose-5556 lesson).\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec).",
+  "fix": "37c0d8ac9bcb97f45998d912002d162bd66a7f90",
+  "parent": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/landing.rs",
+    "crates/coder/src/task/local.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/freshen.rs",
+    "crates/coder/src/task/freshen_tests.rs"
+  ],
+  "test_names": [
+    "a_branch_behind_its_remote_starts_at_the_fetched_tip",
+    "a_detached_head_or_untracked_branch_fetches_nothing",
+    "a_held_fetch_lock_gives_up_within_the_timeout",
+    "an_unreachable_remote_falls_back_to_the_cached_ref",
+    "local_commits_keep_the_checkouts_head"
+  ],
+  "fix_lines": 322
+}

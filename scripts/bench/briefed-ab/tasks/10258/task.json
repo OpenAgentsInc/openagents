@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10258,
+  "title": "Pool/Boat git token lacks read:project, so issue flows can't move project Status",
+  "body": "From #10220: Secret Manager `coder-pool-git-token` lacks the `read:project`/`project` scope, so runs on Boat/GCE land and close issues but can't update the OpenAgents board (project 19) Status. Document the needed scopes in docs/cloud/boat-chat-work.md and docs/cloud/gce-pool.md, and make the flow say once (not fail) when Status can't be set. Rotating the token with the right scopes is an owner step (add to NEEDS_OWNER.md).",
+  "fix": "ec832a8d9ff8d2f6e0b4ea533968efedc4a762ec",
+  "parent": "f5e4aaba20de93b4073ebdf7a3eebde427826269",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/claim.rs",
+    "crates/coder/src/claim/fake.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "docs/cloud/boat-chat-work.md",
+    "docs/cloud/gce-pool.md"
+  ],
+  "test_files": [
+    "crates/coder/src/claim_tests.rs"
+  ],
+  "test_names": [
+    "a_token_without_the_project_scope_is_said_once_and_the_claim_goes_on"
+  ],
+  "fix_lines": 85
+}

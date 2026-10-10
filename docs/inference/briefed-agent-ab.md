@@ -1,7 +1,8 @@
 # Briefed agent vs bare Claude Code (#11211)
 
-Status: in progress, 2026-10-10. Pilot done; the main round is running. The
-numbers below are replaced as rounds finish.
+Status: in progress, 2026-10-10. Pilot and an exploratory main round done;
+the pre-registered S2 run (below) is running. Its result replaces the
+exploratory numbers.
 
 The question: is a Claude agent with a prepared **briefing**, a custom system
 prompt and a minimal tool set a cheaper, faster or more reliable way to turn
@@ -131,4 +132,69 @@ What changed after the pilot, and why:
   fix's files in the top 6 went from 0.35 to 0.58 (0.68 in the top 10) on the
   29 candidates.
 
-Results: see below (filled in as rounds finish).
+Pilot round 1 (3 issues, interface off, before #11229):
+
+| Arm | Trials | Pass fix tests | Judge accepts | Total $ | $ / judge-accepted | Median $ (sd) | Median s (sd) |
+|---|---|---|---|---|---|---|---|
+| A | 9 | 1 | 7 | 10.17 | 1.45 | 1.08 (0.41) | 282 (545) |
+| B0 | 9 | 3 | 8 | 4.77 | 0.60 | 0.57 (0.26) | 220 (106) |
+| Bbash | 9 | 1 | 7 | 4.93 | 0.70 | 0.61 (0.32) | 249 (509) |
+| C | 9 | 3 | 9 | 3.19 | 0.35 | 0.35 (0.22) | 127 (126) |
+
+## The verify defect (#11229) and what it touched
+
+The self-improving-codebases audit (RUN-01, RUN-02) found that `verify` and
+`finish` could report `pass` after a nonzero exit, a checker that did not
+start, zero tests or a failed fmt, and that the cache keyed on `git diff` plus
+file names, so new bytes in an untracked file or staged content could return
+a stale verdict. Fixed in c34036f3a5 with a test per case: `pass` now needs
+the tests' exit 0 (read from exit markers, not the log), at least one test
+run, and fmt's exit 0; `finish` runs a declared plan (compile, every test the
+change adds, fmt), uncached and independent of the agent's filter; the cache
+key is the git tree of the whole candidate plus mode, filter, crates and the
+checker's identity.
+
+What it could have affected: only what the B arms' agents saw, and so when
+they stopped. **No outcome in this document came from verify or from an
+agent's own report.** Acceptance is graded by `remote/eval.sh`, which applies
+the change, lays the fix's tests over it and requires cargo's real exit 0 and
+every named test passing, and by the judge, which sees only the diff. Of
+verify's 67 `pass` verdicts in earlier rounds, none showed zero tests or a
+failed fmt; a nonzero exit without a named failure cannot be ruled out from
+those logs. Earlier rounds therefore need no re-scoring, but they ran the
+defective agent and stay exploratory.
+
+The exploratory main round (`m1`: 21 issues, A / B0 / Bbash, interface on)
+was stopped at 101 of 189 trials when the defect was found, and is not used
+for the S2 claim.
+
+## Pre-registered S2 run
+
+Frozen before its first trial in `scripts/bench/briefed-ab/plans/s2.json`,
+committed with this section; `ab.py batch --plan plans/s2.json` refuses to
+run with a different agent binary or Claude Code version.
+
+- **Question:** does B0 cost at least 30% less per accepted change than bare
+  Claude Code (A), with equal or better success and no worse median time?
+- **Issues:** all 21 that passed validation before any trial result was
+  seen; none is dropped after results.
+- **Arms:** A and B0, 3 runs each per issue, `claude-opus-5-5` at default
+  effort, 20-minute limit, interface on. Agent binary sha256
+  `0480700f...07aa1` (c34036f3a5), Claude Code 2.1.296 with auto-update
+  off in trials.
+- **Order:** issues in a seeded random order; per issue each run rotates the
+  arm order from a seeded starting arm, so each arm goes first equally often.
+- **Budget:** $200 of CLI-reported list price for agent trials; reaching it
+  stops the run, reported as incomplete.
+- **Outcome:** accepted = the fix's own tests pass on the change and the
+  blind judge (score 4+) accepts. Never the agent's report.
+- **Analysis:** the issue is the unit and its runs a cluster. Success
+  difference first, with a 95% CI from 10,000 issue-level bootstrap resamples;
+  "equal or better" is shown only if the lower bound is at least 0, a CI
+  spanning 0 is inconclusive. Cost per accepted from known costs only; a
+  timed-out trial is a failure with unknown cost (an estimate from its tokens
+  is shown separately and labeled). The 30% cost gate counts only if the
+  CI's lower bound reaches 30%. Median and p90 time. Judge, grading and
+  briefing costs are reported apart; subscription billing is not observable.
+- **Reruns:** only trials that hit the login's usage limit (no outcome was
+  observed). Nothing else is rerun or excluded.

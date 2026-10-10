@@ -1,0 +1,99 @@
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index b4e82e7681beef6c7bf3b99f659380c45bc89864..dcf1eb397ba116d86492313d3c048b5ad5be4232 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -1987,22 +1987,46 @@ const MICROCODER: &str = if cfg!(windows) {
+     "microcoder"
+ };
+ 
+-/// The engine beside the running program, else the installed one.
++/// The engine beside the running program, else the one its macOS app
++/// bundle ships, else the installed one.
+ ///
+ /// # Errors
+ /// Names where it looked.
+ pub fn default_controller() -> std::result::Result<PathBuf, String> {
+-    let beside = std::env::current_exe()
++    let exe = std::env::current_exe()
+         .ok()
+-        .and_then(|exe| exe.canonicalize().ok())
+-        .and_then(|exe| exe.parent().map(|dir| dir.join(MICROCODER)))
+-        .filter(|path| path.is_file());
+-    let installed = std::env::var_os("HOME")
+-        .map(|home| PathBuf::from(home).join(".openagents/bin").join(MICROCODER))
+-        .filter(|path| path.is_file());
+-    beside.or(installed).ok_or_else(|| {
+-        "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
+-    })
++        .and_then(|exe| exe.canonicalize().ok());
++    let home = std::env::var_os("HOME").map(PathBuf::from);
++    controller_candidates(exe.as_deref(), home.as_deref())
++        .into_iter()
++        .find(|path| path.is_file())
++        .ok_or_else(|| {
++            "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
++        })
++}
++
++/// Where [`default_controller`] looks, in order: beside `exe`; when `exe`
++/// is the `openagents` CLI in an app bundle's `Contents/Helpers`, the
++/// bundle's `Contents/MacOS` (where `scripts/desktop/package-macos.sh`
++/// puts `coder` and `microcoder`, so the CLI runs the engine it shipped
++/// with rather than an older `~/.openagents/bin` copy that refuses a
++/// newer grant's shape); then `~/.openagents/bin`.
++fn controller_candidates(exe: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf> {
++    let mut candidates = Vec::new();
++    if let Some(dir) = exe.and_then(Path::parent) {
++        candidates.push(dir.join(MICROCODER));
++        if dir.file_name().is_some_and(|name| name == "Helpers")
++            && let Some(contents) = dir
++                .parent()
++                .filter(|contents| contents.file_name().is_some_and(|name| name == "Contents"))
++        {
++            candidates.push(contents.join("MacOS").join(MICROCODER));
++        }
++    }
++    if let Some(home) = home {
++        candidates.push(home.join(".openagents/bin").join(MICROCODER));
++    }
++    candidates
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index 377a07d2d8782cc292d02723c5bf2c5684ff7b22..84eced155316894051e44a556c7574b94fef3ab4 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -92,7 +92,8 @@ pub fn default_store() -> PathBuf {
+ }
+ 
+ /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the
+-/// `microcoder` beside the running program or in `~/.openagents/bin`.
++/// `microcoder` beside the running program, in its app bundle, or in
++/// `~/.openagents/bin` ([`autostart::default_controller`]).
+ ///
+ /// # Errors
+ /// Names where it looked.
+diff --git a/docs/cli/chat.md b/docs/cli/chat.md
+index 44c7974f7e81720482ae86e0be809761a1f14712..e069d1065a37bd303458269f8ed3866fa0a61d89 100644
+--- a/docs/cli/chat.md
++++ b/docs/cli/chat.md
+@@ -152,10 +152,14 @@ projects, and what the run's commands may reach.
+   (`provider_switched`).
+ - **The same run as the host's.** The task is started through the host
+   auto-start's own start (`coder::task::autostart::Policy::launch`): the
+-  `microcoder repository` engine beside `openagents` (or in
+-  `~/.openagents/bin`; `OPENAGENTS_CODER_CONTROLLER` names another), under
+-  an execution grant, in the filesystem boundary, with the same failover and
+-  the same ATIF trajectory per turn. The shared code is
++  `microcoder repository` engine beside `openagents`, else the one the Mac
++  app bundles in `Contents/MacOS` when `openagents` is the app's
++  `Contents/Helpers/openagents`, else `~/.openagents/bin`'s
++  (`OPENAGENTS_CODER_CONTROLLER` names another). An older engine than the
++  CLI can refuse a newer grant with "the execution grant has an invalid
++  shape" (#10074); build or install `microcoder` with `openagents`. The
++  run is under an execution grant, in the filesystem boundary, with the
++  same failover and the same ATIF trajectory per turn. The shared code is
+   [`coder::task::local`](../../crates/coder/src/task/local.rs).
+ - **Where tasks live.** `~/.openagents/tasks`, the store `coder task` and a
+   host on this computer use by default, so the host's devices see these

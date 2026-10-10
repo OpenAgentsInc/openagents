@@ -1,0 +1,91 @@
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index f8b3ae9f9e637f74a93463063c59d39f12a5e0bd..c693f1ca446db25d42609cb8df9f38ba93c234f9 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -1611,6 +1611,22 @@ impl Run<'_> {
+                 self.issue.number,
+                 &self.checked.problems,
+             );
++            // The turn's own checks may still run on the host; the task
++            // continues only once they end (#10273).
++            let store = self.work.store.clone();
++            let task = self.record.task.clone();
++            let stopping = || stop_requested(&store, &task);
++            match local::await_checks(&store, &task, &stopping, POLL) {
++                Ok(true) => {}
++                Ok(false) => return self.stopped("Stopped by the person who started it."),
++                Err(why) => {
++                    let problems = self.checked.problems.clone();
++                    return self.failed(
++                        &format!("The fix turn could not start: {why}"),
++                        Some(&problems),
++                    );
++                }
++            }
+             match self.work.local.answer(&self.record.task, &request) {
+                 Ok(_) => self.turn += 1,
+                 Err(why) => {
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index 10347769a998982b04d6a3fa66ef41b0d653a8cb..0bb9751ee2183503301b812a990b0fe386023fa5 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -1243,6 +1243,13 @@ impl Local {
+         if !matches!(current.status, Status::Finished | Status::Cancelled) {
+             return Err("Coder is still working on this task; wait for it to ask.".into());
+         }
++        // Its checks run after the turn ends; the task continues once they
++        // end (#10273).
++        if current.checks == super::Checks::Running {
++            return Err(
++                "Coder is still checking this task's last turn; wait for the checks to end.".into(),
++            );
++        }
+         let requested = record.requested.as_deref().and_then(Provider::from_config);
+         let (policy, asked) =
+             self.shaped(self.policy(&record.project)?, requested, record.shape)?;
+@@ -2100,6 +2107,45 @@ impl Follow {
+     }
+ }
+ 
++/// Waits until the host's checks of `task`'s last turn end (#10273).
++///
++/// A turn's owner records its result, then runs the checks the turn's
++/// grant froze; while they run the task is finished but cannot continue
++/// (`Action::Continue` refuses a task whose checks run). A caller that
++/// starts the next turn on its own schedule, such as an issue flow's fix
++/// turn after its own checks fail, waits here first. A check whose owner
++/// is gone is settled as unavailable, so this never waits on a dead
++/// process.
++///
++/// Returns `Ok(true)` once no check runs, `Ok(false)` as soon as
++/// `stopping` says so.
++///
++/// # Errors
++/// The task cannot be read, or its store stays busy past
++/// [`super::READER_BUSY_WAIT`].
++pub fn await_checks(
++    store: &Path,
++    task: &str,
++    stopping: &dyn Fn() -> bool,
++    poll: Duration,
++) -> Result<bool, String> {
++    let mut reading = super::Reading::default();
++    loop {
++        if stopping() {
++            return Ok(false);
++        }
++        if let Ok(mut inbox) = Store::open(store) {
++            let _ = inbox.settle(task);
++        }
++        match reading.show(store, task) {
++            Ok(Some(current)) if current.checks != super::Checks::Running => return Ok(true),
++            Ok(_) => {}
++            Err(error) => return Err(format!("Coder's task could not be read: {error}")),
++        }
++        std::thread::sleep(poll);
++    }
++}
++
+ /// Why a turn started at `since` (Unix seconds) will never be admitted:
+ /// the engine's launcher wrote an error, or it waited longer than the
+ /// admission bound. `None` while it may still start.

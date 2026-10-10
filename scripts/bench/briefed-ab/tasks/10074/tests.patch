@@ -1,0 +1,49 @@
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index b4e82e7681beef6c7bf3b99f659380c45bc89864..dcf1eb397ba116d86492313d3c048b5ad5be4232 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -3521,4 +3545,44 @@ mod tests {
+             2
+         );
+     }
++
++    /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`
++    /// and its `microcoder` in `Contents/MacOS`. The CLI must run that
++    /// engine, not an older `~/.openagents/bin` copy that refuses a newer
++    /// grant ("the execution grant has an invalid shape").
++    #[test]
++    fn the_app_cli_runs_the_engine_its_bundle_ships() {
++        let temp = tempfile::tempdir().unwrap();
++        let contents = temp.path().join("OpenAgents.app/Contents");
++        let home = temp.path().join("home");
++        for dir in [
++            contents.join("MacOS"),
++            contents.join("Helpers"),
++            home.join(".openagents/bin"),
++        ] {
++            std::fs::create_dir_all(dir).unwrap();
++        }
++        let bundled = contents.join("MacOS").join(MICROCODER);
++        let installed = home.join(".openagents/bin").join(MICROCODER);
++        std::fs::write(&bundled, b"").unwrap();
++        std::fs::write(&installed, b"").unwrap();
++        let first = |exe: &Path| {
++            controller_candidates(Some(exe), Some(&home))
++                .into_iter()
++                .find(|path| path.is_file())
++        };
++        let cli = contents.join("Helpers/openagents");
++        assert_eq!(first(&cli), Some(bundled.clone()));
++        assert_eq!(first(&contents.join("MacOS/coder")), Some(bundled.clone()));
++        // Beside the program still wins, and elsewhere the install is used.
++        let beside = contents.join("Helpers").join(MICROCODER);
++        std::fs::write(&beside, b"").unwrap();
++        assert_eq!(first(&cli), Some(beside));
++        assert_eq!(first(&temp.path().join("bin/openagents")), Some(installed));
++        // A Helpers folder outside a bundle's Contents is not a bundle.
++        assert!(
++            !controller_candidates(Some(&temp.path().join("Helpers/openagents")), None)
++                .contains(&temp.path().join("MacOS").join(MICROCODER))
++        );
++    }
+ }

@@ -1,0 +1,209 @@
+diff --git a/crates/background/src/lib.rs b/crates/background/src/lib.rs
+index 74725ac9e231e222fb38c1056fe72191893ef407..02f2cce6e60a953500f344190eac37c64e4d8853 100644
+--- a/crates/background/src/lib.rs
++++ b/crates/background/src/lib.rs
+@@ -38,6 +38,7 @@ pub mod paths;
+ pub mod plan;
+ pub mod plugins;
+ pub mod pool;
++pub mod presence;
+ pub mod rule;
+ pub mod run;
+ pub mod runner;
+diff --git a/crates/background/src/paths.rs b/crates/background/src/paths.rs
+index ec5a77125f8e04b65d949c0ac8bb4206ea7cc352..a49c54fd362a309e939b719c4d4ae830cb1379fd 100644
+--- a/crates/background/src/paths.rs
++++ b/crates/background/src/paths.rs
+@@ -133,6 +133,12 @@ impl Layout {
+     pub fn runner_lock(&self) -> PathBuf {
+         self.background().join("runner.lock")
+     }
++    /// What the runner holding that lock last said about itself
++    /// (#10349).
++    #[must_use]
++    pub fn runner_presence(&self) -> PathBuf {
++        self.background().join("runner.json")
++    }
+     /// Held by whoever is deleting, so two runs never overlap.
+     #[must_use]
+     pub fn run_lock(&self) -> PathBuf {
+diff --git a/crates/background/src/runner.rs b/crates/background/src/runner.rs
+index ce097dca42864505d0108a7fe705cd48222b5370..5577aefd2809a6aef6eef1c8d5aec6acadb83a75 100644
+--- a/crates/background/src/runner.rs
++++ b/crates/background/src/runner.rs
+@@ -20,6 +20,7 @@ use crate::engine::{self, Clock, Event, Judge, Powers};
+ use crate::inuse::System;
+ use crate::paths::{self, Layout};
+ use crate::plan::{Env, Facts, TaskFact, observe};
++use crate::presence;
+ use crate::rule::{Rule, Trigger};
+ use crate::run::{self, Cause, Report};
+ use crate::services::Services;
+@@ -146,9 +147,11 @@ impl Runner {
+             }
+         };
+         let pid = std::process::id();
++        let started = paths::now();
+         for rule in self.rules() {
+             State::update(&self.layout, &rule.id, |state| state.runner = Some(pid));
+         }
++        self.present(started, &self.rules());
+         std::thread::sleep(START_DELAY);
+         self.check_all(Cause::HostStart, &Event::default());
+         // Baselines: the first look at tasks and files fires nothing.
+@@ -159,6 +162,7 @@ impl Runner {
+             // Each rule's schedule is read again after every wake, so an
+             // edit takes effect without a restart.
+             let rules = self.rules();
++            self.present(started, &rules);
+             let now = paths::now();
+             self.schedule(&rules, now);
+             let deadline = self
+@@ -216,6 +220,16 @@ impl Runner {
+         }
+     }
+ 
++    /// Say who runs here and which rules, for the CLI to read (#10349).
++    fn present(&self, started: u64, rules: &[Rule]) {
++        let ids = rules.iter().map(|rule| rule.id.clone()).collect();
++        if let Err(error) = presence::write(&self.layout, &presence::Presence::here(started, ids)) {
++            (self.say)(&format!(
++                "background: cannot record that rules run here: {error}"
++            ));
++        }
++    }
++
+     fn runner_lock(&self) -> Option<File> {
+         std::fs::create_dir_all(self.layout.background()).ok()?;
+         let file = File::options()
+diff --git a/crates/openagents-cli/src/background.rs b/crates/openagents-cli/src/background.rs
+index fea3b551ecf19f9d626125af61170feb0ce7a0a3..6898672a4c32b91ee1d711336ca8d46b9ac93551 100644
+--- a/crates/openagents-cli/src/background.rs
++++ b/crates/openagents-cli/src/background.rs
+@@ -154,8 +154,12 @@ fn layout(args: &Args) -> Result<Layout, String> {
+ 
+ fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
+     let rows = view::list(layout);
+-    output.emit(&json!({ "rules": rows }), |_| {
++    let host = background::presence::summary(layout);
++    output.emit(&json!({ "rules": rows, "host": host }), |_| {
+         let mut lines: Vec<String> = rows.iter().map(view::Row::line).collect();
++        if let Some(host) = &host {
++            lines.push(host.clone());
++        }
+         if let Some(paused) = rows.iter().find(|row| {
+             row.error.is_none()
+                 && !row.enabled
+@@ -609,21 +613,52 @@ fn draft(output: &Output, layout: &Layout, args: &Args) -> Result<(), Failure> {
+ 
+ /// `apply DRAFT`: save what the draft shows.
+ fn apply(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
+-    let (draft, saved) = background::compile::apply(layout, id, background::paths::now())
+-        .map_err(Failure::Refused)?;
+-    output.emit(&json!({ "draft": draft, "saved": saved }), |_| match &saved {
+-        Some(rule) => match draft.kind {
+-            background::compile::Kind::Define => format!(
+-                "Saved {} ({}). It runs on its own from now on; openagents background list shows it.",
+-                rule.name, rule.id
+-            ),
+-            _ => format!("Saved {} version {}.", rule.name, rule.version),
++    let now = background::paths::now();
++    let (draft, saved) = background::compile::apply(layout, id, now).map_err(Failure::Refused)?;
++    // Whether it will run is what the host here can do, not what was
++    // saved (#10349).
++    let pickup = saved
++        .as_ref()
++        .filter(|rule| rule.enabled)
++        .map(|rule| background::presence::pickup(layout, &rule.id, now));
++    let runs = pickup.as_ref().map(pickup_json);
++    output.emit(
++        &json!({ "draft": draft, "saved": saved, "runs": runs }),
++        |_| match &saved {
++            Some(rule) => {
++                let head = match draft.kind {
++                    background::compile::Kind::Define => {
++                        format!("Saved {} ({}).", rule.name, rule.id)
++                    }
++                    _ => format!("Saved {} version {}.", rule.name, rule.version),
++                };
++                match &pickup {
++                    Some(pickup) => format!(
++                        "{head} {} openagents background list shows it.",
++                        background::presence::sentence(pickup)
++                    ),
++                    None => head,
++                }
++            }
++            None => format!("Removed {}.", draft.rule.name),
+         },
+-        None => format!("Removed {}.", draft.rule.name),
+-    });
++    );
+     Ok(())
+ }
+ 
++/// Whether a saved rule runs, for `--json` (#10349).
++fn pickup_json(pickup: &background::presence::Pickup) -> serde_json::Value {
++    use background::presence::Pickup;
++    let state = match pickup {
++        Pickup::Running => "running",
++        Pickup::Soon => "soon",
++        Pickup::Missed(_) => "missed",
++        Pickup::OldHost(_) => "old_host",
++        Pickup::NoHost => "no_host",
++    };
++    json!({ "state": state, "says": background::presence::sentence(pickup) })
++}
++
+ fn edit(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
+     let rule = store::load(layout, id).map_err(Failure::Refused)?;
+     let editor = std::env::var("VISUAL")
+@@ -715,11 +750,23 @@ fn pause(
+     resume: bool,
+ ) -> Result<(), Failure> {
+     let until = args.option("until").map(time).transpose()?;
++    let now = background::paths::now();
+     let rule = view::pause(layout, id, until, resume).map_err(Failure::Refused)?;
+-    output.emit(&json!({ "rule": rule }), |_| match (resume, until) {
+-        (true, _) => format!("{} is on.", rule.id),
+-        (false, Some(until)) => format!("{} is paused until {}.", rule.id, view::date(until)),
+-        (false, None) => format!("{} is paused until you resume it.", rule.id),
++    let pickup = resume.then(|| background::presence::pickup(layout, &rule.id, now));
++    let runs = pickup.as_ref().map(pickup_json);
++    output.emit(&json!({ "rule": rule, "runs": runs }), |_| {
++        match (resume, until) {
++            (true, _) => match &pickup {
++                Some(pickup) => format!(
++                    "{} is on. {}",
++                    rule.id,
++                    background::presence::sentence(pickup)
++                ),
++                None => format!("{} is on.", rule.id),
++            },
++            (false, Some(until)) => format!("{} is paused until {}.", rule.id, view::date(until)),
++            (false, None) => format!("{} is paused until you resume it.", rule.id),
++        }
+     });
+     Ok(())
+ }
+diff --git a/docs/background/2026-10-02-background-processes.md b/docs/background/2026-10-02-background-processes.md
+index 57f5d2c2f3ad5b4fcaf353c69f055b5e2dcc2b80..0f4af7f53deadcca5dc00b6a7bc06006f6b12131 100644
+--- a/docs/background/2026-10-02-background-processes.md
++++ b/docs/background/2026-10-02-background-processes.md
+@@ -350,6 +350,16 @@ notification for each non-empty run.
+ - **One runner per machine.** The runner holds
+   `~/.openagents/background/runner.lock`. A second host, or a
+   `background run` while the host runs, defers to the holder.
++- **What runs, said truthfully (#10349).** The runner rereads the rules on
++  every wake (at most 30 s apart), so a rule saved while the host runs needs
++  no restart. On every wake it also writes
++  `~/.openagents/background/runner.json`: its process, program, what it can
++  run (`conversation-rules`, `reload`), and the rules it saw. `background
++  apply` and `resume` read it with the lock and say whether the rule runs,
++  runs within 90 seconds, waits for a host to start, or waits for an older
++  host (one that writes no `runner.json`) to be updated and restarted;
++  `background list` adds a line when rules made from words can't run yet.
++  `--json` carries this as `runs` and `host`.
+ - **Without a host.** `openagents background run disk` performs one run in
+   the calling process, so a user can schedule it with cron.
+ - **Low disk resilience.** The runner keeps a small preallocated log file and

@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 2,
+    "failed": 0,
+    "eval_secs": 6,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/background/src/tests.rs: applied\n",
+    "test_tail": "   Compiling typenum v1.20.1\n   Compiling once_cell v1.21.4\n   Compiling serde v1.0.229\n   Compiling serde_json v1.0.151\n   Compiling tempfile v3.27.0\n   Compiling generic-array v0.14.7\n   Compiling block-buffer v0.10.4\n   Compiling crypto-common v0.1.7\n   Compiling digest v0.10.7\n   Compiling sha2 v0.10.9\n   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\n    Finished `test` profile [unoptimized] target(s) in 2.29s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/background-d79840d2bd716c01)\n\nrunning 2 tests\ntest tests::no_triggers_means_no_automatic_runs_but_a_manual_run_still_works ... ok\ntest tests::each_automatic_check_needs_its_own_trigger ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.01s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 1,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/background/src/tests.rs: applied\n",
+    "test_tail": "   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\nerror[E0425]: cannot find function `check` in module `crate::runner`\n   --> crates/background/src/tests.rs:569:33\n    |\n569 |     let report = crate::runner::check(&env, rule, cause).map(Result::unwrap);\n    |                                 ^^^^^ not found in `crate::runner`\n    |\nhelp: consider importing this function\n    |\n  4 + use crate::plan::check;\n    |\nhelp: if you import `check`, refer to it directly\n    |\n569 -     let report = crate::runner::check(&env, rule, cause).map(Result::unwrap);\n569 +     let report = check(&env, rule, cause).map(Result::unwrap);\n    |\n\nerror[E0425]: cannot find function `fires` in module `crate::runner`\n   --> crates/background/src/tests.rs:600:29\n    |\n600 |     assert!(!crate::runner::fires(&rule, Cause::Interval));\n    |                             ^^^^^ not found in `crate::runner`\n\nerror[E0425]: cannot find function `fires` in module `crate::runner`\n   --> crates/background/src/tests.rs:601:29\n    |\n601 |     assert!(!crate::runner::fires(&rule, Cause::Threshold));\n    |                             ^^^^^ not found in `crate::runner`\n\nerror[E0425]: cannot find function `fires` in module `crate::runner`\n   --> crates/background/src/tests.rs:621:33\n    |\n621 |         assert!(!crate::runner::fires(&rule, cause));\n    |                                 ^^^^^ not found in `crate::runner`\n\nerror[E0425]: cannot find function `fires` in module `crate::runner`\n   --> crates/background/src/tests.rs:624:28\n    |\n624 |     assert!(crate::runner::fires(&rule, Cause::Manual));\n    |                            ^^^^^ not found in `crate::runner`\n\nFor more information about this error, try `rustc --explain E0425`.\nerror: could not compile `background` (lib test) due to 5 previous errors\n"
+  },
+  "usable": true,
+  "behavioral": false
+}

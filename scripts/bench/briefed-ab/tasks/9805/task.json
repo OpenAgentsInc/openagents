@@ -1,0 +1,29 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "serve"
+  ],
+  "issue": 9805,
+  "title": "host serve: a missing workspace directory surfaces as an opaque terminal refusal",
+  "body": "## What happened\n\nOn the Mac host, `openagents computer exec mac -- CMD` returned:\n\n```\nThe computer can't open a terminal now. Its host may serve no workspace.\n```\n\nThe host had a workspace configured in `serve.json` (`openagents=/Users/.../work/openagents-host-tasks`), but the directory no longer existed. `terminal.open` spawned a PTY with a missing working directory, the spawn failed, and the host answered `unavailable`. Nothing in `host.log` recorded the cause. Creating the directory fixed it.\n\n## Expected\n\n- `host serve` checks each workspace path at start and logs a line naming the missing path (or creates it when it is under the host's own root).\n- The `terminal.open` refusal distinguishes \"no workspace configured\" from \"workspace path unusable\" so the client message can say which.\n\n## Scope\n\n`crates/coder-host/src/serve/{mod,dispatch}.rs`, the client message in `crates/coder-computers/src/terminal/session.rs`, and a test for each refusal.",
+  "fix": "804e51a3fe9a467f0808aa81fa34dd6535683b48",
+  "parent": "cb8da6aa9e189c5fe4c0e7cf39196eb3002c62a5",
+  "package": "coder-computers",
+  "source_files": [
+    "crates/coder-computers/src/terminal/session.rs",
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/src/serve/dispatch.rs",
+    "docs/coder/runtime/host-serve.md"
+  ],
+  "test_files": [
+    "crates/coder-computers/src/terminal/session.rs",
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/tests/serve.rs"
+  ],
+  "test_names": [
+    "missing_workspace_roots_are_named_or_created_under_the_host_root",
+    "terminal_open_tells_no_workspace_from_a_missing_root"
+  ],
+  "fix_lines": 168
+}

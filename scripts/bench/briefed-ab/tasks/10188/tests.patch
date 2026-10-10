@@ -1,0 +1,50 @@
+diff --git a/crates/nostr/src/ext.rs b/crates/nostr/src/ext.rs
+index c63a87900e49e4b1ae05eda94dae2d3d9b7e562a..5c5306cf6b2dede69fe7ceb0be6345571631d0e9 100644
+--- a/crates/nostr/src/ext.rs
++++ b/crates/nostr/src/ext.rs
+@@ -1543,6 +1543,11 @@ mod tests {
+         release(json!({})).unwrap();
+         release(json!({"fee_msat": 1000, "payout": "alice@getalby.com"})).unwrap();
+         release(json!({"fee_msat": 0})).unwrap();
++        let spark = crate::nip19::spark_fixture("spark");
++        release(json!({"fee_msat": 1000, "payout": spark})).unwrap();
++        assert!(release(json!({"payout": crate::nip19::spark_fixture("sparkrt")})).is_err());
++        assert!(release(json!({"payout": format!("{spark}x")})).is_err());
++        assert!(release(json!({"payout": "spark1notanaddress"})).is_err());
+         release(json!({"payout": format!("02{}", "ab".repeat(32))})).unwrap();
+         assert!(release(json!({"fee_msat": 1000})).is_err());
+         assert!(release(json!({"fee_msat": -1, "payout": "a@b.co"})).is_err());
+diff --git a/crates/openagents-cli/src/plugin_registry.rs b/crates/openagents-cli/src/plugin_registry.rs
+index 19c32d7002f02fc2de342d222ee8773cb7bfc508..73b3c286d94a35f453e1120ae82bf33472ae7353 100644
+--- a/crates/openagents-cli/src/plugin_registry.rs
++++ b/crates/openagents-cli/src/plugin_registry.rs
+@@ -1275,3 +1304,29 @@ mod tests {
+         assert!(refused.contains("--as PROFILE"), "{refused}");
+     }
+ }
++
++#[cfg(test)]
++mod fee_option_tests {
++    use super::*;
++    #[test]
++    fn sats_convert_without_overflow_or_ambiguous_units() {
++        assert_eq!(
++            publication_fee(None, Some("2"), Some("alice@example.com"))
++                .unwrap()
++                .unwrap()
++                .msat,
++            2000
++        );
++        assert!(
++            publication_fee(
++                None,
++                Some("18446744073709551615"),
++                Some("alice@example.com")
++            )
++            .is_err()
++        );
++        assert!(publication_fee(Some("1"), Some("1"), Some("alice@example.com")).is_err());
++        assert!(publication_fee(None, Some("2"), None).is_err());
++        assert!(publication_fee(None, Some("-1"), Some("alice@example.com")).is_err());
++    }
++}

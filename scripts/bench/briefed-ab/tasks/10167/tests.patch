@@ -1,0 +1,90 @@
+diff --git a/crates/background/src/tests.rs b/crates/background/src/tests.rs
+index 102a840610b89b9f862c1a55aea0301cf1e543a2..ad3fa5c3960d98cb9069ba1d09ff6cf7865c10c2 100644
+--- a/crates/background/src/tests.rs
++++ b/crates/background/src/tests.rs
+@@ -554,3 +554,85 @@ fn the_trash_empties_only_in_an_emergency() {
+     assert!(!trash.parent().unwrap().exists());
+     assert!(report.notice.unwrap().starts_with("Disk almost full"));
+ }
++
++/// A home with one ended task's target on a low volume, checked for
++/// `cause` under `rule`: whether the target was deleted, and the run's
++/// recorded trigger.
++fn checked(rule: &Rule, cause: Cause) -> (bool, Option<Cause>) {
++    let home = Home::new();
++    let ended = home.layout.targets().join("openagents-aaaa-1111");
++    target(&ended, 4096);
++    home.task("aaaa", &home.layout.worktrees().join("a"), &ended, true);
++    let facts = home.facts();
++    let volumes = low();
++    let env = env(&home, &facts, &volumes, &Idle);
++    let report = crate::runner::check(&env, rule, cause).map(Result::unwrap);
++    let trigger = report.and_then(|report| report.record).map(|r| r.trigger);
++    (!ended.exists(), trigger)
++}
++
++#[test]
++fn each_automatic_check_needs_its_own_trigger() {
++    use crate::rule::Trigger;
++    let automatic = [
++        (Cause::HostStart, Trigger::HostStart),
++        (Cause::TaskEnded, Trigger::TaskEnded),
++        (Cause::Interval, Trigger::Interval { every_secs: 300 }),
++    ];
++    // Every trigger named: each automatic check runs.
++    for (cause, _) in &automatic {
++        assert!(checked(&disk(), *cause).0, "{cause:?} with every trigger");
++    }
++    // One trigger removed: only that path stops.
++    for (_, removed) in &automatic {
++        let mut rule = disk();
++        rule.triggers.retain(|trigger| trigger != removed);
++        for (cause, trigger) in &automatic {
++            let ran = checked(&rule, *cause).0;
++            assert_eq!(ran, trigger != removed, "{cause:?} without {removed:?}");
++        }
++    }
++    // No interval trigger: no interval schedule at all.
++    let mut rule = disk();
++    rule.triggers
++        .retain(|trigger| !matches!(trigger, Trigger::Interval { .. }));
++    assert_eq!(rule.interval(), None);
++    assert!(!crate::runner::fires(&rule, Cause::Interval));
++    assert!(!crate::runner::fires(&rule, Cause::Threshold));
++    // An interval check records `threshold` when the rule names it, and
++    // `interval` when it does not.
++    assert_eq!(checked(&disk(), Cause::Interval).1, Some(Cause::Threshold));
++    let mut rule = disk();
++    rule.triggers
++        .retain(|trigger| *trigger != Trigger::Threshold);
++    assert_eq!(checked(&rule, Cause::Interval).1, Some(Cause::Interval));
++}
++
++#[test]
++fn no_triggers_means_no_automatic_runs_but_a_manual_run_still_works() {
++    let mut rule = disk();
++    rule.triggers.clear();
++    for cause in [
++        Cause::HostStart,
++        Cause::TaskEnded,
++        Cause::Interval,
++        Cause::Threshold,
++    ] {
++        assert!(!crate::runner::fires(&rule, cause));
++        assert_eq!(checked(&rule, cause), (false, None), "{cause:?}");
++    }
++    assert!(crate::runner::fires(&rule, Cause::Manual));
++    // A check is never the manual path, even for a rule with every trigger.
++    assert_eq!(checked(&disk(), Cause::Manual), (false, None));
++    // The run someone asks for ignores triggers.
++    let home = Home::new();
++    let ended = home.layout.targets().join("openagents-aaaa-1111");
++    target(&ended, 4096);
++    home.task("aaaa", &home.layout.worktrees().join("a"), &ended, true);
++    let facts = home.facts();
++    let volumes = low();
++    let env = env(&home, &facts, &volumes, &Idle);
++    let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
++    assert!(!ended.exists());
++    assert_eq!(report.record.unwrap().trigger, Cause::Manual);
++}

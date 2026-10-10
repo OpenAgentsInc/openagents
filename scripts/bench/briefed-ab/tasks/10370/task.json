@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--bins"
+  ],
+  "issue": 10370,
+  "title": "service status says no service is installed while the app's host service runs; descriptor says stopped while connect status says Online",
+  "body": "Found in shakeout round 2 (38fbc3d0d9), macOS with the OpenAgents desktop app's host running:\n\n```\n$ openagents service status\nopenagents service: no host service is configured under ~/.openagents/host; run `openagents service install` first\n$ openagents service descriptor\n9c9122\u2026f316 stopped generation 1790644485 version 285a86\u2026c1a4 on 127.0.0.1:47100\nupdate committed to 285a86\u2026 from f6413f\u2026\n$ openagents connect status\nOnline. Your phone can reach this computer.  host 9c9122\u2026f316 \u2026\n```\nA newcomer is told to install a service that already runs (via the app), and the descriptor contradicts the live state. Expected: `service status` recognises the app's host service (launchd/systemd unit), shows running/stopped from the live host, and only suggests install when nothing runs; descriptor output in plain words (state, version short hash, address).",
+  "fix": "ec71760ba1024e5ef713396ab1a05dd96075e2ec",
+  "parent": "49f07e7da4bab74964ce4df5e1cb4220f55b25c8",
+  "package": "openagents-cli",
+  "source_files": [
+    "crates/openagents-cli/src/service.rs"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/service.rs"
+  ],
+  "test_names": [
+    "the_app_host_is_reported_instead_of_asking_to_install"
+  ],
+  "fix_lines": 143
+}

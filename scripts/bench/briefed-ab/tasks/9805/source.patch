@@ -1,0 +1,120 @@
+diff --git a/crates/coder-computers/src/terminal/session.rs b/crates/coder-computers/src/terminal/session.rs
+index 267272b3d9f33aded32ce87646a4ce420d767632..c484bb1afd1c9f0822a32d7e888e216aad807b31 100644
+--- a/crates/coder-computers/src/terminal/session.rs
++++ b/crates/coder-computers/src/terminal/session.rs
+@@ -164,8 +164,11 @@ fn open_refusal(error: &HostError) -> Option<Phase> {
+     match error {
+         HostError::Access(error) => match error.code {
+             Code::Transport => None,
++            Code::Unsupported => Some(Phase::Refused(
++                "The computer's host serves no workspace, so it can't open a terminal. Add one with `host serve --workspace LABEL=PATH`.".into(),
++            )),
+             Code::Unavailable => Some(Phase::Refused(
+-                "The computer can't open a terminal now. Its host may serve no workspace.".into(),
++                "The computer can't open a terminal now. Its host's workspace directory is missing or unusable; check the host log.".into(),
+             )),
+             _ => Some(Phase::Refused(describe(error))),
+         },
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 1af7e7ac0324947aaa7ddda761cf479e32e42cec..82a4e360ac5f65134d491ee15210a274d8f63a03 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -234,6 +234,37 @@ impl Options {
+     }
+ }
+ 
++/// Check each recorded workspace root before the host serves. A root under
++/// the host's own directory is created; any other missing or unreadable
++/// root is reported so a later `terminal.open` refusal has a cause in the
++/// log. Returns one line per problem or repair.
++fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<String> {
++    let mut lines = Vec::new();
++    for (label, path) in workspaces {
++        if path.is_dir() {
++            continue;
++        }
++        if path.starts_with(root) {
++            match std::fs::create_dir_all(path) {
++                Ok(()) => lines.push(format!(
++                    "created workspace `{label}` at {}",
++                    path.display()
++                )),
++                Err(error) => lines.push(format!(
++                    "workspace `{label}` at {} cannot be created ({error}); terminal.open is refused until it exists",
++                    path.display()
++                )),
++            }
++        } else {
++            lines.push(format!(
++                "workspace `{label}` root {} is missing; terminal.open is refused until it exists",
++                path.display()
++            ));
++        }
++    }
++    lines
++}
++
+ fn home(relative: &str) -> Result<PathBuf> {
+     std::env::var_os("HOME")
+         .map(|home| PathBuf::from(home).join(relative))
+@@ -435,6 +466,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
+     if workspaces.is_empty() {
+         workspaces = settings.workspaces.clone();
+     }
++    for line in check_workspaces(&workspaces, root) {
++        eprintln!("coder host: {line}");
++    }
+     let listen = match options
+         .one("--listen")?
+         .or_else(|| std::env::var("OPENAGENTS_HOST_LISTEN").ok())
+diff --git a/crates/coder-host/src/serve/dispatch.rs b/crates/coder-host/src/serve/dispatch.rs
+index 582ba4c5d91df1f3f43f37f1c071afc1b0d7c718..9d06587c44e71b645b15b357612d00fda3d6a523 100644
+--- a/crates/coder-host/src/serve/dispatch.rs
++++ b/crates/coder-host/src/serve/dispatch.rs
+@@ -71,11 +71,24 @@ impl Dispatch for Dispatcher {
+                 self.task(op, result)
+             }
+             Operation::OpenTerminal { cols, rows } => {
++                // No workspace at all is a configuration the host cannot
++                // serve (`unsupported`); a configured root that is not a
++                // directory is a passing condition (`unavailable`).
+                 let workspace = self
+                     .shared
+                     .default_workspace
+                     .clone()
+-                    .ok_or(Code::Unavailable)?;
++                    .ok_or(Code::Unsupported)?;
++                if !self
++                    .shared
++                    .config
++                    .workspaces
++                    .values()
++                    .next()
++                    .is_some_and(|root| root.is_dir())
++                {
++                    return Err(Code::Unavailable);
++                }
+                 let open = Open::new(
+                     request,
+                     workspace,
+diff --git a/docs/coder/runtime/host-serve.md b/docs/coder/runtime/host-serve.md
+index b7c0e55a6e9c80cbfd2aa8e1343e7b3928fc86e8..3ddd2dab0b7c7c01937635110fd76d9843a4db13 100644
+--- a/docs/coder/runtime/host-serve.md
++++ b/docs/coder/runtime/host-serve.md
+@@ -70,6 +70,16 @@ Every `coder host` command also takes `--state DIR` for the access store,
+ `SIGTERM` or `SIGINT` stops the host: every terminal's process tree ends, and
+ the runtime record is removed.
+ 
++### Workspace roots
++
++At start the host checks each workspace root. A root under `--root` that does
++not exist is created and logged as `created workspace`. Any other missing root
++is logged as `workspace LABEL root PATH is missing`, and the host still
++serves. `terminal.open` then answers `unavailable` until the directory exists
++again, which needs no restart; a host with no workspace at all answers
++`unsupported`. The `openagents computer exec` message names which of the two
++happened.
++
+ ### Host generation
+ 
+ Clients refuse a host generation lower than one they already hold, so a

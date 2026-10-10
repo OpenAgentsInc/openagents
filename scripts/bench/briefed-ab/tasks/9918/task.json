@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9918,
+  "title": "Flaky under load: verse ball::tests::the_step_stays_within_lagrange_budget",
+  "body": "A debug-build timing budget (worst physics step \u2264 5 ms) fails whenever the machine is loaded: worst step 11 ms seen on 2026-09-28, and several agents reported it failing under load and passing alone. A wall-clock budget in a debug unit test is not a reliable gate.\n\nAcceptance: keep the budget meaningful without flaking \u2014 e.g. measure it only in release (or behind an ignored/bench test), count work (steps, contacts, iterations) instead of time in the unit test, or compare against a calibration run; document the budget where it's enforced.",
+  "fix": "a3fcea6dcc88004f7a7bcde335c8893bf8199f79",
+  "parent": "a658823f34d26d07826ab84df22bb6cd378787f3",
+  "package": "verse",
+  "source_files": [
+    "docs/verse/mobile.md"
+  ],
+  "test_files": [
+    "crates/verse/src/ball.rs"
+  ],
+  "test_names": [
+    "the_step_stays_within_lagrange_time_budget"
+  ],
+  "fix_lines": 79
+}

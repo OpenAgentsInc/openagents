@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 5,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-boundary/tests/snapshot_descriptors.rs: applied\ncrates/coder/src/task/adapter.rs: applied\n",
+    "test_tail": "   Compiling typenum v1.20.1\n   Compiling linux-raw-sys v0.12.1\n   Compiling once_cell v1.21.4\n   Compiling supervise v0.1.0 (/home/christopherdavid/ab/build-v/crates/supervise)\n   Compiling serde_core v1.0.229\n   Compiling getrandom v0.4.3\n   Compiling rustix v1.1.5\n   Compiling generic-array v0.14.7\n   Compiling block-buffer v0.10.4\n   Compiling crypto-common v0.1.7\n   Compiling digest v0.10.7\n   Compiling sha2 v0.10.9\n   Compiling tempfile v3.27.0\n   Compiling serde v1.0.229\n   Compiling coder-boundary v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-boundary)\n    Finished `test` profile [unoptimized] target(s) in 1.83s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder_boundary-d2843743a173716b)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.00s\n\n     Running tests/snapshot_descriptors.rs (/home/christopherdavid/ab/target-v/debug/deps/snapshot_descriptors-a7f264c72040c24c)\n\nrunning 1 test\ntest a_tree_wider_than_the_open_file_limit_is_observed_whole ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 1,
+    "eval_secs": 1,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder-boundary/tests/snapshot_descriptors.rs: applied\ncrates/coder/src/task/adapter.rs: applied\n",
+    "test_tail": "   Compiling coder-boundary v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-boundary)\n    Finished `test` profile [unoptimized] target(s) in 0.57s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder_boundary-d2843743a173716b)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.00s\n\n     Running tests/snapshot_descriptors.rs (/home/christopherdavid/ab/target-v/debug/deps/snapshot_descriptors-a7f264c72040c24c)\n\nrunning 1 test\ntest a_tree_wider_than_the_open_file_limit_is_observed_whole ... FAILED\n\nfailures:\n\n---- a_tree_wider_than_the_open_file_limit_is_observed_whole stdout ----\n\nthread 'a_tree_wider_than_the_open_file_limit_is_observed_whole' (2836784) panicked at crates/coder-boundary/tests/snapshot_descriptors.rs:46:5:\nfaults: [Read { path: \"traces/run-590\", error: \"Too many open files (os error 24)\" }, Read { path: \"traces/run-170\", error: \"Too many open files (os error 24)\" }, Read { path: \"traces/run-216\", error: \"Too many open files (os error 24)\" }]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    a_tree_wider_than_the_open_file_limit_is_observed_whole\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s\n\nerror: test failed, to rerun pass `-p coder-boundary --test snapshot_descriptors`\nerror: 1 target failed:\n    `-p coder-boundary --test snapshot_descriptors`\n"
+  },
+  "usable": false,
+  "behavioral": true
+}

@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10295,
+  "title": "Failed landing keeps the work on a pushed coder/stranded-<task8> ref",
+  "body": "P2.2: on landing failure, commit the change to coder/stranded-<task8> pushed to origin (in the issue-flow process, outside the guard), so the worktree becomes removable and the work is recoverable by branch. Mention the ref in the issue comment.\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec).",
+  "fix": "4d194518f532f50f26d206cc1545ccda3101195a",
+  "parent": "7ae1102705581027472ca6df0572d76e76594708",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/issue_run.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/issue_run_tests.rs"
+  ],
+  "test_names": [
+    "a_change_that_cannot_land_is_kept_on_a_stranded_branch_on_origin",
+    "a_stranded_push_that_fails_says_nothing_was_pushed"
+  ],
+  "fix_lines": 212
+}

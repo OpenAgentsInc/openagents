@@ -1,0 +1,26 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 10188,
+  "title": "Payments R4: NIP-EXT G9: `fee_msat` and `payout` in plugin releases (Spark address, Lightning address, or node key)",
+  "body": "Design: [central receive and splits, sections 3 and 5](https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md#5-payout-destinations-and-payouts); API gap G9 in `docs/api/2026-10-02-openagents-api.md`.\n\n## Do\n- `nips/openagents/NIP-EXT.md`: optional release fields `fee_msat` (u64, per call) and `payout` (one of `spark1\u2026` mainnet Spark address, `name@domain` Lightning address, or a 33-byte hex node key), signed with the release so they are pinned. Unknown shapes refused.\n- `crates/nostr` EXT release types and validation, with tests for each accepted and refused shape.\n- `openagents plugin publish` (or the release builder it uses) takes `--fee-sats N` and `--payout ADDRESS` and writes both. Coordinate with #10182 (publishing a plugin to the registry).\n\n## Done when\n- A release with both fields round-trips through `crates/nostr` and fails validation for a regtest `sparkrt1\u2026` address or a malformed address.\n\n\nSize: **Coder-sized** (`openagents chat work --issues coder-sized`).\n\nPart of the central payments plan: https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md\n",
+  "fix": "cb8f5c42e920e3f2f52795800d658518583592d5",
+  "parent": "fa12c8313d0708de3f39a56d1891dcd8af30511a",
+  "package": "nostr",
+  "source_files": [
+    "crates/nostr/src/ext.rs",
+    "crates/nostr/src/nip19.rs",
+    "crates/openagents-cli/src/plugin_registry.rs",
+    "nips/openagents/NIP-EXT.md"
+  ],
+  "test_files": [
+    "crates/nostr/src/ext.rs",
+    "crates/openagents-cli/src/plugin_registry.rs"
+  ],
+  "test_names": [
+    "sats_convert_without_overflow_or_ambiguous_units"
+  ],
+  "fix_lines": 146
+}

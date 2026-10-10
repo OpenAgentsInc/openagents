@@ -1,0 +1,16 @@
+{
+  "issue": 10559,
+  "title": "Verse: predict owned movement and reconcile acknowledged inputs",
+  "body": "Implement local movement prediction and acknowledgment-based reconciliation for the authenticated chamber client, using the same owned capsule movement solver as authority. Keep remote actors on snapshot interpolation and keep combat, rewards, and collision ownership authoritative. Bound retained input history; fence it by instance, character life, control epoch, and acknowledged sequence. Handle correction, stale acknowledgments, disconnect/reconnect, death/respawn, cinematic control handoff, dynamic blockers, and changed content without replaying unauthorized commands.\n\nAcceptance: focused deterministic delayed/duplicate/out-of-order acknowledgment tests; thin-wall, stair, and jump fixtures using shared solver behavior; bounded overflow and reset behavior; native remote client integration; retained two-player/spectator latency and correction evidence with separate CPU/render/network timing. Do not infer multiplayer or device performance from isolated solver tests.\n\nDepends on completed #10527/#10528 and #10439; parent #10406; VE-5 in docs/verse/engine/roadmap.md.\n",
+  "fix": "f548ba0229fdf1dce36a4c3fe9a0faaabebe5012",
+  "parent": "c4bdb6196208f8582e5d9e0283171713de1c86dd",
+  "package": "verse-world",
+  "source_files": [
+    "crates/verse-world/src/prediction/local.rs"
+  ],
+  "test_files": [
+    "crates/verse-world/src/prediction/local.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 211
+}

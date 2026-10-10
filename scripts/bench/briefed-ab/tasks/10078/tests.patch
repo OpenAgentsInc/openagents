@@ -1,0 +1,99 @@
+diff --git a/crates/coder-boundary/tests/snapshot_descriptors.rs b/crates/coder-boundary/tests/snapshot_descriptors.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd10d25e65c78ed7e31ec3517fd7752c18bf0cf1
+--- /dev/null
++++ b/crates/coder-boundary/tests/snapshot_descriptors.rs
+@@ -0,0 +1,53 @@
++//! A snapshot of a wide tree fits a GUI-launched process's open-file
++//! limit (#10078).
++//!
++//! The desktop app's host is launched by launchd, whose soft
++//! `RLIMIT_NOFILE` is 256. The walk once held a descriptor for every
++//! directory it had found but not yet listed, so a checkout with a few
++//! hundred sibling directories (`bench/terminal-bench/traces`) ran out
++//! of descriptors, every `EMFILE` became a fault, and the incomplete
++//! snapshot refused every Coder start with "the granted source snapshot
++//! is unavailable or changed". This test lowers the limit for its own
++//! process — it is its own test binary for that reason — and observes a
++//! tree wider than the limit.
++
++#![cfg(unix)]
++
++use coder_boundary::snapshot::Snapshot;
++
++#[test]
++fn a_tree_wider_than_the_open_file_limit_is_observed_whole() {
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().canonicalize().unwrap();
++    // Wider than the limit at one level, and nested below it, the shape
++    // of a checkout's trace directories.
++    for i in 0..600 {
++        let sibling = root.join("traces").join(format!("run-{i}"));
++        std::fs::create_dir_all(sibling.join("logs")).unwrap();
++        std::fs::write(sibling.join("logs").join("out.txt"), i.to_string()).unwrap();
++    }
++
++    let mut limit = libc::rlimit {
++        rlim_cur: 0,
++        rlim_max: 0,
++    };
++    assert_eq!(
++        unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) },
++        0
++    );
++    let lowered = libc::rlimit {
++        rlim_cur: 256,
++        rlim_max: limit.rlim_max,
++    };
++    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lowered) }, 0);
++    let snapshot = Snapshot::observe(&root);
++    unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) };
++
++    assert!(
++        snapshot.is_complete(),
++        "faults: {:?}",
++        snapshot.faults().iter().take(3).collect::<Vec<_>>()
++    );
++    // The root, `traces`, and per run its directory, `logs`, and file.
++    assert_eq!(snapshot.len(), 2 + 600 * 3);
++}
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 83a6f6cf4d6630b90cb1f03feb366273f64ebaef..33e601c48fc7a421c22ee25aa567e2cbf0cc1a66 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -1287,3 +1303,35 @@ impl Host {
+         self.owner.record(owner::Event::Result { result })
+     }
+ }
++
++#[cfg(test)]
++mod source_snapshot_tests {
++    use super::*;
++    use coder_boundary::snapshot::Limits;
++
++    #[test]
++    fn a_refusal_says_whether_the_snapshot_was_incomplete_or_changed() {
++        let dir = tempfile::tempdir().unwrap();
++        for name in ["a", "b", "c"] {
++            std::fs::write(dir.path().join(name), name).unwrap();
++        }
++        let whole = Snapshot::observe(dir.path());
++        assert!(whole.is_complete());
++        assert_eq!(source_snapshot_refusal(&whole, None), None);
++        assert_eq!(source_snapshot_refusal(&whole, Some(&whole.digest())), None);
++        assert_eq!(
++            source_snapshot_refusal(&whole, Some("other")).as_deref(),
++            Some("the workspace changed since its source snapshot was granted")
++        );
++
++        let partial = Snapshot::observe_within(dir.path(), Limits::bounded(2, u64::MAX));
++        let refusal = source_snapshot_refusal(&partial, None).unwrap();
++        assert!(
++            refusal.starts_with("the workspace snapshot is incomplete: ")
++                && refusal.contains("limit of 2 files and directories"),
++            "{refusal}"
++        );
++        // Incomplete refuses even when the pin would match.
++        assert!(source_snapshot_refusal(&partial, Some(&partial.digest())).is_some());
++    }
++}

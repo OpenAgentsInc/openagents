@@ -1,0 +1,18 @@
+{
+  "issue": 10118,
+  "title": "Close the loop: develop OpenAgents and ship TestFlight entirely from the phone (top priority)",
+  "body": "Owner, 2026-10-01: **top priority, owned by the orchestrator.** The owner must be able to code on OpenAgents and redeploy to TestFlight entirely from the iPhone app, and they keep finding bugs on that path. Drive it to completion, proven by an automated test that a machine runs, not by the owner.\n\n**The loop:**\n1. The phone app (TestFlight build) is paired with the owner's Mac, whose host runs Coder.\n2. On the phone: \"change <something> in openagents\". The router dispatches Coder. Coder starts at once (no tap if `coder.start: at_once`), with no approval prompts (#10104) and no budgets.\n3. Coder edits ~/work/openagents (its own worktree), runs the relevant checks, commits, and pushes to `main` (or works an issue: \"work on #N\").\n4. On the phone: \"ship a TestFlight build\" (or the issue flow does it). Coder on the Mac bumps the build number, archives, uploads with the ASC key, and waits for processing (filter by preReleaseVersion; see the asc memory note).\n5. The phone shows progress and the result in plain words, then the new build appears in TestFlight. The owner installs it, and the change is in it.\n\n**Acceptance (machine-driven):**\n- A release-gate scenario, `phone-closed-loop`, in `scripts/release/acceptance.sh`. It drives the real phone app code against a real host on this Mac: the phone crate's harness first, plus an iOS-simulator run of the actual app via its existing UI-test/automation hooks. The scenario does:\n  - steps 1\u20133 against a scratch clone with a local bare remote;\n  - step 4 in a dry-run mode that archives and validates (`xcodebuild -exportArchive` / `altool --validate-app`) without uploading.\n- One real full loop: a trivial visible change (e.g. a changelog line) shipped to TestFlight from a simulator-driven phone session, with the build verified VALID in App Store Connect.\n- Every bug found on the way gets fixed, with a test.\n\n**Known risks to check:**\n- The Mac host runs the installed app's coder (a4688ee8b0, old). The phone path must use current code: update the host or the app.\n- Engine capacity and login on the Mac.\n- The phone auto-start flag (#10101).\n- Worktree start latency (#10115).\n- Output too verbose on the phone.\n- ASC key location for an agent-driven upload.\n- Signing in a Coder worktree (keychain access from the host's launch context).\n- What the phone shows while a 20-minute archive runs.",
+  "fix": "5cd92616a860fe9af9c9def114705d2044a1b9d9",
+  "parent": "4ae877bacf8a268fabe5d22d48368576298dd662",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/adapter.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/adapter.rs"
+  ],
+  "test_names": [
+    "builds_go_beside_the_task_store_never_into_the_workspace"
+  ],
+  "fix_lines": 55
+}

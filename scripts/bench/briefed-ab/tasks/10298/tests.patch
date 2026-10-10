@@ -1,0 +1,326 @@
+diff --git a/crates/coder/src/task/freshen.rs b/crates/coder/src/task/freshen.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..55a3e975cb7290c53774c05d217baafba8a51c6d
+--- /dev/null
++++ b/crates/coder/src/task/freshen.rs
+@@ -0,0 +1,155 @@
++//! A chat run's base, freshened before its worktree is made (#10298).
++//!
++//! A chat run starts from the checkout's `HEAD`. When `HEAD` is a branch
++//! that tracks a remote branch, that one branch is fetched first, bounded by
++//! a short timeout, into its own remote-tracking ref. The fetch names its
++//! refspec on the command line, so nothing is added to `remote.<name>.fetch`
++//! (a refspec left there breaks later fetches once the branch is deleted on
++//! the remote; Paseo's diagnose-5556). It takes the repository's fetch lock
++//! like the landing does (#10233), and gives up when the lock or the remote
++//! takes too long: the cached ref is still usable.
++//!
++//! The run then starts at the fetched tip only when the local branch is
++//! behind it with nothing of its own; a branch with local commits, or one
++//! that has moved past the remote, keeps its `HEAD`, so a run never drops
++//! the person's unpushed work.
++
++use std::path::Path;
++use std::process::Stdio;
++use std::time::{Duration, Instant};
++
++use super::{landing, local};
++
++/// How long the fetch, lock included, may take before the cached ref is used.
++pub const TIMEOUT: Duration = Duration::from_secs(8);
++
++/// What freshening found.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum Fresh {
++    /// `HEAD` is detached or tracks no remote branch: nothing was fetched.
++    Untracked,
++    /// The tracked branch was fetched (or the fetch failed and the cached
++    /// ref stands); the run starts at `base`.
++    Tracked {
++        /// The remote-tracking ref, such as `refs/remotes/origin/main`.
++        upstream: String,
++        /// Whether the fetch finished in time.
++        fetched: bool,
++        /// The commit the run starts at.
++        base: String,
++    },
++}
++
++/// Freshen the branch `HEAD` tracks in the checkout at `top`, whose `HEAD`
++/// is the commit `head`, waiting at most `timeout`.
++#[must_use]
++pub fn base(top: &Path, head: &str, timeout: Duration) -> Fresh {
++    let Some((remote, merge, upstream)) = tracked(top) else {
++        return Fresh::Untracked;
++    };
++    let fetched = fetch(top, &remote, &merge, &upstream, timeout);
++    let tip = local::git_out(
++        top,
++        &["rev-parse", "--verify", &format!("{upstream}^{{commit}}")],
++    )
++    .map(|out| out.trim().to_owned())
++    .unwrap_or_default();
++    let behind = !tip.is_empty()
++        && tip != head
++        && local::git_out(top, &["merge-base", "--is-ancestor", head, &tip]).is_ok();
++    Fresh::Tracked {
++        upstream,
++        fetched,
++        base: if behind { tip } else { head.to_owned() },
++    }
++}
++
++/// `HEAD`'s branch's remote, the remote branch it merges, and its
++/// remote-tracking ref; `None` when `HEAD` is detached or tracks nothing on
++/// a remote.
++fn tracked(top: &Path) -> Option<(String, String, String)> {
++    let read = |args: &[&str]| {
++        local::git_out(top, args)
++            .ok()
++            .map(|out| out.trim().to_owned())
++            .filter(|out| !out.is_empty())
++    };
++    let branch = read(&["symbolic-ref", "-q", "--short", "HEAD"])?;
++    let remote = read(&["config", "--get", &format!("branch.{branch}.remote")])?;
++    // `.` is the local repository: a branch tracking a local branch.
++    if remote == "." {
++        return None;
++    }
++    let merge = read(&["config", "--get", &format!("branch.{branch}.merge")])?;
++    merge.strip_prefix("refs/heads/")?;
++    let upstream = read(&["rev-parse", "--symbolic-full-name", "@{upstream}"])?;
++    upstream
++        .starts_with(&format!("refs/remotes/{remote}/"))
++        .then_some((remote, merge, upstream))
++}
++
++/// Fetch `merge` from `remote` into `upstream` under the repository's fetch
++/// lock; `false` when the lock, the remote, or Git took longer than
++/// `timeout` or refused.
++fn fetch(top: &Path, remote: &str, merge: &str, upstream: &str, timeout: Duration) -> bool {
++    let started = Instant::now();
++    let Ok(lock) = landing::fetch_lock(top) else {
++        return false;
++    };
++    loop {
++        match lock.try_lock() {
++            Ok(()) => break,
++            Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < timeout => {
++                std::thread::sleep(Duration::from_millis(50));
++            }
++            Err(_) => return false,
++        }
++    }
++    let ran = run(
++        top,
++        &[
++            "fetch",
++            "-q",
++            "--no-tags",
++            remote,
++            &format!("+{merge}:{upstream}"),
++        ],
++        timeout.saturating_sub(started.elapsed()),
++    );
++    // Unlock explicitly so a child forked meanwhile cannot keep the lock.
++    let _ = lock.unlock();
++    ran
++}
++
++/// Run Git in `top` with `args`, never prompting, killed after `timeout`.
++fn run(top: &Path, args: &[&str], timeout: Duration) -> bool {
++    let child = local::git()
++        .arg("-C")
++        .arg(coder_boundary::plain_path(top))
++        .args(args)
++        .env("GIT_TERMINAL_PROMPT", "0")
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .spawn();
++    let Ok(mut child) = child else {
++        return false;
++    };
++    let started = Instant::now();
++    loop {
++        match child.try_wait() {
++            Ok(Some(status)) => return status.success(),
++            Ok(None) if started.elapsed() < timeout => {
++                std::thread::sleep(Duration::from_millis(20));
++            }
++            _ => {
++                let _ = child.kill();
++                let _ = child.wait();
++                return false;
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++#[path = "freshen_tests.rs"]
++mod tests;
+diff --git a/crates/coder/src/task/freshen_tests.rs b/crates/coder/src/task/freshen_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e4c5afc8af7d558586fa4e6492c1dbcb77fe3d32
+--- /dev/null
++++ b/crates/coder/src/task/freshen_tests.rs
+@@ -0,0 +1,159 @@
++use super::*;
++use std::path::PathBuf;
++
++fn run(dir: &Path, args: &[&str]) -> String {
++    let output = std::process::Command::new("git")
++        .arg("-C")
++        .arg(dir)
++        .args(args)
++        .output()
++        .unwrap();
++    assert!(
++        output.status.success(),
++        "git {args:?}: {}",
++        String::from_utf8_lossy(&output.stderr)
++    );
++    String::from_utf8_lossy(&output.stdout).trim().to_owned()
++}
++
++fn configure(dir: &Path) {
++    run(dir, &["config", "user.name", "Freshener"]);
++    run(dir, &["config", "user.email", "freshener@example.com"]);
++    run(dir, &["config", "commit.gpgsign", "false"]);
++}
++
++fn commit(dir: &Path, path: &str, text: &str) -> String {
++    std::fs::write(dir.join(path), text).unwrap();
++    run(dir, &["add", path]);
++    run(dir, &["commit", "-q", "-m", path]);
++    run(dir, &["rev-parse", "HEAD"])
++}
++
++/// A bare `origin` on `main` with one commit, a clone `mine` tracking it,
++/// and another clone `theirs` that pushes ahead of `mine`.
++fn repos(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
++    let origin = root.join("origin.git");
++    std::fs::create_dir_all(&origin).unwrap();
++    run(&origin, &["init", "-q", "--bare", "-b", "main"]);
++    let seed = root.join("seed");
++    std::fs::create_dir_all(&seed).unwrap();
++    run(&seed, &["init", "-q", "-b", "main"]);
++    configure(&seed);
++    commit(&seed, "one.txt", "one\n");
++    run(
++        &seed,
++        &["remote", "add", "origin", &origin.display().to_string()],
++    );
++    run(&seed, &["push", "-q", "origin", "main"]);
++    let clone = |name: &str| {
++        let dir = root.join(name);
++        run(
++            root,
++            &[
++                "clone",
++                "-q",
++                &origin.display().to_string(),
++                &dir.display().to_string(),
++            ],
++        );
++        configure(&dir);
++        dir
++    };
++    let mine = clone("mine");
++    let theirs = clone("theirs");
++    (origin, mine, theirs)
++}
++
++fn head(dir: &Path) -> String {
++    run(dir, &["rev-parse", "HEAD"])
++}
++
++fn fetch_specs(dir: &Path) -> String {
++    run(dir, &["config", "--get-all", "remote.origin.fetch"])
++}
++
++#[test]
++fn a_branch_behind_its_remote_starts_at_the_fetched_tip() {
++    let root = tempfile::tempdir().unwrap();
++    let (_, mine, theirs) = repos(root.path());
++    let before = fetch_specs(&mine);
++    let pushed = commit(&theirs, "two.txt", "two\n");
++    run(&theirs, &["push", "-q", "origin", "main"]);
++    let fresh = base(&mine, &head(&mine), TIMEOUT);
++    assert_eq!(
++        fresh,
++        Fresh::Tracked {
++            upstream: "refs/remotes/origin/main".into(),
++            fetched: true,
++            base: pushed.clone(),
++        }
++    );
++    assert_eq!(
++        run(&mine, &["rev-parse", "refs/remotes/origin/main"]),
++        pushed
++    );
++    // The local branch itself is untouched, and no refspec was added.
++    assert_ne!(head(&mine), pushed);
++    assert_eq!(fetch_specs(&mine), before);
++}
++
++#[test]
++fn local_commits_keep_the_checkouts_head() {
++    let root = tempfile::tempdir().unwrap();
++    let (_, mine, theirs) = repos(root.path());
++    commit(&theirs, "two.txt", "two\n");
++    run(&theirs, &["push", "-q", "origin", "main"]);
++    let own = commit(&mine, "mine.txt", "mine\n");
++    let fresh = base(&mine, &own, TIMEOUT);
++    assert!(matches!(
++        fresh,
++        Fresh::Tracked { fetched: true, ref base, .. } if *base == own
++    ));
++}
++
++#[test]
++fn an_unreachable_remote_falls_back_to_the_cached_ref() {
++    let root = tempfile::tempdir().unwrap();
++    let (origin, mine, _) = repos(root.path());
++    std::fs::remove_dir_all(&origin).unwrap();
++    let at = head(&mine);
++    let fresh = base(&mine, &at, TIMEOUT);
++    assert_eq!(
++        fresh,
++        Fresh::Tracked {
++            upstream: "refs/remotes/origin/main".into(),
++            fetched: false,
++            base: at,
++        }
++    );
++}
++
++#[test]
++fn a_held_fetch_lock_gives_up_within_the_timeout() {
++    let root = tempfile::tempdir().unwrap();
++    let (_, mine, theirs) = repos(root.path());
++    commit(&theirs, "two.txt", "two\n");
++    run(&theirs, &["push", "-q", "origin", "main"]);
++    let lock = landing::fetch_lock(&mine).unwrap();
++    lock.lock().unwrap();
++    let at = head(&mine);
++    let started = Instant::now();
++    let fresh = base(&mine, &at, Duration::from_millis(300));
++    assert!(started.elapsed() < Duration::from_secs(5));
++    assert!(matches!(
++        fresh,
++        Fresh::Tracked { fetched: false, ref base, .. } if *base == at
++    ));
++    lock.unlock().unwrap();
++}
++
++#[test]
++fn a_detached_head_or_untracked_branch_fetches_nothing() {
++    let root = tempfile::tempdir().unwrap();
++    let (_, mine, _) = repos(root.path());
++    let at = head(&mine);
++    run(&mine, &["checkout", "-q", "--detach"]);
++    assert_eq!(base(&mine, &at, TIMEOUT), Fresh::Untracked);
++    run(&mine, &["checkout", "-q", "-b", "local-only"]);
++    assert_eq!(base(&mine, &at, TIMEOUT), Fresh::Untracked);
++}

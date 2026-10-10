@@ -51,7 +51,7 @@ from prepare import TASKS, grade, interface_text
 
 SHIM = HERE / "shim"
 AGENT_BIN = Path(os.environ.get(
-    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent-3")))
+    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent-4")))
 CLAUDE = shutil.which("claude") or "claude"
 SPARSE = ["/*", "!/bench/terminal-bench/", "!/assets/"]
 BASE_DEPTH = 50
@@ -120,6 +120,7 @@ def trial_env(root: Path, task: dict, slot: int) -> dict:
     env.update({
         "PATH": f"{SHIM}:{env.get('PATH', '')}",
         "AB_ROOT": str(root), "AB_BASE": task["parent"], "AB_SLOT": str(slot),
+        "DISABLE_AUTOUPDATER": "1",
     })
     return env
 
@@ -585,6 +586,8 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "new_errors": new_errors(task, g)[:10],
         "tests_pass": bool(g.get("tests_pass")),
         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "claude_version": claude_version(),
+        "agent_sha256": sha256_of(AGENT_BIN) if arm != "A" else None,
     }
     dump_json(out / "result.json", record)
     try:  # a trace for verify-replay before corpus admission (#11218)
@@ -634,25 +637,73 @@ def prewarm(task: dict, slot: int) -> float:
     return time.time() - t0
 
 
+def sha256_of(path: Path) -> str:
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def claude_version() -> str:
+    return run([CLAUDE, "--version"], check=False).stdout.strip()
+
+
+def check_pins(plan: dict) -> None:
+    pins = plan["pins"]
+    if sha256_of(AGENT_BIN) != pins["agent_sha256"]:
+        raise SystemExit(f"{AGENT_BIN} is not the plan's pinned agent binary")
+    if claude_version() != pins["claude_version"]:
+        raise SystemExit(f"claude is {claude_version()}, the plan pins {pins['claude_version']}")
+
+
+def budget_spent(tag_dir: Path) -> float:
+    spent = 0.0
+    for d in tag_dir.iterdir():
+        if (d / "result.json").exists():
+            spent += load_json(d / "result.json").get("cost_usd") or 0.0
+    return spent
+
+
 def batch(args) -> None:
     levers = dict(LEVERS)
     for kv in args.levers:
         k, v = kv.split("=", 1)
         levers[k] = (v.lower() in ("1", "true", "yes")) if isinstance(LEVERS[k], bool) else type(LEVERS[k])(v)
+    plan = None
+    if args.plan:
+        # A frozen plan (S2): issues, arms, reps, levers, seed, budget and the
+        # pinned agent binary and CLI, committed before the run.
+        plan = load_json(Path(args.plan))
+        args.tag, args.issues, args.arms, args.reps = plan["tag"], plan["issues"], plan["arms"], plan["reps"]
+        levers.update(plan.get("levers", {}))
+        check_pins(plan)
     tag_dir = WORK / "results" / args.tag
     tag_dir.mkdir(parents=True, exist_ok=True)
     dump_json(tag_dir / "levers.json", levers)
-    issues = [int(x) for x in args.issues.split(",")]
-    arms = args.arms.split(",")
+    if plan:
+        dump_json(tag_dir / "plan.json", plan)
+    issues = [int(x) for x in (args.issues if isinstance(args.issues, list) else args.issues.split(","))]
+    arms = args.arms if isinstance(args.arms, list) else args.arms.split(",")
+    rng = random.Random(plan["seed"]) if plan else None
+    if rng:
+        rng.shuffle(issues)
     # Issues run one at a time and both workers share the issue's base
     # commit: the build host has one build checkout, so trials of one issue
     # only rebuild what their patches touch.
     for issue in issues:
         task = load_json(TASKS / str(issue) / "task.json")
         order = []
+        # Balanced order: each rep rotates the arms, so every arm runs
+        # first, second, ... equally often; with a plan the starting arm
+        # per issue is drawn from the seed.
+        start = rng.randrange(len(arms)) if rng else 0
         for rep in range(args.reps):
-            rot = arms[rep % len(arms):] + arms[: rep % len(arms)]
+            k = (start + rep) % len(arms)
+            rot = arms[k:] + arms[:k]
             order += [(arm, rep) for arm in rot]
+        if plan:
+            dump_json(tag_dir / f"order-{issue}.json", order)
+            if budget_spent(tag_dir) >= plan["budget_usd"]:
+                print(f"budget of ${plan['budget_usd']} (list price) reached; stopping", flush=True)
+                return
         pending = [(a, r) for a, r in order if not (tag_dir / f"{issue}-{a}-{r}" / "result.json").exists()]
         if not pending:
             continue
@@ -845,7 +896,7 @@ def rows_of(tags: list[str]) -> list[dict]:
                 r["cost_usd"] = estimate_cost(d)
                 r["cost_estimated"] = True
             r["judge_score"] = j.get("score")
-            r["judge_accept"] = j.get("accept")
+            r["judge_accept"] = bool(j.get("accept"))
             r["accepted"] = bool(r["tests_pass"] and j.get("accept"))
             r["accepted_judge"] = bool(r["compiles"] and j.get("accept"))
             rows.append(r)
@@ -929,8 +980,88 @@ def tool_stats(rows: list[dict]) -> dict:
     }
 
 
+def s2_analysis(rows: list[dict], base: str, cand: str, seed: int = 11211, n_boot: int = 10000) -> str:
+    """The frozen S2 analysis: the issue is the unit (repeats clustered),
+    success difference and its uncertainty first, then cost and time.
+    Unknown costs stay unknown (counted, never 0)."""
+    issues = sorted({r["issue"] for r in rows})
+    by = {(r["issue"], r["arm"]): [] for r in rows}
+    for r in rows:
+        by[(r["issue"], r["arm"])].append(r)
+
+    def rate(arm, iss, key="accepted"):
+        vals = [mean_of([float(bool(r[key])) for r in by.get((i, arm), [])]) for i in iss]
+        vals = [v for v in vals if v is not None]
+        return sum(vals) / len(vals) if vals else float("nan")
+
+    def cost_per_acc(arm, iss):
+        rs = [r for i in iss for r in by.get((i, arm), [])]
+        acc = sum(bool(r["accepted"]) for r in rs)
+        known = [r["cost_usd"] for r in rs if not r.get("cost_estimated") and r.get("cost_usd") is not None]
+        return (sum(known) / acc) if acc else float("inf"), len(rs) - len(known)
+
+    rng = random.Random(seed)
+    lines = []
+    for key, label in (("accepted", "accepted (fix tests and judge)"), ("tests_pass", "fix tests pass"),
+                       ("judge_accept", "judge accepts")):
+        diff = rate(cand, issues, key) - rate(base, issues, key)
+        boots = []
+        for _ in range(n_boot):
+            sample = [rng.choice(issues) for _ in issues]
+            boots.append(rate(cand, sample, key) - rate(base, sample, key))
+        boots.sort()
+        lo, hi = boots[int(0.025 * n_boot)], boots[int(0.975 * n_boot) - 1]
+        lines.append(f"| {label} | {rate(base, issues, key):.3f} | {rate(cand, issues, key):.3f} | "
+                     f"{diff:+.3f} | [{lo:+.3f}, {hi:+.3f}] |")
+    out = [f"Issues: {len(issues)}; trials: {len(rows)}; bootstrap: {n_boot} issue-level resamples, seed {seed}.", "",
+           f"| Success ({cand} vs {base}) | {base} | {cand} | Difference | 95% CI |", "|---|---|---|---|---|"] + lines
+    cb, ub = cost_per_acc(base, issues)
+    cc, uc = cost_per_acc(cand, issues)
+    ratios = []
+    for _ in range(n_boot):
+        sample = [rng.choice(issues) for _ in issues]
+        b_, _u = cost_per_acc(base, sample)
+        c_, _u = cost_per_acc(cand, sample)
+        if b_ not in (0, float("inf")) and c_ != float("inf"):
+            ratios.append(1 - c_ / b_)
+    ratios.sort()
+    red = (1 - cc / cb) if cb not in (0, float("inf")) and cc != float("inf") else float("nan")
+    rlo = ratios[int(0.025 * len(ratios))] if ratios else float("nan")
+    rhi = ratios[int(0.975 * len(ratios)) - 1] if ratios else float("nan")
+    out += ["", "| Cost (list price, as the CLI reports) | " + base + " | " + cand + " |", "|---|---|---|",
+            f"| $ per accepted (known costs) | {cb:.2f} | {cc:.2f} |",
+            f"| trials with unknown cost | {ub} | {uc} |",
+            f"| cost reduction per accepted | | {red:+.1%} (95% CI [{rlo:+.1%}, {rhi:+.1%}]) |"]
+
+    def pct(xs, q):
+        xs = sorted(x for x in xs if x is not None)
+        return xs[min(len(xs) - 1, int(q * len(xs)))] if xs else None
+
+    wb = [r["wall_secs"] for r in rows if r["arm"] == base]
+    wc = [r["wall_secs"] for r in rows if r["arm"] == cand]
+    out += ["", "| Time (s) | " + base + " | " + cand + " |", "|---|---|---|",
+            f"| median | {pct(wb, 0.5)} | {pct(wc, 0.5)} |", f"| p90 | {pct(wb, 0.9)} | {pct(wc, 0.9)} |"]
+    out += ["", "| Issue | " + base + " accepted | " + cand + " accepted | " + base + " mean $ | " + cand +
+            " mean $ | " + base + " mean s | " + cand + " mean s |", "|---|---|---|---|---|---|---|"]
+    for i in issues:
+        rb, rc = by.get((i, base), []), by.get((i, cand), [])
+        out.append(f"| #{i} | {sum(bool(r['accepted']) for r in rb)}/{len(rb)} | {sum(bool(r['accepted']) for r in rc)}/{len(rc)} | "
+                   f"{mean_of([r['cost_usd'] for r in rb]) or 0:.2f} | {mean_of([r['cost_usd'] for r in rc]) or 0:.2f} | "
+                   f"{mean_of([r['wall_secs'] for r in rb]) or 0:.0f} | {mean_of([r['wall_secs'] for r in rc]) or 0:.0f} |")
+    return "\n".join(out)
+
+
+def mean_of(xs):
+    xs = [x for x in xs if x is not None]
+    return sum(xs) / len(xs) if xs else None
+
+
 def report(args) -> None:
     rows = rows_of(args.tag)
+    if args.s2:
+        base, cand = args.s2.split(",")
+        print(s2_analysis(rows, base, cand))
+        return
     arms = sorted({(r["tag"], r["arm"]) for r in rows})
     out = {f"{t}/{a}": summarize([r for r in rows if r["tag"] == t and r["arm"] == a]) for t, a in arms}
     if args.tools:
@@ -978,8 +1109,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("batch")
-    b.add_argument("--tag", required=True)
-    b.add_argument("--issues", required=True)
+    b.add_argument("--tag")
+    b.add_argument("--issues")
+    b.add_argument("--plan", help="a frozen plan JSON (overrides tag, issues, arms, reps)")
     b.add_argument("--arms", default="A,B")
     b.add_argument("--reps", type=int, default=3)
     b.add_argument("--workers", type=int, default=2)
@@ -995,6 +1127,7 @@ def main() -> None:
     r.add_argument("--csv")
     r.add_argument("--tools", action="store_true", help="per-tool statistics")
     r.add_argument("--md", action="store_true", help="a Markdown table")
+    r.add_argument("--s2", help="BASE,CANDIDATE: the frozen S2 analysis")
     r.add_argument("--issues", help="only these issues (e.g. the behavioral subset)")
     g = sub.add_parser("regrade")
     g.add_argument("--tag", action="append", required=True)

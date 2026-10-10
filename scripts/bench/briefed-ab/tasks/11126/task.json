@@ -1,0 +1,18 @@
+{
+  "issue": 11126,
+  "title": "Phone app: ChatGPT-style shell (Chat/Code switch, feature cards, docked composer, drawer, Worked-for rows)",
+  "body": "Owner shared four ChatGPT iOS screenshots (2026-10-09) as the reference for the OpenAgents phone app. Match the pattern with our own components and words:\n\n- **Top bar:** menu button left; a two-way switch in the middle (ChatGPT: Chat / Work \u2192 ours: **Chat / Code**, where Code means Coder work on a connected computer or project); new-chat/compose right.\n- **New chat (Chat):** a row of tilted feature cards across the middle (like #11123's web cards: Explore the Verse, Meet Coder, Tour the codebase, See the roadmap) with one headline + one line + a **Try it** button; composer docked at the bottom (\"Ask OpenAgents\"), + for attachments, mic, voice.\n- **New chat (Code):** suggestion rows above the composer drawn from the person's projects/issues (GitHub icon + one-line task), plus \"Attach recent photo\"; composer \"Work with OpenAgents\" with the current model shown as a small label.\n- **Conversation:** user bubble right, answer as plain text; \"Worked for 7s \u203a\" row that opens the steps; rich link cards with a preview image on the right; floating composer pill at the bottom; scroll-to-bottom button.\n- **Drawer:** \"OpenAgents\" title + search; top rows for the main places (e.g. Coder, Projects, Wallet, Verse when enabled, Settings); recent chats list with \"See all\u2026\"; a **Chat** (new chat) pill bottom-left and the account avatar bottom-right.\n\nKeep 1.0 scope rules (#11090: hidden features stay behind the preview flag; no dead controls). Screens checked against the references at phone size, light and dark. Reference images: scratchpad chatgpt-ref/IMG_4047\u20134050.\n",
+  "fix": "c015d62ae34235d83db7e805e980a1512770aede",
+  "parent": "f666d394d612ee534d776ed3c22805a779aadd43",
+  "package": "openagents-chat",
+  "source_files": [
+    "crates/openagents-chat/src/lib.rs"
+  ],
+  "test_files": [
+    "crates/openagents-chat/src/home_cards.rs"
+  ],
+  "test_names": [
+    "four_cards_with_unique_ids_and_short_words"
+  ],
+  "fix_lines": 78
+}

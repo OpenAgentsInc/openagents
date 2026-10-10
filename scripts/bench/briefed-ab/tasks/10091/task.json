@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10091,
+  "title": "Grok Build is \"not allowed\" by default; Stop Coder button is full width",
+  "body": "Owner, 2026-10-01 06:23, Mac app 063044d929:\n1. \"do a test delegation to grok\" \u2192 \"You asked for Grok Build; it is not one of the engines your Coder settings allow, so Codex is running.\" Grok support landed (#10052) and Grok is installed and signed in on the owner's Mac, but with no `~/.openagents/settings.json` the defaults are `default_providers()` = Codex, Claude Code only (`crates/coder/src/task/settings.rs`). Grok must be allowed by default (order: Codex, Claude Code, Grok Build \u2014 an engine that isn't signed in is skipped anyway with a plain reason). Show Grok in the desktop sidebar engine rows and Settings \u2192 Coder when installed. Decide Devin/OpenCode defaults explicitly (OpenCode needs a model; Devin is a paid API) and document. Keep the rule that a broken settings file never becomes an opt-in. Update INVARIANTS/docs/knowledge entries that list the defaults.\n2. The transcript's **Stop Coder** button spans the full transcript width while Coder runs. Make it content-sized like the phone (or rely on the composer's stop control if that's the design) \u2014 consistent with #10075's button sizing.\n\nAdd release-gate scenarios: `delegate-grok` (Grok Build starts and finishes on a real engine, when installed/signed in on the gate machine; FAIL not skip unless `--allow-missing-engine`) and a check that the running Stop Coder control is content-sized.",
+  "fix": "ee8d581153f05b68df867fca9e31768ffb7a0e1a",
+  "parent": "949bde61725e59aafc457ac0461bdeb9f512ec88",
+  "package": "openagents-desktop",
+  "source_files": [
+    "crates/openagents-chat-app/src/coder_run.rs",
+    "crates/openagents-chat-app/src/task_chat.rs"
+  ],
+  "test_files": [
+    "crates/openagents-desktop/src/late_click_tests.rs"
+  ],
+  "test_names": [
+    "the_running_stop_coder_control_is_content_sized"
+  ],
+  "fix_lines": 39
+}

@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--test",
+    "snapshot_descriptors",
+    "--lib"
+  ],
+  "issue": 10078,
+  "title": "Desktop Coder start fails: \"the granted source snapshot is unavailable or changed\"",
+  "body": "Owner, 2026-09-30 22:51, Mac app built from 716609e238 (host restarted on it): a chat dispatched Coder (Codex \u00b7 gpt-6-luna, project `openagents` \u2192 worktree `~/.openagents/worktrees/openagents-765fcd1a4d5a`, project folder `~/work/openagents-host-tasks`, a linked worktree of `~/work/openagents`), and the start card was followed by **Coder didn't finish \u2014 Coder did not start: the granted source snapshot is unavailable or changed**. Launch log: `~/.openagents/tasks/repository-launch-765fcd1a4d5a\u2026jsonl` \u2192 `{\"error\":\"the granted source snapshot is unavailable or changed\",\"cause\":\"admission\"}`. Raised in `crates/coder/src/task/adapter.rs` (~L630) when `Snapshot::observe` is incomplete or differs from `grant.expected_source_snapshot`.\n\nAn earlier run in the same setup (worktree `openagents-host-tasks-7b7952b88b77`, build 1ebd5e20f7) started fine, so suspect a regression from #10073 (linked worktrees named after their repo), #10066 (task media), #10076, or #10077. Find which (incomplete snapshot vs. pin mismatch, and why), fix, add a regression test reproducing a desktop local run from a linked-worktree project, and make the failure message say which (and what file/limit) so it's diagnosable.",
+  "fix": "8e590650c2ea23eccb5ba8cd0f318ddbda3fefac",
+  "parent": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+  "package": "coder-boundary",
+  "source_files": [
+    "crates/coder-boundary/src/snapshot/observe.rs",
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/remote.rs"
+  ],
+  "test_files": [
+    "crates/coder-boundary/tests/snapshot_descriptors.rs",
+    "crates/coder/src/task/adapter.rs"
+  ],
+  "test_names": [
+    "a_refusal_says_whether_the_snapshot_was_incomplete_or_changed",
+    "a_tree_wider_than_the_open_file_limit_is_observed_whole"
+  ],
+  "fix_lines": 219
+}

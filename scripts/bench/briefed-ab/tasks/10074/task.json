@@ -1,0 +1,23 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10074,
+  "title": "openagents chat local run refused: \"the execution grant has an invalid shape\"",
+  "body": "## What happened (2026-10-01)\n\nAn agent ran `openagents chat` (CLI) in a scratch git worktree of this repo against the live chat worker **without** `--no-run`. The router replied `work.dispatch`, the CLI started Coder locally (the #10032 local-run path), and the launch was refused:\n\n> the execution grant has an invalid shape\n\n## Evidence so far\n\n- The message is `Grant::parse` in `crates/coder/src/task/owner.rs` failing serde deserialization. `Grant` and `adapter::Configuration` are `deny_unknown_fields`, and `adapter::Access` is a closed enum.\n- #10045 (b4d0acc8ea) added `Access::Toolchains`; every local run (`coder::task::local`) now writes `\"access\": \"toolchains\"` into the grant's adapter configuration.\n- The local run's engine comes from `coder::task::local::controller()` \u2192 `autostart::default_controller()`: `$OPENAGENTS_CODER_CONTROLLER`, else `microcoder` **beside the running exe**, else `~/.openagents/bin/microcoder`.\n- On the owner's machine, `~/.openagents/bin/microcoder` is a Sep 28 build (coder beside it is `358975bdbd`), from before #10045, so it does not know `toolchains`.\n- The shipping Mac app (`scripts/desktop/package-macos.sh`) puts the CLI at `Contents/Helpers/openagents` but `microcoder` at `Contents/MacOS/microcoder`. So the app's own CLI never finds the microcoder it ships with: it falls back to `~/.openagents/bin/microcoder` (stale or missing).\n\nOther suspects: recent changes #10066 (3e13917001), #10070 (1ebd5e20f7), #10067/68 (ebdec8d004), #10073 (92aef353b7).\n\n## Plan\n\nReproduce with a temp HOME and fresh `openagents` + `coder` + `microcoder` builds from origin/main, print which binaries each run uses, and decide between version skew and a grant-shape bug. Fix the resolution so a bundled CLI uses the engine that shipped with it, and add a regression test.\n",
+  "fix": "2563d8abdede816499abdb774fd5abf1e74a8134",
+  "parent": "50368770a3cf7361c0569089616658240ede89b0",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/local.rs",
+    "docs/cli/chat.md"
+  ],
+  "test_files": [
+    "crates/coder/src/task/autostart.rs"
+  ],
+  "test_names": [
+    "the_app_cli_runs_the_engine_its_bundle_ships"
+  ],
+  "fix_lines": 101
+}

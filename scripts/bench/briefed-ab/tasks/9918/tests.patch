@@ -1,0 +1,84 @@
+diff --git a/crates/verse/src/ball.rs b/crates/verse/src/ball.rs
+index fed4ed5e2eec7dda80a3e59661eee2d04db13b51..113b5bafa05b3fef5f95dc45373a5231c02774bf 100644
+--- a/crates/verse/src/ball.rs
++++ b/crates/verse/src/ball.rs
+@@ -803,8 +803,70 @@ mod tests {
+         );
+     }
+ 
++    /// The work one frame does, recorded after each frame: steps run, and
++    /// the last step's awake bodies, manifolds, and contact points.
++    fn frame_work(ball: &Ball) -> (u32, usize, usize, usize) {
++        let st = ball.world().stats;
++        (ball.steps, st.awake, st.manifolds, st.contact_points)
++    }
++
+     #[test]
+     fn the_step_stays_within_lagrange_budget() {
++        // A step's cost is set by the work it does: the steps a frame runs,
++        // the bodies awake, and the contact points the solver iterates over.
++        // Those counts are deterministic, so the budget is checked on them
++        // here rather than on wall-clock time, which a loaded machine
++        // stretches (#9918). The wall-clock budget itself is
++        // `the_step_stays_within_lagrange_time_budget`, run in release.
++        let mut ball = Ball::new();
++        let mut player = PlayerController::new(crate::world::SPAWN, 0.0);
++        let input = InputState {
++            forward: true,
++            ..InputState::default()
++        };
++        let (mut peak_awake, mut peak_manifolds, mut peak_points) = (0, 0, 0);
++        let mut settled_awake = 0;
++        for frame in 0..360 {
++            let from = player.pos;
++            let walking = if frame < 120 {
++                &input
++            } else {
++                &InputState::default()
++            };
++            player.update(walking, FRAME, &[], crate::world::HALF);
++            ball.advance(from, &mut player, FRAME);
++            let (steps, awake, manifolds, points) = frame_work(&ball);
++            // A 60 Hz frame runs two 120 Hz steps, well under MAX_STEPS.
++            assert!(steps <= 2, "frame {frame}: {steps} steps");
++            peak_awake = peak_awake.max(awake);
++            peak_manifolds = peak_manifolds.max(manifolds);
++            peak_points = peak_points.max(points);
++            if frame >= 120 {
++                settled_awake = settled_awake.max(awake);
++            }
++        }
++        let bodies = ball.world().bodies().len();
++        let iterations = ball.world().solver.iterations;
++        eprintln!(
++            "ball step work: {bodies} bodies, peak {peak_awake} awake, {peak_manifolds} manifolds, \
++             {peak_points} contact points, {iterations} solver iterations; \
++             {settled_awake} awake after the walk"
++        );
++        // The busiest step is the blocks settling as the world opens (about
++        // 27 awake, 61 manifolds, 240 contact points today); the bounds leave
++        // room for that and fail if contacts multiply or iterations grow.
++        assert!(peak_points <= 320, "contact points: {peak_points}");
++        assert!(peak_manifolds <= 80, "manifolds: {peak_manifolds}");
++        assert!(iterations <= 20, "solver iterations: {iterations}");
++        // Once the blocks settle, island sleep leaves only the ball the
++        // player pushed awake: the steady-state step is a single body.
++        assert!(settled_awake <= 2, "awake after the walk: {settled_awake}");
++    }
++
++    #[test]
++    #[ignore = "wall-clock; run in release on an idle machine: \
++                cargo test --release -p verse --lib ball -- --ignored --nocapture"]
++    fn the_step_stays_within_lagrange_time_budget() {
+         let mut ball = Ball::new();
+         let mut player = PlayerController::new(crate::world::SPAWN, 0.0);
+         walk(&mut ball, &mut player, 120);
+@@ -825,7 +887,7 @@ mod tests {
+             worst
+         );
+         // Lagrange 1 runs up to 12 steps a frame; one step here is far less
+-        // than a millisecond even in a debug build.
++        // than a millisecond.
+         assert!(worst < Duration::from_millis(5));
+     }
+ 

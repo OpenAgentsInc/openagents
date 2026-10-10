@@ -1,0 +1,190 @@
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 40aa4d6cc4e0a690507d107d566025f0a299270a..dc50c0b2c1a71e1aab91f049e10f187a747c317b 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -1467,10 +1523,11 @@ mod tests {
+             layers: 1,
+             usage: Usage::Blocking,
+             pose: Pose::default(),
+-            geometry: GeometrySnapshot::Capsule {
+-                a: capsule.a,
+-                b: capsule.b,
+-                radius: capsule.radius,
++            // Static embedding: only actor capsules are treated as stale
++            // projections that a predicted character may walk past.
++            geometry: GeometrySnapshot::Box {
++                min: capsule.a - glam::DVec3::new(0.35, 0., 0.25),
++                max: capsule.a + glam::DVec3::new(-0.1, 1., 0.25),
+             },
+         };
+         source.colliders.push(obstacle.clone());
+@@ -1495,7 +1552,7 @@ mod tests {
+         )
+         .unwrap();
+         assert_eq!(travel.recovery.blocks, 0);
+-        assert!(authoritative.feet.distance(baseline.character.feet) > 0.5);
++        assert!(authoritative.feet.distance(baseline.character.feet) > 0.1);
+         local.observe(baseline, &clean, 3, 3).unwrap();
+         local.advance(0.).unwrap();
+         assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
+@@ -1629,8 +1686,22 @@ mod tests {
+                 assert!(depth(&after) < depth(&before));
+                 assert_eq!(local.character.unwrap().support, baseline.character.support);
+             } else {
+-                assert_eq!(position, Vec3::ZERO, "Case {case} must retain obstruction");
+-                assert_eq!(local.embedding_deferrals(), 1);
++                // Inward, walled, unsupported, shoved, jumping, and doubly
++                // embedded estimates walk past the stale actor projections
++                // with the shared solver instead of freezing pending time.
++                assert_ne!(position, Vec3::ZERO, "Case {case} froze stale crowd travel");
++                assert_eq!(local.embedding_deferrals(), 0, "Case {case}");
++                assert!(local.stale_crowd_steps() > 0, "Case {case}");
++                if case == 1 {
++                    assert!(
++                        position.z < -0.13 && position.x.abs() < 1e-5,
++                        "{position:?}"
++                    );
++                }
++                if case == 2 {
++                    // Static geometry still blocks the walk past the crowd.
++                    assert!(position.z <= 0.4 - 0.35 + 1e-4, "{position:?}");
++                }
+             }
+             assert_eq!(local.physics_step(), 4);
+             assert_eq!(local.timing().simulated, 4);
+@@ -1642,6 +1713,119 @@ mod tests {
+         }
+     }
+     #[test]
++    fn stale_actor_projection_does_not_freeze_confirmed_tangential_travel() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        // Retained 600-second battle trace (player 10, actor 236): walking
++        // +z while embedded 0.2783 m in actor 235's projected capsule with
++        // normal (0.999, 0, -0.0446). Authority walked seven free steps; the
++        // held estimate became a 0.3734 m confirmation correction.
++        for mixed in [false, true] {
++            let (mut local, mut baseline, mut source) = setup();
++            local.advance(1. / 120.).unwrap();
++            baseline.character = local.character.unwrap();
++            baseline.profile = movement::Profile::Frames;
++            baseline.epoch += 1;
++            let authority_scene = source.clone();
++            let normal = glam::DVec3::new(0.999002932290504, 0., -0.04464461081670551);
++            let settings = physics::character::Settings::default();
++            let capsule = settings.capsule(-normal * (0.7 - 0.2783030413576324));
++            source.colliders.push(ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 235,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Capsule {
++                    a: capsule.a,
++                    b: capsule.b,
++                    radius: capsule.radius,
++                },
++            });
++            if mixed {
++                // A simultaneous static embedding is not crowd staleness.
++                source.colliders.push(ShapeSnapshot {
++                    key: ColliderKey {
++                        life: Life {
++                            instance: 7,
++                            entity: 0,
++                            generation: 0,
++                        },
++                        shape: 1,
++                    },
++                    layers: 1,
++                    usage: Usage::Blocking,
++                    pose: Pose::default(),
++                    geometry: GeometrySnapshot::Box {
++                        min: glam::DVec3::new(0.3, 0.2, -0.2),
++                        max: glam::DVec3::new(0.6, 1.2, 0.2),
++                    },
++                });
++            }
++            local.observe(baseline, &source, 2, 2).unwrap();
++            let intent = Intent::Move {
++                axes: [0., 1.],
++                yaw: std::f32::consts::PI,
++            };
++            local.queue(1, intent).unwrap();
++            local.advance(7. / 120.).unwrap();
++            let predicted = local.pose().unwrap().position;
++            assert_eq!(local.physics_step(), 7);
++            if mixed {
++                assert_eq!(predicted, Vec3::ZERO);
++                assert_eq!(local.embedding_deferrals(), 1);
++                assert_eq!(local.stale_crowd_steps(), 0);
++                continue;
++            }
++            assert_eq!(local.embedding_deferrals(), 0);
++            // The first step leaves the inward-facing contact plane; later
++            // steps are ordinary outward separation.
++            assert_eq!(local.stale_crowd_steps(), 1);
++            assert!(local.separating_steps() > 0);
++            assert!(predicted.x.abs() < 1e-5, "Prediction invented a push");
++            // Authority applies the same seven steps with the shared solver
++            // against its own scene, where the actor is not at that pose.
++            let authority = authority_scene.compile(7).unwrap();
++            let mut authoritative = baseline.character;
++            let travel = movement::advance(
++                &mut authoritative,
++                &authority,
++                Filter::blocking(7),
++                baseline
++                    .policy
++                    .velocity([0., 1.], std::f32::consts::PI)
++                    .unwrap(),
++                false,
++                7,
++                1. / 120.,
++            )
++            .unwrap();
++            assert_eq!(travel.recovery.blocks, 0);
++            assert!((authoritative.feet.z - 0.37338).abs() < 1e-4);
++            assert!(
++                predicted.as_dvec3().distance(authoritative.feet) < 1e-5,
++                "{predicted:?} vs {:?}",
++                authoritative.feet
++            );
++            // The acknowledged baseline (still beside the stale projection)
++            // confirms the estimate instead of correcting it.
++            baseline.physics_step = 7;
++            baseline.world_step = 7;
++            baseline.character = authoritative;
++            baseline.held.refresh([0., 1.], 1).unwrap();
++            baseline.yaw = std::f32::consts::PI;
++            local.observe(baseline, &source, 3, 3).unwrap();
++            local.advance(0.).unwrap();
++            let confirmed = local.pose().unwrap().position;
++            assert!(confirmed.distance(predicted) < 1e-5, "{confirmed:?}");
++        }
++    }
++    #[test]
+     fn constrained_confirmation_preserves_continuous_travel_around_a_wall_corner() {
+         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+         let (mut local, mut baseline, mut source) = setup();
+@@ -2452,10 +2636,11 @@ mod tests {
+             layers: 1,
+             usage: Usage::Blocking,
+             pose: Pose::default(),
+-            geometry: GeometrySnapshot::Capsule {
+-                a: capsule.a,
+-                b: capsule.b,
+-                radius: capsule.radius,
++            // Static embedding: only actor capsules are treated as stale
++            // projections that a predicted character may walk past.
++            geometry: GeometrySnapshot::Box {
++                min: capsule.a - glam::DVec3::new(0.35, 0., 0.25),
++                max: capsule.a + glam::DVec3::new(-0.1, 1., 0.25),
+             },
+         });
+         local.observe(baseline, &source, 2, 2).unwrap();

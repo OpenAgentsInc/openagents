@@ -1,0 +1,75 @@
+diff --git a/docs/deployment/chat-worker.md b/docs/deployment/chat-worker.md
+index 213f9e951e9088570b39f0acbc65ca6baf4bf159..f2904f70a37ab4b2fcc694e4ea057bc7e9e8f28f 100644
+--- a/docs/deployment/chat-worker.md
++++ b/docs/deployment/chat-worker.md
+@@ -1274,3 +1274,70 @@ Gemini 2.5 Flash took it); "What is Jev?" was the bank's `meta.jev` in
+ (`kb:product`) on two of three tries, with the model winning the knowledge
+ race on the third; "What's a plugin?" and "Write a haiku about rain" were
+ the model's under the judged opener.
++
++Release `7b63f16318` (2026-10-01 UTC,
++[#10109](https://github.com/OpenAgentsInc/openagents/issues/10109)) answers
++on Space Bunny Alpha (`stealth/space-bunny-alpha`) through OpenRouter at
++`reasoning.effort` `low` first, with Gemini 3.8 Flash on the Vercel AI
++Gateway taking, per turn, any turn the primary fails before its first
++words: an HTTP error (a 400 or 404 for a model OpenRouter no longer
++serves, a 429), a failure event, an empty stream, nothing at all in 4 s, or,
++while it streams its reasoning, no answer text by 8 s. The primary needed no
++environment change: unset, `CODER_WORKER_PRIMARY` is Space Bunny Alpha
++whenever `OPENROUTER_API_KEY` is set, and after OpenRouter retires the model
++on 2026-10-05 every turn falls back with no deploy. It went live in three
++steps, each built with `cargo zigbuild` as above, installed under
++`/opt/coder-worker/releases/` with `knowledge/` and `codebase-kb.gz` copied
++from the release before it (the knowledge matched `main` except
++`openagents.chat-privacy@2`, which `c1f9d8d9d9` installed from this
++change), checked with `--check` as root with the chat environment sourced
++("the configuration is safe to deploy"), and put live by moving the `chat`
++symlink and restarting `coder-worker-chat`; the environment file and unit
++did not change, `coder-worker.service` and `/opt/coder-worker/current`
++(`0757355c1d`) were not touched, and every earlier release stays in
++`releases/` for rollback:
++
++- `c1f9d8d9d9`, the door. Knowledge turns regressed: the call started with
++  the turn spoke before the retrieval answered ("Please paste or upload the
++  essay") on two of three "summarize your essay" tries.
++- `6766685252`, on #10110's `0cd4b87152`: a retrieval or CLI tier holds the
++  running model's words until its seam answers.
++- `7b63f16318`: a primary that is streaming its reasoning gets until 8 s for
++  its first words. Under the worker's instructions "What is the capital of
++  Australia and why was it chosen?" had fallen back at 4 s twice and
++  answered in 8 to 9 s on Gemini.
++
++The log names `door    live (stealth/space-bunny-alpha at
++https://openrouter.ai/api with reasoning low, then google/gemini-3.8-flash
++at https://ai-gateway.vercel.sh for any turn it has not started in 4000 ms
++or, thinking, answered by 8000 ms)` and `gym news
++stealth/space-bunny-alpha first, then google/gemini-2.5-flash with its
++reasoning off`, each answer `job … answered in … ms, … chars, by <model>`,
++and each fallback `door stealth/space-bunny-alpha missed its first words
++after 4000 ms (door_absent: …); google/gemini-3.8-flash takes the turn`.
++Timings from fresh keys with `openagents chat --scratch --no-run --json`
++built from `main` (time to the first partial, and to the result; the
++opener's partial is the judged line, so the model's first words are the
++second):
++
++| Turn | Before (`54fd3851a0`, Gemini) | After (`7b63f16318`) |
++| --- | --- | --- |
++| "Summarize your essay The Return of the General Agent" (grounded) | lead 1.96 s, model 11.3 s, done 16.9 s | lead 1.39 s, model 2.97 s, done 4.7 s |
++| "How is OpenAgents chat different from running Coder on my computer?" | lead 1.96 s, model 7.29 s, done 8.5 s | lead 0.89 s, model 1.80 s, done 3.4 s |
++| "What is the capital of Australia and why was it chosen?" | 4.2 s, done 6.4 s | 3.36 s, done 5.2 s |
++| "Write a haiku about rain" | opener 1.21 s, model 4.57 s, done 4.9 s | opener 0.81 s, model 4.61 s, done 4.8 s |
++| "what model are you?" (`meta.model@1`) | 1.1 s, "Google's Gemini 3.8 Flash through the Vercel AI Gateway" | 0.98 s, "Space Bunny Alpha (an anonymous preview model) through OpenRouter" |
++
++On the website's `/ask` (the dev server on `127.0.0.1:4310`), "Summarize
++your essay …" went from 11.2 s to 3.85 s and the Australia question was
++done in 2.4 s; "do you store my chats?" answered from the bank naming
++OpenRouter, Space Bunny Alpha, the Gemini fallback, and that its provider
++may keep prompts and replies but not train on them. One website haiku fell
++back (`nothing in 4000 ms`, Gemini answered, 8.3 s): OpenRouter sometimes
++sends nothing for 4 s. `live_a_retired_primary_falls_back_to_gemini` in
++`crates/coder/tests/gateway_stream.rs` (ignored; run with both keys) forces
++the fallback with a slug OpenRouter does not serve: OpenRouter answered 400
++`stealth/no-such-model is not a valid model ID` in 247 ms, and Gemini 3.8
++Flash answered "The capital of France is Paris." with first words at 2.4 s,
++named as the writer; the same test with Space Bunny Alpha answered in
++0.57 s.

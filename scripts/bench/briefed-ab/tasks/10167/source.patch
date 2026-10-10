@@ -1,0 +1,202 @@
+diff --git a/crates/background/src/runner.rs b/crates/background/src/runner.rs
+index 7f1ef1253f9fa7d81dee219b329d7bb4f9dc9434..85d53c689b49b400267cc42119b039eb8c5ab07f 100644
+--- a/crates/background/src/runner.rs
++++ b/crates/background/src/runner.rs
+@@ -1,8 +1,11 @@
+ //! The runner the host starts: one per computer (`runner.lock`), on its own
+-//! thread. It checks free space at host start, on the rule's interval, and
+-//! when a Coder task ends; it runs the rule when a volume is below its
+-//! start level and the cooldown has passed (or at once in an emergency),
+-//! and runs it whenever someone asks.
++//! thread. It checks free space only on the triggers the rule names: at
++//! host start (`HostStart`), on the rule's own `Interval`, and when a Coder
++//! task ends (`TaskEnded`); a rule with no triggers never runs by itself.
++//! A check runs the rule when a volume is below its start level and the
++//! cooldown has passed (or at once in an emergency). A run someone asks for
++//! (`openagents background run`, `/background`, `background.run`) is
++//! separate and always allowed.
+ 
+ use std::collections::BTreeSet;
+ use std::fs::File;
+@@ -13,6 +16,7 @@ use std::time::Duration;
+ use crate::inuse::System;
+ use crate::paths::{self, Layout};
+ use crate::plan::{Env, Facts, observe};
++use crate::rule::{Rule, Trigger};
+ use crate::run::{self, Cause, Report};
+ use crate::store::{self, State};
+ use crate::volume::Statvfs;
+@@ -98,10 +102,13 @@ impl Runner {
+         State::update(&self.layout, "disk", |state| state.runner = Some(pid));
+         std::thread::sleep(START_DELAY);
+         self.check(Cause::HostStart);
+-        let mut next = paths::now() + self.interval();
++        // No interval trigger, no interval checks. The rule is read again
++        // after every wake, so an edit takes effect without a restart.
++        let mut next = self.interval().map(|every| paths::now() + every);
+         let mut next_tasks = paths::now() + TASK_POLL.as_secs();
+         loop {
+-            let wait = next.min(next_tasks).saturating_sub(paths::now()).max(1);
++            let deadline = next.map_or(next_tasks, |at| at.min(next_tasks));
++            let wait = deadline.saturating_sub(paths::now()).max(1);
+             match requests.recv_timeout(Duration::from_secs(wait)) {
+                 Ok(Request::Run { rule }) => self.manual(&rule),
+                 Ok(Request::TaskEnded) => self.check(Cause::TaskEnded),
+@@ -115,10 +122,15 @@ impl Runner {
+                     self.check(Cause::TaskEnded);
+                 }
+             }
+-            if now >= next {
+-                next = now + self.interval();
+-                self.check(Cause::Interval);
+-            }
++            next = match (self.interval(), next) {
++                (None, _) => None,
++                (Some(every), None) => Some(now + every),
++                (Some(every), Some(at)) if now >= at => {
++                    self.check(Cause::Interval);
++                    Some(now + every)
++                }
++                (Some(every), Some(at)) => Some(at.min(now + every)),
++            };
+         }
+     }
+ 
+@@ -134,11 +146,11 @@ impl Runner {
+         file.try_lock().ok().map(|()| file)
+     }
+ 
+-    fn interval(&self) -> u64 {
++    /// The rule's interval, if it has an `Interval` trigger.
++    fn interval(&self) -> Option<u64> {
+         store::load(&self.layout, "disk")
+             .ok()
+             .and_then(|rule| rule.interval())
+-            .unwrap_or(300)
+     }
+ 
+     /// Whether a task ended since the last look.
+@@ -184,35 +196,9 @@ impl Runner {
+         let Ok(rule) = store::load(&self.layout, "disk") else {
+             return;
+         };
+-        let env = self.env();
+-        let now = env.now;
+-        let volumes = observe(&env, &rule);
+-        let fullest = volumes.iter().min_by_key(|volume| volume.space.free);
+-        let state = State::load(&self.layout)
+-            .rules
+-            .get(&rule.id)
+-            .cloned()
+-            .unwrap_or_default();
+-        State::update(&self.layout, &rule.id, |state| {
+-            state.last_check = Some(now);
+-            state.next_check = Some(now + rule.interval().unwrap_or(300));
+-            state.free = fullest.map(|volume| volume.space.free);
+-            state.total = fullest.map(|volume| volume.space.total);
+-        });
+-        let spaces: Vec<(u64, u64)> = volumes
+-            .iter()
+-            .map(|volume| (volume.space.free, volume.space.total))
+-            .collect();
+-        if decide(&rule, &spaces, state.last_run, now).is_none() {
+-            return;
++        if let Some(result) = check(&self.env(), &rule, cause) {
++            self.finish(&rule.id, result);
+         }
+-        let cause = if cause == Cause::Interval {
+-            Cause::Threshold
+-        } else {
+-            cause
+-        };
+-        let result = run::run(&env, &rule, cause, false, false);
+-        self.finish(&rule.id, result);
+     }
+ 
+     fn finish(&self, id: &str, result: Result<Report, String>) {
+@@ -231,13 +217,62 @@ impl Runner {
+     }
+ }
+ 
++/// Whether an evaluation with `cause` may happen for `rule`: a run someone
++/// asked for always may; an automatic one only on a trigger the rule names.
++/// `Interval` (and `Threshold`, which is checked on the interval) need an
++/// `Interval` trigger; `HostStart` and `TaskEnded` need their own.
++#[must_use]
++pub fn fires(rule: &Rule, cause: Cause) -> bool {
++    match cause {
++        Cause::Manual => true,
++        Cause::Interval | Cause::Threshold => rule.interval().is_some(),
++        Cause::HostStart => rule.has(&Trigger::HostStart),
++        Cause::TaskEnded => rule.has(&Trigger::TaskEnded),
++    }
++}
++
++/// One automatic check of `rule` for `cause`: nothing unless the rule names
++/// that trigger ([`fires`]); otherwise observe, remember the free space, and
++/// run when [`decide`] says so. `None` when nothing ran.
++pub fn check(env: &Env<'_>, rule: &Rule, cause: Cause) -> Option<Result<Report, String>> {
++    if cause == Cause::Manual || !fires(rule, cause) {
++        return None;
++    }
++    let now = env.now;
++    let volumes = observe(env, rule);
++    let fullest = volumes.iter().min_by_key(|volume| volume.space.free);
++    let state = State::load(env.layout)
++        .rules
++        .get(&rule.id)
++        .cloned()
++        .unwrap_or_default();
++    State::update(env.layout, &rule.id, |state| {
++        state.last_check = Some(now);
++        state.next_check = rule.interval().map(|every| now + every);
++        state.free = fullest.map(|volume| volume.space.free);
++        state.total = fullest.map(|volume| volume.space.total);
++    });
++    let spaces: Vec<(u64, u64)> = volumes
++        .iter()
++        .map(|volume| (volume.space.free, volume.space.total))
++        .collect();
++    decide(rule, &spaces, state.last_run, now)?;
++    // An interval check that finds space low is the threshold firing.
++    let cause = if cause == Cause::Interval && rule.has(&Trigger::Threshold) {
++        Cause::Threshold
++    } else {
++        cause
++    };
++    Some(run::run(env, rule, cause, false, false))
++}
++
+ /// Whether a triggered check runs the rule now, and if so whether it is an
+ /// emergency: some volume (free, total) is below the start level, the rule
+ /// is active, and the cooldown has passed or free space is below the
+ /// emergency level.
+ #[must_use]
+ pub fn decide(
+-    rule: &crate::rule::Rule,
++    rule: &Rule,
+     volumes: &[(u64, u64)],
+     last_run: Option<u64>,
+     now: u64,
+diff --git a/docs/background/2026-10-02-background-processes.md b/docs/background/2026-10-02-background-processes.md
+index df437e80fa807755833cc5f568013dfd4f77629f..d24df740ebfe053bfd08d8f12c7c3aaffffc6bc0 100644
+--- a/docs/background/2026-10-02-background-processes.md
++++ b/docs/background/2026-10-02-background-processes.md
+@@ -481,6 +481,17 @@ Where the implementation differs from the design above, and why:
+   a `TaskEnded` check when a task newly ended (the store's own `Task::ended`
+   test, shared with `targets::cleanup`). That poll is the task-ended signal;
+   no new event channel was needed.
++- **Triggers gate checks.** The runner checks only on the triggers the
++  rule names: `HostStart` at host start, `TaskEnded` when a task ends, and
++  `Interval { every_secs }` on its own period. Without an `Interval` trigger
++  no interval checks are scheduled (there is no default period), so
++  `Threshold` alone does nothing: it is checked on the interval, and an
++  interval check that runs is recorded as `threshold` when the rule names it
++  and `interval` otherwise. A rule with no triggers never runs by itself.
++  The rule is re-read after every wake, so an edit to its triggers takes
++  effect without restarting the host. A run someone asks for
++  (`openagents background run`, `/background`, `background.run`) ignores
++  triggers and always runs.
+ - **Runs in other processes.** `openagents background run` and `/background`
+   run in their own process and hold `~/.openagents/background/run.lock` while
+   deleting; the host's runner takes the same lock, so two runs never

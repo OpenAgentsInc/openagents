@@ -1,0 +1,23 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10167,
+  "title": "Disk cleanup runs on triggers the rule doesn't name",
+  "body": "Found by a Codex review on CoderOS (thread 700865e6, 2026-10-02) of 5ae8d27af8 (#10156).\n\n`crates/background/src/runner.rs:99-120`: the runner evaluates cleanup at host start, when tasks end, and every interval regardless of `rule.triggers`. Removing `HostStart` or `TaskEnded` has no effect; removing `Interval` still schedules checks every 300 s through a fallback; an enabled rule with an empty trigger list can still delete files when disk is low.\n\nFix: gate each automatic evaluation on the configured trigger; schedule no interval checks when no interval is configured; keep explicit manual runs (`openagents background run`, `/background`) separate. Tests for each trigger removed.",
+  "fix": "3e851134af98d39b07dadd195cb84e09ff310eeb",
+  "parent": "4705102273140a5f381fb75e17a29965662629c8",
+  "package": "background",
+  "source_files": [
+    "crates/background/src/runner.rs",
+    "docs/background/2026-10-02-background-processes.md"
+  ],
+  "test_files": [
+    "crates/background/src/tests.rs"
+  ],
+  "test_names": [
+    "each_automatic_check_needs_its_own_trigger",
+    "no_triggers_means_no_automatic_runs_but_a_manual_run_still_works"
+  ],
+  "fix_lines": 210
+}

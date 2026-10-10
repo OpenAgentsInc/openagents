@@ -1,0 +1,32 @@
+{
+  "tag": "s2",
+  "frozen": "2026-10-10",
+  "question": "Does the briefed agent (B0) cost at least 30% less per accepted change than bare Claude Code (A), with equal or better success and no worse median time?",
+  "issues": [10074, 10228, 10258, 10273, 10295, 10301, 10986, 10289, 10248, 10298, 10299, 10369, 10201, 10370, 10179, 10893, 10283, 10167, 10349, 10181, 11118],
+  "issue_selection": "Every candidate that passed prepare.py --validate (the fix's tests pass on the fix and fail on the parent) before any trial result was seen: 21 of 29. No issue is dropped after results.",
+  "arms": ["A", "B0"],
+  "reps": 3,
+  "seed": 20261010,
+  "order": "Issues in a seeded random order; per issue, each rep rotates the arm order from a seeded starting arm (balanced: each arm runs first in about half the reps).",
+  "levers": {"interface": true, "model": "claude-opus-5-5", "effort": "default", "timeout_secs": 1200, "finder": "finder", "template": "v3"},
+  "pins": {
+    "agent_sha256": "0480700f2c1251aa59a9aed4d19ed3b77367e3d642b2201c1c4e68e339c07aa1",
+    "agent_source": "crates/briefed-agent at c34036f3a5 (#11229 fixed)",
+    "claude_version": "2.1.296 (Claude Code)",
+    "judge_model": "claude-opus-5-5",
+    "build_host": "coderos-4080, one build checkout, warm target (prewarmed per issue), 600 s per command, hidden tests 300 s"
+  },
+  "budget_usd": 200,
+  "budget_rule": "Agent trials stop at $200 of CLI-reported list price; a stopped run is reported as incomplete.",
+  "outcome": "accepted = the fix commit's own tests pass on the change (remote/eval.sh: cargo exit 0 and every named test passed) AND the blind judge accepts (score >= 4). Never from the agent's own report.",
+  "analysis": {
+    "unit": "issue; the 3 repeats of an issue are a cluster",
+    "primary": "success difference B0 - A: mean over issues of each arm's per-issue acceptance rate; 95% CI from 10000 issue-level bootstrap resamples (seed 11211). Reported before any cost figure.",
+    "quality_gate": "equal or better is shown only if the CI's lower bound is >= 0; a CI spanning 0 is inconclusive on equality; a negative point estimate fails.",
+    "cost_gate": "cost per accepted = sum of known list-price costs / accepted trials, per arm; the reduction 1 - B0/A with an issue-level bootstrap CI. The 30% gate is met only if the CI's lower bound is >= 30%; a point estimate above 30% with a lower bound below is reported as not shown.",
+    "latency_gate": "median wall time of B0 <= A; p90 reported.",
+    "unknown_costs": "a trial without a CLI-reported cost (timeout) counts as a failure, its cost is unknown and counted as such; an estimate from its token counts is shown separately, labeled.",
+    "harness_failures": "a trial that hits the login's usage limit is discarded and rerun when the login answers (no outcome was observed); nothing else is rerun or excluded.",
+    "support_costs": "judge, grading and briefing costs are reported separately; billed dollars on the subscription are not observable and are reported as unknown."
+  }
+}

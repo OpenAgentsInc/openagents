@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10228,
+  "title": "Engine lookup falls back to an old ~/.openagents/bin/microcoder when the running binary was rebuilt (Linux \"(deleted)\" path)",
+  "body": "On CoderOS a `chat work` batch's fix turns failed: \"the Coder engine at ~/.openagents/bin/microcoder is older than this program\". `default_controller` (crates/coder/src/task/autostart.rs ~2352) canonicalizes `current_exe()`; when the running binary was replaced by a rebuild (agents ran `oa-terminal-dev --build-only` during the batch), Linux reports `/path/microcoder (deleted)`, so `dir.join(MICROCODER)` is still right but canonicalize/the exe check drops it and the lookup falls back to the old installed copy.\n\nFix: strip a trailing \" (deleted)\" from `current_exe()` (and/or use the uncanonicalized path's parent) so the engine beside the program \u2014 the freshly rebuilt one \u2014 is found; only fall back to `~/.openagents/bin` when nothing is beside it. Test with a fake exe path ending in \" (deleted)\".",
+  "fix": "fc2d8698d93c2d94b9000112686378d6c39dbd5d",
+  "parent": "b39787700107a1605b3412c8653fad887adfbbf8",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/autostart.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/autostart.rs"
+  ],
+  "test_names": [
+    "a_replaced_executable_keeps_the_engine_beside_it"
+  ],
+  "fix_lines": 40
+}

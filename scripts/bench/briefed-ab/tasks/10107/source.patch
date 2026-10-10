@@ -1,0 +1,85 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index daca127209db2f3db5f0ae898455bf1fa747d5cb..7ebb2cd33101e85e4c1ae0ded4048233bc183a0e 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -166,7 +166,7 @@ in `docs/deployment/decision-worker.md`.
+ | Every caller builds a decision with one shared model that is exactly NIP-DEC (`jev::DecisionRequest`: `State` text or object, `Questions` of Noul, Choice, and Score with EntryType fields and optional `NoulCriteria`; answers as `jev::Answer`; HTTP errors as `jev::Refusal`), and converts it to the TypeSafe and gateway body, OpenRouter's Decisions body, and the NIP-DEC job body from that one value. A question file read into the model keeps its bytes. The SDK's model-alias and status tables equal `nostr::decision`'s. | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)). | `every_docs_example_round_trips_exactly_and_reads_typed`, `what_the_model_does_not_cover_stays_raw_and_keeps_its_bytes` in `crates/jev` (`nip_dec`); `every_nip_dec_example_becomes_the_same_job`, `the_sdk_and_the_wire_share_one_alias_and_status_table` in `crates/jev-hosted` |
+ | A client of TypeSafe's door is built only by `jev_hosted::resolve` (its local-key door), `jev_hosted::resolve_with_fallbacks` (the same door with Jev's fallback doors behind it, for the chat worker's judge), or by the decision worker (its upstream): Coder's delegate door and judge, Coder One, Microcoder, the hands seam, the decision profile's keyed and relay doors, the Gym, external-eval graders, and Voyager's live door all resolve a local key first, then the hosted service, then no Jev with the reason. | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)). | `each_profile_kind_builds_its_door` in `crates/coder` (`decision`); `no_key_means_the_hosted_service_under_a_key_made_once` in `crates/jev-hosted` |
+ | The gateway's `POST /v1/systemone` takes the Decisions API request (`model`, `questions`, `state`), refuses a body outside NIP-DEC's bounds before any door is consulted, asks a model alias's door by its canonical name, and answers its own refusals with NIP-DEC's HTTP status table (400 for request errors, 404 for an unbound model, 502 for a failed or mismatched door, 503 for no capacity); a code only the gateway defines keeps its status. | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)); `idempotency_conflict` moved from 409 to 400 and `door_not_bound` from 403 to 404 with it. | `the_decisions_api_answers_the_typesafe_docs_examples` and the status assertions in `crates/gateway/tests/serve.rs` |
+-| Jev's doors are asked in one order, TypeSafe → the Vercel AI Gateway's TypeSafe-compatible API (`typesafe-ai/jev`) → OpenRouter's Decisions API (`typesafe/jev-1.13`), by the decision worker (`backups`) and the chat worker's router judge (`jev::doors::Failover`). Each backup door is off unless its key variable (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) is set when the server starts, and the startup log names each on or off; a door's key goes only to that door and is never logged. A door is asked only after the doors before it timed out, could not be reached, answered 402, 408, 429, or a 5xx, or refused for their own reasons (`jev::doors::fails_over`), never after a refusal of the question itself, and a backup that refuses the question ends the chain. An answer from a backup door names it in `service.door` (the chat judgment's `door`, the thread record's `service.upstream`); when no backup answers, TypeSafe's refusal stands. The router's question set is the same whichever door answers. | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)); extended to the gateway door, the order, and the chat judge on 2026-09-30 ([#10064](https://github.com/OpenAgentsInc/openagents/issues/10064)). | `the_backup_door_answers_only_when_the_upstream_cannot`, `typesafe_then_the_gateway_then_openrouter`, `the_deployed_config_names_the_fallback_doors_in_order` in `crates/gateway/tests/relay_worker.rs`; `no_credits_at_typesafe_falls_through_the_gateway_then_openrouter`, `a_refusal_of_the_question_never_fails_over`, `when_no_fallback_answers_typesafes_refusal_stands`, `an_unreachable_or_hung_typesafe_falls_through` in `crates/jev/tests/doors.rs`; `a_door_never_shows_its_key` (`jev::doors`); `fallback_doors_are_on_only_with_their_keys_and_a_local_key` in `crates/jev-hosted`; `a_fallback_doors_judgment_names_that_door`, `the_privacy_answer_names_jevs_fallback_doors_when_they_are_on` (`coder-worker`); `the_router_record_names_the_jev_door_that_answered` in `crates/openagents-chat` |
++| Jev's doors are asked in one order, TypeSafe → the Vercel AI Gateway's TypeSafe-compatible API (`typesafe-ai/jev`) → OpenRouter's Decisions API (`typesafe/jev-1.13`), by the decision worker (`backups`) and the chat worker's router judge (`jev::doors::Failover`). Each backup door is off unless its key variable (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`) is set when the server starts, and the startup log names each on or off; a door's key goes only to that door and is never logged. A door is asked only after the doors before it timed out, could not be reached, answered 402, 408, 429, or a 5xx, or refused for their own reasons (`jev::doors::fails_over`), never after a refusal of the question itself, and a backup that refuses the question ends the chain. An answer from a backup door names it in `service.door` (the chat judgment's `door`, the thread record's `service.upstream`); when no backup answers, TypeSafe's refusal stands. The router's question set is the same whichever door answers. A repository run's judge (`crates/microcoder/src/repository/native.rs`) accepts an answer whose model is the admitted Jev as the answering door (`service.door`) names it (`jev::doors::Naming`: canonical at TypeSafe, `typesafe-ai/jev` at the gateway, `typesafe/jev-1.13` at OpenRouter) and refuses any other, failing the turn ([#10107](https://github.com/OpenAgentsInc/openagents/issues/10107)). | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)); extended to the gateway door, the order, and the chat judge on 2026-09-30 ([#10064](https://github.com/OpenAgentsInc/openagents/issues/10064)). The judge's door-aware check is new on 2026-10-01 ([#10107](https://github.com/OpenAgentsInc/openagents/issues/10107)): before it, a failover answer from the gateway failed every Coder turn in about a second. Model boundary: the gateway names no Jev version, so an answer from it is accepted as the admitted Jev on the door's word. | `the_backup_door_answers_only_when_the_upstream_cannot`, `typesafe_then_the_gateway_then_openrouter`, `the_deployed_config_names_the_fallback_doors_in_order` in `crates/gateway/tests/relay_worker.rs`; `no_credits_at_typesafe_falls_through_the_gateway_then_openrouter`, `a_refusal_of_the_question_never_fails_over`, `when_no_fallback_answers_typesafes_refusal_stands`, `an_unreachable_or_hung_typesafe_falls_through` in `crates/jev/tests/doors.rs`; `a_door_never_shows_its_key` (`jev::doors`); `fallback_doors_are_on_only_with_their_keys_and_a_local_key` in `crates/jev-hosted`; `a_fallback_doors_judgment_names_that_door`, `the_privacy_answer_names_jevs_fallback_doors_when_they_are_on` (`coder-worker`); `the_router_record_names_the_jev_door_that_answered` in `crates/openagents-chat`; `a_backup_doors_name_for_the_admitted_jev_is_the_admitted_jev` in `crates/microcoder` |
+ | Every recorded decision call (`openagents.decision-call.v1`) names its door, `via` (`direct`, `hosted`, or `local`), the relaying `service`, the served model, `latency_ms`, and, when the door reported them, `request_id`, `usage`, and `cost_usd`; its arguments hold the request body, or above 32 KiB the model, the questions when they fit, and the state's digest, size, and a 2 KiB excerpt. | New on 2026-09-30 ([#10048](https://github.com/OpenAgentsInc/openagents/issues/10048)). | `every_decision_record_names_its_door_via_service_and_cost` in `crates/jev-hosted` |
+ | A decision-model call a Coder run records (`openagents.decision-call.v1` in the call's `extra`, such as Microcoder's `openagents.microcoder.judge.v1` judgment) stays in the task's ATIF trajectory and trace and never shows as a row of the person's transcript on the phone or the desktop: the Coder event mapper drops it and its result, and the history projection reads it as a `decision_call` record that conversation readers hide and never appends it to a message as a `Tool:` line. | New on 2026-09-30 ([#10073](https://github.com/OpenAgentsInc/openagents/issues/10073)): the desktop showed a raw `openagents.microcoder.judge.v1 {…}` row. | `a_decision_call_is_not_a_transcript_row` in `crates/openagents-chat` (`coder_events`); `a_decision_call_reads_as_a_decision_record` in `crates/coder-history`; `a_decision_call_shows_no_row` in `crates/openagents-chat-app` (`conversation`) |
+ | The decision worker never trusts a quiet socket: a liveness probe (a `REQ` with `limit` 0) every 30 seconds, and one still unanswered at the next ends the connection, which reconnects and subscribes again. | New on 2026-09-30 ([#10044](https://github.com/OpenAgentsInc/openagents/issues/10044)). | `a_silent_relay_is_noticed_by_the_probe` in `crates/gateway/tests/relay_worker.rs` |
+diff --git a/crates/microcoder/src/repository/native.rs b/crates/microcoder/src/repository/native.rs
+index 0ff8df249a4b67d4423b14ec1bdbe84cae9c3f80..cfa13eb671eb882d8e9206fb143069c54ca58305 100644
+--- a/crates/microcoder/src/repository/native.rs
++++ b/crates/microcoder/src/repository/native.rs
+@@ -123,7 +123,15 @@ impl Judge for NativeJudge<'_> {
+                         ..Judgment::default()
+                     };
+                 }
+-                if response.model != self.host.configuration().decision_model {
++                let door = response.service().and_then(|service| {
++                    service
++                        .get("door")
++                        .and_then(Value::as_str)
++                        .map(str::to_owned)
++                });
++                if response.model
++                    != served_name(&self.host.configuration().decision_model, door.as_deref())
++                {
+                     self.host.fail(
+                         "decision provider returned a model different from the admitted model",
+                     );
+@@ -265,6 +273,19 @@ impl<T: codex_transport::Transport> Lane for Native<'_, T> {
+     }
+ }
+ 
++/// The admitted decision model as the door that answered names it
++/// (#10107): the hosted decision service fails over from TypeSafe to the
++/// Vercel AI Gateway and OpenRouter (`jev::doors`), and each names Jev its
++/// own way. An answer naming anything else is still refused.
++fn served_name(admitted: &str, door: Option<&str>) -> String {
++    use jev::doors::{GATEWAY_DOOR, Naming, OPENROUTER_DOOR};
++    match door {
++        Some(GATEWAY_DOOR) => Naming::Gateway.model(admitted),
++        Some(OPENROUTER_DOOR) => Naming::OpenRouter.model(admitted),
++        _ => admitted.to_owned(),
++    }
++}
++
+ /// Run the loop over one stage of admitted model routes, failing over
+ /// among them, and return its state and outcome for the caller to finish.
+ pub(super) async fn run_stage<T: codex_transport::Transport>(
+@@ -390,6 +411,30 @@ mod tests {
+         assert!(!trace.contains("no Jev key"));
+     }
+ 
++    /// An answer from a backup door names the admitted Jev its own way and
++    /// is accepted; any other name, or the gateway's name from another
++    /// door, is not (#10107).
++    #[test]
++    fn a_backup_doors_name_for_the_admitted_jev_is_the_admitted_jev() {
++        use jev::doors::{GATEWAY_DOOR, OPENROUTER_DOOR, TYPESAFE_DOOR};
++        let admitted = "jev-1.13.0";
++        assert_eq!(served_name(admitted, None), admitted);
++        assert_eq!(served_name(admitted, Some(TYPESAFE_DOOR)), admitted);
++        assert_eq!(served_name(admitted, Some(GATEWAY_DOOR)), "typesafe-ai/jev");
++        assert_eq!(
++            served_name(admitted, Some(OPENROUTER_DOOR)),
++            "typesafe/jev-1.13"
++        );
++        assert_ne!(
++            served_name(admitted, Some(TYPESAFE_DOOR)),
++            "typesafe-ai/jev"
++        );
++        assert_ne!(
++            served_name(admitted, Some("https://elsewhere.example")),
++            "typesafe-ai/jev"
++        );
++    }
++
+     #[tokio::test]
+     async fn missing_or_mismatched_native_identity_is_retained_but_never_accepted() {
+         for model in ["", "other-model"] {

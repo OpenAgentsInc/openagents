@@ -1,0 +1,157 @@
+diff --git a/crates/coder/src/task/issue_run_tests.rs b/crates/coder/src/task/issue_run_tests.rs
+index 0d0ae69f6c6601c829fc0086411153835aa1d9ac..bf716df644a8b015db7c8c75c39ed85d6d0217a7 100644
+--- a/crates/coder/src/task/issue_run_tests.rs
++++ b/crates/coder/src/task/issue_run_tests.rs
+@@ -448,6 +448,7 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
+             summaries: vec![],
+             checked: Checked::default(),
+             rounds: 0,
++            stranded: None,
+         };
+         if stopped {
+             run.stopped("Stopped by the person.");
+@@ -531,6 +532,7 @@ fn a_failure_comment_links_the_runs_uploaded_artifacts() {
+             ..Checked::default()
+         },
+         rounds: 0,
++        stranded: None,
+     };
+     run.failed("The checks fail.", None);
+     let uploaded = bucket.0.lock().unwrap().clone();
+@@ -941,3 +943,136 @@ fn the_comments_name_where_the_run_is() {
+     assert_eq!(placement_named(Some("gce")).run, "on a GCE pool host");
+     assert_eq!(placement_named(Some("other")).claim, "on this computer");
+ }
++
++fn git(dir: &Path, args: &[&str]) -> String {
++    let out = std::process::Command::new("git")
++        .current_dir(dir)
++        .args([
++            "-c",
++            "user.name=Test",
++            "-c",
++            "user.email=test@example.invalid",
++        ])
++        .args(args)
++        .output()
++        .unwrap();
++    assert!(
++        out.status.success(),
++        "git {args:?}: {}",
++        String::from_utf8_lossy(&out.stderr)
++    );
++    String::from_utf8_lossy(&out.stdout).trim().to_owned()
++}
++
++/// A worktree with one committed change on top of origin's `main`.
++fn committed_change(dir: &Path) -> (PathBuf, PathBuf) {
++    let origin = dir.join("origin.git");
++    git(
++        dir,
++        &[
++            "init",
++            "-q",
++            "--bare",
++            "-b",
++            "main",
++            origin.to_str().unwrap(),
++        ],
++    );
++    let work = dir.join("work");
++    git(
++        dir,
++        &[
++            "clone",
++            "-q",
++            origin.to_str().unwrap(),
++            work.to_str().unwrap(),
++        ],
++    );
++    git(&work, &["commit", "-q", "--allow-empty", "-m", "base"]);
++    git(&work, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
++    std::fs::write(work.join("fix.txt"), "fixed\n").unwrap();
++    git(&work, &["add", "fix.txt"]);
++    git(&work, &["commit", "-q", "-m", "the fix"]);
++    (origin, work)
++}
++
++fn stranded_run_comment(origin_ok: bool) -> (String, String, PathBuf, tempfile::TempDir) {
++    let dir = tempfile::tempdir().unwrap();
++    let (origin, worktree) = committed_change(dir.path());
++    if !origin_ok {
++        git(
++            &worktree,
++            &["remote", "set-url", "origin", "/nonexistent/origin.git"],
++        );
++    }
++    let tracker = Arc::new(Comments::default());
++    let record = local_record();
++    let work = Work {
++        store: dir.path().into(),
++        local: Arc::new(Local::new(dir.path().into())),
++        tracker: tracker.clone(),
++        checks: Arc::new(NoChecks),
++        policy: Policy::default(),
++        branch: "main".into(),
++        top: worktree.clone(),
++        now: || 100,
++        artifacts: None,
++    };
++    let mut flow = flow("working");
++    flow.finished = false;
++    let issue = issue(&[]);
++    let mut run = Run {
++        work: &work,
++        flow: &mut flow,
++        record: &record,
++        issue: &issue,
++        repository: "acme/app",
++        worktree: &worktree,
++        turn: 1,
++        summaries: vec![],
++        checked: Checked::default(),
++        rounds: 0,
++        stranded: None,
++    };
++    let kept = run.strand();
++    assert_eq!(kept, origin_ok);
++    run.failed("The change conflicts with the newer main.", None);
++    let comment = tracker
++        .0
++        .lock()
++        .unwrap()
++        .iter()
++        .find(|c| c.contains("did not land"))
++        .unwrap()
++        .clone();
++    let _ = origin;
++    (comment, flow.closing.clone(), worktree, dir)
++}
++
++#[test]
++fn a_change_that_cannot_land_is_kept_on_a_stranded_branch_on_origin() {
++    let (comment, _, worktree, dir) = stranded_run_comment(true);
++    let branch = super::stranded_branch("task-fixture-1234");
++    assert_eq!(branch, "coder/stranded-task-fix");
++    let origin = dir.path().join("origin.git");
++    let head = git(&worktree, &["rev-parse", "HEAD"]);
++    assert_eq!(
++        git(&origin, &["rev-parse", &format!("refs/heads/{branch}")]),
++        head,
++        "origin keeps the committed change"
++    );
++    assert_eq!(
++        git(&worktree, &["status", "--porcelain"]),
++        "",
++        "nothing is left only in the worktree"
++    );
++    assert!(comment.contains(&format!("https://github.com/acme/app/tree/{branch}")));
++    assert!(!comment.contains("Nothing was pushed"));
++}
++
++#[test]
++fn a_stranded_push_that_fails_says_nothing_was_pushed() {
++    let (comment, _, _, _dir) = stranded_run_comment(false);
++    assert!(comment.contains("Nothing was pushed"));
++    assert!(!comment.contains("coder/stranded-"));
++}

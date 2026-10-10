@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10289,
+  "title": "Phone banned-word list lacks the \"Your keys\" exception; unused var warning in efficiency.rs",
+  "body": "From #10287 (d00a492fbc): `crates/coder/src/router/gym.rs` now allows the bring-your-own-keys names (\"Your keys\", \"Your own keys\", \"Use my keys\") while still banning other keys. The phone keeps its own copy of the banned words in `crates/openagents-chat-app/src/eval_cards.rs` without that exception \u2014 share one list (or mirror it with a test that they match). Also fix the unused `base` warning at `crates/coder/src/efficiency.rs:391`.",
+  "fix": "e0d1e6bbf62946361059c8f74fc9a0a3907c4102",
+  "parent": "d00a492fbc00161325d2fad7a1095ab666cd51ad",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/Cargo.toml",
+    "crates/coder/src/efficiency.rs",
+    "crates/coder/src/router/gym.rs",
+    "crates/openagents-chat-app/src/eval_cards.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/router/gym.rs",
+    "crates/openagents-chat-app/src/eval_cards.rs"
+  ],
+  "test_names": [
+    "the_phone_keeps_the_same_banned_words_and_names"
+  ],
+  "fix_lines": 33
+}

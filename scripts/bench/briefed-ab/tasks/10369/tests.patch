@@ -1,0 +1,99 @@
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 87d607480989e87e30c8cad9647f2a7895139399..a74ce66b7e3e4f2079ebcb227ac44de63c311b00 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -1360,6 +1459,94 @@ fn retry_busy<T>(
+ mod tests {
+     use super::*;
+ 
++    /// `public-key` and `list` on a computer whose host keeps its key in the
++    /// keychain (the desktop app's) ask the running host over its control
++    /// socket, and a store with a key file is read directly (#10369).
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn host_key_and_devices_come_from_the_running_host_without_a_key_file() {
++        use openagents_connect::control::{Device, Response, Status, next_request, respond};
++        let dir = tempfile::tempdir().unwrap();
++        let common = Common {
++            policy: RelayPolicy::Production,
++            state: dir.path().join("coder-access"),
++            root: dir.path().join("host"),
++        };
++        let socket = dir.path().join("control.sock");
++        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
++        tokio::spawn(async move {
++            loop {
++                let (mut stream, _) = listener.accept().await.unwrap();
++                while let Ok(Some(request)) = next_request(&mut stream).await {
++                    let result = match request.op {
++                        Op::Status {} => Reply::Status(Status {
++                            host: "ab".repeat(32),
++                            endpoint: String::new(),
++                            label: "desk".into(),
++                            online: true,
++                            relay: None,
++                            devices: 1,
++                            outstanding_invitations: 0,
++                            version: "test".into(),
++                        }),
++                        Op::DeviceList {} => Reply::Devices {
++                            devices: vec![Device {
++                                device: "cd".repeat(32),
++                                label: String::new(),
++                                rights: vec!["observe".into()],
++                                grant: "ef".repeat(32),
++                                epoch: 1,
++                                enrolled_at: 1,
++                                last_seen: None,
++                                revoked: true,
++                            }],
++                        },
++                        _ => Reply::Refused {
++                            code: "unsupported".into(),
++                            message: "no".into(),
++                        },
++                    };
++                    respond(&mut stream, &Response::new(request.id, result))
++                        .await
++                        .unwrap();
++                }
++            }
++        });
++        let args = |extra: &[&str]| {
++            let mut args: Vec<String> =
++                vec!["--control-socket".into(), socket.display().to_string()];
++            args.extend(extra.iter().map(|a| (*a).to_owned()));
++            Options::parse(&args).unwrap()
++        };
++        // No key file in the store: the running host answers.
++        let mut options = args(&[]);
++        let Source::Control(path) = Source::take(&common, &mut options).unwrap() else {
++            panic!("a store without a key file asks the running host");
++        };
++        let Reply::Status(status) = control_call(&path, Op::Status {}).await.unwrap() else {
++            panic!("status");
++        };
++        assert_eq!(status.host, "ab".repeat(32));
++        public_key(&common, &mut args(&[])).await.unwrap();
++        list(&common, &mut args(&["--json"])).await.unwrap();
++        list(&common, &mut args(&[])).await.unwrap();
++        // No host answers: a plain message naming how to start one.
++        let gone = dir.path().join("nobody.sock");
++        let error = control_call(&gone, Op::Status {}).await.unwrap_err();
++        assert!(
++            error.to_string().contains("no host runs on this computer"),
++            "{error}"
++        );
++        // A key file in the store: the store is read, not the socket.
++        std::fs::create_dir_all(&common.state).unwrap();
++        std::fs::write(common.state.join("host.key"), b"x").unwrap();
++        let mut options = Options::parse(&[]).unwrap();
++        assert!(matches!(
++            Source::take(&common, &mut options).unwrap(),
++            Source::Store
++        ));
++    }
++
+     /// Starting again after a rebuild replaced the running file: Linux names
+     /// the unlinked file `PATH (deleted)`, and the new build is at `PATH`.
+     /// Failing that, `argv[0]` as a path or on `PATH`; never a missing file.

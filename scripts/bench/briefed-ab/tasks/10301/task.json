@@ -1,0 +1,22 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10301,
+  "title": "Task store v2 still refuses with \"another process holds the task store lock\"",
+  "body": "From #10300 (07d8378aae, docs/worktrees/2026-10-03-git-lock-contention.md): task-store lock refusals still happen on store v2 (one file per task) \u2014 seen on coderos (`Coder did not start: another process holds the task store lock; retry after it exits` for #10239/#10248 in parallel chat work). Find which lock is still global under v2, make per-task operations not contend (or wait briefly instead of refusing), regression test with parallel starts.",
+  "fix": "1de8bdf13f1f64054a928ddd844705f8eda70594",
+  "parent": "e11b84c3adde42755c32fb478cc1895d13149042",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/owner.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/owner/tests.rs"
+  ],
+  "test_names": [
+    "a_starting_owner_waits_out_a_brief_holder_of_its_owner_lock"
+  ],
+  "fix_lines": 57
+}

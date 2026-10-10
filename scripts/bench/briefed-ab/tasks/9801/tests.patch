@@ -1,0 +1,224 @@
+diff --git a/crates/physics/src/modal.rs b/crates/physics/src/modal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..eaea9340b5005105268089137a967d69e075dd61
+--- /dev/null
++++ b/crates/physics/src/modal.rs
+@@ -0,0 +1,218 @@
++//! Assumed-mode flexibility: each mode is a damped linear oscillator in one
++//! generalized coordinate, after the hybrid-coordinate method (Likins,
++//! "Dynamics and Control of Flexible Space Vehicles", 1970) and Hughes,
++//! *Spacecraft Attitude Dynamics* (1986), chapter 9.
++//!
++//! A mode has a generalized mass `m`, a natural frequency `ω`, and a
++//! damping ratio `ζ`: `m (q'' + 2 ζ ω q' + ω² q) = Q`, where `Q` is the
++//! generalized force, the applied loads weighted by the mode shape. The
++//! owner defines the shapes and forms `Q`; this module advances `q`.
++//!
++//! [`Mode::step`] holds `Q` constant over the step and advances the exact
++//! solution of that linear equation, so the update is unconditionally
++//! stable and has no numerical damping at any step length.
++
++use serde::{Deserialize, Serialize};
++
++/// One damped structural mode.
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct Mode {
++    /// Natural frequency, Hz.
++    pub frequency: f64,
++    /// Fraction of critical damping.
++    pub damping: f64,
++    /// Generalized mass, kg (for a shape normalized to 1 at its reference
++    /// point, the mass that moves as if concentrated there).
++    pub mass: f64,
++    /// Generalized displacement, m at the reference point.
++    pub q: f64,
++    /// Generalized velocity, m/s.
++    pub rate: f64,
++    /// Displacement before the last step, for render interpolation.
++    #[serde(default)]
++    pub prev_q: f64,
++}
++
++impl Mode {
++    /// A mode at rest.
++    #[must_use]
++    pub fn new(frequency: f64, damping: f64, mass: f64) -> Self {
++        Self {
++            frequency,
++            damping,
++            mass,
++            q: 0.0,
++            rate: 0.0,
++            prev_q: 0.0,
++        }
++    }
++
++    /// Natural angular frequency, rad/s.
++    #[must_use]
++    pub fn omega(&self) -> f64 {
++        std::f64::consts::TAU * self.frequency
++    }
++
++    /// Strain plus kinetic energy, J.
++    #[must_use]
++    pub fn energy(&self) -> f64 {
++        let w = self.omega();
++        0.5 * self.mass * (self.rate * self.rate + w * w * self.q * self.q)
++    }
++
++    /// Displacement between the last two steps; `alpha` in [0, 1].
++    #[must_use]
++    pub fn interpolated(&self, alpha: f64) -> f64 {
++        let alpha = alpha.clamp(0.0, 1.0);
++        self.prev_q + (self.q - self.prev_q) * alpha
++    }
++
++    /// Advance by `dt` under generalized force `force`, N, held constant.
++    ///
++    /// The displacement about the static deflection `Q / (m ω²)` decays as
++    /// `e^{-ζωt}` and turns at the damped frequency `ω_d = ω √(1 − ζ²)`;
++    /// the update applies that rotation exactly. Damping at or above
++    /// critical uses the matching real-exponential solution.
++    pub fn step(&mut self, force: f64, dt: f64) {
++        self.prev_q = self.q;
++        let w = self.omega();
++        if w <= 0.0 || self.mass <= 0.0 {
++            // A rigid mode: plain free-particle motion.
++            let accel = if self.mass > 0.0 {
++                force / self.mass
++            } else {
++                0.0
++            };
++            self.q += self.rate * dt + 0.5 * accel * dt * dt;
++            self.rate += accel * dt;
++            return;
++        }
++        let zeta = self.damping.max(0.0);
++        let rest = force / (self.mass * w * w);
++        let (x, v) = (self.q - rest, self.rate);
++        let (x1, v1) = if zeta < 1.0 {
++            let wd = w * (1.0 - zeta * zeta).sqrt();
++            let decay = (-zeta * w * dt).exp();
++            let (s, c) = (wd * dt).sin_cos();
++            let k = zeta * w / wd;
++            (
++                decay * (x * (c + k * s) + v * s / wd),
++                decay * (v * (c - k * s) - x * (w * w / wd) * s),
++            )
++        } else if zeta == 1.0 {
++            let decay = (-w * dt).exp();
++            (
++                decay * (x + (v + w * x) * dt),
++                decay * (v - (v + w * x) * w * dt),
++            )
++        } else {
++            let root = w * (zeta * zeta - 1.0).sqrt();
++            let (r1, r2) = (-zeta * w + root, -zeta * w - root);
++            // x = A e^{r1 t} + B e^{r2 t}.
++            let a = (v - r2 * x) / (r1 - r2);
++            let b = x - a;
++            let (e1, e2) = ((r1 * dt).exp(), (r2 * dt).exp());
++            (a * e1 + b * e2, a * r1 * e1 + b * r2 * e2)
++        };
++        self.q = x1 + rest;
++        self.rate = v1;
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn free_ring_down_follows_the_exact_envelope() {
++        let mut mode = Mode::new(0.2, 0.005, 80.0);
++        mode.q = 0.1;
++        let dt = 1.0 / 120.0;
++        let w = mode.omega();
++        let wd = w * (1.0 - 0.005_f64 * 0.005).sqrt();
++        for k in 1..=(120 * 60) {
++            mode.step(0.0, dt);
++            let t = f64::from(k) * dt;
++            let exact =
++                0.1 * (-0.005 * w * t).exp() * ((wd * t).cos() + 0.005 * w / wd * (wd * t).sin());
++            assert!(
++                (mode.q - exact).abs() < 1e-12,
++                "t {t}: {} vs {exact}",
++                mode.q
++            );
++        }
++        // After a minute at 0.5 % damping, e^{-ζωt} is about 0.69.
++        let envelope = (2.0 * mode.energy() / (mode.mass * w * w)).sqrt();
++        assert!((envelope - 0.1 * (-0.005 * w * 60.0).exp()).abs() < 1e-3);
++    }
++
++    #[test]
++    fn a_step_load_rings_about_the_static_deflection() {
++        let mut mode = Mode::new(0.5, 0.01, 20.0);
++        let force = 3.0;
++        let rest = force / (mode.mass * mode.omega() * mode.omega());
++        let mut peak: f64 = 0.0;
++        for _ in 0..(120 * 5) {
++            mode.step(force, 1.0 / 120.0);
++            peak = peak.max(mode.q);
++        }
++        // A suddenly applied load overshoots to almost twice the deflection.
++        assert!(peak > 1.9 * rest && peak < 2.0 * rest, "{peak} vs {rest}");
++        for _ in 0..(120 * 600) {
++            mode.step(force, 1.0 / 120.0);
++        }
++        assert!((mode.q - rest).abs() < 1e-6 * rest);
++    }
++
++    #[test]
++    fn any_step_length_is_stable_and_never_adds_energy() {
++        for dt in [1e-3, 1.0 / 120.0, 0.5, 10.0, 1e4] {
++            let mut mode = Mode::new(1.0, 0.005, 5.0);
++            mode.q = 0.2;
++            mode.rate = -0.4;
++            let mut last = mode.energy();
++            for _ in 0..1000 {
++                mode.step(0.0, dt);
++                let e = mode.energy();
++                assert!(e <= last * (1.0 + 1e-12) && e.is_finite(), "dt {dt}");
++                last = e;
++            }
++        }
++        // Undamped, energy holds to rounding.
++        let mut mode = Mode::new(0.3, 0.0, 1.0);
++        mode.q = 1.0;
++        let start = mode.energy();
++        for _ in 0..100_000 {
++            mode.step(0.0, 1.0 / 120.0);
++        }
++        assert!((mode.energy() - start).abs() < 1e-9 * start);
++    }
++
++    #[test]
++    fn critical_and_overdamped_modes_settle_without_overshoot() {
++        for zeta in [1.0, 3.0] {
++            let mut mode = Mode::new(0.5, zeta, 1.0);
++            mode.q = 1.0;
++            for _ in 0..(120 * 20) {
++                mode.step(0.0, 1.0 / 120.0);
++                assert!(mode.q >= 0.0, "zeta {zeta}");
++            }
++            assert!(mode.q < 1e-3, "zeta {zeta}: {}", mode.q);
++        }
++    }
++
++    #[test]
++    fn a_restored_mode_continues_bit_for_bit() {
++        let mut mode = Mode::new(0.15, 0.005, 60.0);
++        for k in 0..100 {
++            mode.step(f64::from(k % 7), 1.0 / 120.0);
++        }
++        let json = serde_json::to_string(&mode).unwrap();
++        let mut restored: Mode = serde_json::from_str(&json).unwrap();
++        for k in 0..100 {
++            mode.step(f64::from(k % 5), 1.0 / 120.0);
++            restored.step(f64::from(k % 5), 1.0 / 120.0);
++        }
++        assert_eq!(mode, restored);
++    }
++}

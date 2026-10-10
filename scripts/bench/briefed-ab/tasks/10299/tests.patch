@@ -1,0 +1,140 @@
+diff --git a/crates/coder/src/delegate_door/microcoder.rs b/crates/coder/src/delegate_door/microcoder.rs
+index a2cdf93025a78d24f4b1d7d521740394773205d4..589a3d34c61daa53bd0c7d1b0af40f10713b0d30 100644
+--- a/crates/coder/src/delegate_door/microcoder.rs
++++ b/crates/coder/src/delegate_door/microcoder.rs
+@@ -1037,3 +1083,135 @@ mod byok_tests {
+         );
+     }
+ }
++
++#[cfg(test)]
++mod release_tests {
++    use super::release;
++    use coder_delegate::issue::Ended;
++    use std::path::{Path, PathBuf};
++    use std::process::Command;
++
++    fn git(dir: &Path, args: &[&str]) -> String {
++        let out = Command::new("git")
++            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
++            .args(args)
++            .current_dir(dir)
++            .output()
++            .unwrap();
++        assert!(out.status.success(), "git {args:?}: {out:?}");
++        String::from_utf8_lossy(&out.stdout).trim().to_string()
++    }
++
++    /// A checkout with an `origin`, and a flow's worktree of it on
++    /// `branch` from `origin/main`, under a separate worktrees folder.
++    fn flow(dir: &Path, branch: &str) -> (PathBuf, PathBuf) {
++        let origin = dir.join("origin.git");
++        let checkout = dir.join("checkout");
++        git(
++            dir,
++            &[
++                "init",
++                "-q",
++                "--bare",
++                "-b",
++                "main",
++                &origin.to_string_lossy(),
++            ],
++        );
++        git(
++            dir,
++            &["init", "-q", "-b", "main", &checkout.to_string_lossy()],
++        );
++        std::fs::write(checkout.join("a.txt"), "a").unwrap();
++        git(&checkout, &["add", "-A"]);
++        git(&checkout, &["commit", "-qm", "a"]);
++        git(
++            &checkout,
++            &["remote", "add", "origin", &origin.to_string_lossy()],
++        );
++        git(&checkout, &["push", "-q", "origin", "main"]);
++        let worktree = dir.join("worktrees").join("checkout-issue-1-1");
++        git(
++            &checkout,
++            &[
++                "worktree",
++                "add",
++                "-q",
++                "-b",
++                branch,
++                &worktree.to_string_lossy(),
++                "origin/main",
++            ],
++        );
++        (checkout, worktree)
++    }
++
++    fn ended<'a>(worktree: &'a Path, checkout: &'a Path, branch: &'a str) -> Ended<'a> {
++        Ended {
++            workdir: worktree,
++            source: Some(checkout),
++            branch,
++            opened: false,
++        }
++    }
++
++    fn branches(checkout: &Path) -> String {
++        git(checkout, &["branch", "--list", "coder/*"])
++    }
++
++    #[test]
++    fn a_flow_that_changed_nothing_leaves_no_worktree_or_branch() {
++        let dir = tempfile::tempdir().unwrap();
++        let branch = "coder/issue-1-1";
++        let (checkout, worktree) = flow(dir.path(), branch);
++        // A build's output is a disposable cache, not the person's data.
++        std::fs::create_dir_all(worktree.join("target/debug")).unwrap();
++        std::fs::write(worktree.join(".gitignore"), "target/\n").unwrap();
++        git(&worktree, &["add", ".gitignore"]);
++        git(&worktree, &["commit", "-qm", "ignore"]);
++        git(&worktree, &["push", "-q", "origin", branch]);
++        assert!(release(&ended(&worktree, &checkout, branch)));
++        assert!(!worktree.exists());
++        assert_eq!(branches(&checkout), "");
++        assert!(!git(&checkout, &["worktree", "list"]).contains("issue-1-1"));
++    }
++
++    #[test]
++    fn a_flow_whose_work_would_be_lost_keeps_its_worktree() {
++        let dir = tempfile::tempdir().unwrap();
++        let branch = "coder/issue-1-1";
++        let (checkout, worktree) = flow(dir.path(), branch);
++        // Staged but uncommitted: the unfinished flow's changes.
++        std::fs::write(worktree.join("b.txt"), "b").unwrap();
++        git(&worktree, &["add", "b.txt"]);
++        assert!(!release(&ended(&worktree, &checkout, branch)));
++        assert!(worktree.join("b.txt").exists());
++        // Committed but never pushed: a push that failed.
++        git(&worktree, &["commit", "-qm", "b"]);
++        assert!(!release(&ended(&worktree, &checkout, branch)));
++        assert!(worktree.exists());
++        assert!(branches(&checkout).contains(branch));
++        // An ignored file that isn't a cache may be someone's data.
++        git(&worktree, &["push", "-q", "origin", branch]);
++        std::fs::write(worktree.join(".gitignore"), ".env\n").unwrap();
++        git(&worktree, &["add", ".gitignore"]);
++        git(&worktree, &["commit", "-qm", "ignore"]);
++        git(&worktree, &["push", "-q", "origin", branch]);
++        std::fs::write(worktree.join(".env"), "TOKEN=x").unwrap();
++        assert!(!release(&ended(&worktree, &checkout, branch)));
++        assert!(worktree.join(".env").exists());
++    }
++
++    #[test]
++    fn a_clone_of_its_own_is_not_released() {
++        let dir = tempfile::tempdir().unwrap();
++        let ended = Ended {
++            workdir: dir.path(),
++            source: None,
++            branch: "coder/issue-1-1",
++            opened: true,
++        };
++        assert!(!release(&ended));
++        assert!(dir.path().exists());
++    }
++}

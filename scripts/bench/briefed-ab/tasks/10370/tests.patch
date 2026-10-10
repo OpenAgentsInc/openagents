@@ -1,0 +1,51 @@
+diff --git a/crates/openagents-cli/src/service.rs b/crates/openagents-cli/src/service.rs
+index 47007294eb7d6ee04c1c0db4bb633a86991141c5..d4042e9bca71122c37a9e92d216ea2f1f0dba354 100644
+--- a/crates/openagents-cli/src/service.rs
++++ b/crates/openagents-cli/src/service.rs
+@@ -518,7 +618,16 @@ mod tests {
+         });
+         assert_eq!(
+             host_line(&descriptor),
+-            "ab ready generation 3 version v2 on 127.0.0.1:47100"
++            "host ab: ready, version v2, listening on 127.0.0.1:47100 (start 3)"
++        );
++        let long = json!({
++            "host_key": "9c9122aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaf316", "state": "stopped",
++            "host_generation": 1, "version": "285a86bbbbbbbbbbbbbbbbbbbbbbbbbbc1a4",
++            "listen": "127.0.0.1:47100",
++        });
++        assert_eq!(
++            host_line(&long),
++            "host 9c9122…f316: stopped, version 285a86…c1a4, listening on 127.0.0.1:47100 (start 1)"
+         );
+         assert_eq!(
+             update_line(&descriptor["update"]),
+@@ -528,6 +637,28 @@ mod tests {
+         assert_eq!(render_update(&update), "rolled back from v3: not ready");
+     }
+ 
++    #[test]
++    fn the_app_host_is_reported_instead_of_asking_to_install() {
++        let app = openagents_connect::control::Status {
++            host: "9c9122aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaf316".into(),
++            endpoint: "e".into(),
++            label: "MacBook".into(),
++            online: true,
++            relay: None,
++            devices: 2,
++            outstanding_invitations: 0,
++            version: "285a86bbbbbbbbbbbbbbbbbbbbbbbbbbc1a4".into(),
++        };
++        let value = app_host_value(Some(&app));
++        assert_eq!(value["managed_by"], "app");
++        let text = render_app_host(&value);
++        assert!(text.starts_with(
++            "The OpenAgents app runs this computer's host (MacBook, online, host 9c9122…f316, version 285a86…c1a4)."
++        ));
++        assert!(text.contains("nothing to install"));
++        assert!(!text.contains("run `openagents service install`"));
++    }
++
+     #[test]
+     fn a_missing_launcher_refuses() {
+         assert!(matches!(

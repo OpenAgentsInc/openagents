@@ -1,0 +1,99 @@
+diff --git a/crates/openagents-desktop/src/slides_shell_tests.rs b/crates/openagents-desktop/src/slides_shell_tests.rs
+index cbfcfd8825f483e6ff5b922f7e0ee01c1d22bb83..6e7e350ea730e2580e93f69f2af06249ed409450 100644
+--- a/crates/openagents-desktop/src/slides_shell_tests.rs
++++ b/crates/openagents-desktop/src/slides_shell_tests.rs
+@@ -293,3 +293,94 @@ fn no_string_match_path_opens_the_viewer() {
+     app.chat_presentation(now);
+     assert!(app.presentation().is_none());
+ }
++
++/// A worker that answers every message with "Opening Three DevDays Later."
++/// and the router's typed `open_presentation` offer for it.
++struct Offering;
++
++impl openagents_chat::basic_coder::Door for Offering {
++    fn ask(
++        &self,
++        _: Vec<openagents_chat::basic_coder::Turn>,
++        _: openagents_chat::router::Context,
++        reply: std::sync::Arc<std::sync::Mutex<openagents_chat::basic_coder::Reply>>,
++    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
++        Box::pin(async move {
++            tokio::time::sleep(Duration::from_millis(30)).await;
++            let mut reply = openagents_chat::basic_coder::lock(&reply);
++            reply.text = "Opening Three DevDays Later.".into();
++            reply.meta = offer(DECK);
++            reply.done = true;
++        })
++    }
++}
++
++/// "open the three devdays later deck" typed and sent: the reply carrying
++/// the typed offer arrives on the window's tick, from the background
++/// worker and from the inline runner, and the viewer opens then, with no
++/// further key or click (#10082).
++#[test]
++fn the_viewer_opens_when_the_offer_arrives_not_on_the_next_input() {
++    for background in [false, true] {
++        let fake = FakeHost::new("Test computer", unix_now());
++        fake.answer_with(std::sync::Arc::new(Offering));
++        let context = Context::new(
++            Box::new(fake.clone()),
++            Some(fake),
++            None,
++            None,
++            std::env::temp_dir(),
++        );
++        let now = Instant::now();
++        let mut app =
++            DesktopApp::inline_chat(Model::new(now, Screen::Home, Agent::Enabled), context);
++        if background {
++            let Runner::Inline(context) = std::mem::replace(&mut app.runner, Runner::Pending(None))
++            else {
++                unreachable!("an inline chat")
++            };
++            app.runner = Runner::Background(Worker::start(context, Waker::new(|| {})));
++        }
++        app.activate(
++            Intent::Navigate {
++                action: chrome::Action::NewChat,
++            },
++            now,
++        );
++        let deadline = Instant::now() + Duration::from_secs(10);
++        while background && app.chat.as_ref().unwrap().selected_chat().is_none() {
++            assert!(Instant::now() < deadline, "the new chat opens");
++            app.tick(Instant::now());
++            std::thread::sleep(Duration::from_millis(5));
++        }
++        assert!(App::text_input(
++            &mut app,
++            TextInput::Commit("open the three devdays later deck"),
++            now
++        ));
++        assert!(key(&mut app, "Enter", false, now));
++        assert!(app.presentation().is_none(), "no reply yet");
++        // From here on only the window's ticks run: no key, no click.
++        while app.presentation().is_none() {
++            assert!(
++                Instant::now() < deadline,
++                "background {background}: the offer arrived but the viewer did not open"
++            );
++            let now = Instant::now();
++            let wake = app.tick(now);
++            if let Some(viewer) = app.presentation() {
++                assert!(
++                    wake.is_some_and(|wake| wake <= now + Duration::from_millis(16)),
++                    "the opening viewer asks for its next frame"
++                );
++                assert_eq!(viewer.deck_id(), DECK);
++            }
++            std::thread::sleep(Duration::from_millis(5));
++        }
++        assert_eq!(
++            app.chat.as_mut().unwrap().take_presentation(),
++            None,
++            "taken once"
++        );
++    }
++}

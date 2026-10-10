@@ -1,0 +1,38 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": false,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 5,
+    "failed": 0,
+    "eval_secs": 50,
+    "errors": [
+      "crates/coder/src/task.rs: error[E0583]: file not found for module `freshen`",
+      "error: could not compile `coder` (lib test) due to 1 previous error",
+      "error: could not compile `coder` (lib) due to 1 previous error"
+    ],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/task.rs:42:1: error[E0583]: file not found for module `freshen`\nerror: could not compile `coder` (lib) due to 1 previous error\nerror: could not compile `coder` (lib test) due to 1 previous error\n",
+    "tests_err": "crates/coder/src/task/freshen.rs: applied\ncrates/coder/src/task/freshen_tests.rs: applied\n",
+    "test_tail": "/coder-service)\n   Compiling background v0.1.0 (/home/christopherdavid/ab/build-v/crates/background)\n   Compiling coder-pty v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-pty)\n   Compiling model-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/model-access)\n   Compiling coder-ui v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-ui)\n   Compiling coder-terminal v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-terminal)\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build-v/crates/nostr-transport)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build-v/crates/xp-ledger)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build-v/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-reach)\n   Compiling capability v0.1.0 (/home/christopherdavid/ab/build-v/crates/capability)\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build-v/crates/plugin)\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-connect)\n   Compiling jev-hosted v0.1.0 (/home/christopherdavid/ab/build-v/crates/jev-hosted)\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build-v/crates/knowledge)\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat)\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-access)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build-v/crates/gym)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-delegate)\n   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/ab/build-v/crates/microcoder-loop)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-host)\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build-v/crates/ext-eval)\n   Compiling coderbench v0.1.0 (/home/christopherdavid/ab/build-v/crates/coderbench)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build-v/crates/openagents-chat-app)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build-v/crates/openagents-desktop)\n    Finished `test` profile [unoptimized] target(s) in 28.59s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 5 tests\ntest task::freshen::tests::an_unreachable_remote_falls_back_to_the_cached_ref ... ok\ntest task::freshen::tests::a_detached_head_or_untracked_branch_fetches_nothing ... ok\ntest task::freshen::tests::a_branch_behind_its_remote_starts_at_the_fetched_tip ... ok\ntest task::freshen::tests::local_commits_keep_the_checkouts_head ... ok\ntest task::freshen::tests::a_held_fetch_lock_gives_up_within_the_timeout ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 974 filtered out; finished in 1.97s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 23,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "",
+    "tests_err": "crates/coder/src/task/freshen.rs: applied\ncrates/coder/src/task/freshen_tests.rs: applied\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build-v/crates/coder)\n    Finished `test` profile [unoptimized] target(s) in 11.09s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target-v/debug/deps/coder-6a8e662bf0bc79b9)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 974 filtered out; finished in 0.00s\n\n"
+  },
+  "usable": true,
+  "behavioral": true
+}

@@ -1,0 +1,34 @@
+{
+  "on_fix": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": true,
+    "tests_pass": true,
+    "passed": 1,
+    "failed": 0,
+    "eval_secs": 64,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\n",
+    "tests_err": "Applied patch to 'crates/coder/src/claim_tests.rs' cleanly.\n",
+    "test_tail": ".1.0 (/home/christopherdavid/ab/build/crates/coder)\n   Compiling openagents-deck v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-deck)\n   Compiling model-access v0.1.0 (/home/christopherdavid/ab/build/crates/model-access)\n   Compiling coder-pty v0.1.0 (/home/christopherdavid/ab/build/crates/coder-pty)\n   Compiling background v0.1.0 (/home/christopherdavid/ab/build/crates/background)\n   Compiling nostr-transport v0.1.0 (/home/christopherdavid/ab/build/crates/nostr-transport)\n   Compiling xp-ledger v0.1.0 (/home/christopherdavid/ab/build/crates/xp-ledger)\n   Compiling playtest v0.1.0 (/home/christopherdavid/ab/build/crates/playtest)\n   Compiling coder-reach v0.1.0 (/home/christopherdavid/ab/build/crates/coder-reach)\n   Compiling capability v0.1.0 (/home/christopherdavid/ab/build/crates/capability)\n   Compiling plugin v0.1.0 (/home/christopherdavid/ab/build/crates/plugin)\n   Compiling coder-connect v0.1.0 (/home/christopherdavid/ab/build/crates/coder-connect)\n   Compiling jev-hosted v0.1.0 (/home/christopherdavid/ab/build/crates/jev-hosted)\n   Compiling knowledge v0.1.0 (/home/christopherdavid/ab/build/crates/knowledge)\n   Compiling openagents-chat v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat)\n   Compiling coder-access v0.1.0 (/home/christopherdavid/ab/build/crates/coder-access)\n   Compiling gym v0.1.0 (/home/christopherdavid/ab/build/crates/gym)\n   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/ab/build/crates/microcoder-loop)\n   Compiling coder-delegate v0.1.0 (/home/christopherdavid/ab/build/crates/coder-delegate)\n   Compiling openagents-connect v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-connect)\n   Compiling coder-host v0.1.0 (/home/christopherdavid/ab/build/crates/coder-host)\n   Compiling coder-computers v0.1.0 (/home/christopherdavid/ab/build/crates/coder-computers)\n   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/ab/build/crates/openagents-chat-app)\n   Compiling ext-eval v0.1.0 (/home/christopherdavid/ab/build/crates/ext-eval)\n   Compiling coderbench v0.1.0 (/home/christopherdavid/ab/build/crates/coderbench)\n   Compiling openagents-desktop v1.0.0 (/home/christopherdavid/ab/build/crates/openagents-desktop)\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coder` (lib test) generated 1 warning (run `cargo fix --lib -p coder --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized] target(s) in 37.90s\n     Running unittests src/lib.rs (/home/christopherdavid/ab/target/debug/deps/coder-cf3acd9c5ea3858c)\n\nrunning 1 test\ntest claim::tests::a_token_without_the_project_scope_is_said_once_and_the_claim_goes_on ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 967 filtered out; finished in 0.00s\n\n"
+  },
+  "on_parent": {
+    "applied": true,
+    "compiles": true,
+    "tests_applied": true,
+    "tests_compiled": false,
+    "tests_pass": false,
+    "passed": 0,
+    "failed": 0,
+    "eval_secs": 7,
+    "errors": [],
+    "apply_err": "",
+    "check_tail": "crates/coder/src/efficiency.rs:385:9: warning: unused variable: `base`: help: if this is intentional, prefix it with an underscore: `_base`\n",
+    "tests_err": "Applied patch to 'crates/coder/src/claim_tests.rs' cleanly.\n",
+    "test_tail": "   Compiling coder v0.1.0 (/home/christopherdavid/ab/build/crates/coder)\nerror[E0609]: no field `unreadable` on type `claim::fake::Fake`\n   --> crates/coder/src/claim_tests.rs:233:12\n    |\n233 |     github.unreadable =\n    |            ^^^^^^^^^^ unknown field\n    |\n    = note: available fields are: `viewer`, `options`, `issues`, `order`, `now`\n\nwarning: unused variable: `base`\n   --> crates/coder/src/efficiency.rs:385:9\n    |\n385 |     let base = of(BASELINE, None);\n    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_base`\n    |\n    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nFor more information about this error, try `rustc --explain E0609`.\nwarning: `coder` (lib test) generated 1 warning\nerror: could not compile `coder` (lib test) due to 1 previous error; 1 warning emitted\n"
+  },
+  "usable": true,
+  "behavioral": false
+}
