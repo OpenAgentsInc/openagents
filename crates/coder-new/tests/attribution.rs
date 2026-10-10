@@ -26,6 +26,14 @@ fn rows(buffer: &Buffer) -> Vec<String> {
         .collect()
 }
 
+/// The transcript's rows: everything but the composer's rules.
+fn transcript(buffer: &Buffer) -> Vec<String> {
+    rows(buffer)
+        .into_iter()
+        .filter(|line| !line.starts_with('─'))
+        .collect()
+}
+
 fn app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
@@ -52,7 +60,7 @@ fn busy_chats_show_working_beside_the_spinner_with_or_without_openrouter() {
 }
 
 #[test]
-fn completed_reply_footer_keeps_the_model_and_elapsed_time_after_resize() {
+fn completed_reply_shows_neither_the_model_nor_the_elapsed_time() {
     let mut app = app();
     app.live.reply_started_at =
         Some(std::time::Instant::now() - std::time::Duration::from_millis(5500));
@@ -65,33 +73,25 @@ fn completed_reply_footer_keeps_the_model_and_elapsed_time_after_resize() {
             ..Default::default()
         }),
     });
-    let Entry::Assistant { elapsed_ms, .. } = &mut app.live.entries[0] else {
+    // The entry keeps both for exports; the screen shows neither.
+    let Entry::Assistant {
+        elapsed_ms, model, ..
+    } = &app.live.entries[0]
+    else {
         panic!("expected the completed reply");
     };
     assert!(elapsed_ms.unwrap() >= 5500);
-    *elapsed_ms = Some(5500);
+    assert_eq!(model.as_deref(), Some("anthropic/claude-fable-5.1"));
     for width in [24, 80, 110] {
-        let (buffer, _) = render(&mut app, width, 24);
-        let text = rows(&buffer);
-        let reply = text
-            .iter()
-            .position(|line| line.contains("Finished reply."))
-            .unwrap();
-        let footer = text
-            .iter()
-            .position(|line| line.contains(" · 5.5s"))
-            .unwrap();
-        assert!(footer > reply);
-        assert!(text[footer].contains("anthropic/"));
-        assert!(text[footer].trim_end().ends_with(" · 5.5s"));
-        let byte = text[footer].rfind("5.5s").unwrap();
-        let x = UnicodeWidthStr::width(&text[footer][..byte]) as u16;
-        assert_eq!(buffer[(x, footer as u16)].fg, theme::GRAY);
+        let text = transcript(&render(&mut app, width, 24).0);
+        assert!(text.iter().any(|line| line.contains("Finished reply.")));
+        assert!(!text.iter().any(|line| line.contains("anthropic/")));
+        assert!(!text.iter().any(|line| line.contains("5.5s")));
     }
 }
 
 #[test]
-fn reply_uses_actual_model_and_keeps_it_when_the_selected_model_changes() {
+fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     let mut app = app();
     app.live.entries.push(Entry::User("Say hello.".into()));
     app.live.busy = true;
@@ -103,35 +103,32 @@ fn reply_uses_actual_model_and_keeps_it_when_the_selected_model_changes() {
             ..Default::default()
         }),
     });
+    assert!(matches!(
+        &app.live.entries[1],
+        Entry::Assistant { model: Some(model), .. } if model == "openai/gpt-6-luna"
+    ));
     let (buffer, _) = render(&mut app, 110, 36);
-    let text = rows(&buffer);
-    let model_row = text
-        .iter()
-        .position(|line| line.contains("openai/gpt-6-luna"))
-        .unwrap();
-    assert!(text[model_row].trim_end().ends_with("openai/gpt-6-luna"));
-    assert_eq!(text[model_row].trim_end().chars().count(), 108);
-    assert!(
-        text[..model_row]
-            .iter()
-            .any(|line| line.contains("Hello from the routed model."))
-    );
-    let byte = text[model_row].find("openai/").unwrap();
-    let x = UnicodeWidthStr::width(&text[model_row][..byte]) as u16;
-    assert_eq!(buffer[(x, model_row as u16)].fg, theme::GRAY);
+    let text = transcript(&buffer);
     assert!(
         text.iter()
+            .any(|line| line.starts_with("● Hello from the routed model."))
+    );
+    assert!(!text.iter().any(|line| line.contains("openai/gpt-6-luna")));
+    assert!(
+        rows(&buffer)
+            .iter()
             .any(|line| line.contains(DEFAULT_MODEL) && line.starts_with('─'))
     );
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
-    let text = rows(&buffer);
     assert!(
-        text.iter()
-            .any(|line| line.contains("openai/gpt-6-luna") && !line.starts_with('─'))
+        !transcript(&buffer)
+            .iter()
+            .any(|line| line.contains("openai/gpt-6-luna"))
     );
     assert!(
-        text.iter()
+        rows(&buffer)
+            .iter()
             .any(|line| line.contains("anthropic/claude-fable-5.1") && line.starts_with('─'))
     );
 }
@@ -174,7 +171,7 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
 }
 
 #[test]
-fn streaming_attribution_stays_with_a_stopped_reply_and_never_guesses_from_settings() {
+fn streaming_and_stopped_replies_show_no_model_and_never_guess_from_settings() {
     let mut app = app();
     app.live.busy = true;
     app.apply_update(Update::Model {
@@ -185,18 +182,20 @@ fn streaming_attribution_stays_with_a_stopped_reply_and_never_guesses_from_setti
         id: app.request_id,
         text: "A partial reply.".into(),
     });
+    let text = transcript(&render(&mut app, 110, 36).0);
     assert!(
-        rows(&render(&mut app, 110, 36).0)
-            .iter()
-            .any(|line| line.contains("x-ai/grok-4.7"))
+        text.iter()
+            .any(|line| line.starts_with("● A partial reply."))
     );
+    assert!(!text.iter().any(|line| line.contains("x-ai/grok-4.7")));
     app.cancel_request();
     app.plugins.model = "google/gemini-3.5-flash".into();
-    assert!(
-        rows(&render(&mut app, 110, 36).0)
-            .iter()
-            .any(|line| line.contains("x-ai/grok-4.7"))
-    );
+    assert!(app.live.entries.iter().any(|entry| matches!(
+        entry,
+        Entry::Assistant { model: Some(model), .. } if model == "x-ai/grok-4.7"
+    )));
+    let text = transcript(&render(&mut app, 110, 36).0);
+    assert!(!text.iter().any(|line| line.contains("x-ai/grok-4.7")));
     app.live.entries.clear();
     app.live.notice = None;
     app.live.busy = true;
@@ -207,12 +206,11 @@ fn streaming_attribution_stays_with_a_stopped_reply_and_never_guesses_from_setti
             ..Default::default()
         }),
     });
-    let text = rows(&render(&mut app, 110, 36).0);
-    assert_eq!(
-        text.iter()
-            .filter(|line| line.contains("google/gemini-3.5-flash"))
-            .count(),
-        1
+    let text = transcript(&render(&mut app, 110, 36).0);
+    assert!(
+        !text
+            .iter()
+            .any(|line| line.contains("google/gemini-3.5-flash"))
     );
     assert!(text.iter().any(|line| line.contains("No model metadata.")));
 }

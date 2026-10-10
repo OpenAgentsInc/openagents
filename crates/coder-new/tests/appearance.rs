@@ -77,7 +77,7 @@ fn appearance_command_toggles_and_persists_without_submitting_chat() {
 fn assert_background_switching(mut app: App, width: u16, height: u16) {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     let original = draw(&mut terminal, &mut app);
-    assert_eq!(original[(0, 0)].bg, theme::BG_BASE);
+    assert_eq!(original[(0, height - 1)].bg, theme::BG_BASE);
     let mut expected = original.clone();
     for cell in &mut expected.content {
         cell.bg = Color::Reset;
